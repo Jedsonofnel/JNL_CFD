@@ -1,14 +1,37 @@
-class PeeksList {
+import { PeekAPI } from "./lib/peek-api.js";
+
+export class PeeksList {
 	constructor(element) {
-		this.root = element;
+		this.container = element;
+		this.peeks = [];
+		this.api = new PeekAPI("/api/peeks");
+
+		this.unsubscribe = this.api.onUpdate((peeks) => {
+			this.handleNewPeeks(peeks);
+		});
+
 		this.init();
 	}
 
 	init() {
-		const res = fetch("/api/up")
-			.then((response) => response.json())
-			.then((data) => console.log(data));
+		this.render();
+		this.api.startPolling();
+	}
+
+	handleNewPeeks(peeks) {
+		this.peeks = peeks;
+		this.render();
+	}
+
+	render() {
+		const html = this.peeks
+			.map(
+				(peek) => `
+			<li>A peek! ${peek.type}</li>
+		`,
+			)
+			.join("\n");
+
+		this.container.innerHTML = html;
 	}
 }
-
-export { PeeksList };

@@ -35,6 +35,27 @@ func handleUp(logger *log.Logger) http.Handler {
 	)
 }
 
+func handlePeeksIndex(logger *log.Logger) http.Handler {
+	envelope := struct {
+		Type string         `json:"type"`
+		Data map[string]any `json:"data"`
+	}{
+		Type: "structuredMeshDefinition",
+		Data: map[string]any{"nx": 500, "ny": 200},
+	}
+
+	data := []any{envelope}
+
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if err := encode(w, http.StatusOK, data); err != nil {
+				logger.Printf("Error encoding peeks data in handleGetPeeks: %s", err)
+				handleJSONError(w, "Something went wrong our end", http.StatusInternalServerError)
+			}
+		},
+	)
+}
+
 func handleJSONError(w http.ResponseWriter, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

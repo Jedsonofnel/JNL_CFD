@@ -7,12 +7,13 @@ import (
 
 func addRoutes(mux *http.ServeMux, logger *log.Logger, view *View) {
 	assets := http.FileServer(http.Dir("assets/"))
-	mux.Handle("/assets/", http.StripPrefix("/assets/", assets))
+	mux.Handle("GET /assets/", http.StripPrefix("/assets/", assets))
 
 	// pages
-	mux.Handle("/", handleHome(logger, view))
-	mux.Handle("/peeks", handlePeeks(logger, view))
+	mux.Handle("GET /", handleHome(logger, view))
+	mux.Handle("GET /peeks", handlePeeks(logger, view))
 
 	// api
-	mux.Handle("/api/up", handleUp(logger))
+	mux.Handle("GET /api/up", handleUp(logger))
+	mux.Handle("GET /api/peeks", handlePeeksIndex(logger))
 }
