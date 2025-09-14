@@ -37,7 +37,9 @@ func run(_ context.Context, args []string) error {
 	}
 
 	view := NewView()
-	view.LoadTemplates()
+	if err = view.LoadTemplates(); err != nil {
+		return fmt.Errorf("failed to load templates: %w", err)
+	}
 
 	srv := NewServer(logger, view)
 	addr := net.JoinHostPort(*host, *port)
@@ -56,7 +58,10 @@ func NewServer(logger *log.Logger, view *View) http.Handler {
 }
 
 func addRoutes(mux *http.ServeMux, logger *log.Logger, view *View) {
+	assets := http.FileServer(http.Dir("assets/"))
+	mux.Handle("/assets/", http.StripPrefix("/assets/", assets))
 	mux.Handle("/", handleHomeShow(logger, view))
+	mux.Handle("/up", handleUp(logger))
 }
 
 func setupLogger(env string) (*log.Logger, error) {

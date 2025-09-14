@@ -10,7 +10,7 @@ func handleHomeShow(_ *log.Logger, view *View) http.Handler {
 
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			view.Render(w, data)
+			view.Render(w, "home-show", data)
 		},
 	)
 }

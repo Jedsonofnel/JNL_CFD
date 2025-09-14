@@ -1,4 +1,4 @@
 .PHONY: dev
 
 dev:
-	git ls-files -cdmo --exclude-standard | entr -d go run .
+	git ls-files -cdmo --exclude-standard | entr -dr go run .
