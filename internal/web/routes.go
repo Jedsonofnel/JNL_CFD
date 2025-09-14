@@ -10,7 +10,8 @@ func addRoutes(mux *http.ServeMux, logger *log.Logger, view *View) {
 	mux.Handle("/assets/", http.StripPrefix("/assets/", assets))
 
 	// pages
-	mux.Handle("/", handleHomeShow(logger, view))
+	mux.Handle("/", handleHome(logger, view))
+	mux.Handle("/peeks", handlePeeks(logger, view))
 
 	// api
 	mux.Handle("/api/up", handleUp(logger))
