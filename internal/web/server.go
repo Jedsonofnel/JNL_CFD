@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"context"
@@ -10,15 +10,7 @@ import (
 	"os"
 )
 
-func main() {
-	ctx := context.Background()
-	if err := run(ctx, os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
-	}
-}
-
-func run(_ context.Context, args []string) error {
+func Run(_ context.Context, args []string) error {
 	env := os.Getenv("ENV")
 	if env == "" {
 		env = "development"
@@ -55,13 +47,6 @@ func NewServer(logger *log.Logger, view *View) http.Handler {
 	var handler http.Handler = mux
 	// TODO: middleware handling like auth
 	return handler
-}
-
-func addRoutes(mux *http.ServeMux, logger *log.Logger, view *View) {
-	assets := http.FileServer(http.Dir("assets/"))
-	mux.Handle("/assets/", http.StripPrefix("/assets/", assets))
-	mux.Handle("/", handleHomeShow(logger, view))
-	mux.Handle("/up", handleUp(logger))
 }
 
 func setupLogger(env string) (*log.Logger, error) {

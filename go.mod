@@ -1,4 +1,4 @@
-module github.com/Jedsonofnel/jnlcfd-web
+module github.com/Jedsonofnel/jnlcfd
 
 go 1.25.1
 
