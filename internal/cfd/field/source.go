@@ -1,0 +1,38 @@
+package field
+
+type ScalarSource interface {
+	RHSContribution() float32
+	DiagonalContribution() float32
+}
+
+type NoSource struct{}
+
+func (ns *NoSource) RHSContribution() float32      { return 0.0 }
+func (ns *NoSource) DiagonalContribution() float32 { return 0.0 }
+
+func NewNoSourceSlice(nCells int) []ScalarSource {
+	sources := make([]ScalarSource, nCells)
+	noSource := &NoSource{}
+	for i := range sources {
+		sources[i] = noSource
+	}
+	return sources
+}
+
+type ConstantVolumetricSource struct {
+	volumetricSrc float32
+	absoluteSrc   float32
+}
+
+func NewConstantVolumetricSource(value, cellVolume float32) ScalarSource {
+	absoluteSrc := value * cellVolume
+	return &ConstantVolumetricSource{
+		volumetricSrc: value,
+		absoluteSrc:   absoluteSrc,
+	}
+}
+
+func (s *ConstantVolumetricSource) RHSContribution() float32      { return s.absoluteSrc }
+func (s *ConstantVolumetricSource) DiagonalContribution() float32 { return 0.0 }
+
+type VectorSource interface{}

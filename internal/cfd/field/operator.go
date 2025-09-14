@@ -1,0 +1,295 @@
+package field
+
+import (
+	"fmt"
+)
+
+type OperatorType int
+
+const (
+	FluxType = iota
+	SourceType
+)
+
+type OperatorDefinition interface {
+	GetRank() (TensorRank, error)
+	Validate() error
+	Resolve(owner Field) (Operator, error)
+}
+
+type FluxOperatorDefinition interface {
+	GetOwner() PrognosticDefinition
+}
+
+type Operator interface {
+	GetType() OperatorType
+	GetRank() TensorRank
+}
+
+type ScalarFluxOperator interface {
+	Operator
+	ApplyFluxes(sys *systemAssemblyContext)
+}
+
+type ScalarSourceOperator interface {
+	Operator
+	ApplySources(sys *systemAssemblyContext)
+}
+
+// FLUX OPERATORS
+// LAPLACIAN
+
+type laplacianDefinition struct {
+	owner     PrognosticDefinition
+	rank      TensorRank
+	coeff     float32
+	couplings []FieldDefinition
+	error     error
+}
+
+func NewLaplacian(owner PrognosticDefinition, coeffs ...any) OperatorDefinition {
+	rank, coeff, coupled, err := parseFluxOperator(owner, coeffs)
+	return &laplacianDefinition{owner, rank, coeff, coupled, err}
+}
+
+func (ld *laplacianDefinition) GetRank() (TensorRank, error) {
+	if ld.error != nil {
+		return ld.rank, fmt.Errorf("Laplacian Definition (%s): Get Rank > %w",
+			ld.owner.GetName(), ld.error)
+	}
+	return ld.rank, ld.error
+}
+
+func (ld *laplacianDefinition) GetOwner() PrognosticDefinition { return ld.owner }
+
+func (ld *laplacianDefinition) Validate() error {
+	if ld.error != nil {
+		return fmt.Errorf("Laplacian Definition (%s): Validate > %w",
+			ld.owner.GetName(), ld.error)
+	}
+	return ld.error
+}
+
+func (ld *laplacianDefinition) Resolve(owner Field) (Operator, error) {
+	if ld.error != nil {
+		return nil, fmt.Errorf("Laplacian Definition (%s): Resolve > %w",
+			ld.owner.GetName(), ld.error)
+	}
+
+	resolvedOwner := ld.owner.Follow()
+	if resolvedOwner != owner {
+		return nil, fmt.Errorf("Laplacian Definition (%s): Resolve > Cannot resolve for owner '%s'.",
+			ld.owner.GetName(), owner.GetName())
+	}
+
+	switch owner := owner.(type) {
+	case ScalarPrognostic:
+		return ld.newScalarLaplacian(owner)
+	default:
+		return nil, fmt.Errorf("Laplacian Defintion (%s): Resolve > Have not implemented laplacian for rank %d.",
+			owner.GetRank(), owner.GetRank())
+	}
+}
+
+func (ld *laplacianDefinition) newScalarLaplacian(owner Scalar) (ScalarFluxOperator, error) {
+	mesh := owner.GetMesh()
+
+	couplings := make([]Scalar, len(ld.couplings))
+	for i, coupling := range couplings {
+		res, ok := coupling.(Scalar)
+		if !ok {
+			return nil, fmt.Errorf("New Scalar Laplacian (%s) > Field of rank %d cannot be used as a coefficient.",
+				owner.GetName(), coupling.GetRank())
+		}
+		couplings[i] = res
+	}
+
+	sl := &scalarLaplacian{
+		owner:     owner,
+		coeff:     ld.coeff,
+		couplings: couplings,
+		precalcs:  make([]float32, mesh.NumNeighbours()),
+		fluxes:    make([]float32, mesh.NumNeighbours()),
+	}
+
+	for i := range sl.precalcs {
+		sl.precalcs[i] = ld.coeff * mesh.FaceAreas[i] / mesh.NeighbourDistances[i]
+	}
+
+	return sl, nil
+}
+
+type scalarLaplacian struct {
+	owner     Scalar
+	coeff     float32
+	couplings []Scalar
+	precalcs  []float32
+	fluxes    []float32
+}
+
+func (l *scalarLaplacian) GetType() OperatorType { return FluxType }
+func (l *scalarLaplacian) GetRank() TensorRank   { return ScalarRank }
+func (l *scalarLaplacian) ApplyFluxes(sys *systemAssemblyContext) {
+	// PERF: It's likely I won't have any fieldCoeffs, in which case
+	// maybe write a ScalarConstantLaplacianOperator that just precalcs
+	// fluxes and returns it every time for that case.
+	for i := range l.fluxes {
+		l.fluxes[i] = l.precalcs[i]
+	}
+
+	for _, field := range l.couplings {
+		faceVals := field.GetFaceValues()
+
+		for i := range l.fluxes {
+			l.fluxes[i] *= faceVals[i]
+		}
+	}
+
+	mesh := l.owner.GetMesh()
+
+	mesh.ForEachInternal(func(i, j, f int) {
+		flux := l.fluxes[f]
+		sys.MatrixInternal.AddDiagonal(i, flux)
+		sys.MatrixInternal.Subtract(i, j, flux)
+	})
+
+	mesh.ForEachBoundary(func(i, bIdx, f int) {
+		flux := l.fluxes[f]
+		sys.BoundaryDiag[bIdx] += flux
+		sys.BoundaryOffDiag[bIdx] += flux
+	})
+}
+
+// SOURCE OPERATORS
+// DDT
+
+type ddtDefinition struct {
+	owner     PrognosticDefinition
+	rank      TensorRank
+	coeff     float32
+	couplings []FieldDefinition
+	error     error
+}
+
+func NewDDT(owner PrognosticDefinition, coeffs ...any) OperatorDefinition {
+	rank, coeff, coupled, err := parseFluxOperator(owner, coeffs)
+	return &laplacianDefinition{owner, rank, coeff, coupled, err}
+}
+
+func (ddt *ddtDefinition) GetRank() (TensorRank, error) {
+	if ddt.error != nil {
+		return ddt.rank, fmt.Errorf("DDT Definition (%s): Get Rank > %w",
+			ddt.owner.GetName(), ddt.error)
+	}
+	return ddt.rank, ddt.error
+}
+
+func (ddt *ddtDefinition) GetOwner() PrognosticDefinition { return ddt.owner }
+
+func (ddt *ddtDefinition) Validate() error {
+	if ddt.error != nil {
+		return fmt.Errorf("DDT Definition (%s): Validate > %w",
+			ddt.owner.GetName(), ddt.error)
+	}
+	return ddt.error
+}
+
+func (ddt *ddtDefinition) Resolve(owner Field) (Operator, error) {
+	if ddt.error != nil {
+		return nil, fmt.Errorf("DDT Definition (%s): Resolve > %w",
+			ddt.owner.GetName(), ddt.error)
+	}
+
+	resolvedOwner := ddt.owner.Follow()
+	if resolvedOwner != owner {
+		return nil, fmt.Errorf("DDT Definition (%s): Resolve > Cannot resolve for owner '%s'.",
+			ddt.owner.GetName(), owner.GetName())
+	}
+
+	switch owner := owner.(type) {
+	case ScalarTimeEvolving:
+		return ddt.newScalarDDT(owner)
+	default:
+		return nil, fmt.Errorf("DDT Defintion (%s): Resolve > Have not implemented DDT for rank %d.",
+			owner.GetRank(), owner.GetRank())
+	}
+}
+
+func (ddt *ddtDefinition) newScalarDDT(owner ScalarTimeEvolving) (ScalarSourceOperator, error) {
+	mesh := owner.GetMesh()
+
+	couplings := make([]Scalar, len(ddt.couplings))
+	for i, coupling := range ddt.couplings {
+		res, ok := coupling.(Scalar)
+		if !ok {
+			return nil, fmt.Errorf("New Scalar DDT (%s) > Field of rank %d cannot be used as a coefficient.",
+				owner.GetName(), coupling.GetRank())
+		}
+		couplings[i] = res
+	}
+
+	res := &scalarDDT{
+		owner:     owner,
+		dt:        -1,
+		coeff:     ddt.coeff,
+		couplings: couplings,
+		precalcs:  make([]float32, mesh.NumCells()),
+	}
+
+	for i := range res.precalcs {
+		res.precalcs[i] = ddt.coeff * mesh.CellVolumes[i]
+	}
+
+	return res, nil
+}
+
+type scalarDDT struct {
+	owner     ScalarTimeEvolving
+	dt        float32
+	coeff     float32
+	couplings []Scalar
+	precalcs  []float32
+}
+
+func (ddt *scalarDDT) GetType() OperatorType { return SourceType }
+func (ddt *scalarDDT) GetRank() TensorRank   { return ScalarRank }
+
+func (ddt *scalarDDT) ApplySources(sys *systemAssemblyContext) {
+	// PERF: within a SIMPLE loop can we skip the recalculation somehow?
+	ddt.dt = ddt.owner.GetTimestep()
+
+	pastValues := ddt.owner.GetPastValues()
+
+	ddt.owner.GetMesh().ForEachCell(func(i int) {
+		diag := ddt.precalcs[i] / ddt.dt
+		sys.Matrix.AddDiagonal(i, diag)
+		sys.RHS[i] += diag * pastValues[i]
+	})
+}
+
+// SHARED UTILITES
+
+func parseFluxOperator(owner PrognosticDefinition, coeffs ...any) (
+	TensorRank, float32, []FieldDefinition, error) {
+	ownerRank := owner.GetRank()
+	var coeff float32 = 1
+	couplings := make([]FieldDefinition, 0)
+
+	for _, c := range coeffs {
+		switch field := c.(type) {
+		case float32:
+			coeff *= field
+		case int:
+			coeff *= float32(field)
+		case float64:
+			coeff *= float32(field)
+		case ScalarDefinition:
+			couplings = append(couplings, field)
+		default:
+			return ownerRank, 0, nil, fmt.Errorf("Parse Flux Operator > Cannot treat '%T' as an operator coefficient.",
+				field)
+		}
+	}
+
+	return ownerRank, coeff, couplings, nil
+}
