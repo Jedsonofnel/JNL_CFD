@@ -1,13 +1,50 @@
-{{! the homepage}}
-<h1>Hello, {{ Page.name }}</h1>
+<main>
+	<h1>Welcome to JNL CFD</h1>
 
-<h2>Menu</h2>
-<nav>
+	<p>A lightweight CFD visualiser built for the browser.</p>
+
+	<h2 id="menu">Menu</h2>
+	<nav>
+		<ul>
+			<li><a href="/peeks">Peeks</a></li>
+		</ul>
+	</nav>
+
+	<h2>Project summary</h2>
+
+	<p>
+		A lightweight velocity-pressure solver built using golang and compiled
+		to WebAssembly (WASM), designed around ease of use and transparency.
+	</p>
+
+	<h2>Domain language</h2>
+
+	<p>
+		I am heavily influenced by the work, writings and general musings of DHH
+		and the team at 37signals, likely due to my time spent working with Rails
+		and subsequent exposure to that community. I really enjoy their
+		<a href="https://dev.37signals.com/domain-driven-boldness/"> domain driven
+			boldness</a> and the usage of creative domain language to add a bit of
+		personality while also making the underlying ideas concrete. Imperfectly,
+		I being intentional about incorporating similarly meaningful domain
+		language to this project, which aligns with the goal of removing any
+		magic or obscure jargon.
+	</p>
+
+	<p>The following are some key domain ideas and names:</p>
+
 	<ul>
-		<li>Peeks</li>
+		<li><em>Peek</em>: A mesh or a case made visual. My ideal is to have as
+			much be <em>Peekable</em> as possible, and the term serves to describe
+			the goal of seeing what is under the hood.
+		</li>
 	</ul>
-</nav>
 
-<div>
-	<p>Some other bits and bobs, for example - do you like cabbage?</p>
-</div>
+	<h2>Current areas of work</h2>
+
+	<ul>
+		<li>Mesh rendering</li>
+		<li>Temperature diffusion as proof of concept of the abstractions
+			designed</li>
+	</ul>
+</main>

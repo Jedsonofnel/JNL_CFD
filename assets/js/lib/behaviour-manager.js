@@ -31,7 +31,7 @@ class BehaviourManager {
 
 	applyBehaviours(root) {
 		this.behaviours.forEach((BehaviourClass, name) => {
-			const elements = root.querySelectorAll(`[data-js-"${name}"]`);
+			const elements = root.querySelectorAll(`[data-js-${name}]`);
 			elements.forEach((el) => {
 				if (!el._behaviourInstance) {
 					el._behaviourInstance = new BehaviourClass(el);

@@ -1,3 +1,42 @@
-h1 {
-	color: red;
+:root {
+	--fg: hsl(220, 35%, 15%);
+	--bg: hsl(220, 35%, 95%);
+}
+
+html {
+	box-sizing: border-box;
+	font-size: 16px;
+	background-color: var(--bg);
+	color: var(--fg);
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: inherit;
+	color: inherit;
+}
+
+body {
+	width: min(90%, 72ch);
+	margin: 0 auto;
+	padding: 0;
+
+	font-family: sans-serif;
+	line-height: 1.5;
+	font-weight: normal;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+	font-weight: normal;
+}
+
+ul {
+	list-style-type: "▸  ";
 }
