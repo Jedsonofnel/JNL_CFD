@@ -2,8 +2,8 @@ package field
 
 import (
 	"fmt"
-	"github.com/Jedsonofnel/cfd-but-wasm/geometry"
-	"github.com/Jedsonofnel/cfd-but-wasm/linalg"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
 	"strings"
 )
 
@@ -154,8 +154,8 @@ type scalar struct {
 	cellValues0 []float32
 
 	// Assembly
-	fluxOps   []ScalarFluxOperator
-	srcOps []ScalarSourceOperator
+	fluxOps []ScalarFluxOperator
+	srcOps  []ScalarSourceOperator
 
 	// Linear system
 	matrix linalg.Matrix

@@ -3,8 +3,6 @@
 package animation
 
 import (
-	"github.com/Jedsonofnel/cfd-but-wasm/geometry"
-	"github.com/Jedsonofnel/cfd-but-wasm/renderer"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 

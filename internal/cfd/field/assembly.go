@@ -1,7 +1,7 @@
 package field
 
 import (
-	"github.com/Jedsonofnel/cfd-but-wasm/linalg"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
 )
 
 type systemAssemblyContext struct {

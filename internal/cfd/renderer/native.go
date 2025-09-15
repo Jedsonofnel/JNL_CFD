@@ -3,7 +3,7 @@
 package renderer
 
 import (
-	"github.com/Jedsonofnel/cfd-but-wasm/geometry"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/hajimehoshi/ebiten/v2"
 	"image/color"
 )

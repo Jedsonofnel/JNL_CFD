@@ -2,8 +2,8 @@ package field
 
 import (
 	"fmt"
-	"github.com/Jedsonofnel/cfd-but-wasm/geometry"
-	"github.com/Jedsonofnel/cfd-but-wasm/linalg"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
 )
 
 type TensorRank int

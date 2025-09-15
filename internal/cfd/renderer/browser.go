@@ -3,48 +3,143 @@
 package renderer
 
 import (
-	"fmt"
-	"github.com/Jedsonofnel/cfd-but-wasm/simulation"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"strconv"
 	"syscall/js"
 )
 
 const (
-	canvasID = "cfd-canvas"
+	canvasID           = "cfd-canvas"
+	nominalScreenWidth = 800
 )
 
-type BrowserRenderer struct {
-	core   *RendererCore
-	canvas js.Value
-	ctx    js.Value
+type Renderer struct {
+	// Geometry
+	mesh *geometry.Mesh
+
+	// Colour smoothing
+	smoothedMax float32
+	alpha       float32
+
+	// Cell polygon rendering data
+	verticesX, verticesY []float32
+	trianglesPerCell     []int
+	cellGreyscales       []float32
+
+	// js
+	ctx             js.Value
+	cWidth, cHeight float32
 }
 
-func NewBrowserRenderer(nX, nY int) *BrowserRenderer {
+func NewRenderer(mesh *geometry.Mesh) *Renderer {
+	vX, vY, tris := computeCellTris(mesh)
+
 	canvas := js.Global().Get("document").Call("getElementById", canvasID)
-	width, height := getCanvasDimensions(canvas)
+	cWidth, _ := getCanvasDimensions(canvas)
+
+	sf := mesh.Bounds.Width / float32(cWidth)
+	desiredHeight := mesh.Bounds.Height / sf
+	canvas.Call("setAttribute", "height", desiredHeight)
+
 	ctx := canvas.Call("getContext", "2d")
 
-	core := NewRendererCore(nX, nY, width, height)
-	return &BrowserRenderer{core: core, canvas: canvas, ctx: ctx}
+	r := &Renderer{
+		mesh:             mesh,
+		smoothedMax:      1.0,
+		alpha:            0.01,
+		verticesX:        vX,
+		verticesY:        vY,
+		trianglesPerCell: tris,
+		cellGreyscales:   make([]float32, mesh.NumCells()),
+		ctx:              ctx,
+		cWidth:           float32(cWidth),
+		cHeight:          desiredHeight,
+	}
+
+	return r
 }
 
-func (br *BrowserRenderer) DrawToCanvas(results *simulation.Results) {
-	br.ctx.Set("fillStyle", "white")
-	br.ctx.Call("fillRect", 0, 0, br.core.width, br.core.height)
+func computeCellTris(mesh *geometry.Mesh) ([]float32, []float32, []int) {
+	totalVertices := 0
+	tris := make([]int, mesh.NumCells())
 
-	var vals []float32
-	for _, fieldVals := range results.ScalarFields {
-		vals = fieldVals
-		break
+	for i := range mesh.NumCells() {
+		triangleCount := mesh.FaceStarts[i+1] - mesh.FaceStarts[i] - 2
+		tris[i] = triangleCount
+		totalVertices += triangleCount * 3 // three vertices per triangle
 	}
 
-	br.core.ProcessField(vals)
-	for _, cell := range br.core.cells {
-		r, g, b, _ := cell.Color.RGBA()
-		colorString := fmt.Sprintf("rgb(%d,%d,%d)", r, g, b)
-		br.ctx.Set("fillStyle", colorString)
-		br.ctx.Call("fillRect", cell.X, cell.Y, cell.Width+1, cell.Height+1)
+	vX, vY := make([]float32, totalVertices), make([]float32, totalVertices)
+	vIdx := 0
+
+	for i := range mesh.NumCells() {
+		startIdx, endIdx := mesh.FaceStarts[i], mesh.FaceStarts[i+1]
+		hubVertexIdx := mesh.FaceIndices[startIdx]
+
+		// fan triangulation
+		for j := startIdx + 1; j < endIdx-1; j++ {
+			v2, v3 := mesh.FaceIndices[j], mesh.FaceIndices[j+1]
+
+			sv1x, sv1y := physicsToScreen(
+				mesh.VerticesX[hubVertexIdx],
+				mesh.VerticesY[hubVertexIdx],
+				mesh,
+			)
+			vX[vIdx] = sv1x
+			vY[vIdx] = sv1y
+
+			sv2x, sv2y := physicsToScreen(mesh.VerticesX[v2], mesh.VerticesY[v2], mesh)
+			vX[vIdx+1] = sv2x
+			vY[vIdx+1] = sv2y
+
+			sv3x, sv3y := physicsToScreen(mesh.VerticesX[v3], mesh.VerticesY[v3], mesh)
+			vX[vIdx+2] = sv3x
+			vY[vIdx+2] = sv3y
+
+			vIdx += 3
+		}
 	}
+
+	return vX, vY, tris
+}
+
+func physicsToScreen(physX, physY float32, mesh *geometry.Mesh) (float32, float32) {
+	bounds := mesh.Bounds
+	sf := float32(nominalScreenWidth) / bounds.Width
+	screenX := sf * physX
+	screenY := bounds.Height/sf - sf*physY
+	return screenX, screenY
+}
+
+func (r *Renderer) ProcessField(vals []float32) {
+	var currentMax float32 = 0.0
+	for _, val := range vals {
+		if val > currentMax {
+			currentMax = val
+		}
+	}
+
+	// exponential smoothing
+	r.smoothedMax = r.alpha*currentMax + (1-r.alpha)*r.smoothedMax
+
+	if r.smoothedMax == 0.0 {
+		// Set neutral colors and return
+		for i := range vals {
+			r.cellGreyscales[i] = 0.5
+		}
+		return
+	}
+
+	for i, val := range vals {
+		normalisedPhi := val / r.smoothedMax
+		r.cellGreyscales[i] = 1.0 - normalisedPhi
+	}
+}
+
+func (r *Renderer) RenderMesh() {
+	r.ctx.Set("fillStyle", "white")
+	r.ctx.Call("fillRect", 0, 0, r.cWidth, r.cHeight)
+	println("HELLO")
 }
 
 func getCanvasDimensions(c js.Value) (width, height int) {

@@ -1,9 +1,6 @@
 package animation
 
 import (
-	"github.com/Jedsonofnel/cfd-but-wasm/profiler"
-	"github.com/Jedsonofnel/cfd-but-wasm/geometry"
-	"github.com/Jedsonofnel/cfd-but-wasm/simulation"
 	"time"
 )
 

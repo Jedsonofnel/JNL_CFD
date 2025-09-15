@@ -1,9 +1,12 @@
 package geometry
 
 import (
-	"github.com/Jedsonofnel/cfd-but-wasm/linalg"
 	"math"
 )
+
+type MeshDefinition interface {
+	Resolve() *Mesh
+}
 
 const InternalBoundary = -1
 
@@ -39,8 +42,8 @@ func (m *Mesh) NumNeighbours() int {
 	return len(m.CellNeighbours)
 }
 
-func (m *Mesh) FindClosestCell(point linalg.Vec2) int {
-	m.Bounds.EnforceContains(point)
+func (m *Mesh) FindClosestCell(point Vec2) int {
+	m.Bounds.EnforceContains(point.X, point.Y)
 	minDistSqd := float32(math.MaxFloat32)
 	closestCell := -1
 

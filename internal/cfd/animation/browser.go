@@ -3,7 +3,6 @@
 package animation
 
 import (
-	"github.com/Jedsonofnel/cfd-but-wasm/renderer"
 	"syscall/js"
 )
 

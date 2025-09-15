@@ -2,10 +2,6 @@ package simulation
 
 import (
 	"fmt"
-	"github.com/Jedsonofnel/cfd-but-wasm/field"
-	"github.com/Jedsonofnel/cfd-but-wasm/geometry"
-	"github.com/Jedsonofnel/cfd-but-wasm/profiler"
-	"github.com/Jedsonofnel/cfd-but-wasm/linalg"
 )
 
 type UniformVelocity struct {

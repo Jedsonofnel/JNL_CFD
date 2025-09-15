@@ -2,7 +2,6 @@ package geometry
 
 import (
 	"fmt"
-	"github.com/Jedsonofnel/cfd-but-wasm/linalg"
 )
 
 const (
@@ -12,37 +11,36 @@ const (
 	northBorder
 )
 
-type StructuredMeshFactory struct {
-	nX, nY  int
-	spacing linalg.Vec2
-	bounds  Rectangle
+type structuredMesh struct {
+	NX, NY        int
+	Width, Height float32
 }
 
-func NewStructuredMeshFactory(nX, nY int, width, height float32) *StructuredMeshFactory {
-	spacing := linalg.Vec2{X: width / float32(nX), Y: height / float32(nY)}
-	bounds := Rectangle{Height: height, Width: width}
-
-	return &StructuredMeshFactory{
-		nX:      nX,
-		nY:      nY,
-		spacing: spacing,
-		bounds:  bounds,
-	}
+func NewStructuredMesh(nX, nY int, width, height float64) MeshDefinition {
+	return &structuredMesh{nX, nY, float32(width), float32(height)}
 }
 
-func NewStructuredMesh(nX, nY int, width, height float32) *Mesh {
-	smf := NewStructuredMeshFactory(nX, nY, width, height)
+func (sm *structuredMesh) spacing() (sX, sY float32) {
+	sX = sm.Width / float32(sm.NX)
+	sY = sm.Height / float32(sm.NY)
+	return
+}
 
-	mesh := smf.initializeMesh()
-	smf.populateCells(mesh)
-	smf.populateFaceGeometry(mesh)
+func (sm *structuredMesh) numCells() int {
+	return sm.NX * sm.NY
+}
+
+func (sm *structuredMesh) Resolve() *Mesh {
+	mesh := initializeMesh(sm)
+	populateCells(mesh, sm)
+	populateFaceGeometry(mesh, sm)
 
 	return mesh
 }
 
-func (smf *StructuredMeshFactory) initializeMesh() *Mesh {
-	numCells := smf.nX * smf.nY
-	numVertices := (smf.nX + 1) * (smf.nY + 1)
+func initializeMesh(sm *structuredMesh) *Mesh {
+	numCells := sm.numCells()
+	numVertices := (sm.NX + 1) * (sm.NY + 1)
 	numNeighbours := numCells * 4
 
 	return &Mesh{
@@ -65,42 +63,43 @@ func (smf *StructuredMeshFactory) initializeMesh() *Mesh {
 		NeighbourNormalsX:  make([]float32, numNeighbours),
 		NeighbourNormalsY:  make([]float32, numNeighbours),
 
-		Bounds:     smf.bounds,
+		Bounds:     Rectangle{Height: sm.Height, Width: sm.Width},
 		Boundaries: []string{"west", "south", "east", "north"},
 	}
 }
 
-func (smf *StructuredMeshFactory) populateCells(mesh *Mesh) {
+func populateCells(mesh *Mesh, sm *structuredMesh) {
+	sX, sY := sm.spacing()
 	vertexMap := make(map[string]int)
 	nextVertexIndex := 0
 	faceIdx := 0 // this doubles as neighbour index
 	numCells := len(mesh.CentroidsX)
 
 	for i := range numCells {
-		row := i / smf.nX
-		col := i % smf.nX
+		row := i / sm.NX
+		col := i % sm.NX
 
-		cX := (float32(col) + 0.5) * smf.spacing.X
-		cY := (float32(row) + 0.5) * smf.spacing.Y
+		cX := (float32(col) + 0.5) * sX
+		cY := (float32(row) + 0.5) * sY
 
 		mesh.CentroidsX[i] = cX
 		mesh.CentroidsY[i] = cY
-		mesh.CellVolumes[i] = smf.spacing.X * smf.spacing.Y
+		mesh.CellVolumes[i] = sX * sY
 
-		vertices := polygonVertices(cX, cY, smf.spacing)
-		neighbours := smf.cellNeighbours(row, col, i)
+		polygonX, polygonY := polygonVertices(cX, cY, sX, sY)
+		neighbours := cellNeighbours(sm, row, col, i)
 
 		mesh.FaceStarts[i] = faceIdx
 		mesh.NeighbourStarts[i] = faceIdx
 
-		for face, vertex := range vertices { // west, south, east, north
-			key := fmt.Sprintf("%.6f,%.6f", vertex.X, vertex.Y)
+		for face := range polygonX { // west, south, east, north
+			key := fmt.Sprintf("%.6f,%.6f", polygonX[face], polygonY[face])
 
 			if existingIndex, found := vertexMap[key]; found {
 				mesh.FaceIndices[faceIdx] = existingIndex
 			} else {
-				mesh.VerticesX[nextVertexIndex] = vertex.X
-				mesh.VerticesY[nextVertexIndex] = vertex.Y
+				mesh.VerticesX[nextVertexIndex] = polygonX[face]
+				mesh.VerticesY[nextVertexIndex] = polygonY[face]
 				vertexMap[key] = nextVertexIndex
 				mesh.FaceIndices[faceIdx] = nextVertexIndex
 				nextVertexIndex++
@@ -121,13 +120,11 @@ func (smf *StructuredMeshFactory) populateCells(mesh *Mesh) {
 	mesh.NeighbourStarts[numCells] = faceIdx
 }
 
-func polygonVertices(cX, cY float32, spacing linalg.Vec2) []linalg.Vec2 {
-	return []linalg.Vec2{ // starts top left and goes CCW
-		{X: cX - spacing.X/2, Y: cY + spacing.Y/2},
-		{X: cX - spacing.X/2, Y: cY - spacing.Y/2},
-		{X: cX + spacing.X/2, Y: cY - spacing.Y/2},
-		{X: cX + spacing.X/2, Y: cY + spacing.Y/2},
-	}
+func polygonVertices(cX, cY, sX, sY float32) ([]float32, []float32) {
+	// top left and goes CCS
+	polygonX := []float32{cX - sX/2, cX - sX/2, cX + sX/2, cX + sX/2}
+	polygonY := []float32{cY + sY/2, cY - sY/2, cY - sY/2, cY + sY/2}
+	return polygonX, polygonY
 }
 
 type CellNeighbour struct {
@@ -138,40 +135,42 @@ type CellNeighbour struct {
 	neighbourNormalY float32
 }
 
-func (smf *StructuredMeshFactory) cellNeighbours(row, col, cellIndex int) [4]CellNeighbour {
+func cellNeighbours(sm *structuredMesh, row, col, cellIndex int) [4]CellNeighbour {
+	sX, sY := sm.spacing()
+
 	// (0, 0) = bottom left
 	neighbours := [4]CellNeighbour{ // west south east north
-		{cellIndex - 1, -1, smf.spacing.X, -1, 0},
-		{cellIndex - smf.nX, -1, smf.spacing.Y, 0, -1},
-		{cellIndex + 1, -1, smf.spacing.X, 1, 0},
-		{cellIndex + smf.nX, -1, smf.spacing.Y, 0, 1},
+		{cellIndex - 1, -1, sX, -1, 0},
+		{cellIndex - sm.NX, -1, sY, 0, -1},
+		{cellIndex + 1, -1, sX, 1, 0},
+		{cellIndex + sm.NX, -1, sY, 0, 1},
 	}
 
 	if col == 0 { // west border
 		neighbours[0].neighbourIndex = -1
 		neighbours[0].neighbourType = westBorder
-		neighbours[0].distance = smf.spacing.X / 2
+		neighbours[0].distance = sX / 2
 		neighbours[0].neighbourNormalX = -1
 		neighbours[0].neighbourNormalY = 0
 	}
 	if row == 0 { // south
 		neighbours[1].neighbourIndex = -1
 		neighbours[1].neighbourType = southBorder
-		neighbours[1].distance = smf.spacing.Y / 2
+		neighbours[1].distance = sY / 2
 		neighbours[0].neighbourNormalX = 0
 		neighbours[0].neighbourNormalY = -1
 	}
-	if col == smf.nX-1 { // east
+	if col == sm.NX-1 { // east
 		neighbours[2].neighbourIndex = -1
 		neighbours[2].neighbourType = eastBorder
-		neighbours[2].distance = smf.spacing.X / 2
+		neighbours[2].distance = sX / 2
 		neighbours[0].neighbourNormalX = 1
 		neighbours[0].neighbourNormalY = 0
 	}
-	if row == smf.nY-1 { // north
+	if row == sm.NY-1 { // north
 		neighbours[3].neighbourIndex = -1
 		neighbours[3].neighbourType = northBorder
-		neighbours[3].distance = smf.spacing.Y / 2
+		neighbours[3].distance = sY / 2
 		neighbours[0].neighbourNormalX = 0
 		neighbours[0].neighbourNormalY = 1
 	}
@@ -179,8 +178,8 @@ func (smf *StructuredMeshFactory) cellNeighbours(row, col, cellIndex int) [4]Cel
 	return neighbours
 }
 
-func (smf *StructuredMeshFactory) populateFaceGeometry(mesh *Mesh) {
-	numCells := len(mesh.CentroidsX)
+func populateFaceGeometry(mesh *Mesh, sm *structuredMesh) {
+	numCells := sm.numCells()
 
 	for cellIdx := range numCells {
 		facesStart := mesh.FaceStarts[cellIdx]
@@ -199,7 +198,7 @@ func (smf *StructuredMeshFactory) populateFaceGeometry(mesh *Mesh) {
 			endVertexIdx := mesh.FaceIndices[endIdx]
 			endX, endY := mesh.VerticesX[endVertexIdx], mesh.VerticesY[endVertexIdx]
 
-			edge := linalg.Vec2{X: endX - startX, Y: endY - startY}
+			edge := Vec2{X: endX - startX, Y: endY - startY}
 			mesh.FaceAreas[startIdx] = edge.Magnitude()
 
 			normal := edge.UnitCCWNormal()

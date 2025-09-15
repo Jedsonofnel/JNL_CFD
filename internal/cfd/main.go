@@ -1,10 +1,6 @@
 package main
 
 import (
-	"github.com/Jedsonofnel/cfd-but-wasm/animation"
-	"github.com/Jedsonofnel/cfd-but-wasm/geometry"
-	"github.com/Jedsonofnel/cfd-but-wasm/profiler"
-	"github.com/Jedsonofnel/cfd-but-wasm/simulation"
 )
 
 func main() {
