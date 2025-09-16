@@ -24,7 +24,8 @@ type Mesh struct {
 	// Neighbour data
 	// parallel to face data - such that a neighbour i has face i -> i+1
 	// unless it's the last vertex in which case it's i -> faceStart[cellId]
-	CellNeighbours, NeighbourStarts      []int // this is CSR
+	CellNeighbours, NeighbourStarts []int // this is CSR
+	// TODO: make boundary types negative indices properly
 	NeighbourTypes                       []int // -1=internal, 0+=boundary
 	NeighbourDistances                   []float32
 	NeighbourNormalsX, NeighbourNormalsY []float32

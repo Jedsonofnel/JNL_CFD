@@ -24,7 +24,7 @@ func decode[T any](r *http.Request) (T, error) {
 	return v, nil
 }
 
-func handleUp(logger *log.Logger) http.Handler {
+func handleAPIUp(logger *log.Logger) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if err := encode(w, http.StatusOK, "service up"); err != nil {
@@ -35,11 +35,13 @@ func handleUp(logger *log.Logger) http.Handler {
 	)
 }
 
-func handlePeeksIndex(logger *log.Logger) http.Handler {
+func handleAPIPeeksIndex(logger *log.Logger) http.Handler {
 	envelope := struct {
+		Id   string         `json:"id"`
 		Type string         `json:"type"`
 		Data map[string]any `json:"data"`
 	}{
+		Id:   "1234",
 		Type: "structuredMeshDefinition",
 		Data: map[string]any{"nx": 500, "ny": 200},
 	}

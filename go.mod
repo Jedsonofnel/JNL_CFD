@@ -5,6 +5,7 @@ go 1.24
 require (
 	github.com/cbroglie/mustache v1.4.0
 	github.com/chewxy/math32 v1.11.1
+	github.com/google/uuid v1.6.0
 	github.com/hajimehoshi/ebiten/v2 v2.8.8
 )
 

@@ -12,8 +12,10 @@ const (
 )
 
 type structuredMesh struct {
-	NX, NY        int
-	Width, Height float32
+	NX     int     `json:"nx"`
+	NY     int     `json:"ny"`
+	Width  float32 `json:"width"`
+	Height float32 `json:"height"`
 }
 
 func NewStructuredMesh(nX, nY int, width, height float64) MeshDefinition {

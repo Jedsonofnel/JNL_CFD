@@ -1,2 +1,8 @@
 /* self-contained components:
  * following https://rstacruz.github.io/rscss/index.html */
+
+/* canvas element for rendering */
+.renderer-canvas {
+	width: 100%;
+	border: 1px solid black;
+}

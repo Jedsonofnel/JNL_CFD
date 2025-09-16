@@ -33,19 +33,20 @@ func Run(_ context.Context, args []string) error {
 		return fmt.Errorf("failed to load templates: %w", err)
 	}
 
-	srv := NewServer(logger, view)
+	srv := NewServer(logger, view, env)
 	addr := net.JoinHostPort(*host, *port)
 
 	logger.Printf("Server starting on http://%s (env: %s)", addr, env)
 	return http.ListenAndServe(addr, srv)
 }
 
-func NewServer(logger *log.Logger, view *View) http.Handler {
+func NewServer(logger *log.Logger, view *View, env string) http.Handler {
 	mux := http.NewServeMux()
+
 	addRoutes(mux, logger, view)
 
 	var handler http.Handler = mux
-	// TODO: middleware handling like auth
+	handler = cachingMiddleware(handler, env)
 	return handler
 }
 

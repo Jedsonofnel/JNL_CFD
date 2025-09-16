@@ -27,7 +27,7 @@ export class PeeksList {
 		const html = this.peeks
 			.map(
 				(peek) => `
-			<li>A peek! ${peek.type}</li>
+			<li>View peek: ${peek.type}, <a href="/peeks/123">here</a></li>
 		`,
 			)
 			.join("\n");
