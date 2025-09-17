@@ -29,9 +29,8 @@ export class MeshPeek {
 		this.canvas.height = this.canvas.width / aspectRatio;
 	}
 
-	renderMesh(_) {
-		const positions = [0, 0, 0, 0.5, 0.7, 0];
-
+	renderMesh(vertices) {
+		console.log(vertices); // I can see this is a Float32Array of length 6400 (so 1600 lines, 400 cells)
 		const gl = this.canvas.getContext("webgl");
 		const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShader2d);
 		const fragmentShader = createShader(
@@ -48,7 +47,7 @@ export class MeshPeek {
 		);
 		const positionBuffer = gl.createBuffer();
 		gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 
 		// rendering code ("hot" loop)
 		gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -60,6 +59,9 @@ export class MeshPeek {
 		gl.enableVertexAttribArray(positionAttributeLocation);
 
 		gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+		const colorUniformLocation = gl.getUniformLocation(program, "u_color");
+		gl.uniform4f(colorUniformLocation, 0, 0, 0, 1);
 
 		const size = 2;
 		const type = gl.FLOAT;
@@ -75,8 +77,8 @@ export class MeshPeek {
 			offset,
 		);
 
-		const primitiveType = gl.TRIANGLES;
-		const count = 3;
+		const primitiveType = gl.LINES;
+		const count = vertices.length / 2;
 		gl.drawArrays(primitiveType, offset, count);
 	}
 }

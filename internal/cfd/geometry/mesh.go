@@ -10,6 +10,7 @@ type MeshDefinition interface {
 
 const InternalBoundary = -1
 
+// TODO: remove NeighbourStarts as it is identical to FaceStarts
 type Mesh struct {
 	// Core geometry data
 	VerticesX, VerticesY       []float32
