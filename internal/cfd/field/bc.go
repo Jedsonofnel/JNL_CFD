@@ -25,7 +25,7 @@ type ScalarBC interface {
 type ScalarDirichletDefinition struct{ Value float32 }
 
 func (sdd ScalarDirichletDefinition) Resolve(owner ScalarPrognostic, boundaryName string) ScalarBC {
-	mesh := owner.GetMesh()
+	mesh := owner.getMesh()
 	boundaryIndex := -1
 	for i, name := range mesh.Boundaries {
 		if name == boundaryName {
@@ -39,7 +39,7 @@ func (sdd ScalarDirichletDefinition) Resolve(owner ScalarPrognostic, boundaryNam
 	}
 
 	connectivityIndices := make([]int, 0)
-	for neighIdx := range mesh.CellNeighbours {
+	for neighIdx := range mesh.NeighbourIndices {
 		if mesh.NeighbourTypes[neighIdx] == boundaryIndex {
 			connectivityIndices = append(connectivityIndices, neighIdx)
 		}
