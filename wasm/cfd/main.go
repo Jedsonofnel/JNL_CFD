@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	sm := geometry.NewStructuredMesh(20, 20, 1, 1)
+	sm := geometry.NewStructuredMesh(5, 5, 10, 10)
 	js.Global().Set("getMeshData", getMeshRenderData(sm))
 	<-make(chan struct{})
 }

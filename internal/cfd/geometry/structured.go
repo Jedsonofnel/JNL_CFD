@@ -1,16 +1,5 @@
 package geometry
 
-import (
-	"fmt"
-)
-
-const (
-	westBorder = iota
-	southBorder
-	eastBorder
-	northBorder
-)
-
 type structuredMesh struct {
 	NX     int     `json:"nx"`
 	NY     int     `json:"ny"`
@@ -22,190 +11,117 @@ func NewStructuredMesh(nX, nY int, width, height float64) MeshDefinition {
 	return &structuredMesh{nX, nY, float32(width), float32(height)}
 }
 
-func (sm *structuredMesh) spacing() (sX, sY float32) {
-	sX = sm.Width / float32(sm.NX)
-	sY = sm.Height / float32(sm.NY)
-	return
-}
-
-func (sm *structuredMesh) numCells() int {
-	return sm.NX * sm.NY
-}
-
+// Yes it's super monolithic BUT the data flow is clear and it's more readable as a result
 func (sm *structuredMesh) Resolve() *Mesh {
-	mesh := initializeMesh(sm)
-	populateCells(mesh, sm)
-	populateFaceGeometry(mesh, sm)
+	nCells := sm.NX * sm.NY
+	sX, sY := sm.Width/float32(sm.NX), sm.Height/float32(sm.NY)
 
-	return mesh
-}
+	bounds := Rectangle{Width: sm.Width, Height: sm.Height}
+	boundaries := []string{"northBorder", "eastborder", "southBorder", "westBorder"}
 
-func initializeMesh(sm *structuredMesh) *Mesh {
-	numCells := sm.numCells()
-	numVertices := (sm.NX + 1) * (sm.NY + 1)
-	numNeighbours := numCells * 4
+	verticesX := make([]float32, nCells*4)
+	verticesY := make([]float32, nCells*4)
+	vertexIndices := make([]int, nCells*4)
+	faceStarts := make([]int, nCells+1)
+	faceMarkers := make([]int, nCells*4)
+
+	vCount := 0
+	for i := range sm.NY { // rows
+		for j := range sm.NX { // column
+			cellIdx := i*sm.NX + j // cell, goes through a column then up a row
+			faceStarts[cellIdx] = cellIdx * 4
+
+			// bottom face
+			verticesX[vCount] = float32(j) * sX
+			verticesY[vCount] = float32(i) * sY
+			vertexIndices[vCount] = vCount
+			if i == 0 {
+				faceMarkers[vCount] = 2 // southBorder
+			} else {
+				faceMarkers[vCount] = -1
+			}
+			vCount++
+
+			// right face
+			verticesX[vCount] = float32(j+1) * sX
+			verticesY[vCount] = float32(i) * sY
+			vertexIndices[vCount] = vCount
+			if j == sm.NX-1 {
+				faceMarkers[vCount] = 1 // eastBorder
+			} else {
+				faceMarkers[vCount] = -1
+			}
+			vCount++
+
+			// top face
+			verticesX[vCount] = float32(j+1) * sX
+			verticesY[vCount] = float32(i+1) * sY
+			vertexIndices[vCount] = vCount
+			if i == sm.NY-1 {
+				faceMarkers[vCount] = 0 // northBorder
+			} else {
+				faceMarkers[vCount] = -1
+			}
+			vCount++
+
+			// left face
+			verticesX[vCount] = float32(j) * sX
+			verticesY[vCount] = float32(i+1) * sY
+			vertexIndices[vCount] = vCount
+			if j == 0 {
+				faceMarkers[vCount] = 3 // westBorder
+			} else {
+				faceMarkers[vCount] = -1
+			}
+			vCount++
+		}
+	}
+
+	faceStarts[nCells] = len(vertexIndices)
+
+	dedupX, dedupY, indexMap := dedupVertices(verticesX, verticesY, 1e-6)
+	vertexIndices = remapVertexIndices(vertexIndices, indexMap)
+	faceAreas, faceNormalsX, faceNormalsY := calculateFaceGeometry(dedupX, dedupY, vertexIndices, faceStarts)
+	cellVolumes, centroidsX, centroidsY := calculateCellGeometry(dedupX, dedupY, vertexIndices, faceStarts)
+	neighbourIndices := deriveConnectivity(vertexIndices, faceStarts, faceMarkers)
+
+	// the big one
+	connectivityVectorsX,
+		connectivityVectorsY,
+		connectionDistances,
+		faceInterpolationWeights := calculateConnectivityGeometry(
+		centroidsX,
+		centroidsY,
+		neighbourIndices,
+		dedupX,
+		dedupY,
+		vertexIndices,
+		faceStarts,
+	)
 
 	return &Mesh{
-		VerticesX:    make([]float32, numVertices),
-		VerticesY:    make([]float32, numVertices),
-		FaceIndices:  make([]int, 4*numCells),
-		FaceStarts:   make([]int, numCells+1),
-		FaceAreas:    make([]float32, numNeighbours),
-		FaceNormalsX: make([]float32, numNeighbours),
-		FaceNormalsY: make([]float32, numNeighbours),
+		VerticesX:     dedupX,
+		VerticesY:     dedupY,
+		VertexIndices: vertexIndices,
+		FaceStarts:    faceStarts,
+		FaceMarkers:   faceMarkers,
 
-		CentroidsX:  make([]float32, numCells),
-		CentroidsY:  make([]float32, numCells),
-		CellVolumes: make([]float32, numCells),
+		Bounds:     bounds,
+		Boundaries: boundaries,
 
-		CellNeighbours:     make([]int, numNeighbours),
-		NeighbourStarts:    make([]int, numCells+1),
-		NeighbourTypes:     make([]int, numNeighbours),
-		NeighbourDistances: make([]float32, numNeighbours),
-		NeighbourNormalsX:  make([]float32, numNeighbours),
-		NeighbourNormalsY:  make([]float32, numNeighbours),
+		FaceAreas:    faceAreas,
+		FaceNormalsX: faceNormalsX,
+		FaceNormalsY: faceNormalsY,
 
-		Bounds:     Rectangle{Height: sm.Height, Width: sm.Width},
-		Boundaries: []string{"west", "south", "east", "north"},
-	}
-}
+		CentroidsX:  centroidsX,
+		CentroidsY:  centroidsY,
+		CellVolumes: cellVolumes,
 
-func populateCells(mesh *Mesh, sm *structuredMesh) {
-	sX, sY := sm.spacing()
-	vertexMap := make(map[string]int)
-	nextVertexIndex := 0
-	faceIdx := 0 // this doubles as neighbour index
-	numCells := len(mesh.CentroidsX)
+		NeighbourIndices: neighbourIndices,
 
-	for i := range numCells {
-		row := i / sm.NX
-		col := i % sm.NX
-
-		cX := (float32(col) + 0.5) * sX
-		cY := (float32(row) + 0.5) * sY
-
-		mesh.CentroidsX[i] = cX
-		mesh.CentroidsY[i] = cY
-		mesh.CellVolumes[i] = sX * sY
-
-		polygonX, polygonY := polygonVertices(cX, cY, sX, sY)
-		neighbours := cellNeighbours(sm, row, col, i)
-
-		mesh.FaceStarts[i] = faceIdx
-		mesh.NeighbourStarts[i] = faceIdx
-
-		for face := range polygonX { // west, south, east, north
-			key := fmt.Sprintf("%.6f,%.6f", polygonX[face], polygonY[face])
-
-			if existingIndex, found := vertexMap[key]; found {
-				mesh.FaceIndices[faceIdx] = existingIndex
-			} else {
-				mesh.VerticesX[nextVertexIndex] = polygonX[face]
-				mesh.VerticesY[nextVertexIndex] = polygonY[face]
-				vertexMap[key] = nextVertexIndex
-				mesh.FaceIndices[faceIdx] = nextVertexIndex
-				nextVertexIndex++
-			}
-
-			mesh.CellNeighbours[faceIdx] = neighbours[face].neighbourIndex
-			mesh.NeighbourTypes[faceIdx] = neighbours[face].neighbourType
-			mesh.NeighbourDistances[faceIdx] = neighbours[face].distance
-			mesh.NeighbourNormalsX[faceIdx] = neighbours[face].neighbourNormalX
-			mesh.NeighbourNormalsY[faceIdx] = neighbours[face].neighbourNormalY
-
-			faceIdx++
-		}
-	}
-
-	// CSR terminators
-	mesh.FaceStarts[numCells] = faceIdx
-	mesh.NeighbourStarts[numCells] = faceIdx
-}
-
-func polygonVertices(cX, cY, sX, sY float32) ([]float32, []float32) {
-	// top left and goes CCS
-	polygonX := []float32{cX - sX/2, cX - sX/2, cX + sX/2, cX + sX/2}
-	polygonY := []float32{cY + sY/2, cY - sY/2, cY - sY/2, cY + sY/2}
-	return polygonX, polygonY
-}
-
-type CellNeighbour struct {
-	neighbourIndex   int
-	neighbourType    int
-	distance         float32
-	neighbourNormalX float32
-	neighbourNormalY float32
-}
-
-func cellNeighbours(sm *structuredMesh, row, col, cellIndex int) [4]CellNeighbour {
-	sX, sY := sm.spacing()
-
-	// (0, 0) = bottom left
-	neighbours := [4]CellNeighbour{ // west south east north
-		{cellIndex - 1, -1, sX, -1, 0},
-		{cellIndex - sm.NX, -1, sY, 0, -1},
-		{cellIndex + 1, -1, sX, 1, 0},
-		{cellIndex + sm.NX, -1, sY, 0, 1},
-	}
-
-	if col == 0 { // west border
-		neighbours[0].neighbourIndex = -1
-		neighbours[0].neighbourType = westBorder
-		neighbours[0].distance = sX / 2
-		neighbours[0].neighbourNormalX = -1
-		neighbours[0].neighbourNormalY = 0
-	}
-	if row == 0 { // south
-		neighbours[1].neighbourIndex = -1
-		neighbours[1].neighbourType = southBorder
-		neighbours[1].distance = sY / 2
-		neighbours[0].neighbourNormalX = 0
-		neighbours[0].neighbourNormalY = -1
-	}
-	if col == sm.NX-1 { // east
-		neighbours[2].neighbourIndex = -1
-		neighbours[2].neighbourType = eastBorder
-		neighbours[2].distance = sX / 2
-		neighbours[0].neighbourNormalX = 1
-		neighbours[0].neighbourNormalY = 0
-	}
-	if row == sm.NY-1 { // north
-		neighbours[3].neighbourIndex = -1
-		neighbours[3].neighbourType = northBorder
-		neighbours[3].distance = sY / 2
-		neighbours[0].neighbourNormalX = 0
-		neighbours[0].neighbourNormalY = 1
-	}
-
-	return neighbours
-}
-
-func populateFaceGeometry(mesh *Mesh, sm *structuredMesh) {
-	numCells := sm.numCells()
-
-	for cellIdx := range numCells {
-		facesStart := mesh.FaceStarts[cellIdx]
-		facesEnd := mesh.FaceStarts[cellIdx+1]
-
-		for i := range facesEnd - facesStart {
-			startIdx := facesStart + i
-			endIdx := startIdx + 1
-			if endIdx == facesEnd {
-				endIdx = facesStart
-			}
-
-			startVertexIdx := mesh.FaceIndices[startIdx]
-			startX, startY := mesh.VerticesX[startVertexIdx], mesh.VerticesY[startVertexIdx]
-
-			endVertexIdx := mesh.FaceIndices[endIdx]
-			endX, endY := mesh.VerticesX[endVertexIdx], mesh.VerticesY[endVertexIdx]
-
-			edge := Vec2{X: endX - startX, Y: endY - startY}
-			mesh.FaceAreas[startIdx] = edge.Magnitude()
-
-			normal := edge.UnitCCWNormal()
-			mesh.FaceNormalsX[startIdx] = normal.X
-			mesh.FaceNormalsY[startIdx] = normal.Y
-		}
+		ConnectivityVectorsX:     connectivityVectorsX,
+		ConnectivityVectorsY:     connectivityVectorsY,
+		ConnectionDistances:      connectionDistances,
+		FaceInterpolationWeights: faceInterpolationWeights,
 	}
 }

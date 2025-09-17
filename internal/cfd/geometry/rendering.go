@@ -21,16 +21,16 @@ func NewMeshRenderData(mesh *Mesh) *MeshRenderData {
 	for i := range mesh.NumCells() {
 		startIdx, endIdx := mesh.FaceStarts[i], mesh.FaceStarts[i+1]
 		for f := startIdx; f < endIdx; f++ {
-			localVIdx := mesh.FaceIndices[f]
+			localVIdx := mesh.VertexIndices[f]
 			physVX, physVY := mesh.VerticesX[localVIdx], mesh.VerticesY[localVIdx]
 			clipVX, clipVY := transformToClipSpace(physVX, physVY, sfX, sfY)
 
 			lineVertices[vIdx*2] = clipVX   // x
 			lineVertices[vIdx*2+1] = clipVY // y
 
-			nextVIdx := mesh.FaceIndices[startIdx] // loop back round
+			nextVIdx := mesh.VertexIndices[startIdx] // loop back round
 			if f != endIdx-1 { // or get the next
-				nextVIdx = mesh.FaceIndices[f+1]
+				nextVIdx = mesh.VertexIndices[f+1]
 			}
 
 			vIdx += 1
