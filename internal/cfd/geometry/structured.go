@@ -1,14 +1,25 @@
 package geometry
 
 type structuredMesh struct {
-	NX     int     `json:"nx"`
-	NY     int     `json:"ny"`
-	Width  float32 `json:"width"`
-	Height float32 `json:"height"`
+	NX         int      `json:"nx"`
+	NY         int      `json:"ny"`
+	Width      float32  `json:"width"`
+	Height     float32  `json:"height"`
+	Boundaries []string `json:"boundaries"`
 }
 
 func NewStructuredMesh(nX, nY int, width, height float64) MeshDefinition {
-	return &structuredMesh{nX, nY, float32(width), float32(height)}
+	return &structuredMesh{
+		NX:         nX,
+		NY:         nY,
+		Width:      float32(width),
+		Height:     float32(height),
+		Boundaries: []string{"northBorder", "eastborder", "southBorder", "westBorder"},
+	}
+}
+
+func (sm *structuredMesh) GetBoundaries() []string {
+	return sm.Boundaries
 }
 
 // Yes it's super monolithic BUT the data flow is clear and it's more readable as a result

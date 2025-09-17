@@ -18,7 +18,7 @@ func NewGaussSeidel(maxIterations int, tolerance float32) Solver {
 	}
 }
 
-func (gs *GaussSeidel) Solve(sys System) []float32 {
+func (gs *GaussSeidel) Solve(sys *System) []float32 {
 	matrix := sys.A
 	rhs := sys.B
 

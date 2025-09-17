@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
+	"math"
 	"strings"
 )
 
@@ -12,15 +13,15 @@ import (
 type ScalarFieldDefinition struct {
 	Name         string
 	InitialValue float32
-	Mesh         *geometry.Mesh
+	Mesh         geometry.MeshDefinition
 	bcs          map[string]ScalarBC
 	operators    []OperatorDefinition
 	future       *scalar
 }
 
 func (sfd *ScalarFieldDefinition) GetName() string     { return sfd.Name }
-func (sfd *ScalarFieldDefinition) GetRank() TensorRank { return ScalarRank }
-func (sfd *ScalarFieldDefinition) GetType() FieldType  { return PrognosticType }
+func (sfd *ScalarFieldDefinition) getRank() TensorRank { return ScalarRank }
+func (sfd *ScalarFieldDefinition) getType() FieldType  { return PrognosticType }
 
 func (sfd *ScalarFieldDefinition) Validate() error {
 	if sfd.Name == "" {
@@ -31,15 +32,15 @@ func (sfd *ScalarFieldDefinition) Validate() error {
 		return fmt.Errorf("Scalar Field Definition (%s) > Missing boundary conditions", sfd.Name)
 	}
 
-	if len(sfd.operators) == 0 {
-		return fmt.Errorf("Scalar Field Definition (%s) > Missing operators", sfd.Name)
-	}
+	// if len(sfd.operators) == 0 {
+	// 	return fmt.Errorf("Scalar Field Definition (%s) > Missing operators", sfd.Name)
+	// }
 
-	err := validateOperatorsForField(sfd, sfd.operators)
-	return err
+	// err := validateOperatorsForField(sfd, sfd.operators)
+	return nil
 }
 
-func (sfd *ScalarFieldDefinition) Follow() Field {
+func (sfd *ScalarFieldDefinition) follow() Field {
 	if sfd.future == nil {
 		sfd.future = &scalar{}
 	}
@@ -58,7 +59,7 @@ func (sfd *ScalarFieldDefinition) SetEquation(operators ...OperatorDefinition) e
 
 func (sfd *ScalarFieldDefinition) SetBoundaryConditions(bcs map[string]ScalarBC) error {
 	requiredBoundaries := make(map[string]bool)
-	for _, name := range sfd.Mesh.Boundaries {
+	for _, name := range sfd.Mesh.GetBoundaries() {
 		requiredBoundaries[name] = true
 	}
 
@@ -91,20 +92,20 @@ func (sfd *ScalarFieldDefinition) SetBoundaryConditions(bcs map[string]ScalarBC)
 	return nil
 }
 
-func (sfd *ScalarFieldDefinition) Resolve() (ScalarPrognostic, error) {
+func (sfd *ScalarFieldDefinition) Resolve(mesh *geometry.Mesh) (ScalarPrognostic, error) {
 	if err := sfd.Validate(); err != nil {
 		return nil, fmt.Errorf("Scalar Field (%s): Resolve > %w", sfd.Name, err)
 	}
 
 	sfd.future = &scalar{
 		name: sfd.Name,
-		mesh: sfd.Mesh,
+		mesh: mesh,
 		bcs:  sfd.bcs,
-		dt:   1.0,
+		dt:   math.MaxFloat32,
 	}
 
-	sfd.future.cellValues = make([]float32, sfd.Mesh.NumCells())
-	sfd.future.cellValues0 = make([]float32, sfd.Mesh.NumCells())
+	sfd.future.cellValues = make([]float32, mesh.NumCells())
+	sfd.future.cellValues0 = make([]float32, mesh.NumCells())
 
 	for i := range sfd.future.cellValues {
 		sfd.future.cellValues[i] = sfd.InitialValue
@@ -113,6 +114,7 @@ func (sfd *ScalarFieldDefinition) Resolve() (ScalarPrognostic, error) {
 
 	sfd.future.fluxOps = make([]ScalarFluxOperator, 0)
 	sfd.future.srcOps = make([]ScalarSourceOperator, 0)
+
 	for _, op := range sfd.operators {
 		resOp, err := op.Resolve(sfd.future)
 		if err != nil {
@@ -130,12 +132,8 @@ func (sfd *ScalarFieldDefinition) Resolve() (ScalarPrognostic, error) {
 		}
 	}
 
-	sfd.future.fluxDiag = make([]float32, sfd.future.mesh.NumNeighbours())
-	sfd.future.fluxOffDiag = make([]float32, sfd.future.mesh.NumNeighbours())
-	sfd.future.sourceDiag = make([]float32, sfd.future.mesh.NumCells())
-
-	sfd.future.matrix = linalg.NewCSRMatrixFromConnectivity(sfd.Mesh.NeighbourStarts, sfd.Mesh.CellNeighbours)
-	sfd.future.rhs = make(linalg.Vector, sfd.Mesh.NumCells())
+	sfd.future.sys = newSystemAssemblyContext(
+		mesh.NumCells(), mesh.NumBoundaries(), mesh.NeighbourStarts, mesh.NeighbourIndices)
 
 	return sfd.future, nil
 }
@@ -158,38 +156,23 @@ type scalar struct {
 	srcOps  []ScalarSourceOperator
 
 	// Linear system
-	matrix linalg.Matrix
-	rhs    linalg.Vector
+	sys *systemAssemblyContext
 }
 
 func (s *scalar) AssembleSystem() *linalg.System {
-	s.matrix.Wipe()
-	s.rhs.Wipe()
+	s.sys.PartialWipe() // internal matrix is set in AdvanceTime()
+	s.sys.SyncDecoratedMatrix()
 
-	// Step 1 accumulate fluxes
-	// Step 2 run boundary conditions on fluxes
-	// Step 3 accumulate source diags + rhs
-	// Step 4 loop through cells and neighbours and apply terms to matrix + rhs
-	// Return
-
-	for _, nwOp := range s.nwOps {
-		// we want to cache these somehow diag, offDiag := nwOp.GetFluxes()
-
-		for i := range s.cellValues {
-			startIdx, endIdx := s.mesh.NeighbourStarts[i], s.mesh.NeighbourStarts[i+1]
-			// use these to assemble row
-		}
-	}
+	// TODO: go through source operators and BCs and decorate
+	// the actual matrix
 
 	return &linalg.System{
-		A: s.matrix, B: s.rhs,
+		A: s.sys.Matrix, B: s.sys.RHS,
 	}
 }
 
-func (s *scalar) GetRank() TensorRank     { return ScalarRank }
-func (s *scalar) GetName() string         { return s.name }
-func (s *scalar) GetType() FieldType      { return PrognosticType }
-func (s *scalar) GetMesh() *geometry.Mesh { return s.mesh }
+// Public methods
+func (s *scalar) GetName() string { return s.name }
 
 func (s *scalar) GetValues() []float32 {
 	return s.cellValues
@@ -199,19 +182,40 @@ func (s *scalar) SetValues(newValues []float32) {
 	copy(s.cellValues, newValues)
 }
 
-func (s *scalar) GetFaceValues() []float32 {
-	// TODO: use distance weighted linear interpolation for this
-	return make([]float32, 0)
-}
-
-func (s *scalar) AdvanceTimeStep() {
+func (s *scalar) AdvanceTime(dt float32) {
+	s.dt = dt
 	copy(s.cellValues0, s.cellValues)
-}
-
-func (s *scalar) GetTimestep() float32 {
-	return s.dt
+	s.reassembleInternalMatrix()
 }
 
 func (s *scalar) SetTimestep(dt float32) {
 	s.dt = dt
+}
+
+// Private methods
+func (s *scalar) getRank() TensorRank     { return ScalarRank }
+func (s *scalar) getType() FieldType      { return PrognosticType }
+func (s *scalar) getMesh() *geometry.Mesh { return s.mesh }
+
+func (s *scalar) getPastValues() []float32 {
+	return s.cellValues0
+}
+
+func (s *scalar) getFaceValues() []float32 {
+	// TODO: use distance weighted linear interpolation for this
+	return make([]float32, 0)
+}
+
+func (s *scalar) getTimestep() float32 {
+	return s.dt
+}
+
+func (s *scalar) reassembleInternalMatrix() {
+	s.sys.FullWipe()
+
+	// TODO: go through flux operators and apply fluxes
+	for i, val := range s.cellValues {
+		s.sys.MatrixInternal.SetDiagonal(i, 1)
+		s.sys.RHS[i] = val
+	}
 }

@@ -12,7 +12,7 @@ func NewJacobi(maxIterations int, tolerance float32) Solver {
 	}
 }
 
-func (j *Jacobi) Solve(sys System) []float32 {
+func (j *Jacobi) Solve(sys *System) []float32 {
 	matrix := sys.A
 	rhs := sys.B
 

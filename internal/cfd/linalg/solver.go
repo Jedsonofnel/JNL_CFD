@@ -1,5 +1,5 @@
 package linalg
 
 type Solver interface {
-	Solve(System) []float32
+	Solve(*System) []float32
 }

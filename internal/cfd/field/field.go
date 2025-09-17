@@ -24,48 +24,45 @@ const (
 
 type Field interface {
 	GetName() string
-	GetType() FieldType
-	GetMesh() *geometry.Mesh
-	GetRank() TensorRank
+	getType() FieldType
+	getMesh() *geometry.Mesh
+	getRank() TensorRank
 }
 
 type TimeEvolving interface {
 	Field
 	AdvanceTime(dt float32)
-	GetTimestep() float32
 	SetTimestep(dt float32)
+	getTimestep() float32
 }
 
 type Scalar interface {
 	Field
 	GetValues() []float32
 	SetValues(newValues []float32)
-	GetFaceValues() []float32
-}
-
-type ScalarTimeEvolving interface {
-	Scalar
-	TimeEvolving
-	GetPastValues() []float32
+	getFaceValues() []float32
 }
 
 type ScalarPrognostic interface {
 	Scalar
+	TimeEvolving
 	AssembleSystem() *linalg.System
+	getPastValues() []float32
 }
 
-type Vector interface {
-	Field
-	GetAllComponents() (x, y []float32)
-}
-
-// Definitions
+//	type Vector interface {
+//		Field
+//		GetAllComponents() (x, y []float32)
+//	}
+//
+// // Definitions
 type FieldDefinition interface {
-	GetName() string
-	GetRank() TensorRank
-	GetType() FieldType
 	Validate() error
-	Follow() Field
+	GetName() string
+
+	getRank() TensorRank
+	getType() FieldType
+	follow() Field
 }
 
 type PrognosticDefinition interface {
@@ -75,14 +72,16 @@ type PrognosticDefinition interface {
 
 type ScalarDefinition interface {
 	FieldDefinition
-	Resolve() (Scalar, error)
+	Resolve(mesh *geometry.Mesh) (Scalar, error)
 }
 
 type ScalarPrognosticDefinition interface {
 	ScalarDefinition
 	PrognosticDefinition
+	ResolveAsPrognostic(mesh *geometry.Mesh) (ScalarPrognostic, error)
 }
 
+//
 // SHARED UTILITY FUNCTIONS
 
 func validateOperatorsForField(field PrognosticDefinition, operators []OperatorDefinition) error {

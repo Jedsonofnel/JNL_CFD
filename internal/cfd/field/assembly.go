@@ -14,11 +14,41 @@ type systemAssemblyContext struct {
 	BoundaryOffDiag linalg.Vector
 }
 
+func newSystemAssemblyContext(
+	nCells, nBoundaries int,
+	neighbourStarts, neighbourIndices []int,
+) *systemAssemblyContext {
+	matrix := linalg.NewCSRMatrixFromConnectivity(neighbourStarts, neighbourIndices)
+	matrixInternal := linalg.NewCSRMatrixFromConnectivity(neighbourIndices, neighbourIndices)
+
+	rhs := make(linalg.Vector, nCells)
+
+	boundaryDiag := make(linalg.Vector, nBoundaries)
+	boundaryOffDiag := make(linalg.Vector, nBoundaries)
+
+	return &systemAssemblyContext{
+		Matrix:          matrix,
+		MatrixInternal:  matrixInternal,
+		RHS:             rhs,
+		BoundaryDiag:    boundaryDiag,
+		BoundaryOffDiag: boundaryOffDiag,
+	}
+}
+
 func (sys *systemAssemblyContext) SyncDecoratedMatrix() {
 	sys.Matrix.CopyFrom(sys.MatrixInternal)
 }
 
-func (sys *systemAssemblyContext) Wipe() {
+func (sys *systemAssemblyContext) PartialWipe() {
+	sys.Matrix.Wipe()
+
+	sys.RHS.Wipe()
+
+	sys.BoundaryDiag.Wipe()
+	sys.BoundaryOffDiag.Wipe()
+}
+
+func (sys *systemAssemblyContext) FullWipe() {
 	sys.Matrix.Wipe()
 	sys.MatrixInternal.Wipe()
 

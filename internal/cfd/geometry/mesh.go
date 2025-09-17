@@ -7,6 +7,7 @@ import (
 
 type MeshDefinition interface {
 	Resolve() *Mesh
+	GetBoundaries() []string
 }
 
 const InternalBoundary = -1
@@ -51,6 +52,17 @@ func (m *Mesh) NumCells() int {
 
 func (m *Mesh) NumNeighbours() int {
 	return len(m.NeighbourIndices)
+}
+
+func (m *Mesh) NumBoundaries() int {
+	accumulator := 0
+	for _, ni := range m.NeighbourIndices {
+		if ni < 0 {
+			accumulator++
+		}
+	}
+
+	return accumulator
 }
 
 func (m *Mesh) FindClosestCell(point Vec2) int {
