@@ -91,7 +91,7 @@ func validateOperatorsForField(field PrognosticDefinition, operators []OperatorD
 
 	for _, op := range operators {
 		if err := op.Validate(); err != nil {
-			return fmt.Errorf("Validate Operators (%s) > %w", err)
+			return fmt.Errorf("Validate Operators (%s) > %w", field.GetName(), err)
 		}
 
 		if flux, ok := op.(FluxOperatorDefinition); ok && !(flux.GetOwner() != field) {

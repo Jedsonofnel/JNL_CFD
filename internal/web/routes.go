@@ -11,8 +11,8 @@ func addRoutes(mux *http.ServeMux, logger *log.Logger, view *View) {
 
 	// pages
 	mux.Handle("GET /", handleHome(logger, view))
-	mux.Handle("GET /peeks", handlePeeks(logger, view))
-	mux.Handle("GET /peeks/{id}", handlePeekShow(logger, view))
+	mux.Handle("GET /viewports", handleViewports(logger, view))
+	mux.Handle("GET /viewports/{id}", handleViewportShow(logger, view))
 
 	// api
 	mux.Handle("GET /api/up", handleAPIUp(logger))

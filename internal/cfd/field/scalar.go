@@ -50,7 +50,7 @@ func (sfd *ScalarFieldDefinition) follow() Field {
 
 func (sfd *ScalarFieldDefinition) SetEquation(operators ...OperatorDefinition) error {
 	if err := validateOperatorsForField(sfd, operators); err != nil {
-		return fmt.Errorf("Set Equation (%s) > %w", err)
+		return fmt.Errorf("Set Equation (%s) > %w", sfd.Name, err)
 	}
 
 	sfd.operators = operators
@@ -58,6 +58,9 @@ func (sfd *ScalarFieldDefinition) SetEquation(operators ...OperatorDefinition) e
 }
 
 func (sfd *ScalarFieldDefinition) SetBoundaryConditions(bcs map[string]ScalarBC) error {
+	if sfd.bcs == nil {
+		sfd.bcs = make(map[string]ScalarBC)
+	}
 	requiredBoundaries := make(map[string]bool)
 	for _, name := range sfd.Mesh.GetBoundaries() {
 		requiredBoundaries[name] = true
@@ -92,7 +95,7 @@ func (sfd *ScalarFieldDefinition) SetBoundaryConditions(bcs map[string]ScalarBC)
 	return nil
 }
 
-func (sfd *ScalarFieldDefinition) Resolve(mesh *geometry.Mesh) (ScalarPrognostic, error) {
+func (sfd *ScalarFieldDefinition) ResolveAsPrognostic(mesh *geometry.Mesh) (ScalarPrognostic, error) {
 	if err := sfd.Validate(); err != nil {
 		return nil, fmt.Errorf("Scalar Field (%s): Resolve > %w", sfd.Name, err)
 	}
@@ -128,14 +131,18 @@ func (sfd *ScalarFieldDefinition) Resolve(mesh *geometry.Mesh) (ScalarPrognostic
 			sfd.future.srcOps = append(sfd.future.srcOps, specificOp)
 		default:
 			return nil, fmt.Errorf("Scalar Field (%s): Resolve > Operator of type %T is neither a flux operator or source operator.",
-				specificOp)
+				sfd.Name, specificOp)
 		}
 	}
 
 	sfd.future.sys = newSystemAssemblyContext(
-		mesh.NumCells(), mesh.NumBoundaries(), mesh.NeighbourStarts, mesh.NeighbourIndices)
+		mesh.NumCells(), mesh.NumBoundaries(), mesh.FaceStarts, mesh.NeighbourIndices)
 
 	return sfd.future, nil
+}
+
+func (sfd *ScalarFieldDefinition) Resolve(mesh *geometry.Mesh) (Scalar, error) {
+	return sfd.ResolveAsPrognostic(mesh)
 }
 
 // RESOLVED IMPLEMENTATION

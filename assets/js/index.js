@@ -1,9 +1,9 @@
 import { BehaviourManager } from "./lib/behaviour-manager.js";
-import { MeshPeek } from "./mesh-peek.js";
-import { PeeksList } from "./peeks-list.js";
+import { MeshViewport } from "./mesh-viewport.js";
+import { ScenarioViewport } from "./scenario-viewport.js";
 
 const manager = new BehaviourManager();
-manager.register("peeks-list", PeeksList);
-manager.register("mesh-peek", MeshPeek);
+manager.register(`[data-js-viewport="mesh"]`, MeshViewport);
+manager.register(`[data-js-viewport="scenario"]`, ScenarioViewport);
 
 document.addEventListener("DOMContentLoaded", () => manager.init());

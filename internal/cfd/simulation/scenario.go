@@ -32,9 +32,9 @@ type passiveTransportScenario struct {
 
 func (pts *passiveTransportScenario) Step() bool {
 	for _, f := range pts.prognosticScalarFields {
-		sys := f.AssembleSystem()
-		solutions := pts.solver.Solve(sys)
-		f.SetValues(solutions)
+		_ = f.AssembleSystem()
+		// solutions := pts.solver.Solve(sys)
+		// f.SetValues(solutions)
 	}
 
 	return true
@@ -99,6 +99,7 @@ func (pts *passiveTransportScenarioDefinition) Resolve() (Scenario, error) {
 		switch field := f.(type) {
 		case field.ScalarPrognosticDefinition:
 			res, err := field.ResolveAsPrognostic(mesh)
+
 			if err != nil {
 				return nil, err
 			}

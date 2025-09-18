@@ -19,7 +19,7 @@ func newSystemAssemblyContext(
 	neighbourStarts, neighbourIndices []int,
 ) *systemAssemblyContext {
 	matrix := linalg.NewCSRMatrixFromConnectivity(neighbourStarts, neighbourIndices)
-	matrixInternal := linalg.NewCSRMatrixFromConnectivity(neighbourIndices, neighbourIndices)
+	matrixInternal := linalg.NewCSRMatrixFromConnectivity(neighbourStarts, neighbourIndices)
 
 	rhs := make(linalg.Vector, nCells)
 

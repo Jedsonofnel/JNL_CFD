@@ -11,13 +11,13 @@ type CSR struct {
 	rowStarts []int
 }
 
-func NewCSRMatrixFromConnectivity(neighbourStarts, neighbourIndices []int) Matrix {
-	nCells := len(neighbourStarts) - 1
+func NewCSRMatrixFromConnectivity(faceStarts, neighbourIndices []int) Matrix {
+	nCells := len(faceStarts) - 1
 	rowStarts := make([]int, nCells+1)
 
 	totalValidNeighbours := 0
 	for i := range nCells {
-		startIdx, endIdx := neighbourStarts[i], neighbourStarts[i+1]
+		startIdx, endIdx := faceStarts[i], faceStarts[i+1]
 		for j := startIdx; j < endIdx; j++ {
 			if neighbourIndices[j] >= 0 {
 				totalValidNeighbours++
@@ -27,9 +27,9 @@ func NewCSRMatrixFromConnectivity(neighbourStarts, neighbourIndices []int) Matri
 	columns := make([]int, nCells+totalValidNeighbours) // total number of elements
 
 	valuesAccountedFor := 0
-	for i := 0; i < len(neighbourStarts)-1; i++ {
+	for i := 0; i < len(faceStarts)-1; i++ {
 		rowStarts[i] = valuesAccountedFor
-		startIdx, endIdx := neighbourStarts[i], neighbourStarts[i+1]
+		startIdx, endIdx := faceStarts[i], faceStarts[i+1]
 
 		// Collect valid neighbours (excluding boundaries and diagonal)
 		offDiagonalColumns := make([]int, 0, endIdx-startIdx)

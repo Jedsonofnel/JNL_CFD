@@ -1,36 +1,66 @@
-export class MeshPeek {
+export class MeshViewport {
 	constructor(element) {
 		this.container = element;
-		this.canvas = element.querySelector("[data-js-mesh-canvas]");
-		this.resizeCanvas();
+		this.canvas = element.querySelector("[data-js-viewport-canvas]");
+		this.dataFieldset = element.querySelector("[data-js-viewport-data]");
 
-		const meshFetcher = new Worker(
+		this.meshFetcher = new Worker(
 			new URL("./workers/fetch-mesh-data.js", import.meta.url),
 			{ type: "module" },
 		);
 
-		meshFetcher.onmessage = ({ data }) => {
+		this.meshFetcher.onmessage = ({ data }) => {
 			const { vertices } = data;
 			this.renderMesh(vertices);
 		};
-		meshFetcher.onerror = (error) => {
+		this.meshFetcher.onerror = (error) => {
 			console.error("worker error: ", error.message);
 		};
+
+		this.displayMesh();
+		this.registerButtons();
 	}
 
-	resizeCanvas() {
-		const meshDef = this.container.getAttribute("data-js-mesh-definition");
-		const json = JSON.parse(meshDef);
-		if (!(json.data.width && json.data.height)) {
-			console.error("Could not get mesh width and height data");
+	displayMesh() {
+		const meshData = this.getMeshData();
+		this.resizeCanvas(meshData);
+
+		this.meshFetcher.postMessage(meshData);
+	}
+
+	registerButtons() {
+		const reloadButton = this.container.querySelector(
+			`[data-js-viewport-button="reload"]`,
+		);
+		reloadButton.addEventListener("click", this.displayMesh.bind(this));
+	}
+
+	getMeshData() {
+		if (!this.dataFieldset) return null;
+
+		const inputs = Array.from(this.dataFieldset.querySelectorAll("input"));
+
+		return Object.fromEntries(
+			inputs.map((input) => [
+				input.name,
+				input.type === "number" ? parseFloat(input.value) : input.value,
+			]),
+		);
+	}
+
+	resizeCanvas(meshData) {
+		if (!meshData.width || !meshData.height) {
+			console.error(
+				"Could not get width or height from mesh form: ",
+				this.meshData,
+			);
 		}
 
-		const aspectRatio = json.data.width / json.data.height;
+		const aspectRatio = meshData.width / meshData.height;
 		this.canvas.height = this.canvas.width / aspectRatio;
 	}
 
 	renderMesh(vertices) {
-		console.log(vertices); // I can see this is a Float32Array of length 6400 (so 1600 lines, 400 cells)
 		const gl = this.canvas.getContext("webgl");
 		const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShader2d);
 		const fragmentShader = createShader(

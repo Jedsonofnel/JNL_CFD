@@ -1,0 +1,62 @@
+<main>
+	<h1>Viewport{{# Page.name }}: {{ . }}{{/ Page.name }}</h1>
+
+	<nav>
+		<ul>
+			<li><a href="/#menu">Menu</a></li>
+			<li><a href="/viewports">Viewports</a></li>
+		</ul>
+	</nav>
+
+	<div data-js-viewport="{{ Page.family }}">
+		<canvas data-js-viewport-canvas width="800" height="600" class="renderer-canvas"></canvas>
+
+		{{# Page.structured-mesh }}
+		<fieldset data-js-viewport-data>
+			<legend>Structured mesh parameters</legend>
+
+			<input name="type" value="{{ Type }}" type="hidden">
+
+			<div>
+				<label for="nx">Columns</label>
+				<input id="nx" type="number" name="nx" value="{{ Data.NX }}">
+			</div>
+
+			<div>
+				<label for="ny">Rows</label>
+				<input id="ny" type="number" name="ny" value="{{ Data.NY }}">
+			</div>
+
+
+			<div>
+				<label for="width">Width (m)</label>
+				<input id="width" type="number" name="width" value="{{ Data.Width }}">
+			</div>
+
+			<div>
+				<label for="height">Height (m)</label>
+				<input id="height" type="number" name="height" value="{{ Data.Height }}">
+			</div>
+		</fieldset>
+
+		<button data-js-viewport-button="reload">Reload</button>
+		{{/ Page.structured-mesh }}
+
+		{{# Page.passive-transport-scenario }}
+		<fieldset data-js-viewport-data>
+			<legend>Scenario parameters</legend>
+
+			<input name="type" value="{{ Type }}" type="hidden">
+
+			<div>
+				<label for="diffusivity">Diffusivity</label>
+				<input id="diffusivity" type="number" name="diffusivity" value="0.001" step="0.001">
+			</div>
+		</fieldset>
+
+		<button data-js-viewport-button="start">Start</button>
+		<button data-js-viewport-button="stop">Stop</button>
+		<button data-js-viewport-button="reset">Reset</button>
+		{{/ Page.passive-transport-scenario }}
+	</div>
+</main>

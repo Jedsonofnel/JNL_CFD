@@ -40,7 +40,7 @@ func (sdd ScalarDirichletDefinition) Resolve(owner ScalarPrognostic, boundaryNam
 
 	connectivityIndices := make([]int, 0)
 	for neighIdx := range mesh.NeighbourIndices {
-		if mesh.NeighbourTypes[neighIdx] == boundaryIndex {
+		if mesh.FaceMarkers[neighIdx] == boundaryIndex {
 			connectivityIndices = append(connectivityIndices, neighIdx)
 		}
 	}

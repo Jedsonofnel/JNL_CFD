@@ -4,8 +4,8 @@ class BehaviourManager {
 		this.observer = null;
 	}
 
-	register(name, BehaviourClass) {
-		this.behaviours.set(name, BehaviourClass);
+	register(idAttribute, BehaviourClass) {
+		this.behaviours.set(idAttribute, BehaviourClass);
 	}
 
 	init() {
@@ -30,8 +30,8 @@ class BehaviourManager {
 	}
 
 	applyBehaviours(root) {
-		this.behaviours.forEach((BehaviourClass, name) => {
-			const elements = root.querySelectorAll(`[data-js-${name}]`);
+		this.behaviours.forEach((BehaviourClass, idAttribute) => {
+			const elements = root.querySelectorAll(idAttribute);
 			elements.forEach((el) => {
 				if (!el._behaviourInstance) {
 					el._behaviourInstance = new BehaviourClass(el);

@@ -12,6 +12,9 @@ type RenderData struct {
 	// colour data itself
 	TriangleVertexColours []float32
 
+	// important for canvas stuff
+	Width, Height float32
+
 	// smoothing parameters
 	smoothedMax float32
 	alpha       float32
@@ -26,6 +29,9 @@ func NewRenderData(mrd *geometry.MeshRenderData) *RenderData {
 		TriangleVertices:      triangleVertices,
 		TriangleStarts:        triangleStarts,
 		TriangleVertexColours: triangleVertexColours,
+
+		Width:  mrd.Width,
+		Height: mrd.Height,
 
 		smoothedMax: 0.0,
 		alpha:       0.01,

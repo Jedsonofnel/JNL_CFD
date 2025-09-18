@@ -1,46 +1,67 @@
 package web
 
 import (
-	"encoding/json"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd"
 	"log"
 	"net/http"
 )
 
 func handleHome(_ *log.Logger, view *View) http.Handler {
-	data := map[string]string{"name": "Jed"}
-
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			view.Render(w, "home", data)
+			if r.URL.Path != "/" {
+				w.WriteHeader(http.StatusNotFound)
+				view.Render(w, "404", map[string]string{"path": r.URL.Path})
+				return
+			}
+
+			view.Render(w, "home", nil)
 		},
 	)
 }
 
-func handlePeeks(_ *log.Logger, view *View) http.Handler {
+func handleViewports(_ *log.Logger, view *View) http.Handler {
 	data := map[string]string{}
 
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			view.Render(w, "peeks", data)
+			view.Render(w, "viewports-index", data)
 		},
 	)
 }
 
-func handlePeekShow(_ *log.Logger, view *View) http.Handler {
+func handleViewportShow(_ *log.Logger, view *View) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		idString := r.PathValue("id")
+		viewport, found := predefinedViewports[idString]
 
-		peekData := struct {
-			Id   string         `json:"id"`
-			Type string         `json:"type"`
-			Data map[string]any `json:"data"`
-		}{
-			Id:   idString,
-			Type: "structuredMeshDefinition",
-			Data: map[string]any{"nx": 1, "ny": 20, "width": 1, "height": 0.8},
+		if !found {
+			w.WriteHeader(http.StatusNotFound)
+			view.Render(w, "404", map[string]string{"path": r.URL.Path, "return": "/viewports"})
+			return
 		}
 
-		jsonData, _ := json.Marshal(peekData)
-		view.Render(w, "peek", string(jsonData))
+		view.Render(w, "viewport-show", map[string]any{
+			idString: viewport,
+			"name":   viewport.Name,
+			"family": viewport.Family,
+		})
 	})
+}
+
+// Viewports
+
+var predefinedViewports = map[string]cfd.DefinitionEnvelope{
+	"structured-mesh": {
+		Name:   "Structured Mesh",
+		Type:   "structuredMeshDefinition",
+		Family: "mesh",
+		Data:   cfd.SampleStructuredMesh(),
+	},
+	"passive-transport-scenario": {
+		Name:   "Passive Transport",
+		Type:   "passiveTransportScenario",
+		Family: "scenario",
+		Data:   cfd.SampleStructuredMesh(),
+	},
 }

@@ -3,20 +3,25 @@ package geometry
 type MeshRenderData struct {
 	LineVertices []float32
 
-	TriangleVertices      []float32
-	TriangleStarts        []int
+	TriangleVertices []float32
+	TriangleStarts   []int
+
+	// metadata
+	Width, Height float32
 }
 
 func NewMeshRenderData(mesh *Mesh) *MeshRenderData {
 	lineVertices := calculateLineVertices(mesh)
-	triangleVertices,
-		triangleStarts := calculateMeshTriangulation(mesh)
+	triangleVertices, triangleStarts := calculateMeshTriangulation(mesh)
 
 	return &MeshRenderData{
 		LineVertices: lineVertices,
 
-		TriangleVertices:      triangleVertices,
-		TriangleStarts:        triangleStarts,
+		TriangleVertices: triangleVertices,
+		TriangleStarts:   triangleStarts,
+
+		Width:  mesh.Bounds.Width,
+		Height: mesh.Bounds.Height,
 	}
 }
 
@@ -25,11 +30,11 @@ func calculateMeshTriangulation(mesh *Mesh) (
 	totalVertices := 0
 
 	for i := range mesh.NumCells() {
-		totalVertices = (mesh.FaceStarts[i+1] - mesh.FaceStarts[i] - 2) * 3
+		totalVertices += (mesh.FaceStarts[i+1] - mesh.FaceStarts[i] - 2) * 3
 	}
 
 	triangleVertices = make([]float32, totalVertices*2) // interleaved
-	triangleStarts = make([]int, mesh.NumCells()+1) // fenceposted
+	triangleStarts = make([]int, mesh.NumCells()+1)     // fenceposted
 
 	vIdx := 0
 	sfX, sfY := mesh.Bounds.Width/2, mesh.Bounds.Height/2

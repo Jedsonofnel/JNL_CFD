@@ -1,0 +1,15 @@
+<main>
+	<h1>Resource not found</h1>
+
+	<p>We could not find the route: {{ Page.path }}</p>
+
+	<h2 id="menu">Menu</h2>
+	<nav>
+		<ul>
+			<li><a href="/">Home</a></li>
+			{{ #Page.return }}
+			<li><a href="{{ . }}">Return</a></li>
+			{{ /Page.return }}
+		</ul>
+	</nav>
+</main>

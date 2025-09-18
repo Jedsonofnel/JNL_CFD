@@ -41,9 +41,6 @@ type Mesh struct {
 
 	ConnectionDistances      []float32
 	FaceInterpolationWeights []float32
-
-	// TODO delete these, keeping structured happy for now
-	NeighbourTypes, NeighbourStarts []int
 }
 
 func (m *Mesh) NumCells() int {
