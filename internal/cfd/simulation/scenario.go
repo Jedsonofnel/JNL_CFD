@@ -1,7 +1,6 @@
 package simulation
 
 import (
-	"fmt"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/field"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
@@ -9,7 +8,7 @@ import (
 
 type Scenario interface {
 	Step() bool
-	GetScalarFieldValues(name string) []float32
+	GetScalarPrognosticValues(index int) []float32
 	AdvanceTime(dt float32)
 	GetMesh() *geometry.Mesh
 }
@@ -25,23 +24,23 @@ type passiveTransportScenario struct {
 	mesh   *geometry.Mesh
 	solver linalg.Solver
 
-	prognosticScalarFields map[string]field.ScalarPrognostic
+	prognosticScalarFields []*field.ScalarPrognostic
 	// timeEvolvingDiagnosticFields []field.TimeEvolving
 	// constant fields? []field.Field
 }
 
 func (pts *passiveTransportScenario) Step() bool {
 	for _, f := range pts.prognosticScalarFields {
-		_ = f.AssembleSystem()
-		// solutions := pts.solver.Solve(sys)
+		sys := f.AssembleSystem()
+		_ = pts.solver.Solve(sys)
 		// f.SetValues(solutions)
 	}
 
 	return true
 }
 
-func (pts *passiveTransportScenario) GetScalarFieldValues(name string) []float32 {
-	field := pts.prognosticScalarFields[name]
+func (pts *passiveTransportScenario) GetScalarPrognosticValues(index int) []float32 {
+	field := pts.prognosticScalarFields[index]
 	return field.GetValues()
 }
 
@@ -56,20 +55,31 @@ func (pts *passiveTransportScenario) GetMesh() *geometry.Mesh {
 }
 
 type passiveTransportScenarioDefinition struct {
-	mesh   geometry.MeshDefinition
-	solver linalg.Solver
-	fields []field.FieldDefinition
+	mesh        geometry.MeshDefinition
+	solver      linalg.Solver
+	scalarProgs []*field.ScalarPrognosticDefinition
 }
 
 func NewPassiveTransportScenario(
 	mesh geometry.MeshDefinition,
 	solver linalg.Solver,
-	fields ...field.FieldDefinition,
+	fields ...any,
 ) ScenarioDefinition {
+	scalarProgs := make([]*field.ScalarPrognosticDefinition, 0)
+
+	for _, f := range fields {
+		switch field := f.(type) {
+		case *field.ScalarPrognosticDefinition:
+			scalarProgs = append(scalarProgs, field)
+		default:
+			panic("Passed something unknown to NewPassiveTransporScenario")
+		}
+	}
+
 	return &passiveTransportScenarioDefinition{
-		mesh:   mesh,
-		solver: solver,
-		fields: fields,
+		mesh:        mesh,
+		solver:      solver,
+		scalarProgs: scalarProgs,
 	}
 }
 
@@ -78,7 +88,7 @@ func (pts *passiveTransportScenarioDefinition) Validate() error {
 	// TODO: validate that the fields have the same mesh
 	// TODO: validate that all coupled fields are present
 
-	for _, f := range pts.fields {
+	for _, f := range pts.scalarProgs {
 		if err := f.Validate(); err != nil {
 			return err
 		}
@@ -93,22 +103,17 @@ func (pts *passiveTransportScenarioDefinition) Resolve() (Scenario, error) {
 	}
 
 	mesh := pts.mesh.Resolve()
-	fields := make(map[string]field.ScalarPrognostic, 0)
 
-	for _, f := range pts.fields {
-		switch field := f.(type) {
-		case field.ScalarPrognosticDefinition:
-			res, err := field.ResolveAsPrognostic(mesh)
+	fields := make([]*field.ScalarPrognostic, 0)
 
-			if err != nil {
-				return nil, err
-			}
+	for _, field := range pts.scalarProgs {
+		res, err := field.Resolve(mesh)
 
-			fields[res.GetName()] = res
-		default:
-			return nil, fmt.Errorf("passiveTransportScenarioDefinition > Resolve (%s) > Field type %T not implemented.",
-				field.GetName(), field)
+		if err != nil {
+			return nil, err
 		}
+
+		fields = append(fields, res)
 	}
 
 	return &passiveTransportScenario{

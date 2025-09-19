@@ -36,9 +36,6 @@ class ScenarioRenderer {
 	}
 
 	setup() {
-		console.log(this.wasmInstance);
-		console.log(this.wasmExports);
-
 		const result = this.wasmExports.setupScenarioViz(0.0001);
 		const [verticesPtr, verticesLength] = this.unpackPtrLength(result);
 
@@ -51,7 +48,6 @@ class ScenarioRenderer {
 		this.refreshMemoryViews();
 		const sceneWidth = this.structView.getFloat32(8, true);
 		const sceneHeight = this.structView.getFloat32(12, true);
-		console.log(`scene dims: ${sceneWidth}, ${sceneHeight}`);
 	}
 
 	start() {

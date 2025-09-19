@@ -1,6 +1,6 @@
 package simulation
 
-func RunFrame(scenario Scenario, dt float32, tracerFieldName string) []float32 {
+func RunFrame(scenario Scenario, dt float32, tracerFieldIndex int) []float32 {
 	scenario.AdvanceTime(dt)
 
 	converged := false
@@ -8,5 +8,5 @@ func RunFrame(scenario Scenario, dt float32, tracerFieldName string) []float32 {
 		converged = scenario.Step()
 	}
 
-	return scenario.GetScalarFieldValues(tracerFieldName)
+	return scenario.GetScalarPrognosticValues(tracerFieldIndex)
 }

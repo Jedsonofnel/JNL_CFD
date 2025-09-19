@@ -53,21 +53,18 @@ func getMeshRenderData() uint64 {
 func setupScenarioViz(diffusivity float32) uint64 {
 	// setup code (manually for now until DSL)
 	sm := geometry.NewStructuredMesh(200, 100, 1, 0.5)
-	tf := &field.ScalarFieldDefinition{
-		Name:         "temperature",
-		InitialValue: 20.0,
-		Mesh:         sm,
-	}
+	tf := field.NewScalarPrognosticDefinition("temperature", 20.0)
 
-	tf.SetBoundaryConditions(map[string]field.ScalarBC{
-		"northBorder": nil,
-		"eastBorder":  nil,
-		"southBorder": nil,
-		"westBorder":  nil,
+	tf.SetEquation(field.NewScalarLaplacian(tf, diffusivity))
+
+	tf.SetBoundaryConditions(sm, map[string]field.ScalarBCDefinition{
+		"northBorder": field.ScalarNeumann{},
+		"eastBorder":  field.ScalarDirichlet{Value: 0.0},
+		"southBorder": field.ScalarNeumann{},
+		"westBorder":  field.ScalarDirichlet{Value: 20.0},
 	})
 
-	solver := linalg.NewGaussSeidel(50, 1e-6)
-
+	solver := linalg.NewGaussSeidel(10, 1e-6)
 	sd := simulation.NewPassiveTransportScenario(sm, solver, tf)
 	newScenario, err := sd.Resolve()
 	if err != nil {
@@ -96,7 +93,7 @@ func runFrame(dt float32) uint64 {
 		panic("Cannot run frame without first calling setupScenarioViz()")
 	}
 
-	results := simulation.RunFrame(scenario, dt, "temperature")
+	results := simulation.RunFrame(scenario, dt, 0)
 
 	normalisedResults := simulation.NormaliseResults(rd, results)
 	ptr := uintptr(unsafe.Pointer(&normalisedResults[0]))

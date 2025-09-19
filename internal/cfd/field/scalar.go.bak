@@ -195,10 +195,6 @@ func (s *scalar) AdvanceTime(dt float32) {
 	s.reassembleInternalMatrix()
 }
 
-func (s *scalar) SetTimestep(dt float32) {
-	s.dt = dt
-}
-
 // Private methods
 func (s *scalar) getRank() TensorRank     { return ScalarRank }
 func (s *scalar) getType() FieldType      { return PrognosticType }
