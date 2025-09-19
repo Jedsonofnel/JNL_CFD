@@ -159,7 +159,7 @@ export class ScenarioViewport {
 			]),
 		);
 
-		this.scenarioWorker.postMessage({ type: "reset", params: scenarioParams });
+		this.scenarioWorker.postMessage({ type: "setup", params: scenarioParams });
 
 		this.startButton.disabled = false;
 		this.stopButton.disabled = true;
