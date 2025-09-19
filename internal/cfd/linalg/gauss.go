@@ -1,37 +1,23 @@
 package linalg
 
-import (
-	"fmt"
-)
-
-const DEBUG = false
-
 type GaussSeidel struct {
 	maxIterations int
 	tolerance     float32
-}
-
-func NewGaussSeidel(maxIterations int, tolerance float32) Solver {
-	return &GaussSeidel{
-		maxIterations: maxIterations,
-		tolerance:     tolerance,
-	}
+	solution      []float32
 }
 
 func (gs *GaussSeidel) Solve(sys *System) []float32 {
 	matrix := sys.A
 	rhs := sys.B
-
-	n := len(rhs)
-	x := make([]float32, n)
+	x := gs.solution
 
 	for i := range x {
-		x[i] = 0.0
+		x[i] = 0
 	}
 
 	for iter := 0; iter < gs.maxIterations; iter++ {
 		// Update solution
-		for i := range n {
+		for i := range x {
 			var sum float32 = 0.0
 			matrix.ForEachInRow(i, func(col int, val float32) {
 				if col != i {
@@ -43,7 +29,7 @@ func (gs *GaussSeidel) Solve(sys *System) []float32 {
 
 		// Calculate true residual ||Ax - b||
 		var residual float32 = 0.0
-		for i := range n {
+		for i := range x {
 			var axRow float32 = 0.0
 			matrix.ForEachInRow(i, func(col int, val float32) {
 				axRow += val * x[col]
@@ -51,20 +37,27 @@ func (gs *GaussSeidel) Solve(sys *System) []float32 {
 			diff := axRow - rhs[i]
 			residual += diff * diff
 		}
-
-		if residual < gs.tolerance*gs.tolerance {
-			if DEBUG {
-				fmt.Printf("Gauss-Seidel converged after %d iterations\n", iter)
-			}
-			break
-		}
-
-		if iter%10 == 0 {
-			if DEBUG {
-				fmt.Printf("Iteration %d, residual: %.6f\n", iter, residual)
-			}
-		}
 	}
 
 	return x
+}
+
+type GaussSeidelDefinition struct {
+	maxIterations int
+	tolerance     float32
+}
+
+func NewGaussSeidel(maxIterations int, tolerance float32) SolverDefinition {
+	return &GaussSeidelDefinition{
+		maxIterations: maxIterations,
+		tolerance:     tolerance,
+	}
+}
+
+func (gsd *GaussSeidelDefinition) Resolve(n int) Solver {
+	return &GaussSeidel{
+		maxIterations: gsd.maxIterations,
+		tolerance:     gsd.tolerance,
+		solution:      make([]float32, n),
+	}
 }

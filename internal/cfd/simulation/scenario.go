@@ -4,10 +4,11 @@ import (
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/field"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/profiler"
 )
 
 type Scenario interface {
-	Step() bool
+	Step(prof profiler.Profiler) bool
 	GetScalarPrognosticValues(index int) []float32
 	AdvanceTime(dt float32)
 	GetMesh() *geometry.Mesh
@@ -29,11 +30,17 @@ type passiveTransportScenario struct {
 	// constant fields? []field.Field
 }
 
-func (pts *passiveTransportScenario) Step() bool {
+func (pts *passiveTransportScenario) Step(prof profiler.Profiler) bool {
 	for _, f := range pts.prognosticScalarFields {
+		endAssemblyTimer := prof.StartTimer("assembly")
 		sys := f.AssembleSystem()
-		_ = pts.solver.Solve(sys)
-		// f.SetValues(solutions)
+		endAssemblyTimer()
+
+		endSolvingTimer := prof.StartTimer("solving")
+		solutions := pts.solver.Solve(sys)
+		endSolvingTimer()
+
+		f.SetValues(solutions)
 	}
 
 	return true
@@ -56,13 +63,13 @@ func (pts *passiveTransportScenario) GetMesh() *geometry.Mesh {
 
 type passiveTransportScenarioDefinition struct {
 	mesh        geometry.MeshDefinition
-	solver      linalg.Solver
+	solver      linalg.SolverDefinition
 	scalarProgs []*field.ScalarPrognosticDefinition
 }
 
 func NewPassiveTransportScenario(
 	mesh geometry.MeshDefinition,
-	solver linalg.Solver,
+	solver linalg.SolverDefinition,
 	fields ...any,
 ) ScenarioDefinition {
 	scalarProgs := make([]*field.ScalarPrognosticDefinition, 0)
@@ -118,7 +125,7 @@ func (pts *passiveTransportScenarioDefinition) Resolve() (Scenario, error) {
 
 	return &passiveTransportScenario{
 		mesh:   mesh,
-		solver: pts.solver,
+		solver: pts.solver.Resolve(mesh.NumCells()),
 
 		prognosticScalarFields: fields,
 	}, nil

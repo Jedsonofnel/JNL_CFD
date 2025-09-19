@@ -52,7 +52,7 @@ func getMeshRenderData() uint64 {
 //export setupScenarioViz
 func setupScenarioViz(diffusivity float32) uint64 {
 	// setup code (manually for now until DSL)
-	sm := geometry.NewStructuredMesh(200, 100, 1, 0.5)
+	sm := geometry.NewStructuredMesh(20, 10, 1, 0.5)
 	tf := field.NewScalarPrognosticDefinition("temperature", 20.0)
 
 	tf.SetEquation(field.NewScalarLaplacian(tf, diffusivity))
@@ -64,7 +64,7 @@ func setupScenarioViz(diffusivity float32) uint64 {
 		"westBorder":  field.ScalarDirichlet{Value: 20.0},
 	})
 
-	solver := linalg.NewGaussSeidel(10, 1e-6)
+	solver := linalg.NewGaussSeidel(10, 1e-3)
 	sd := simulation.NewPassiveTransportScenario(sm, solver, tf)
 	newScenario, err := sd.Resolve()
 	if err != nil {

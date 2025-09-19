@@ -2,10 +2,10 @@ package profiler
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
-	"maps"
 )
 
 type Profiler interface {
@@ -13,6 +13,7 @@ type Profiler interface {
 	GetStats() map[string]ProfileStats
 	Reset()
 	PrintStats()
+	PrintStatsEvery10Seconds(dt float32)
 }
 
 type ProfileStats struct {
@@ -28,13 +29,16 @@ type CallStackProfiler struct {
 	timers map[string]time.Time
 	stats  map[string]ProfileStats
 	mu     sync.Mutex
+
+	elapsed time.Duration
 }
 
 func NewProfiler() Profiler {
 	return &CallStackProfiler{
-		stack:  make([]string, 0, 10), // Pre-allocate for typical depth
-		timers: make(map[string]time.Time),
-		stats:  make(map[string]ProfileStats),
+		stack:   make([]string, 0, 10), // Pre-allocate for typical depth
+		timers:  make(map[string]time.Time),
+		stats:   make(map[string]ProfileStats),
+		elapsed: 0,
 	}
 }
 
@@ -129,5 +133,15 @@ func (p *CallStackProfiler) PrintStats() {
 
 		fmt.Printf("%s: avg=%.2fms total=%.2fms calls=%d min=%.2fms max=%.2fms\n",
 			name, avgMs, totalMs, stat.CallCount, minMs, maxMs)
+	}
+}
+
+func (p *CallStackProfiler) PrintStatsEvery10Seconds(dt float32) {
+	p.elapsed += time.Duration(dt * 1e9)
+
+	if p.elapsed.Seconds() > 10 {
+		p.elapsed = 0
+		p.PrintStats()
+		p.Reset()
 	}
 }
