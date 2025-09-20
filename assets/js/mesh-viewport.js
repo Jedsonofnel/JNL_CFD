@@ -93,23 +93,8 @@ export class MeshViewport {
 		const colorUniformLocation = gl.getUniformLocation(program, "u_color");
 		gl.uniform4f(colorUniformLocation, 0, 0, 0, 1);
 
-		const size = 2;
-		const type = gl.FLOAT;
-		const normalize = false;
-		const stride = 0;
-		const offset = 0;
-		gl.vertexAttribPointer(
-			positionAttributeLocation,
-			size,
-			type,
-			normalize,
-			stride,
-			offset,
-		);
-
-		const primitiveType = gl.LINES;
-		const count = vertices.length / 2;
-		gl.drawArrays(primitiveType, offset, count);
+		gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+		gl.drawArrays(gl.Lines, 0, vertices.length / 2);
 	}
 }
 

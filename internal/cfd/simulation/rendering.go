@@ -33,7 +33,7 @@ func NewRenderData(mrd *geometry.MeshRenderData) *RenderData {
 		Width:  mrd.Width,
 		Height: mrd.Height,
 
-		smoothedMax: 0.0,
+		smoothedMax: 1.0,
 		alpha:       0.01,
 	}
 }

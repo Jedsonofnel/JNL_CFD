@@ -77,6 +77,8 @@ func setupScenarioViz(diffusivity float32) uint64 {
 	rd = simulation.NewRenderData(mrd)
 
 	// Update these in place
+	shared.NX = 20
+	shared.NY = 10
 	shared.Width = rd.Width
 	shared.Height = rd.Height
 

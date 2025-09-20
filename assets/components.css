@@ -4,5 +4,4 @@
 /* canvas element for rendering */
 .renderer-canvas {
 	width: 100%;
-	border: 1px solid var(--fg);
 }
