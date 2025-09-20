@@ -71,6 +71,10 @@ class ScenarioRenderer {
 			this.triangleProgram,
 			"a_position",
 		);
+		this.colorScaleLocation = this.gl.getAttribLocation(
+			this.triangleProgram,
+			"colorScale",
+		);
 	}
 
 	setup() {
@@ -139,7 +143,6 @@ class ScenarioRenderer {
 
 			this.fpsTime = 0;
 			this.fpsCounter = 0;
-
 		}
 
 		requestAnimationFrame(this.runAnimation.bind(this));
@@ -190,6 +193,10 @@ class ScenarioRenderer {
 		gl.clear(gl.COLOR_BUFFER_BIT);
 
 		gl.useProgram(this.lineProgram);
+
+		// clean up old stuff
+		gl.disableVertexAttribArray(this.triVertexLocation);
+		gl.disableVertexAttribArray(this.colorScaleLocation);
 
 		gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 		gl.enableVertexAttribArray(positionLocation);
@@ -272,7 +279,7 @@ const triangleFragShader = /* glsl */ `
 	precision mediump float;
 	varying float v_colorScale;
 	void main() {
-		gl_FragColor = vec4(v_colorScale, 0.0, 1.0-v_colorScale, 1.0);
+		gl_FragColor = vec4(v_colorScale, 0.0, 1.0 - v_colorScale, 1.0);
 	}
 `;
 

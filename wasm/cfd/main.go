@@ -52,19 +52,19 @@ func getMeshRenderData() uint64 {
 //export setupScenarioViz
 func setupScenarioViz(diffusivity float32) uint64 {
 	// setup code (manually for now until DSL)
-	sm := geometry.NewStructuredMesh(20, 10, 1, 0.5)
+	sm := geometry.NewStructuredMesh(50, 25, 1, 0.6)
 	tf := field.NewScalarPrognosticDefinition("temperature", 20.0)
 
 	tf.SetEquation(field.NewScalarLaplacian(tf, diffusivity))
 
 	tf.SetBoundaryConditions(sm, map[string]field.ScalarBCDefinition{
 		"northBorder": field.ScalarNeumann{},
-		"eastBorder":  field.ScalarDirichlet{Value: 0.0},
+		"eastBorder":  field.ScalarDirichlet{Value: 5.0},
 		"southBorder": field.ScalarNeumann{},
 		"westBorder":  field.ScalarDirichlet{Value: 20.0},
 	})
 
-	solver := linalg.NewGaussSeidel(10, 1e-3)
+	solver := linalg.NewGaussSeidel(1000, 1e-3)
 	sd := simulation.NewPassiveTransportScenario(sm, solver, tf)
 	newScenario, err := sd.Resolve()
 	if err != nil {
@@ -72,13 +72,11 @@ func setupScenarioViz(diffusivity float32) uint64 {
 	}
 	scenario = newScenario
 
-	mesh := scenario.GetMesh()
-	mrd := geometry.NewMeshRenderData(mesh)
-	rd = simulation.NewRenderData(mrd)
+	rd = simulation.NewRenderData(scenario, 0)
 
 	// Update these in place
-	shared.NX = 20
-	shared.NY = 10
+	shared.NX = 50
+	shared.NY = 20
 	shared.Width = rd.Width
 	shared.Height = rd.Height
 
@@ -98,6 +96,7 @@ func runFrame(dt float32) uint64 {
 	results := simulation.RunFrame(scenario, dt, 0)
 
 	normalisedResults := simulation.NormaliseResults(rd, results)
+
 	ptr := uintptr(unsafe.Pointer(&normalisedResults[0]))
 	length := int32(len(normalisedResults))
 

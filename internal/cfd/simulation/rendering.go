@@ -20,10 +20,22 @@ type RenderData struct {
 	alpha       float32
 }
 
-func NewRenderData(mrd *geometry.MeshRenderData) *RenderData {
+func NewRenderData(scenario Scenario, tracerIndex int) *RenderData {
+	mesh := scenario.GetMesh()
+	mrd := geometry.NewMeshRenderData(mesh)
+
 	triangleVertices := mrd.TriangleVertices
 	triangleStarts := mrd.TriangleStarts
 	triangleVertexColours := make([]float32, len(triangleVertices)/2)
+
+	fieldVals := scenario.GetScalarPrognosticValues(tracerIndex)
+
+	var currentMax float32
+	for _, val := range fieldVals {
+		if val > currentMax {
+			currentMax = val
+		}
+	}
 
 	return &RenderData{
 		TriangleVertices:      triangleVertices,
@@ -33,7 +45,7 @@ func NewRenderData(mrd *geometry.MeshRenderData) *RenderData {
 		Width:  mrd.Width,
 		Height: mrd.Height,
 
-		smoothedMax: 1.0,
+		smoothedMax: currentMax,
 		alpha:       0.01,
 	}
 }
@@ -46,12 +58,16 @@ func NormaliseResults(rd *RenderData, results []float32) []float32 {
 		}
 	}
 
+	if rd.smoothedMax == 0 {
+		rd.smoothedMax = 1e-12
+	}
+
 	rd.smoothedMax = rd.alpha*currentMax + (1-rd.alpha)*rd.smoothedMax
 
 	for i, res := range results {
 		normalisedResult := res / rd.smoothedMax
 
-		startIdx, endIdx := rd.TriangleStarts[i]/2, rd.TriangleStarts[i+1]/2
+		startIdx, endIdx := rd.TriangleStarts[i], rd.TriangleStarts[i+1]
 		for vi := startIdx; vi < endIdx; vi++ {
 			rd.TriangleVertexColours[vi] = normalisedResult
 		}

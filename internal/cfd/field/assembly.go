@@ -5,8 +5,8 @@ import (
 )
 
 type systemAssemblyContext struct {
-	Matrix         linalg.Matrix
-	MatrixInternal linalg.Matrix
+	Matrix         *linalg.CSR
+	MatrixInternal *linalg.CSR
 
 	RHS linalg.Vector
 
@@ -41,11 +41,7 @@ func (sys *systemAssemblyContext) SyncDecoratedMatrix() {
 
 func (sys *systemAssemblyContext) PartialWipe() {
 	sys.Matrix.Wipe()
-
 	sys.RHS.Wipe()
-
-	sys.BoundaryDiag.Wipe()
-	sys.BoundaryOffDiag.Wipe()
 }
 
 func (sys *systemAssemblyContext) FullWipe() {

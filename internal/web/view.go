@@ -65,7 +65,6 @@ func populateStore(store map[string]*mustache.Template, dir string, pp mustache.
 				}
 
 				store[nameWithoutExt] = tmpl
-				println(nameWithoutExt)
 			}
 			return nil
 		})

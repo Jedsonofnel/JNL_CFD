@@ -11,7 +11,7 @@ type CSR struct {
 	rowStarts []int
 }
 
-func NewCSRMatrixFromConnectivity(faceStarts, neighbourIndices []int) Matrix {
+func NewCSRMatrixFromConnectivity(faceStarts, neighbourIndices []int) *CSR {
 	nCells := len(faceStarts) - 1
 	rowStarts := make([]int, nCells+1)
 
@@ -161,7 +161,7 @@ func (csr *CSR) MatVec(x []float32) []float32 {
 	return make([]float32, 3)
 }
 
-func (csr *CSR) CopyFrom(other Matrix) {
+func (csr *CSR) CopyFrom(other *CSR) {
 	if csr.Rows() != other.Rows() || csr.Cols() != other.Cols() {
 		panic("CopyFrom: matrix dimension mismatch")
 	}

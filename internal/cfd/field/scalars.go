@@ -36,9 +36,8 @@ func (sp *ScalarPrognostic) AssembleSystem() *linalg.System {
 	sp.sys.SyncDecoratedMatrix()
 
 	// TODO: go through source operators to decorate RHS/MATRIX
-
 	for _, bc := range sp.bcs {
-		applyScalarBC(bc, sp.sys)
+		applyScalarBC(bc, sp, sp.sys)
 	}
 
 	return &linalg.System{
@@ -164,7 +163,7 @@ func (spd *ScalarPrognosticDefinition) Resolve(mesh *geometry.Mesh) (*ScalarProg
 	spd.future.bcs = make([]*scalarBC, len(spd.bcs))
 
 	for i, name := range mesh.Boundaries {
-		bc := spd.bcs[name].Resolve(spd.future, name)
+		bc := spd.bcs[name].Resolve(mesh, name)
 		spd.future.bcs[i] = bc
 	}
 

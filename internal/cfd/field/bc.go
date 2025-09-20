@@ -2,6 +2,8 @@ package field
 
 import (
 	"fmt"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
 )
 
 type scalarBCType int
@@ -14,14 +16,18 @@ const (
 
 type scalarBC struct {
 	bcType scalarBCType
-	owner  *ScalarPrognostic
 	value  float32
 
 	cellIndices     []int // what cell it acts on
 	boundaryIndices []int // where to find the values
 }
 
-type bcProcedure func(bc *scalarBC, sys *systemAssemblyContext)
+type bcProcedure func(
+	bc *scalarBC,
+	owner *ScalarPrognostic,
+	matrix *linalg.CSR,
+	boundaryDiag, boundaryOffDiag, rhs []float32,
+)
 
 var scalarProcedureTable = [...]bcProcedure{
 	scalarDirichletProcedure,
@@ -29,40 +35,42 @@ var scalarProcedureTable = [...]bcProcedure{
 	scalarOutflowProcedure,
 }
 
-func applyScalarBC(bc *scalarBC, sys *systemAssemblyContext) {
-	scalarProcedureTable[bc.bcType](bc, sys)
+func applyScalarBC(bc *scalarBC, owner *ScalarPrognostic, sys *systemAssemblyContext) {
+	scalarProcedureTable[bc.bcType](
+		bc, owner, sys.Matrix, sys.BoundaryDiag, sys.BoundaryOffDiag, sys.RHS)
 }
 
-func scalarDirichletProcedure(bc *scalarBC, sys *systemAssemblyContext) {
+func scalarDirichletProcedure(
+	bc *scalarBC, _ *ScalarPrognostic, matrix *linalg.CSR, bDiag, bOffDiag, rhs []float32) {
 	for i, cellIdx := range bc.cellIndices {
 		boundIdx := bc.boundaryIndices[i]
-		sys.Matrix.AddDiagonal(cellIdx, sys.BoundaryDiag[boundIdx])
-		sys.RHS[cellIdx] += bc.value * sys.BoundaryOffDiag[boundIdx]
+		matrix.AddDiagonal(cellIdx, bDiag[boundIdx])
+		rhs[cellIdx] += bc.value * bOffDiag[boundIdx]
 	}
 }
 
-func scalarNeumannProcedure(bc *scalarBC, sys *systemAssemblyContext) {
+func scalarNeumannProcedure(
+	bc *scalarBC, _ *ScalarPrognostic, _ *linalg.CSR, _, _, rhs []float32) {
 	for _, cellIdx := range bc.cellIndices {
-		sys.RHS[cellIdx] += bc.value
+		rhs[cellIdx] += bc.value
 	}
 }
 
-func scalarOutflowProcedure(bc *scalarBC, sys *systemAssemblyContext) {}
+func scalarOutflowProcedure(_ *scalarBC, _ *ScalarPrognostic, _ *linalg.CSR, _, _, _ []float32) {}
 
 // DEFINITIONS
 
 type ScalarBCDefinition interface {
-	Resolve(owner *ScalarPrognostic, boundaryName string) *scalarBC
+	Resolve(mesh *geometry.Mesh, boundaryName string) *scalarBC
 }
 
 type ScalarDirichlet struct{ Value float32 }
 
-func (sd ScalarDirichlet) Resolve(owner *ScalarPrognostic, boundaryName string) *scalarBC {
-	cellIndices, boundaryIndices := findBCIndices(owner, boundaryName)
+func (sd ScalarDirichlet) Resolve(mesh *geometry.Mesh, boundaryName string) *scalarBC {
+	cellIndices, boundaryIndices := findBCIndices(mesh, boundaryName)
 
 	return &scalarBC{
 		bcType: ScalarDirichletType,
-		owner:  owner,
 		value:  sd.Value,
 
 		cellIndices:     cellIndices,
@@ -72,12 +80,11 @@ func (sd ScalarDirichlet) Resolve(owner *ScalarPrognostic, boundaryName string) 
 
 type ScalarNeumann struct{ Flux float32 }
 
-func (sn ScalarNeumann) Resolve(owner *ScalarPrognostic, boundaryName string) *scalarBC {
-	cellIndices, boundaryIndices := findBCIndices(owner, boundaryName)
+func (sn ScalarNeumann) Resolve(mesh *geometry.Mesh, boundaryName string) *scalarBC {
+	cellIndices, boundaryIndices := findBCIndices(mesh, boundaryName)
 
 	return &scalarBC{
 		bcType: ScalarNeumannType,
-		owner:  owner,
 		value:  sn.Flux,
 
 		cellIndices:     cellIndices,
@@ -85,8 +92,7 @@ func (sn ScalarNeumann) Resolve(owner *ScalarPrognostic, boundaryName string) *s
 	}
 }
 
-func findBCIndices(owner *ScalarPrognostic, boundaryName string) (cellIndices, boundaryIndices []int) {
-	mesh := owner.mesh
+func findBCIndices(mesh *geometry.Mesh, boundaryName string) (cellIndices, boundaryIndices []int) {
 	marker := -1
 	for i, name := range mesh.Boundaries {
 		if name == boundaryName {
@@ -95,8 +101,8 @@ func findBCIndices(owner *ScalarPrognostic, boundaryName string) (cellIndices, b
 	}
 
 	if marker == -1 {
-		panic(fmt.Sprintf("Could not find '%s' boundary on mesh for field '%s'",
-			boundaryName, owner.name))
+		panic(fmt.Sprintf("Could not find '%s' boundary on mesh for field",
+			boundaryName))
 	}
 
 	cellIndices = make([]int, 0)

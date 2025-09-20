@@ -66,7 +66,7 @@ func calculateMeshTriangulation(mesh *Mesh) (
 
 	}
 
-	triangleStarts[mesh.NumCells()] = len(triangleVertices)
+	triangleStarts[mesh.NumCells()] = len(triangleVertices) / 2
 
 	return
 }

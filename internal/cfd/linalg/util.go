@@ -5,7 +5,7 @@ func Dot2D(ax, ay, bx, by float32) float32 {
 }
 
 type System struct {
-	A Matrix
+	A *CSR
 	B Vector
 }
 
