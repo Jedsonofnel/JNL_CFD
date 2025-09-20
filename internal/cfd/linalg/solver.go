@@ -5,5 +5,5 @@ type SolverDefinition interface {
 }
 
 type Solver interface {
-	Solve(*System) []float32
+	Solve(sys *System, x []float32) []float32
 }

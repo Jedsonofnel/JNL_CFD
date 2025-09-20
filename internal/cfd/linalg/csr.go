@@ -156,9 +156,28 @@ func (csr *CSR) Subtract(i, j int, value float32) {
 
 // BULK OPERATIONS
 
-// TODO: implement this
-func (csr *CSR) MatVec(x []float32) []float32 {
-	return make([]float32, 3)
+func (csr *CSR) MatVec(x, y []float32) []float32 {
+	for i := range csr.Rows() {
+		y[i] = 0
+		csr.ForEachInRow(i, func(j int, val float32) {
+			y[i] += val * x[j]
+		})
+	}
+
+	return y
+}
+
+func (csr *CSR) MatTVec(x, y []float32) []float32 {
+	for i := range csr.Rows() {
+		y[i] = 0
+	}
+
+	for j := range csr.Cols() {
+		csr.ForEachInRow(j, func(i int, val float32) {
+			y[i] += val * x[j]
+		})
+	}
+	return y
 }
 
 func (csr *CSR) CopyFrom(other *CSR) {

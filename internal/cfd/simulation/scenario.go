@@ -37,10 +37,8 @@ func (pts *passiveTransportScenario) Step(prof profiler.Profiler) bool {
 		endAssemblyTimer()
 
 		endSolvingTimer := prof.StartTimer("solving")
-		solutions := pts.solver.Solve(sys)
+		pts.solver.Solve(sys, f.GetValues())
 		endSolvingTimer()
-
-		f.SetValues(solutions)
 	}
 
 	return true

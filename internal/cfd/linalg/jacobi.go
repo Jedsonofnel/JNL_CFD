@@ -3,15 +3,13 @@ package linalg
 type Jacobi struct {
 	maxIterations int
 	tolerance     float32
-	solution      []float32
 }
 
-func (j *Jacobi) Solve(sys *System) []float32 {
+func (j *Jacobi) Solve(sys *System, x []float32) []float32 {
 	matrix := sys.A
 	rhs := sys.B
 
 	n := len(rhs)
-	x := j.solution
 	xNew := make([]float32, n) // this is always going to be rubbish
 
 	for iter := 0; iter < j.maxIterations; iter++ {
@@ -49,6 +47,5 @@ func (jd *JacobiDefinition) Resolve(n int) Solver {
 	return &Jacobi{
 		maxIterations: jd.maxIterations,
 		tolerance:     jd.tolerance,
-		solution:      make([]float32, n),
 	}
 }

@@ -3,17 +3,11 @@ package linalg
 type GaussSeidel struct {
 	maxIterations int
 	tolerance     float32
-	solution      []float32
 }
 
-func (gs *GaussSeidel) Solve(sys *System) []float32 {
+func (gs *GaussSeidel) Solve(sys *System, x []float32) []float32 {
 	matrix := sys.A
 	rhs := sys.B
-	x := gs.solution
-
-	for i := range x {
-		x[i] = 0
-	}
 
 	for iter := 0; iter < gs.maxIterations; iter++ {
 		// Update solution
@@ -37,6 +31,10 @@ func (gs *GaussSeidel) Solve(sys *System) []float32 {
 			diff := axRow - rhs[i]
 			residual += diff * diff
 		}
+
+		if residual < gs.tolerance {
+			break
+		}
 	}
 
 	return x
@@ -58,6 +56,5 @@ func (gsd *GaussSeidelDefinition) Resolve(n int) Solver {
 	return &GaussSeidel{
 		maxIterations: gsd.maxIterations,
 		tolerance:     gsd.tolerance,
-		solution:      make([]float32, n),
 	}
 }

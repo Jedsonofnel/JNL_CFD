@@ -64,7 +64,7 @@ func setupScenarioViz(diffusivity float32) uint64 {
 		"westBorder":  field.ScalarDirichlet{Value: 20.0},
 	})
 
-	solver := linalg.NewGaussSeidel(1000, 1e-3)
+	solver := linalg.NewJacobiCG(50, 1e-2)
 	sd := simulation.NewPassiveTransportScenario(sm, solver, tf)
 	newScenario, err := sd.Resolve()
 	if err != nil {
