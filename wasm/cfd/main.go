@@ -55,8 +55,10 @@ func setupScenarioViz(diffusivity float32) uint64 {
 	tf := fvm.NewPrognosticScalarField("temperature", 20.0)
 
 	eq, err := fvm.NewEquation(tf,
+		fvm.NewDDT(tf, 1),
 		fvm.NewLaplacian(tf, diffusivity),
 	)
+
 	if err != nil {
 		panic(err)
 	}

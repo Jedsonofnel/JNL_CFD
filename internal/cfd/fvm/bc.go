@@ -3,7 +3,6 @@ package fvm
 import (
 	"fmt"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
 )
 
 type bcType int
@@ -97,12 +96,7 @@ type scalarBC struct {
 
 func (bc *scalarBC) rank() rank { return scalar }
 
-type scalarBCProcedure func(
-	bc *scalarBC,
-	owner *scalarField,
-	matrix *linalg.CSR,
-	boundaryDiag, boundaryOffDiag, rhs []float32,
-)
+type scalarBCProcedure func(bc *scalarBC, owner *scalarField, eq *scalarEquation)
 
 var scalarBCProcedureTable = [...]scalarBCProcedure{
 	scalarDirichletProcedure,
@@ -110,20 +104,19 @@ var scalarBCProcedureTable = [...]scalarBCProcedure{
 	scalarOutflowProcedure,
 }
 
-func scalarDirichletProcedure(
-	bc *scalarBC, _ *scalarField, matrix *linalg.CSR, bDiag, bOffDiag, rhs []float32) {
+func scalarDirichletProcedure(bc *scalarBC, _ *scalarField, eq *scalarEquation) {
 	for i, cellIdx := range bc.cellIndices {
 		boundIdx := bc.boundaryIndices[i]
-		matrix.AddDiagonal(cellIdx, bDiag[boundIdx])
-		rhs[cellIdx] += bc.value * bOffDiag[boundIdx]
+		eq.matrix.AddDiagonal(cellIdx, eq.boundaryDiag[boundIdx])
+		eq.rhs[cellIdx] += bc.value * eq.boundaryOffDiag[boundIdx]
 	}
 }
 
 func scalarNeumannProcedure(
-	bc *scalarBC, _ *scalarField, _ *linalg.CSR, _, _, rhs []float32) {
+	bc *scalarBC, _ *scalarField, eq *scalarEquation) {
 	for _, cellIdx := range bc.cellIndices {
-		rhs[cellIdx] += bc.value
+		eq.rhs[cellIdx] += bc.value
 	}
 }
 
-func scalarOutflowProcedure(_ *scalarBC, _ *scalarField, _ *linalg.CSR, _, _, _ []float32) {}
+func scalarOutflowProcedure(_ *scalarBC, _ *scalarField, _ *scalarEquation) {}

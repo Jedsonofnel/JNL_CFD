@@ -8,10 +8,10 @@ import (
 type opType int
 
 const (
-	laplacian opType = iota // 
+	laplacian opType = iota //
 	div                     // FLUXES END
 	ddt                     // SOURCES START
-	source                  // 
+	source                  //
 	grad
 )
 
@@ -30,16 +30,33 @@ type operator interface {
 
 // DEFINITIONS
 
-type scalarLaplacianDefinition struct {
+type scalarOperatorDefinition struct {
+	opType         opType
 	coeff          float32
 	coupledScalars []*scalarFieldDefinition
 	error          error
 }
 
-func newScalarLaplacian(owner *scalarFieldDefinition, coeffs ...any) *scalarLaplacianDefinition {
+type scalarOperatorPrecalcProcedure func(
+	mesh *geometry.Mesh, coeff float32) (precals, fluxes []float32)
+
+func newScalarLaplacian(owner *scalarFieldDefinition, coeffs ...any) *scalarOperatorDefinition {
+	newLaplacian, err := parseScalarCoeffs(coeffs...)
+	newLaplacian.opType = laplacian
+	newLaplacian.error = err
+	return newLaplacian
+}
+
+func newScalarDDT(owner *scalarFieldDefinition, coeffs ...any) *scalarOperatorDefinition {
+	newDDT, err := parseScalarCoeffs(coeffs...)
+	newDDT.opType = ddt
+	newDDT.error = err
+	return newDDT
+}
+
+func parseScalarCoeffs(coeffs ...any) (*scalarOperatorDefinition, error) {
 	var coeff float32 = 1
 	coupledScalars := make([]*scalarFieldDefinition, 0)
-	var error error = nil
 
 	for _, c := range coeffs {
 		switch field := c.(type) {
@@ -52,38 +69,38 @@ func newScalarLaplacian(owner *scalarFieldDefinition, coeffs ...any) *scalarLapl
 		case *scalarFieldDefinition:
 			coupledScalars = append(coupledScalars, field)
 		default:
-			error = fmt.Errorf("NewScalarLaplacian > Cannot treat '%T' as a coefficient",
-				field)
-
+			return nil,
+				fmt.Errorf("parseScalarCoeffs > cannot parse type '%T' as scalar operator coeff",
+					c)
 		}
 	}
 
-	return &scalarLaplacianDefinition{coeff, coupledScalars, error}
+	return &scalarOperatorDefinition{
+		coeff: coeff, coupledScalars: coupledScalars}, nil
 }
 
-func (sld *scalarLaplacianDefinition) Validate() error {
-	if sld.error != nil {
-		return sld.error
-	}
-	return nil
+func (sod *scalarOperatorDefinition) Validate() error {
+	return sod.error
 }
 
-func (sld *scalarLaplacianDefinition) resolve(mesh *geometry.Mesh,
+var scalarOperatorPrecalcsTable = [...]scalarOperatorPrecalcProcedure{
+	scalarLaplacianPrecalcs,
+	nil,
+	scalarDDTPrecalcs,
+}
+
+func (sod *scalarOperatorDefinition) resolve(mesh *geometry.Mesh,
 	fields map[string]field) (operator, error) {
-	if err := sld.Validate(); err != nil {
+	if err := sod.Validate(); err != nil {
 		return nil, fmt.Errorf("scalarLaplacianDefinition resolve error > %w", err)
 	}
 
-	precalcs := make([]float32, mesh.NumNeighbours())
-	fluxes := make([]float32, mesh.NumNeighbours())
+	precalcProc := scalarOperatorPrecalcsTable[sod.opType]
+	precalcs, fluxes := precalcProc(mesh, sod.coeff)
 
-	for i := range mesh.NumNeighbours() {
-		precalcs[i] = sld.coeff * mesh.FaceAreas[i] / mesh.ConnectionDistances[i]
-	}
+	coupledScalars := make([]*scalarField, len(sod.coupledScalars))
 
-	coupledScalars := make([]*scalarField, len(sld.coupledScalars))
-
-	for i, def := range sld.coupledScalars {
+	for i, def := range sod.coupledScalars {
 		resolved, found := fields[def.name]
 		if !found {
 			return nil, fmt.Errorf("scalarLaplacianDefinition resolve > could not find field '%s' in registry",
@@ -100,15 +117,34 @@ func (sld *scalarLaplacianDefinition) resolve(mesh *geometry.Mesh,
 	}
 
 	return &scalarOperator{
-		opType:         laplacian,
-		coeff:          sld.coeff,
+		opType:         sod.opType,
+		coeff:          sod.coeff,
 		coupledScalars: coupledScalars,
 		precalcs:       precalcs,
 		fluxes:         fluxes,
 	}, nil
 }
 
-func (sld *scalarLaplacianDefinition) rank() rank { return scalar }
+func scalarLaplacianPrecalcs(mesh *geometry.Mesh, coeff float32,
+) (precalcs, fluxes []float32) {
+	fluxes = make([]float32, mesh.NumNeighbours())
+	precalcs = make([]float32, mesh.NumNeighbours())
+	for i := range mesh.NumNeighbours() {
+		precalcs[i] = coeff * mesh.FaceAreas[i] / mesh.ConnectionDistances[i]
+	}
+	return
+}
+
+func scalarDDTPrecalcs(mesh *geometry.Mesh, coeff float32) (precalcs, fluxes []float32) {
+	fluxes = make([]float32, mesh.NumCells())
+	precalcs = make([]float32, mesh.NumCells())
+	for i := range mesh.NumCells() {
+		precalcs[i] = coeff * mesh.CellVolumes[i]
+	}
+	return
+}
+
+func (sld *scalarOperatorDefinition) rank() rank { return scalar }
 
 // DEFINITION FACTORIES
 
@@ -120,6 +156,14 @@ func NewLaplacian(owner FieldDefinition, coeffs ...any) OperatorDefinition {
 	return nil
 }
 
+func NewDDT(owner FieldDefinition, coeffs ...any) OperatorDefinition {
+	switch owner := owner.(type) {
+	case *scalarFieldDefinition:
+		return newScalarDDT(owner, coeffs...)
+	}
+	return nil
+}
+
 // RESOLVED
 
 type scalarOperator struct {
@@ -127,7 +171,7 @@ type scalarOperator struct {
 	coeff          float32
 	coupledScalars []*scalarField
 	precalcs       []float32
-	fluxes         []float32
+	fluxes         []float32 // this is a misnomer for source operators
 }
 
 func (so *scalarOperator) rank() rank           { return scalar }
@@ -138,6 +182,8 @@ type scalarOpProcedure func(
 
 var scalarOpProcedureTable = [...]scalarOpProcedure{
 	scalarLaplacianProcedure,
+	nil,
+	scalarDDTProcedure,
 }
 
 func scalarLaplacianProcedure(
@@ -157,4 +203,18 @@ func scalarLaplacianProcedure(
 		eq.boundaryDiag[bIdx] += flux
 		eq.boundaryOffDiag[bIdx] += flux
 	})
+}
+
+func scalarDDTProcedure(
+	op *scalarOperator, mesh *geometry.Mesh, eq *scalarEquation) {
+
+	for i := range op.fluxes {
+		op.fluxes[i] = op.precalcs[i] / eq.dt
+	}
+
+	for i := range mesh.NumCells() {
+		flux := op.fluxes[i]
+		eq.matrix.AddDiagonal(i, flux)
+		eq.rhs[i] += flux * eq.owner.cellValues0[i]
+	}
 }

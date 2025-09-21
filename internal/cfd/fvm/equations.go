@@ -233,11 +233,14 @@ func (se *scalarEquation) assembleSystem() *linalg.System {
 	se.matrix.CopyFrom(se.matrixInternal)
 	se.rhs.Wipe()
 
-	// TODO: apply source operators
+	for _, op := range se.sourceOps {
+		proc := scalarOpProcedureTable[op.opType]
+		proc(op, se.mesh, se)
+	}
 
 	for _, bc := range se.bcs {
 		proc := scalarBCProcedureTable[bc.bcType]
-		proc(bc, se.owner, se.matrix, se.boundaryDiag, se.boundaryOffDiag, se.rhs)
+		proc(bc, se.owner, se)
 	}
 
 	return &linalg.System{A: se.matrix, B: se.rhs}

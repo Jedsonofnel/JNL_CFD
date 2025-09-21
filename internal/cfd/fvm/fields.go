@@ -73,3 +73,9 @@ type scalarField struct {
 }
 
 func (sf *scalarField) rank() rank { return scalar }
+
+// PERF: not every scalar field will vary in time - could be a function lookup
+// to allow for fieldType based behaviour (eg constants would do nothing)
+func (sf *scalarField) advanceTime() {
+	copy(sf.cellValues0, sf.cellValues)
+}

@@ -201,7 +201,9 @@ func (pts *passiveTransportScenario) getMesh() *geometry.Mesh {
 }
 
 func (pts *passiveTransportScenario) advanceTime(dt float32) {
-	// TODO advance time for fields as well
+	for _, field := range pts.scalarFields {
+		field.advanceTime()
+	}
 
 	for _, eq := range pts.scalarEquations {
 		eq.advanceTime(dt)
