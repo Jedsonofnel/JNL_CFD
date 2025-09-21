@@ -3,10 +3,9 @@
 package main
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/field"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/fvm"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/simulation"
 	"unsafe"
 )
 
@@ -28,8 +27,8 @@ func getSharedMemLoc() uint64 {
 }
 
 // state
-var scenario simulation.Scenario
-var rd *simulation.RenderData
+var scenario fvm.Scenario
+var rd *fvm.RenderData
 var mesh *geometry.Mesh
 
 //export getMeshRenderData
@@ -53,26 +52,33 @@ func getMeshRenderData() uint64 {
 func setupScenarioViz(diffusivity float32) uint64 {
 	// setup code (manually for now until DSL)
 	sm := geometry.NewStructuredMesh(50, 25, 1, 0.6)
-	tf := field.NewScalarPrognosticDefinition("temperature", 20.0)
+	tf := fvm.NewPrognosticScalarField("temperature", 20.0)
 
-	tf.SetEquation(field.NewScalarLaplacian(tf, diffusivity))
+	eq, err := fvm.NewEquation(tf,
+		fvm.NewLaplacian(tf, diffusivity),
+	)
+	if err != nil {
+		panic(err)
+	}
 
-	tf.SetBoundaryConditions(sm, map[string]field.ScalarBCDefinition{
-		"northBorder": field.ScalarNeumann{},
-		"eastBorder":  field.ScalarDirichlet{Value: 5.0},
-		"southBorder": field.ScalarNeumann{},
-		"westBorder":  field.ScalarDirichlet{Value: 20.0},
+	eq.SetBoundaryConditions(sm, map[string]fvm.BCDefinition{
+		"northBorder": fvm.ScalarNeumann{},
+		"eastBorder":  fvm.ScalarDirichlet{Value: 5.0},
+		"southBorder": fvm.ScalarNeumann{},
+		"westBorder":  fvm.ScalarDirichlet{Value: 20.0},
 	})
 
 	solver := linalg.NewJacobiCG(50, 1e-2)
-	sd := simulation.NewPassiveTransportScenario(sm, solver, tf)
+	sd := fvm.NewPassiveTransportScenario(sm, solver,
+		[]fvm.FieldDefinition{tf}, []fvm.EquationDefinition{eq})
+
 	newScenario, err := sd.Resolve()
 	if err != nil {
 		panic(err)
 	}
 	scenario = newScenario
 
-	rd = simulation.NewRenderData(scenario, 0)
+	rd = fvm.NewRenderData(scenario)
 
 	// Update these in place
 	shared.NX = 50
@@ -93,9 +99,9 @@ func runFrame(dt float32) uint64 {
 		panic("Cannot run frame without first calling setupScenarioViz()")
 	}
 
-	results := simulation.RunFrame(scenario, dt, 0)
+	results := fvm.RunFrame(scenario, dt, 0)
 
-	normalisedResults := simulation.NormaliseResults(rd, results)
+	normalisedResults := fvm.NormaliseResults(rd, results)
 
 	ptr := uintptr(unsafe.Pointer(&normalisedResults[0]))
 	length := int32(len(normalisedResults))

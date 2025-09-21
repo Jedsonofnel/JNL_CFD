@@ -1,4 +1,4 @@
-package field
+package fvm
 
 import (
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"

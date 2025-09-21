@@ -1,4 +1,4 @@
-package simulation
+package fvm
 
 import (
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
@@ -20,15 +20,15 @@ type RenderData struct {
 	alpha       float32
 }
 
-func NewRenderData(scenario Scenario, tracerIndex int) *RenderData {
-	mesh := scenario.GetMesh()
+func NewRenderData(scenario Scenario) *RenderData {
+	mesh := scenario.getMesh()
 	mrd := geometry.NewMeshRenderData(mesh)
 
 	triangleVertices := mrd.TriangleVertices
 	triangleStarts := mrd.TriangleStarts
 	triangleVertexColours := make([]float32, len(triangleVertices)/2)
 
-	fieldVals := scenario.GetScalarPrognosticValues(tracerIndex)
+	fieldVals := scenario.getTracerFieldValues()
 
 	var currentMax float32
 	for _, val := range fieldVals {

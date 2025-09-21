@@ -1,4 +1,4 @@
-package field
+package fvm
 
 type ScalarSource interface {
 	RHSContribution() float32
