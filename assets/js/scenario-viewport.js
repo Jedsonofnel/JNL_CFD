@@ -31,6 +31,11 @@ export class ScenarioViewport {
 				case "frameRate":
 					console.log(`FPS: ${data.value}`);
 					break;
+				case "wasmMemoryStats":
+					console.log(
+						`WASM Memory: Growth: ${data.growthSinceLastCheck}, avgGrowthPerFrame: ${data.avgGrowthPerFrame}`,
+					);
+					break;
 				default:
 					console.error(
 						"main thread cannot respond to message type: ",

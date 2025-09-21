@@ -1,8 +1,11 @@
 package fvm
 
 import (
+	"fmt"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 )
+
+// RENDERING
 
 type RenderData struct {
 	// from MeshRenderData
@@ -74,4 +77,41 @@ func NormaliseResults(rd *RenderData, results []float32) []float32 {
 	}
 
 	return rd.TriangleVertexColours
+}
+
+// POINT SOURCE POSITION
+
+type ScalarPointSourceHandler struct {
+	mesh     *geometry.Mesh
+	operator *scalarOperator
+
+	setupPoints []Vec2
+	setupValues []float32
+}
+
+func NewScalarPointSourceHandler() *ScalarPointSourceHandler {
+	return &ScalarPointSourceHandler{
+		setupPoints: make([]Vec2, 0),
+		setupValues: make([]float32, 0),
+	}
+}
+
+func (ps *ScalarPointSourceHandler) SetPointSource(x, y, value float32) error {
+	if x < -1 || x > 1 || y < -1 || y > 1 {
+		return fmt.Errorf("SetPointSource > requires x/y in [-1, 1] space.")
+	}
+
+	// ie in definition phase
+	if ps.mesh == nil || ps.operator == nil {
+		ps.setupPoints = append(ps.setupPoints, Vec2{x, y})
+		ps.setupValues = append(ps.setupValues, value)
+		return nil
+	}
+
+	physX, physY := geometry.NormalisedToPhysics(ps.mesh, x, y)
+	cellIdx := geometry.FindNearestCell(ps.mesh, physX, physY)
+
+	ps.operator.fluxes[cellIdx] = value
+
+	return nil
 }

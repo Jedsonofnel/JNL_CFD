@@ -2,7 +2,10 @@ package fvm
 
 import (
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
 )
+
+type Vec2 linalg.Vec2
 
 type rank int
 

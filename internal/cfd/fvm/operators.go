@@ -11,8 +11,9 @@ const (
 	laplacian opType = iota //
 	div                     // FLUXES END
 	ddt                     // SOURCES START
-	source                  //
-	grad
+	grad                    //
+	pointSrc
+	uniformSrc
 )
 
 // INTERFACES
@@ -146,6 +147,38 @@ func scalarDDTPrecalcs(mesh *geometry.Mesh, coeff float32) (precalcs, fluxes []f
 
 func (sld *scalarOperatorDefinition) rank() rank { return scalar }
 
+type scalarPointSourceDefinition struct {
+	handler *ScalarPointSourceHandler
+}
+
+func (psd *scalarPointSourceDefinition) Validate() error {
+	return nil
+}
+
+func (psd *scalarPointSourceDefinition) resolve(mesh *geometry.Mesh, _ map[string]field,
+) (operator, error) {
+	handler := psd.handler
+	handler.mesh = mesh
+
+	fluxes := make([]float32, mesh.NumCells())
+
+	so := &scalarOperator{
+		opType:    pointSrc,
+		fluxes:    fluxes,
+		psHandler: handler,
+	}
+
+	handler.operator = so
+
+	for i, point := range handler.setupPoints {
+		psd.handler.SetPointSource(point.X, point.Y, handler.setupValues[i])
+	}
+
+	return so, nil
+}
+
+func (psd *scalarPointSourceDefinition) rank() rank { return scalar }
+
 // DEFINITION FACTORIES
 
 func NewLaplacian(owner FieldDefinition, coeffs ...any) OperatorDefinition {
@@ -164,6 +197,10 @@ func NewDDT(owner FieldDefinition, coeffs ...any) OperatorDefinition {
 	return nil
 }
 
+func NewScalarPointSource(handler *ScalarPointSourceHandler) OperatorDefinition {
+	return &scalarPointSourceDefinition{handler}
+}
+
 // RESOLVED
 
 type scalarOperator struct {
@@ -172,6 +209,9 @@ type scalarOperator struct {
 	coupledScalars []*scalarField
 	precalcs       []float32
 	fluxes         []float32 // this is a misnomer for source operators
+
+	// for point sources
+	psHandler *ScalarPointSourceHandler
 }
 
 func (so *scalarOperator) rank() rank           { return scalar }
@@ -182,8 +222,10 @@ type scalarOpProcedure func(
 
 var scalarOpProcedureTable = [...]scalarOpProcedure{
 	scalarLaplacianProcedure,
-	nil,
+	nil, // DIV
 	scalarDDTProcedure,
+	nil, // GRAD
+	scalarPointSrcProcedure,
 }
 
 func scalarLaplacianProcedure(
@@ -216,5 +258,12 @@ func scalarDDTProcedure(
 		flux := op.fluxes[i]
 		eq.matrix.AddDiagonal(i, flux)
 		eq.rhs[i] += flux * eq.owner.cellValues0[i]
+	}
+}
+
+func scalarPointSrcProcedure(
+	op *scalarOperator, mesh *geometry.Mesh, eq *scalarEquation) {
+	for i, src := range op.fluxes {
+		eq.rhs[i] += src
 	}
 }

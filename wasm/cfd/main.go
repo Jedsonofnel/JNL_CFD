@@ -54,10 +54,15 @@ func setupScenarioViz(diffusivity float32) uint64 {
 	sm := geometry.NewStructuredMesh(50, 30, 1, 0.6)
 	tf := fvm.NewPrognosticScalarField("temperature", 20.0)
 
+	psHandler := fvm.NewScalarPointSourceHandler()
+
 	eq, err := fvm.NewEquation(tf,
 		fvm.NewDDT(tf, 1),
 		fvm.NewLaplacian(tf, diffusivity),
+		fvm.NewScalarPointSource(psHandler),
 	)
+
+	psHandler.SetPointSource(0, 0, 2)
 
 	if err != nil {
 		panic(err)
@@ -67,7 +72,7 @@ func setupScenarioViz(diffusivity float32) uint64 {
 		"northBorder": fvm.ScalarNeumann{},
 		"eastBorder":  fvm.ScalarDirichlet{Value: 5.0},
 		"southBorder": fvm.ScalarNeumann{},
-		"westBorder":  fvm.ScalarDirichlet{Value: 20.0},
+		"westBorder":  fvm.ScalarDirichlet{Value: 10.0},
 	})
 
 	solver := linalg.NewJacobiCG(50, 1e-2)

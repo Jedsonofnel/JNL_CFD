@@ -28,7 +28,6 @@ class ScenarioRenderer {
 		// wasm memory management
 		this.wasmInstance = null;
 		this.wasmExports = null;
-		this.wasmBuffer = null;
 		this.structView = null;
 	}
 
@@ -44,10 +43,13 @@ class ScenarioRenderer {
 
 		this.wasmInstance = wasmInstance.instance;
 		this.wasmExports = this.wasmInstance.exports;
-		this.wasmBuffer = this.wasmExports.memory.buffer;
 		this.refreshMemoryViews();
 
 		return this;
+	}
+
+	get wasmBuffer() {
+		return this.wasmInstance?.exports.memory.buffer;
 	}
 
 	setupWebGL(canvas) {
@@ -141,6 +143,7 @@ class ScenarioRenderer {
 
 		if (this.fpsTime > 5) {
 			postMessage({ type: "frameRate", value: this.fpsCounter / this.fpsTime });
+			this.reportWASMMemoryStats();
 
 			this.fpsTime = 0;
 			this.fpsCounter = 0;
@@ -157,11 +160,32 @@ class ScenarioRenderer {
 	}
 
 	refreshMemoryViews() {
-		this.wasmBuffer = this.wasmInstance.exports.memory.buffer;
 		const result = this.wasmExports.getSharedMemLoc();
 		const [structPtr, structLength] = this.unpackPtrLength(result);
 
 		this.structView = new DataView(this.wasmBuffer, structPtr, structLength);
+	}
+
+	async reportWASMMemoryStats() {
+		const wasmMemory = this.wasmInstance?.exports.memory;
+		if (!wasmMemory) return;
+
+		const currentSize = wasmMemory.buffer.byteLength;
+		const currentPages = currentSize / (64 * 1024);
+
+		const growth = currentSize - (this.lastWasmSize || currentSize);
+		const growthPerFrame = growth / this.memoryCounter;
+
+		postMessage({
+			type: "wasmMemoryStats",
+			currentSize,
+			currentPages,
+			growthSinceLastCheck: growth,
+			avgGrowthPerFrame: growthPerFrame,
+			growthPerSecond: growth / 5,
+		});
+
+		this.lastWasmSize = currentSize;
 	}
 
 	// GRAPHICS STUFF

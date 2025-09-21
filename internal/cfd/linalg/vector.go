@@ -7,3 +7,5 @@ func (v Vector) Wipe() {
 		v[i] = 0.0
 	}
 }
+
+type Vec2 struct{ X, Y float32 }
