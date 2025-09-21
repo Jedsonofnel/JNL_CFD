@@ -51,7 +51,7 @@ func getMeshRenderData() uint64 {
 //export setupScenarioViz
 func setupScenarioViz(diffusivity float32) uint64 {
 	// setup code (manually for now until DSL)
-	sm := geometry.NewStructuredMesh(50, 25, 1, 0.6)
+	sm := geometry.NewStructuredMesh(50, 30, 1, 0.6)
 	tf := fvm.NewPrognosticScalarField("temperature", 20.0)
 
 	eq, err := fvm.NewEquation(tf,
@@ -84,7 +84,7 @@ func setupScenarioViz(diffusivity float32) uint64 {
 
 	// Update these in place
 	shared.NX = 50
-	shared.NY = 20
+	shared.NY = 30
 	shared.Width = rd.Width
 	shared.Height = rd.Height
 

@@ -1,9 +1,3 @@
-import {
-	createBuffer,
-	createShaderProgram,
-	updateBuffer,
-} from "./lib/webgl-helper.js";
-
 export class ScenarioViewport {
 	constructor(element) {
 		this.container = element;

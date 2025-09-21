@@ -77,8 +77,9 @@ class ScenarioRenderer {
 		);
 	}
 
-	setup() {
-		const result = this.wasmExports.setupScenarioViz(0.0001);
+	setup(params) {
+		const { diffusivity } = params;
+		const result = this.wasmExports.setupScenarioViz(diffusivity);
 		this.refreshMemoryViews(); // should be run after all expensive WASM calls
 
 		const [ptr, length] = this.unpackPtrLength(result);
@@ -242,7 +243,7 @@ onmessage = async ({ data }) => {
 			scenarioRenderer.setupWebGL(data.canvas);
 			break;
 		case "setup":
-			scenarioRenderer.setup();
+			scenarioRenderer.setup(data.params);
 			break;
 		case "start":
 			scenarioRenderer.start();
