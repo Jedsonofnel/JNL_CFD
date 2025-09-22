@@ -48,17 +48,17 @@ func calculateMeshTriangulation(mesh *Mesh) (
 		for j := startIdx + 1; j < endIdx-1; j++ {
 			v1, v2, v3 := hubVertexIdx, mesh.VertexIndices[j], mesh.VertexIndices[j+1]
 
-			cv1X, cv1Y := transformToClipSpace(mesh.VerticesX[v1], mesh.VerticesY[v1], sfX, sfY)
+			cv1X, cv1Y := transformToClipSpace(mesh.Vertices[v1].X, mesh.Vertices[v1].Y, sfX, sfY)
 			triangleVertices[vIdx*2] = cv1X
 			triangleVertices[vIdx*2+1] = cv1Y
 			vIdx++
 
-			cv2X, cv2Y := transformToClipSpace(mesh.VerticesX[v2], mesh.VerticesY[v2], sfX, sfY)
+			cv2X, cv2Y := transformToClipSpace(mesh.Vertices[v2].X, mesh.Vertices[v2].Y, sfX, sfY)
 			triangleVertices[vIdx*2] = cv2X
 			triangleVertices[vIdx*2+1] = cv2Y
 			vIdx++
 
-			cv3X, cv3Y := transformToClipSpace(mesh.VerticesX[v3], mesh.VerticesY[v3], sfX, sfY)
+			cv3X, cv3Y := transformToClipSpace(mesh.Vertices[v3].X, mesh.Vertices[v3].Y, sfX, sfY)
 			triangleVertices[vIdx*2] = cv3X
 			triangleVertices[vIdx*2+1] = cv3Y
 			vIdx++
@@ -89,7 +89,7 @@ func calculateLineVertices(mesh *Mesh) (lineVertices []float32) {
 		startIdx, endIdx := mesh.FaceStarts[i], mesh.FaceStarts[i+1]
 		for f := startIdx; f < endIdx; f++ {
 			localVIdx := mesh.VertexIndices[f]
-			physVX, physVY := mesh.VerticesX[localVIdx], mesh.VerticesY[localVIdx]
+			physVX, physVY := mesh.Vertices[localVIdx].X, mesh.Vertices[localVIdx].Y
 			clipVX, clipVY := transformToClipSpace(physVX, physVY, sfX, sfY)
 
 			lineVertices[vIdx*2] = clipVX   // x
@@ -102,7 +102,7 @@ func calculateLineVertices(mesh *Mesh) (lineVertices []float32) {
 
 			vIdx += 1
 
-			physVX, physVY = mesh.VerticesX[nextVIdx], mesh.VerticesY[nextVIdx]
+			physVX, physVY = mesh.Vertices[nextVIdx].X, mesh.Vertices[nextVIdx].Y
 			clipVX, clipVY = transformToClipSpace(physVX, physVY, sfX, sfY)
 
 			lineVertices[vIdx*2] = clipVX

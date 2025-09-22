@@ -230,6 +230,7 @@ func (se *scalarEquation) runFluxOperators() {
 }
 
 func (se *scalarEquation) assembleSystem() *linalg.System {
+	se.matrix.Wipe()
 	se.matrix.CopyFrom(se.matrixInternal)
 	se.rhs.Wipe()
 

@@ -18,8 +18,8 @@ func FindNearestCell(mesh *Mesh, x, y float32) (cellIdx int) {
 	var minDist float32 = math.MaxFloat32
 
 	for i := range mesh.NumCells() {
-		dX := x - mesh.CentroidsX[i]
-		dY := y - mesh.CentroidsY[i]
+		dX := x - mesh.Centroids[i].X
+		dY := y - mesh.Centroids[i].Y
 		distSqrd := (dX * dX) + (dY * dY)
 		if distSqrd < minDist {
 			minDist = distSqrd

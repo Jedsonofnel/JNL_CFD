@@ -110,6 +110,7 @@ func (pts *passiveTransportScenarioDefinition) Resolve() (Scenario, error) {
 
 	fieldRegistry := make(map[string]field)
 	scalarFields := make([]*scalarField, 0)
+	vectorFields := make([]*vectorField, 0)
 
 	for _, field := range pts.fields {
 		res, err := field.resolve(mesh)
@@ -122,6 +123,9 @@ func (pts *passiveTransportScenarioDefinition) Resolve() (Scenario, error) {
 		case *scalarField:
 			fieldRegistry[field.name] = field
 			scalarFields = append(scalarFields, field)
+		case *vectorField:
+			fieldRegistry[field.name] = field
+			vectorFields = append(vectorFields, field)
 		default:
 			return nil,
 				fmt.Errorf("passiveScalarTransportScenarioDefinition resolve > could not cast field of type '%T'",
@@ -158,10 +162,14 @@ func (pts *passiveTransportScenarioDefinition) Resolve() (Scenario, error) {
 	return &passiveTransportScenario{
 		mesh:   mesh,
 		solver: pts.solver.Resolve(mesh.NumCells()),
+		time:   0,
 
 		scalarFields:    scalarFields,
 		scalarEquations: scalarEquations,
-		tracerIndex:     tracerIndex,
+
+		vectorFields: vectorFields,
+
+		tracerIndex: tracerIndex,
 	}, nil
 }
 
@@ -170,9 +178,12 @@ func (pts *passiveTransportScenarioDefinition) Resolve() (Scenario, error) {
 type passiveTransportScenario struct {
 	mesh   *geometry.Mesh
 	solver linalg.Solver
+	time   float32
 
 	scalarFields    []*scalarField
 	scalarEquations []*scalarEquation
+
+	vectorFields []*vectorField
 
 	tracerIndex int
 }
@@ -201,8 +212,18 @@ func (pts *passiveTransportScenario) getMesh() *geometry.Mesh {
 }
 
 func (pts *passiveTransportScenario) advanceTime(dt float32) {
+	pts.time += dt
+
 	for _, field := range pts.scalarFields {
-		field.advanceTime()
+		if field.fieldType == governed {
+			governedScalarAdvanceTime(field)
+		}
+	}
+
+	for _, field := range pts.vectorFields {
+		if field.fieldType == derived {
+			derivedVectorAdvanceTime(field, pts.time, pts.mesh.FaceNormals)
+		}
 	}
 
 	for _, eq := range pts.scalarEquations {

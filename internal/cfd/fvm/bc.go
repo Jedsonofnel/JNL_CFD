@@ -58,6 +58,19 @@ func (sn ScalarNeumann) resolve(mesh *geometry.Mesh, boundaryName string) bc {
 
 func (sn ScalarNeumann) rank() rank { return scalar }
 
+type ScalarOutflow struct{}
+
+func (so ScalarOutflow) rank() rank { return scalar }
+
+func (so ScalarOutflow) resolve(mesh *geometry.Mesh, boundaryName string) bc {
+	cellIndices, boundaryIndices := findBCIndices(mesh, boundaryName)
+	return &scalarBC{
+		bcType:          outflow,
+		cellIndices:     cellIndices,
+		boundaryIndices: boundaryIndices,
+	}
+}
+
 func findBCIndices(mesh *geometry.Mesh, boundaryName string) (cellIndices, boundaryIndices []int) {
 	marker := -1
 	for i, name := range mesh.Boundaries {
@@ -74,10 +87,11 @@ func findBCIndices(mesh *geometry.Mesh, boundaryName string) (cellIndices, bound
 	cellIndices = make([]int, 0)
 	boundaryIndices = make([]int, 0)
 
-	mesh.ForEachBoundary(func(cellIdx, boundIdx, faceIdx int) {
-		if mesh.FaceMarkers[faceIdx] == marker {
-			cellIndices = append(cellIndices, cellIdx)
-			boundaryIndices = append(boundaryIndices, boundIdx)
+	mesh.ForEachConnection(func(i, j, f int) {
+		if mesh.FaceMarkers[f] == marker && j < 0 {
+			bIdx := -j - 1
+			cellIndices = append(cellIndices, i)
+			boundaryIndices = append(boundaryIndices, bIdx)
 		}
 	})
 
@@ -119,4 +133,4 @@ func scalarNeumannProcedure(
 	}
 }
 
-func scalarOutflowProcedure(_ *scalarBC, _ *scalarField, _ *scalarEquation) {}
+func scalarOutflowProcedure(bc *scalarBC, owner *scalarField, eq *scalarEquation) {}

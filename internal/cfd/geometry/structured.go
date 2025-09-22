@@ -30,8 +30,7 @@ func (sm *structuredMesh) Resolve() *Mesh {
 	bounds := Rectangle{Width: sm.Width, Height: sm.Height}
 	boundaries := []string{"northBorder", "eastBorder", "southBorder", "westBorder"}
 
-	verticesX := make([]float32, nCells*4)
-	verticesY := make([]float32, nCells*4)
+	vertices := make([]Vec2, nCells*4)
 	vertexIndices := make([]int, nCells*4)
 	faceStarts := make([]int, nCells+1)
 	faceMarkers := make([]int, nCells*4)
@@ -43,8 +42,8 @@ func (sm *structuredMesh) Resolve() *Mesh {
 			faceStarts[cellIdx] = cellIdx * 4
 
 			// bottom face
-			verticesX[vCount] = float32(j) * sX
-			verticesY[vCount] = float32(i) * sY
+			vertices[vCount].X = float32(j) * sX
+			vertices[vCount].Y = float32(i) * sY
 			vertexIndices[vCount] = vCount
 			if i == 0 {
 				faceMarkers[vCount] = 2 // southBorder
@@ -54,8 +53,8 @@ func (sm *structuredMesh) Resolve() *Mesh {
 			vCount++
 
 			// right face
-			verticesX[vCount] = float32(j+1) * sX
-			verticesY[vCount] = float32(i) * sY
+			vertices[vCount].X = float32(j+1) * sX
+			vertices[vCount].Y = float32(i) * sY
 			vertexIndices[vCount] = vCount
 			if j == sm.NX-1 {
 				faceMarkers[vCount] = 1 // eastBorder
@@ -65,8 +64,8 @@ func (sm *structuredMesh) Resolve() *Mesh {
 			vCount++
 
 			// top face
-			verticesX[vCount] = float32(j+1) * sX
-			verticesY[vCount] = float32(i+1) * sY
+			vertices[vCount].X = float32(j+1) * sX
+			vertices[vCount].Y = float32(i+1) * sY
 			vertexIndices[vCount] = vCount
 			if i == sm.NY-1 {
 				faceMarkers[vCount] = 0 // northBorder
@@ -76,8 +75,8 @@ func (sm *structuredMesh) Resolve() *Mesh {
 			vCount++
 
 			// left face
-			verticesX[vCount] = float32(j) * sX
-			verticesY[vCount] = float32(i+1) * sY
+			vertices[vCount].X = float32(j) * sX
+			vertices[vCount].Y = float32(i+1) * sY
 			vertexIndices[vCount] = vCount
 			if j == 0 {
 				faceMarkers[vCount] = 3 // westBorder
@@ -90,29 +89,25 @@ func (sm *structuredMesh) Resolve() *Mesh {
 
 	faceStarts[nCells] = len(vertexIndices)
 
-	dedupX, dedupY, indexMap := dedupVertices(verticesX, verticesY, 1e-6)
+	dedup, indexMap := dedupVertices(vertices, 1e-6)
 	vertexIndices = remapVertexIndices(vertexIndices, indexMap)
-	faceAreas, faceNormalsX, faceNormalsY := calculateFaceGeometry(dedupX, dedupY, vertexIndices, faceStarts)
-	cellVolumes, centroidsX, centroidsY := calculateCellGeometry(dedupX, dedupY, vertexIndices, faceStarts)
+	faceAreas, faceNormals := calculateFaceGeometry(dedup, vertexIndices, faceStarts)
+	cellVolumes, centroids := calculateCellGeometry(dedup, vertexIndices, faceStarts)
 	neighbourIndices := deriveConnectivity(vertexIndices, faceStarts, faceMarkers)
 
 	// the big one
-	connectivityVectorsX,
-		connectivityVectorsY,
+	connectivityVectors,
 		connectionDistances,
 		faceInterpolationWeights := calculateConnectivityGeometry(
-		centroidsX,
-		centroidsY,
+		centroids,
 		neighbourIndices,
-		dedupX,
-		dedupY,
+		dedup,
 		vertexIndices,
 		faceStarts,
 	)
 
 	return &Mesh{
-		VerticesX:     dedupX,
-		VerticesY:     dedupY,
+		Vertices:      dedup,
 		VertexIndices: vertexIndices,
 		FaceStarts:    faceStarts,
 		FaceMarkers:   faceMarkers,
@@ -120,18 +115,15 @@ func (sm *structuredMesh) Resolve() *Mesh {
 		Bounds:     bounds,
 		Boundaries: boundaries,
 
-		FaceAreas:    faceAreas,
-		FaceNormalsX: faceNormalsX,
-		FaceNormalsY: faceNormalsY,
+		FaceAreas:   faceAreas,
+		FaceNormals: faceNormals,
 
-		CentroidsX:  centroidsX,
-		CentroidsY:  centroidsY,
+		Centroids:   centroids,
 		CellVolumes: cellVolumes,
 
 		NeighbourIndices: neighbourIndices,
 
-		ConnectivityVectorsX:     connectivityVectorsX,
-		ConnectivityVectorsY:     connectivityVectorsY,
+		ConnectivityVectors:      connectivityVectors,
 		ConnectionDistances:      connectionDistances,
 		FaceInterpolationWeights: faceInterpolationWeights,
 	}

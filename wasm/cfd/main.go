@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/fvm"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
@@ -49,35 +50,42 @@ func getMeshRenderData() uint64 {
 }
 
 //export setupScenarioViz
-func setupScenarioViz(diffusivity float32) uint64 {
+func setupScenarioViz(_ float32) uint64 {
 	// setup code (manually for now until DSL)
-	sm := geometry.NewStructuredMesh(50, 30, 1, 0.6)
-	tf := fvm.NewPrognosticScalarField("temperature", 20.0)
+	sm := geometry.NewStructuredMesh(50, 25, 1, 0.5)
+	tf := fvm.NewPrognosticScalarField("temperature", 0)
+	vf := fvm.NewDerivedVectorField("velocity", func(t float32) fvm.Vec2 {
+		return fvm.Vec2{X: 0.1, Y: 0.00}
+	})
 
 	psHandler := fvm.NewScalarPointSourceHandler()
 
+	density := 1 // it's a dye
+	diffusivity := 1e-6
 	eq, err := fvm.NewEquation(tf,
-		fvm.NewDDT(tf, 1),
+		fvm.NewDDT(tf, density),
+		fvm.NewDiv(tf, vf, density),
 		fvm.NewLaplacian(tf, diffusivity),
 		fvm.NewScalarPointSource(psHandler),
+		// fvm.NewLinearSource(tf, -1),
 	)
 
-	psHandler.SetPointSource(0, 0, 2)
+	psHandler.SetPointSource(-0.9, 0, 1)
 
 	if err != nil {
 		panic(err)
 	}
 
 	eq.SetBoundaryConditions(sm, map[string]fvm.BCDefinition{
-		"northBorder": fvm.ScalarNeumann{},
-		"eastBorder":  fvm.ScalarDirichlet{Value: 5.0},
-		"southBorder": fvm.ScalarNeumann{},
-		"westBorder":  fvm.ScalarDirichlet{Value: 10.0},
+		"northBorder": fvm.ScalarOutflow{},
+		"eastBorder":  fvm.ScalarOutflow{},
+		"southBorder": fvm.ScalarOutflow{},
+		"westBorder":  fvm.ScalarOutflow{},
 	})
 
-	solver := linalg.NewJacobiCG(50, 1e-2)
+	solver := linalg.NewJacobiCG(500, 1e-3)
 	sd := fvm.NewPassiveTransportScenario(sm, solver,
-		[]fvm.FieldDefinition{tf}, []fvm.EquationDefinition{eq})
+		[]fvm.FieldDefinition{tf, vf}, []fvm.EquationDefinition{eq})
 
 	newScenario, err := sd.Resolve()
 	if err != nil {
@@ -89,7 +97,7 @@ func setupScenarioViz(diffusivity float32) uint64 {
 
 	// Update these in place
 	shared.NX = 50
-	shared.NY = 30
+	shared.NY = 25
 	shared.Width = rd.Width
 	shared.Height = rd.Height
 
@@ -107,6 +115,7 @@ func runFrame(dt float32) uint64 {
 	}
 
 	results := fvm.RunFrame(scenario, dt, 0)
+	fmt.Println("RESULTS: ", results)
 
 	normalisedResults := fvm.NormaliseResults(rd, results)
 

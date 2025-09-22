@@ -1,9 +1,12 @@
 package geometry
 
 import (
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
 	"github.com/chewxy/math32"
 	"math"
 )
+
+type Vec2 linalg.Vec2
 
 type MeshDefinition interface {
 	Resolve() *Mesh
@@ -14,10 +17,10 @@ const InternalBoundary = -1
 
 type Mesh struct {
 	// === FUNDAMENTAL (starting point) ===
-	VerticesX, VerticesY []float32 // vertex coords (deduplicated)
-	VertexIndices        []int     // vertex indices for each face (CCW)
-	FaceStarts           []int     // CSR: where each cell's face list starts
-	FaceMarkers          []int     // -1 = internal, 0+ = boundary
+	Vertices      []Vec2 // vertex coords (deduplicated)
+	VertexIndices []int  // vertex indices for each face (CCW)
+	FaceStarts    []int  // CSR: where each cell's face list starts
+	FaceMarkers   []int  // -1 = internal, 0+ = boundary
 
 	// boundary data required from the definition
 	Bounds     Rectangle
@@ -25,26 +28,26 @@ type Mesh struct {
 
 	// === GEOMETRIC PROPERTIES ===
 	// face geometry
-	FaceAreas                  []float32
-	FaceNormalsX, FaceNormalsY []float32
+	FaceAreas   []float32
+	FaceNormals []Vec2
 
 	// cell geometry
-	CentroidsX, CentroidsY []float32
-	CellVolumes            []float32
+	Centroids   []Vec2
+	CellVolumes []float32
 
 	// === CONNECTIVITY PROPERTIES ===
 	// connectivity data
 	NeighbourIndices []int // 0+ = internal, -1- = boundary
 
 	// connectivity geometry
-	ConnectivityVectorsX, ConnectivityVectorsY []float32
+	ConnectivityVectors []Vec2
 
 	ConnectionDistances      []float32
 	FaceInterpolationWeights []float32
 }
 
 func (m *Mesh) NumCells() int {
-	return len(m.CentroidsX)
+	return len(m.Centroids)
 }
 
 func (m *Mesh) NumNeighbours() int {
@@ -68,8 +71,8 @@ func (m *Mesh) FindClosestCell(point Vec2) int {
 	closestCell := -1
 
 	for i := range m.NumCells() {
-		cX, cY := m.CentroidsX[i], m.CentroidsY[i]
-		distSqd := (point.X-cX)*(point.X-cX) + (point.Y-cY)*(point.Y-cY)
+		c := m.Centroids[i]
+		distSqd := (point.X-c.X)*(point.X-c.X) + (point.Y-c.Y)*(point.Y-c.Y)
 
 		if distSqd < minDistSqd {
 			minDistSqd = distSqd
@@ -86,25 +89,11 @@ func (m *Mesh) ForEachCell(fn func(i int)) {
 	}
 }
 
-func (m *Mesh) ForEachInternal(fn func(i, j, face int)) {
+func (m *Mesh) ForEachConnection(fn func(i, j, face int)) {
 	for i := range m.NumCells() {
 		for f := m.FaceStarts[i]; f < m.FaceStarts[i+1]; f++ {
 			j := m.NeighbourIndices[f]
-			if j >= 0 {
-				fn(i, j, f)
-			}
-		}
-	}
-}
-
-func (m *Mesh) ForEachBoundary(fn func(i, bIdx, face int)) {
-	for i := range m.NumCells() {
-		for f := m.FaceStarts[i]; f < m.FaceStarts[i+1]; f++ {
-			j := m.NeighbourIndices[f]
-			if j < 0 {
-				bIdx := -j - 1
-				fn(i, bIdx, f)
-			}
+			fn(i, j, f)
 		}
 	}
 }
@@ -117,36 +106,35 @@ func (m *Mesh) ForEachBoundary(fn func(i, bIdx, face int)) {
 // 4 -> calculate cell geometry
 // 5 -> derive connectivity
 // 6 -> calculate connectivity geometry
-func dedupVertices(verticesX, verticesY []float32, tolerance float32) (
-	dedupX, dedupY []float32, indexMap []int) {
+func dedupVertices(vertices []Vec2, tolerance float32) (
+	dedup []Vec2, indexMap []int) {
 	var minX, maxX, minY, maxY float32 = math.MaxFloat32, -math.MaxFloat32, math.MaxFloat32, -math.MaxFloat32
 
-	for i := range verticesX {
-		minX, maxX = min(minX, verticesX[i]), max(maxX, verticesX[i])
-		minY, maxY = min(minY, verticesY[i]), max(maxY, verticesY[i])
+	for i := range vertices {
+		minX, maxX = min(minX, vertices[i].X), max(maxX, vertices[i].X)
+		minY, maxY = min(minY, vertices[i].Y), max(maxY, vertices[i].Y)
 	}
 
 	maxRange := max(maxX-minX, maxY-minY)
 	scale := 1 / (maxRange * tolerance) // how much to multiply our vertices by before casting as integers
 
 	dedupMap := make(map[[2]int]int)
-	indexMap = make([]int, len(verticesX))
+	indexMap = make([]int, len(vertices))
 
-	for i := range verticesX {
-		key := [2]int{int(verticesX[i] * scale), int(verticesY[i] * scale)}
+	for i := range vertices {
+		key := [2]int{int(vertices[i].X * scale), int(vertices[i].Y * scale)}
 
 		if existingIdx, found := dedupMap[key]; found {
 			indexMap[i] = existingIdx
 		} else {
-			newIdx := len(dedupX)
+			newIdx := len(dedup)
 			dedupMap[key] = newIdx
 			indexMap[i] = newIdx
-			dedupX = append(dedupX, verticesX[i])
-			dedupY = append(dedupY, verticesY[i])
+			dedup = append(dedup, vertices[i])
 		}
 	}
 
-	return dedupX, dedupY, indexMap
+	return dedup, indexMap
 }
 
 func remapVertexIndices(vertexIndices, indexMap []int) []int {
@@ -159,10 +147,13 @@ func remapVertexIndices(vertexIndices, indexMap []int) []int {
 	return newVertexIndices
 }
 
-func calculateCellGeometry(verticesX, verticesY []float32, vertexIndices, faceStarts []int) (
-	cellVolumes, centroidsX, centroidsY []float32) {
+func calculateCellGeometry(
+	vertices []Vec2,
+	vertexIndices, faceStarts []int,
+) (cellVolumes []float32, centroids []Vec2) {
 	nCells := len(faceStarts) - 1
-	cellVolumes, centroidsX, centroidsY = make([]float32, nCells), make([]float32, nCells), make([]float32, nCells)
+	cellVolumes = make([]float32, nCells)
+	centroids = make([]Vec2, nCells)
 
 	for i := range nCells {
 		startIdx, endIdx := faceStarts[i], faceStarts[i+1]
@@ -174,13 +165,13 @@ func calculateCellGeometry(verticesX, verticesY []float32, vertexIndices, faceSt
 			nextFi := startIdx + (fi-startIdx+1)%(endIdx-startIdx)
 			nextVi := vertexIndices[nextFi]
 
-			totalX += verticesX[vi]
-			totalY += verticesY[vi]
-			shoelace += verticesX[vi]*verticesY[nextVi] - verticesX[nextVi]*verticesY[vi]
+			totalX += vertices[vi].X
+			totalY += vertices[vi].Y
+			shoelace += vertices[vi].X*vertices[nextVi].Y - vertices[nextVi].X*vertices[vi].Y
 		}
 
-		centroidsX[i] = totalX / float32(numVertices)
-		centroidsY[i] = totalY / float32(numVertices)
+		centroids[i].X = totalX / float32(numVertices)
+		centroids[i].Y = totalY / float32(numVertices)
 		cellVolumes[i] = shoelace / 2
 
 		if cellVolumes[i] < 0 {
@@ -191,12 +182,12 @@ func calculateCellGeometry(verticesX, verticesY []float32, vertexIndices, faceSt
 	return
 }
 
-func calculateFaceGeometry(verticesX, verticesY []float32, vertexIndices, faceStarts []int) (
-	faceAreas, faceNormalsX, faceNormalsY []float32) {
+func calculateFaceGeometry(vertices []Vec2, vertexIndices, faceStarts []int) (
+	faceAreas []float32, faceNormals []Vec2) {
 	nCells := len(faceStarts) - 1
 	nFaces := len(vertexIndices)
 
-	faceAreas, faceNormalsX, faceNormalsY = make([]float32, nFaces), make([]float32, nFaces), make([]float32, nFaces)
+	faceAreas, faceNormals = make([]float32, nFaces), make([]Vec2, nFaces)
 
 	for i := range nCells {
 		startIdx, endIdx := faceStarts[i], faceStarts[i+1]
@@ -206,12 +197,13 @@ func calculateFaceGeometry(verticesX, verticesY []float32, vertexIndices, faceSt
 			nextFi := startIdx + (fi-startIdx+1)%(endIdx-startIdx)
 			nextVi := vertexIndices[nextFi]
 
-			dX, dY := verticesX[nextVi]-verticesX[vi], verticesY[nextVi]-verticesY[vi]
+			dX, dY := vertices[nextVi].X-vertices[vi].X, vertices[nextVi].Y-vertices[vi].Y
 
 			faceAreas[fi] = math32.Sqrt((dX)*(dX) + (dY)*(dY)) // magnitude of vector AND normal
 
 			// CCW normal of (dX, dY) = (dY, -dX)
-			faceNormalsX[fi], faceNormalsY[fi] = dY/faceAreas[fi], -dX/faceAreas[fi]
+			faceNormals[fi].X = dY / faceAreas[fi]
+			faceNormals[fi].Y = -dX / faceAreas[fi]
 		}
 	}
 	return
@@ -274,19 +266,18 @@ func deriveConnectivity(vertexIndices, faceStarts, faceMarkers []int) (neighbour
 }
 
 func calculateConnectivityGeometry(
-	centroidsX, centroidsY []float32,
+	centroids []Vec2,
 	neighbourIndices []int,
-	verticesX, verticesY []float32,
+	vertices []Vec2,
 	vertexIndices, faceStarts []int,
-) (connectionVectorsX, connectionVectorsY, connectionDistances, faceInterpolationWeights []float32) {
-	connectionVectorsX = make([]float32, len(neighbourIndices))
-	connectionVectorsY = make([]float32, len(neighbourIndices))
+) (connectionVectors []Vec2, connectionDistances, faceInterpolationWeights []float32) {
+	connectionVectors = make([]Vec2, len(neighbourIndices))
 	connectionDistances = make([]float32, len(neighbourIndices))
 	faceInterpolationWeights = make([]float32, len(neighbourIndices))
 
-	for i := range len(centroidsX) {
+	for i := range len(centroids) {
 		startIdx, endIdx := faceStarts[i], faceStarts[i+1]
-		cX, cY := centroidsX[i], centroidsY[i]
+		c := centroids[i]
 
 		for fi := startIdx; fi < endIdx; fi++ {
 			ni := neighbourIndices[fi]
@@ -294,25 +285,26 @@ func calculateConnectivityGeometry(
 			nextFi := startIdx + (fi-startIdx+1)%(endIdx-startIdx)
 			nextVi := vertexIndices[nextFi]
 
-			f1X, f1Y := verticesX[vi], verticesY[vi]               // face vector start point
-			fX, fY := verticesX[nextVi]-f1X, verticesY[nextVi]-f1Y // face vector
+			f1 := vertices[vi] // face vector start point
+
+			fX, fY := vertices[nextVi].X-f1.X, vertices[nextVi].Y-f1.Y // face vector
 
 			if ni < 0 {
-				fcX, fcY := f1X+0.5*fX, f1Y+0.5*fY // face centroid
-				bdX, bdY := fcX-cX, fcY-cY         // boundary dX/Y
+				fcX, fcY := f1.X+0.5*fX, f1.Y+0.5*fY // face centroid
+				bdX, bdY := fcX-c.X, fcY-c.Y         // boundary dX/Y
 
 				connectionDistances[fi] = math32.Sqrt(bdX*bdX + bdY*bdY)
-				connectionVectorsX[fi] = bdX / connectionDistances[fi]
-				connectionVectorsY[fi] = bdY / connectionDistances[fi]
+				connectionVectors[fi].X = bdX / connectionDistances[fi]
+				connectionVectors[fi].Y = bdY / connectionDistances[fi]
 				faceInterpolationWeights[fi] = 1 // boundary
 				continue
 			}
 
-			dX, dY := centroidsX[ni]-cX, centroidsY[ni]-cY
+			dX, dY := centroids[ni].X-c.X, centroids[ni].Y-c.Y
 
 			connectionDistances[fi] = math32.Sqrt(dX*dX + dY*dY)
-			connectionVectorsX[fi] = dX / connectionDistances[fi]
-			connectionVectorsY[fi] = dY / connectionDistances[fi]
+			connectionVectors[fi].X = dX / connectionDistances[fi]
+			connectionVectors[fi].Y = dY / connectionDistances[fi]
 
 			// Cramers rule for finding intersection:
 			// [dx - fx]t1 = [Fx - Cx]
@@ -324,15 +316,15 @@ func calculateConnectivityGeometry(
 				panic("calculateConnectivityGeometry: face and centroid vectors are considered parallel")
 			}
 
-			t1 := (dX*(f1Y-cY) - dY*(f1X-cX)) / det
-			t2 := ((f1X-cX)*-fY - (f1Y-cY)*-fX) / det
+			t1 := (dX*(f1.Y-c.Y) - dY*(f1.X-c.X)) / det
+			t2 := ((f1.X-c.X)*-fY - (f1.Y-c.Y)*-fX) / det
 
 			if t1 < 0 || t1 > 1 || t2 < 0 || t2 > 1 {
 				panic("calculateConnectivityGeometry: connection vector and face vector do not intersect")
 			}
 
-			iX, iY := cX+t1*dX, cY+t1*dY // intersection coords
-			fdX, fdY := iX-cX, iY-cY     // centroid -> intersection vector
+			iX, iY := c.X+t1*dX, c.Y+t1*dY // intersection coords
+			fdX, fdY := iX-c.X, iY-c.Y     // centroid -> intersection vector
 			faceDistance := math32.Sqrt(fdX*fdX + fdY*fdY)
 			faceInterpolationWeights[fi] = faceDistance / connectionDistances[fi]
 		}
