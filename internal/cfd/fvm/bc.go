@@ -133,4 +133,10 @@ func scalarNeumannProcedure(
 	}
 }
 
-func scalarOutflowProcedure(bc *scalarBC, owner *scalarField, eq *scalarEquation) {}
+func scalarOutflowProcedure(bc *scalarBC, owner *scalarField, eq *scalarEquation) {
+	for i, cellIdx := range bc.cellIndices {
+		boundIdx := bc.boundaryIndices[i]
+		eq.matrix.AddDiagonal(cellIdx, eq.boundaryDiag[boundIdx])
+		eq.matrix.AddDiagonal(cellIdx, eq.boundaryOffDiag[boundIdx])
+	}
+}

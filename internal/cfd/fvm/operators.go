@@ -345,11 +345,11 @@ func scalarDivProcedure(op *scalarOperator, mesh *geometry.Mesh, eq *scalarEquat
 	mesh.ForEachConnection(func(i, j, f int) {
 		flux := op.fluxes[f]
 		if j >= 0 {
-			eq.matrixInternal.AddDiagonal(i, flux)
+			eq.matrixInternal.AddDiagonal(i, max(flux, 0))
 			eq.matrixInternal.Subtract(i, j, max(-flux, 0))
 		} else {
 			bIdx := -j - 1 // eg -5 becomes -(-5)-1 = 4
-			eq.boundaryDiag[bIdx] += flux
+			eq.boundaryDiag[bIdx] += max(flux, 0)
 			eq.boundaryOffDiag[bIdx] += max(-flux, 0)
 		}
 	})
@@ -370,11 +370,6 @@ func scalarDDTProcedure(op *scalarOperator, mesh *geometry.Mesh, eq *scalarEquat
 func scalarPointSrcProcedure(op *scalarOperator, mesh *geometry.Mesh, eq *scalarEquation) {
 	for i, src := range op.fluxes {
 		eq.rhs[i] += src * eq.dt
-
-		if src != 0 {
-			fmt.Printf("Point source cell value: %.6f, RHS contribution: %.6f\n",
-				eq.owner.cellValues[i], src*eq.dt)
-		}
 	}
 }
 

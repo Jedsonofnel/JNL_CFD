@@ -3,10 +3,10 @@
 package main
 
 import (
-	"fmt"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/fvm"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
+	"github.com/chewxy/math32"
 	"unsafe"
 )
 
@@ -52,25 +52,25 @@ func getMeshRenderData() uint64 {
 //export setupScenarioViz
 func setupScenarioViz(_ float32) uint64 {
 	// setup code (manually for now until DSL)
-	sm := geometry.NewStructuredMesh(50, 25, 1, 0.5)
+	sm := geometry.NewStructuredMesh(24, 12, 1, 0.5)
 	tf := fvm.NewPrognosticScalarField("temperature", 0)
 	vf := fvm.NewDerivedVectorField("velocity", func(t float32) fvm.Vec2 {
-		return fvm.Vec2{X: 0.1, Y: 0.00}
+		return fvm.Vec2{X: 0.3, Y: 0.05 * math32.Sin(t)}
 	})
 
 	psHandler := fvm.NewScalarPointSourceHandler()
 
 	density := 1 // it's a dye
-	diffusivity := 1e-6
+	diffusivity := 1e-4
 	eq, err := fvm.NewEquation(tf,
 		fvm.NewDDT(tf, density),
 		fvm.NewDiv(tf, vf, density),
 		fvm.NewLaplacian(tf, diffusivity),
 		fvm.NewScalarPointSource(psHandler),
-		// fvm.NewLinearSource(tf, -1),
+		// fvm.NewLinearSource(tf, -0.01),
 	)
 
-	psHandler.SetPointSource(-0.9, 0, 1)
+	psHandler.SetPointSource(-1, 0, 0.1)
 
 	if err != nil {
 		panic(err)
@@ -80,7 +80,7 @@ func setupScenarioViz(_ float32) uint64 {
 		"northBorder": fvm.ScalarOutflow{},
 		"eastBorder":  fvm.ScalarOutflow{},
 		"southBorder": fvm.ScalarOutflow{},
-		"westBorder":  fvm.ScalarOutflow{},
+		"westBorder":  fvm.ScalarDirichlet{},
 	})
 
 	solver := linalg.NewJacobiCG(500, 1e-3)
@@ -96,8 +96,8 @@ func setupScenarioViz(_ float32) uint64 {
 	rd = fvm.NewRenderData(scenario)
 
 	// Update these in place
-	shared.NX = 50
-	shared.NY = 25
+	shared.NX = 24
+	shared.NY = 12
 	shared.Width = rd.Width
 	shared.Height = rd.Height
 
@@ -115,7 +115,6 @@ func runFrame(dt float32) uint64 {
 	}
 
 	results := fvm.RunFrame(scenario, dt, 0)
-	fmt.Println("RESULTS: ", results)
 
 	normalisedResults := fvm.NormaliseResults(rd, results)
 

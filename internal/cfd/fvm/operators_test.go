@@ -9,24 +9,27 @@ import (
 
 // LAPLACIAN
 
+// SCALAR
+
 func TestScalarLaplacianResolve(t *testing.T) {
 	mesh := sample1x5StructuredMesh()
 
-	laplacianDef := NewScalarLaplacian(nil, 8)
-	laplacian := laplacianDef.Resolve(mesh)
+	laplacianDef := newScalarLaplacian(nil, 8)
+	resolved, _ := laplacianDef.resolve(mesh, nil)
+	laplacianOp := resolved.(*scalarOperator)
 
-	wantedOpType := laplacianType
-	if got := laplacian.opType; got != wantedOpType {
+	wantedOpType := laplacian
+	if got := laplacianOp.opType; got != wantedOpType {
 		t.Errorf("opType error: got: %v, want: %v", got, wantedOpType)
 	}
 
 	var wantedCoeff float32 = 8
-	if got := laplacian.coeff; got != wantedCoeff {
+	if got := laplacianOp.coeff; got != wantedCoeff {
 		t.Errorf("coeff error: got: %v, want: %v", got, wantedCoeff)
 	}
 
-	var wantedCoupledScalars []scalar = []scalar{}
-	if got := len(laplacian.coupledScalars); got != len(wantedCoupledScalars) {
+	var wantedCoupledScalars []*scalarField = []*scalarField{}
+	if got := len(laplacianOp.coupledScalars); got != len(wantedCoupledScalars) {
 		t.Errorf("coupledScalars error: got: %v, want: %v", got, len(wantedCoupledScalars))
 	}
 
@@ -37,18 +40,16 @@ func TestScalarLaplacianResolve(t *testing.T) {
 		16, 8, 16, 8,
 		16, 16, 16, 8,
 	}
-	if got := laplacian.precalcs; !floatSlicesEqual(got, wantedPrecalcs, 1e-6) {
+	if got := laplacianOp.precalcs; !floatSlicesEqual(got, wantedPrecalcs, 1e-6) {
 		t.Errorf("precalc error: got: %v, want %v", got, wantedPrecalcs)
 	}
 }
 
 func TestScalarLaplacianApplyFluxes(t *testing.T) {
 	mesh := sample1x5StructuredMesh()
-	laplacianDef := NewScalarLaplacian(nil, 8)
-	laplacian := laplacianDef.Resolve(mesh)
+	laplacianDef := newScalarLaplacian(nil, 8)
+	laplacian, _ := laplacianDef.resolve(mesh, nil)
 
-	sys := newSystemAssemblyContext(mesh.NumCells(),
-		mesh.NumBoundaries(), mesh.FaceStarts, mesh.NeighbourIndices)
 
 	applyFluxes(laplacian, mesh, sys)
 
@@ -107,6 +108,10 @@ func TestScalarLaplacianApplyFluxes(t *testing.T) {
 		t.Errorf("boundary off-diag errors: got %v, want %v", got, wantedBoundOffDiag)
 	}
 }
+
+// DIVERGENCE
+
+// SCALAR
 
 // helpers
 
