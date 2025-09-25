@@ -10,10 +10,8 @@ import (
 type symbol string
 
 func (s symbol) String() string {
-	return fmt.Sprintf("SYMBOL:%q", string(s))
+	return fmt.Sprintf("%q", string(s))
 }
-
-// type string string
 
 type list []exp
 
@@ -64,31 +62,39 @@ func parseExpression(tokens []token, idx *int) (exp, error) {
 		}
 		*idx++ // consume ")"
 		return list, nil
-
 	case tokenCloseParen:
 		return nil, fmt.Errorf("unexpected ')'")
-
-	case tokenSymbol:
-		return newSymbol(token.val), nil
-
+	case tokenString:
+		return token.val, nil
+	case tokenBool:
+		return parseBool(token.val), nil
 	case tokenNumber:
 		return parseNumber(token.val), nil
+	case tokenSymbol:
+		return newSymbol(token.val), nil
 	default:
 		return nil, fmt.Errorf("unexpected token: %v", token)
 	}
 }
 
-func parseNumber(s string) exp {
-	if strings.ContainsAny(s, "ij") {
-		c, _ := strconv.ParseComplex(s, 128)
+func parseBool(t string) exp {
+	if t == "#f" || t == "#F" {
+		return false
+	}
+	return true
+}
+
+func parseNumber(t string) exp {
+	if strings.ContainsAny(t, "ij") {
+		c, _ := strconv.ParseComplex(t, 128)
 		return c
 	}
 
-	if strings.ContainsAny(s, ".eE") {
-		f, _ := strconv.ParseFloat(s, 32)
+	if strings.ContainsAny(t, ".eE") {
+		f, _ := strconv.ParseFloat(t, 32)
 		return float32(f)
 	}
 
-	i, _ := strconv.Atoi(s)
+	i, _ := strconv.Atoi(t)
 	return i
 }

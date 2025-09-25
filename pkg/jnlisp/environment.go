@@ -5,29 +5,102 @@ import (
 	"math"
 )
 
-type env map[symbol]any
+type env struct {
+	bindings map[symbol]any
+	outer    *env
+}
 
-func newStandardEnv() (env env) {
-	env = make(map[symbol]any)
+func newEnv(outer *env) *env {
+	return &env{
+		bindings: make(map[symbol]any),
+		outer:    outer,
+	}
+}
 
-	defineProc := func(name string, fn LispFunc) {
-		env[symbol(name)] = fn
+func (e *env) defineProc(name symbol, p ProcFunc) {
+	procedure := &Procedure{
+		proc:    p, // this means it's got a concrete go procedure so no need for body/parms
+		name:    string(name),
+		closure: e,
 	}
 
-	// funci
-	defineProc("+", lispAdd)
-	defineProc("-", lispSubtract)
-	defineProc("*", lispMultiply)
-	defineProc("/", lispDivide)
-	defineProc("%", lispModulo)
-	defineProc("sin", lispSine)
-	defineProc("cos", lispCosine)
-	defineProc("sqrt", lispSqrt)
+	e.bindings[symbol(name)] = procedure
+}
+
+func (e *env) find(s symbol) (exp, bool) {
+	val, exists := e.bindings[s]
+	if exists {
+		return val, true
+	}
+
+	if e.outer != nil {
+		return e.outer.find(s)
+	}
+
+	return nil, false
+}
+
+func (e *env) bind(s symbol, exp exp) {
+	e.bindings[s] = exp
+}
+
+func newStandardEnv() (e *env) {
+	e = newEnv(nil)
+
+	e.defineProc("+", lispAdd)
+	e.defineProc("-", lispSubtract)
+	e.defineProc("*", lispMultiply)
+	e.defineProc("/", lispDivide)
+	e.defineProc("%", lispModulo)
+	e.defineProc("sin", lispSine)
+	e.defineProc("cos", lispCosine)
+	e.defineProc("sqrt", lispSqrt)
+
+	e.defineProc(">", lispGreaterThan)
+	e.defineProc("<", lispLessThan)
+	e.defineProc("=", lispEqual)
+	e.defineProc("not", lispNot)
 
 	return
 }
 
-type LispFunc func(args ...any) (any, error)
+type ProcFunc func(args ...any) (any, error)
+
+type Procedure struct {
+	proc    ProcFunc
+	name    string
+	parms   []symbol
+	body    []exp
+	closure *env
+}
+
+func (p *Procedure) Call(args ...any) (exp, error) {
+	if p.proc != nil { // given a go binding
+		return p.proc(args...)
+	}
+
+	activationEnv := newEnv(p.closure)
+
+	if len(args) != len(p.parms) {
+		return nil, fmt.Errorf("'%s' expects %d argument(s), but got %d",
+			p.name, len(p.parms), len(args))
+	}
+
+	for i, parm := range p.parms {
+		activationEnv.bind(parm, args[i])
+	}
+
+	var result exp
+	var err error
+	for _, expr := range p.body {
+		result, err = eval(expr, activationEnv)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, err
+}
 
 // STANDARD MATHS
 
@@ -123,7 +196,7 @@ func lispModulo(args ...any) (any, error) {
 
 func lispSine(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("sin requires exactly 1 argument")
+		return nil, fmt.Errorf("sin expects exactly 1 argument, got %d", len(args))
 	}
 
 	castArgs, err := toRational(args, "sin")
@@ -136,7 +209,7 @@ func lispSine(args ...any) (any, error) {
 
 func lispCosine(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("cos requires exactly 1 argument")
+		return nil, fmt.Errorf("cos expects exactly 1 argument, got %d", len(args))
 	}
 
 	castArgs, err := toRational(args, "cos")
@@ -149,7 +222,7 @@ func lispCosine(args ...any) (any, error) {
 
 func lispSqrt(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("sqrt requires exactly 1 argument")
+		return nil, fmt.Errorf("sqrt expects exactly 1 argument, got %d", len(args))
 	}
 
 	castArgs, err := toRational(args, "sqrt")
@@ -165,7 +238,92 @@ func lispSqrt(args ...any) (any, error) {
 	return math.Sqrt(arg), nil
 }
 
+// COMPARISONS
+
+func lispGreaterThan(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("> expects exactly 2 arguments, got %d", len(args))
+	}
+
+	castArgs, err := toRational(args, ">")
+	if err != nil {
+		return nil, err
+	}
+
+	return castArgs[0] > castArgs[1], nil
+}
+
+func lispLessThan(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("< expects exactly 2 arguments, got %d", len(args))
+	}
+
+	castArgs, err := toRational(args, "<")
+	if err != nil {
+		return nil, err
+	}
+
+	return castArgs[0] < castArgs[1], nil
+}
+
+func lispEqual(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("= expects at least 2 arguments, got %d", len(args))
+	}
+
+	first := args[0]
+	for i := 1; i < len(args); i++ {
+		if !isEqual(first, args[i]) {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func lispNot(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("not expects at least 1 argument, got %d", len(args))
+	}
+
+	condition, ok := args[0].(bool)
+	if !ok {
+		return nil, fmt.Errorf("not expects a boolean argument, got %T", args[0])
+	}
+
+	return !condition, nil
+}
+
 // HELPERS
+
+func isEqual(a, b any) bool {
+	if isNumber(a) && isNumber(b) {
+		castArgs, _ := toComplex([]any{a, b}, "")
+		return castArgs[0] == castArgs[1]
+	}
+
+	switch va := a.(type) {
+	case bool:
+		if vb, ok := b.(bool); ok {
+			return va == vb
+		}
+	case string:
+		if vb, ok := b.(string); ok {
+			return va == vb
+		}
+	}
+
+	return false
+}
+
+func isNumber(x any) bool {
+	switch x.(type) {
+	case int, float32, float64, complex64, complex128:
+		return true
+	default:
+		return false
+	}
+}
 
 func toRational(args []any, name string) ([]float64, error) {
 	cast := make([]float64, 0)
