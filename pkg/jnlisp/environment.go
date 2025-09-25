@@ -19,8 +19,7 @@ func newEnv(outer *env) *env {
 }
 
 func (e *env) find(s string) (Atom, bool) {
-	val, exists := e.bindings[s]
-	if exists {
+	if val, exists := e.bindings[s]; exists {
 		return val, true
 	}
 
@@ -31,12 +30,14 @@ func (e *env) find(s string) (Atom, bool) {
 	return nil, false
 }
 
-func (e *env) bind(s string, atom Atom) {
-	e.bindings[s] = atom
-}
-
-func (e *env) extend() *env {
-	return newEnv(e)
+func (e *env) bind(s string, atom Atom) boundAtom{
+	boundAtom := boundAtom{
+		Atom:   atom,
+		handle: s,
+		env:    e,
+	}
+	e.bindings[s] = boundAtom
+	return boundAtom
 }
 
 func newStandardEnv() (e *env) {

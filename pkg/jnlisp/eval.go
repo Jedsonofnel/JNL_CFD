@@ -113,8 +113,7 @@ func evalDefine(l list, ctx *Context) (Atom, error) {
 		if ctx.importPrefix != "" {
 			bindName = ctx.importPrefix + "/" + bindName
 		}
-		ctx.env.bind(bindName, defExpResult)
-		return defExpResult, nil
+		return ctx.env.bind(bindName, defExpResult), nil
 	}
 
 	// handle function definition
@@ -147,8 +146,8 @@ func evalDefine(l list, ctx *Context) (Atom, error) {
 		if ctx.importPrefix != "" {
 			bindName = ctx.importPrefix + "/" + bindName
 		}
-		ctx.env.bind(bindName, ProcedureAtom{proc})
-		return ProcedureAtom{proc}, nil
+
+		return ctx.env.bind(bindName, ProcedureAtom{proc}), nil
 	}
 
 	// handle error
@@ -254,7 +253,7 @@ func evalApplication(list list, ctx *Context) (Atom, error) {
 		return nil, err
 	}
 
-	castProc, ok := proc.(ProcedureAtom)
+	castProc, ok := As[ProcedureAtom](proc)
 	if !ok {
 		return nil, fmt.Errorf("cannot call non-procedure: %s", proc.Type())
 	}
@@ -402,10 +401,49 @@ func (p ProcedureAtom) String() string {
 	// TODO: maybe add a pretty print of params
 	return fmt.Sprintf("#<procedure:%s>", p.name)
 }
+
 func (p ProcedureAtom) ToJSON() map[string]any {
 	return map[string]any{
 		"type":  "procedure",
 		"value": p.name,
 		"repr":  p.String(),
 	}
+}
+
+// WRAPPER TYPE FOR QUERYING ENV
+
+type boundAtom struct {
+	Atom
+	handle string
+	env    *env
+}
+
+func (b boundAtom) ToJSON() map[string]any {
+	json := b.Atom.ToJSON()
+	json["handle"] = b.handle
+	if b.env != nil {
+		json["bound"] = true
+	}
+	return json
+}
+
+func (b boundAtom) Type() string   { return b.Atom.Type() }
+func (b boundAtom) String() string { return b.Atom.String() }
+
+func As[T Atom](atom Atom) (T, bool) {
+	var zero T
+	atom = UnwrapAtom(atom)
+
+	if result, ok := (atom).(T); ok {
+		return result, true
+	}
+
+	return zero, false
+}
+
+func UnwrapAtom(atom Atom) Atom {
+	if boundAtom, ok := atom.(boundAtom); ok {
+		return boundAtom.Atom
+	}
+	return atom
 }

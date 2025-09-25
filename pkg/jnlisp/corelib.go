@@ -31,7 +31,7 @@ func init() {
 func lispAdd(args []Atom, _ table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
-		if num, ok := arg.(NumberAtom); ok {
+		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.value)
 		} else {
 			return nil, fmt.Errorf("+ expects numbers, got %s", arg.Type())
@@ -58,7 +58,7 @@ func lispSubtract(args []Atom, _ table) (Atom, error) {
 
 	var values []any
 	for _, arg := range args {
-		if num, ok := arg.(NumberAtom); ok {
+		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.value)
 		} else {
 			return nil, fmt.Errorf("- expects numbers, got %s", arg.Type())
@@ -85,7 +85,7 @@ func lispSubtract(args []Atom, _ table) (Atom, error) {
 func lispMultiply(args []Atom, _ table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
-		if num, ok := arg.(NumberAtom); ok {
+		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.value)
 		} else {
 			return nil, fmt.Errorf("/ expects numbers, got %s", arg.Type())
@@ -112,7 +112,7 @@ func lispDivide(args []Atom, _ table) (Atom, error) {
 
 	var values []any
 	for _, arg := range args {
-		if num, ok := arg.(NumberAtom); ok {
+		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.value)
 		} else {
 			return nil, fmt.Errorf("/ expects numbers, got %s", arg.Type())
@@ -143,7 +143,7 @@ func lispModulo(args []Atom, _ table) (Atom, error) {
 
 	var values []any
 	for _, arg := range args {
-		if num, ok := arg.(NumberAtom); ok {
+		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.value)
 		} else {
 			return nil, fmt.Errorf("%% expects numbers, got %s", arg.Type())
@@ -187,7 +187,7 @@ func lispGreaterThan(args []Atom, _ table) (Atom, error) {
 
 	var values []any
 	for _, arg := range args {
-		if num, ok := arg.(NumberAtom); ok {
+		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.value)
 		} else {
 			return nil, fmt.Errorf("> expects numbers, got %s", arg.Type())
@@ -218,8 +218,8 @@ func lispNot(args []Atom, _ table) (Atom, error) {
 // HELPERS
 
 func atomsEqual(a, b Atom) bool {
-	if numA, okA := a.(NumberAtom); okA {
-		if numB, okB := b.(NumberAtom); okB {
+	if numA, okA := As[NumberAtom](a); okA {
+		if numB, okB := As[NumberAtom](b); okB {
 			values := []any{numA.value, numB.value}
 			castArgs, _ := toComplex(values, "")
 			return castArgs[0] == castArgs[1]

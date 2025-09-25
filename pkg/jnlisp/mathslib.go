@@ -27,7 +27,7 @@ func lispSine(args []Atom, _ table) (Atom, error) {
 		return nil, fmt.Errorf("sin expects exactly 1 argument, got %d", len(args))
 	}
 
-	num, ok := args[0].(NumberAtom)
+	num, ok := As[NumberAtom](args[0])
 	if !ok {
 		return nil, fmt.Errorf("cos expects a number, got %s", args[0].Type())
 	}
@@ -45,7 +45,7 @@ func lispCosine(args []Atom, _ table) (Atom, error) {
 		return nil, fmt.Errorf("cos expects exactly 1 argument, got %d", len(args))
 	}
 
-	num, ok := args[0].(NumberAtom)
+	num, ok := As[NumberAtom](args[0])
 	if !ok {
 		return nil, fmt.Errorf("cos expects a number, got %s", args[0].Type())
 	}
@@ -63,9 +63,9 @@ func lispSqrt(args []Atom, _ table) (Atom, error) {
 		return nil, fmt.Errorf("sqrt expects exactly 1 argument, got %d", len(args))
 	}
 
-	num, ok := args[0].(NumberAtom)
+	num, ok := As[NumberAtom](args[0])
 	if !ok {
-		return nil, fmt.Errorf("sqrt expects numbers, got %s", args[0].Type())
+		return nil, fmt.Errorf("sqrt expects a number, got %s", args[0].Type())
 	}
 
 	castArgs, err := toRational([]any{num.value}, "sqrt")
