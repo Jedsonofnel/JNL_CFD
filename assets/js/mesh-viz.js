@@ -1,4 +1,4 @@
-export class MeshViewport {
+export class MeshViz {
 	constructor(element) {
 		this.container = element;
 		this.canvas = element.querySelector("[data-js-viewport-canvas]");

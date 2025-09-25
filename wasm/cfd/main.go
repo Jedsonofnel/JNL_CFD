@@ -18,6 +18,15 @@ var shared struct {
 	NY     int32
 	Width  float32
 	Height float32
+
+	Density     float32
+	Diffusivity float32
+	VelocityX   float32
+	VelocityY   float32
+
+	PointSrcX   float32
+	PointSrcY   float32
+	PointSrcVal float32
 }
 
 //export getSharedMemLoc
@@ -52,16 +61,22 @@ func getMeshRenderData() uint64 {
 //export setupScenarioViz
 func setupScenarioViz(_ float32) uint64 {
 	// setup code (manually for now until DSL)
-	sm := geometry.NewStructuredMesh(24, 12, 1, 0.5)
+	sm := geometry.NewStructuredMesh(
+		int(shared.NX),
+		int(shared.NY),
+		float64(shared.Width),
+		float64(shared.Height),
+	)
+
 	tf := fvm.NewPrognosticScalarField("temperature", 0)
 	vf := fvm.NewDerivedVectorField("velocity", func(t float32) fvm.Vec2 {
-		return fvm.Vec2{X: 0.3, Y: 0.05 * math32.Sin(t)}
+		return fvm.Vec2{X: shared.VelocityX, Y: shared.VelocityY * math32.Sin(t)}
 	})
 
 	psHandler := fvm.NewScalarPointSourceHandler()
 
-	density := 1 // it's a dye
-	diffusivity := 1e-4
+	density := shared.Density
+	diffusivity := shared.Diffusivity
 	eq, err := fvm.NewEquation(tf,
 		fvm.NewDDT(tf, density),
 		fvm.NewDiv(tf, vf, density),
@@ -80,10 +95,10 @@ func setupScenarioViz(_ float32) uint64 {
 		"northBorder": fvm.ScalarOutflow{},
 		"eastBorder":  fvm.ScalarOutflow{},
 		"southBorder": fvm.ScalarOutflow{},
-		"westBorder":  fvm.ScalarDirichlet{},
+		"westBorder":  fvm.ScalarOutflow{},
 	})
 
-	solver := linalg.NewJacobiCG(500, 1e-3)
+	solver := linalg.NewJacobiCG(100, 1e-3)
 	sd := fvm.NewPassiveTransportScenario(sm, solver,
 		[]fvm.FieldDefinition{tf, vf}, []fvm.EquationDefinition{eq})
 
@@ -94,12 +109,6 @@ func setupScenarioViz(_ float32) uint64 {
 	scenario = newScenario
 
 	rd = fvm.NewRenderData(scenario)
-
-	// Update these in place
-	shared.NX = 24
-	shared.NY = 12
-	shared.Width = rd.Width
-	shared.Height = rd.Height
 
 	vertices := rd.TriangleVertices
 	ptr := uintptr(unsafe.Pointer(&vertices[0]))

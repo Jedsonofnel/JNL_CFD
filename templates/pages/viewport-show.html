@@ -8,11 +8,11 @@
 		</ul>
 	</nav>
 
-	<div data-js-viewport="{{ Page.family }}">
-		<canvas data-js-viewport-canvas width="800" height="600" class="renderer-canvas"></canvas>
+	<div data-js-viz="{{ Page.family }}">
+		<canvas data-js-viz-canvas width="800" height="600" class="renderer-canvas"></canvas>
 
 		{{# Page.structured-mesh }}
-		<fieldset data-js-viewport-data>
+		<fieldset data-js-viz-data>
 			<legend>Structured mesh parameters</legend>
 
 			<input name="type" value="{{ Type }}" type="hidden">
@@ -39,24 +39,67 @@
 			</div>
 		</fieldset>
 
-		<button data-js-viewport-button="reload">Reload</button>
+		<button data-js-viz-button="reload">Reload</button>
 		{{/ Page.structured-mesh }}
 
 		{{# Page.passive-transport-scenario }}
-		<fieldset data-js-viewport-data>
+		<fieldset data-js-viz-data>
 			<legend>Scenario parameters</legend>
 
 			<input name="type" value="{{ Type }}" type="hidden">
 
-			<div>
-				<label for="diffusivity">Diffusivity</label>
-				<input id="diffusivity" type="number" name="diffusivity" value="0.001" step="0.001">
-			</div>
+			<fieldset>
+				<legend>Physics parameters</legend>
+				<div>
+					<label for="density">Density</label>
+					<input id="density" type="number" name="density" value="1" step="1" min="0">
+				</div>
+
+				<div>
+					<label for="diffusivity">Diffusivity</label>
+					<input id="diffusivity" type="number" name="diffusivity" value="0.0001" step="0.0001" min="0">
+				</div>
+
+				<div>
+					<label for="velocityX">X Velocity (m/s)</label>
+					<input id="velocityX" type="number" name="velocityX" value="0.3" step="0.05" min="0">
+				</div>
+
+				<div>
+					<label for="velocityY">Y Velocity (m/s)</label>
+					<input id="velocityY" type="number" name="velocityY" value="0.1" step="0.05" min="0">
+				</div>
+			</fieldset>
+
+			<fieldset>
+				<legend>Structured mesh parameters</legend>
+
+				<div>
+					<label for="nx">Columns</label>
+					<input id="nx" type="number" name="nx" value="24">
+				</div>
+
+				<div>
+					<label for="ny">Rows</label>
+					<input id="ny" type="number" name="ny" value="12">
+				</div>
+
+
+				<div>
+					<label for="width">Width (m)</label>
+					<input id="width" type="number" name="width" value="1">
+				</div>
+
+				<div>
+					<label for="height">Height (m)</label>
+					<input id="height" type="number" name="height" value="0.5">
+				</div>
+			</fieldset>
 		</fieldset>
 
-		<button data-js-viewport-button="start">Start</button>
-		<button data-js-viewport-button="stop">Stop</button>
-		<button data-js-viewport-button="reset">Reset</button>
+		<button data-js-viz-button="start">Start</button>
+		<button data-js-viz-button="stop">Stop</button>
+		<button data-js-viz-button="reset">Reset</button>
 		{{/ Page.passive-transport-scenario }}
 	</div>
 </main>

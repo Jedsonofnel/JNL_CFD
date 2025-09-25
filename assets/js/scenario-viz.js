@@ -1,7 +1,7 @@
-export class ScenarioViewport {
+export class ScenarioViz {
 	constructor(element) {
 		this.container = element;
-		this.dataFieldset = element.querySelector("[data-js-viewport-data]");
+		this.dataFieldset = element.querySelector("[data-js-viz-data]");
 
 		this.gl = null;
 		this.program = null;
@@ -16,7 +16,7 @@ export class ScenarioViewport {
 			{ type: "module" },
 		);
 
-		const canvas = element.querySelector("[data-js-viewport-canvas]");
+		const canvas = element.querySelector("[data-js-viz-canvas]");
 		const offscreenCanvas = canvas.transferControlToOffscreen();
 		this.scenarioWorker.postMessage(
 			{
@@ -54,17 +54,17 @@ export class ScenarioViewport {
 
 	registerButtons() {
 		this.startButton = this.container.querySelector(
-			`[data-js-viewport-button="start"]`,
+			`[data-js-viz-button="start"]`,
 		);
 		this.startButton.addEventListener("click", this.startViz.bind(this));
 
 		this.stopButton = this.container.querySelector(
-			`[data-js-viewport-button="stop"]`,
+			`[data-js-viz-button="stop"]`,
 		);
 		this.stopButton.addEventListener("click", this.stopViz.bind(this));
 
 		this.resetButton = this.container.querySelector(
-			`[data-js-viewport-button="reset"]`,
+			`[data-js-viz-button="reset"]`,
 		);
 		this.resetButton.addEventListener("click", this.setupViz.bind(this));
 	}
@@ -80,6 +80,8 @@ export class ScenarioViewport {
 				input.type === "number" ? parseFloat(input.value) : input.value,
 			]),
 		);
+
+		console.log(scenarioParams)
 
 		this.scenarioWorker.postMessage({
 			type: "setup",

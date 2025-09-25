@@ -79,8 +79,9 @@ class ScenarioRenderer {
 		);
 	}
 
+	// TODO setup all the shared values from here
 	setup(params) {
-		const { diffusivity } = params;
+		const { diffusivity,  } = params;
 		const result = this.wasmExports.setupScenarioViz(diffusivity);
 		this.refreshMemoryViews(); // should be run after all expensive WASM calls
 
@@ -104,7 +105,7 @@ class ScenarioRenderer {
 			gl.DYNAMIC_DRAW,
 		);
 
-		// before we run, draw mesh
+		// before we run, draw a mesh
 		this.drawMesh();
 	}
 
