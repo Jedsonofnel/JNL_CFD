@@ -38,6 +38,7 @@ const (
 	tokenString
 	tokenBool
 	tokenSymbol
+	tokenKeyword
 )
 
 // some strings we're looking for
@@ -64,6 +65,8 @@ func (i token) String() string {
 		return fmt.Sprintf("BOOL:%q@%s", i.val, i.pos)
 	case tokenSymbol:
 		return fmt.Sprintf("SYMBOL:%q@%s", i.val, i.pos)
+	case tokenKeyword:
+		return fmt.Sprintf("KEYWORD:%q@%s", i.val, i.pos)
 	}
 
 	if len(i.val) > 10 {
@@ -309,6 +312,8 @@ func dispatchToken(l *lexer, r rune) stateFn {
 			return lexNumber
 		}
 		return lexSymbol
+	case ':':
+		return lexKeyword
 	default:
 		if isSymbolChar(r) {
 			return lexSymbol
@@ -401,8 +406,7 @@ func lexNumber(l *lexer) stateFn {
 }
 
 func lexSymbol(l *lexer) stateFn {
-	symbolChars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-+*/%?!<>=_&|^~"
-	l.acceptRun(symbolChars)
+	l.acceptRun(symbolChars())
 	l.emit(tokenSymbol)
 
 	return lexInsideList
@@ -420,6 +424,16 @@ func lexComment(l *lexer) stateFn {
 	return lexInsideList
 }
 
+func lexKeyword(l *lexer) stateFn {
+	l.next() // consume ':'
+	l.ignore()
+
+	l.acceptRun(symbolChars())
+	l.emit(tokenKeyword)
+
+	return lexInsideList
+}
+
 // helpers
 
 func isSpace(r rune) bool {
@@ -429,6 +443,10 @@ func isSpace(r rune) bool {
 func isSymbolChar(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) ||
 		strings.ContainsRune("-+*/%?!<>=_&|^~", r)
+}
+
+func symbolChars() string {
+	return "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-+*/%?!<>=_&|^~"
 }
 
 func isDigit(r rune) bool {

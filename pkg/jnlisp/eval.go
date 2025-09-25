@@ -92,23 +92,17 @@ func evalDefine(l list, env *env) (exp, error) {
 		return defExpResult, nil
 	}
 
+	// handle function definition
 	if funcDef, ok := l[1].(list); ok {
-		// handle function definition
 		funcName, ok := funcDef[0].(symbol)
 		if !ok {
 			return nil, fmt.Errorf("define (procedure) expects symbol as first parameter in parameter list, got %T",
 				funcDef[0])
 		}
 
-		params := funcDef[1:]
-		parms := make([]symbol, len(params))
-		for i, param := range params {
-			parm, ok := param.(symbol)
-			if !ok {
-				return nil, fmt.Errorf("define (procedure) expects symbols as proc parameters, got %T at position %d",
-					param, i)
-			}
-			parms[i] = parm
+		paramList, err := parseParamList(funcDef[1:])
+		if err != nil {
+			return nil, fmt.Errorf("define (procedure) > %w", err)
 		}
 
 		body := l[2:]
@@ -117,8 +111,8 @@ func evalDefine(l list, env *env) (exp, error) {
 		}
 
 		proc := &Procedure{
-			name:    funcName.String(),
-			parms:   parms,
+			name:    string(funcName),
+			params:  paramList,
 			body:    body,
 			closure: env,
 		}
@@ -128,28 +122,18 @@ func evalDefine(l list, env *env) (exp, error) {
 	}
 
 	// handle error
-	return nil, fmt.Errorf("define expects parameter list (procedure) or symbol (variable) as argument 0 but got %T",
+	return nil, fmt.Errorf("define expects parameter list (procedure) or symbol (variable) as arg 0 but got %T",
 		l[1])
 }
 
 func evalLambda(l list, env *env) (exp, error) {
 	if len(l) != 3 {
-		return nil, fmt.Errorf("lambda expects exactly 2 arguments ((parms) expression), got %d", len(l)-1)
+		return nil, fmt.Errorf("lambda expects exactly 2 args ((params) expression), got %d", len(l)-1)
 	}
 
-	paramList, ok := l[1].(list)
-	if !ok {
-		return nil, fmt.Errorf("lambda expects list at argument position 0, got %T", l[1])
-	}
-
-	parms := make([]symbol, len(paramList))
-	for i, p := range paramList {
-		parm, ok := p.(symbol)
-		if !ok {
-			return nil, fmt.Errorf("lambda expects parameters to be symbols, got %T at parameter position %d",
-				p, i)
-		}
-		parms[i] = parm
+	paramList, err := parseParamList(l[1:])
+	if err != nil {
+		return nil, fmt.Errorf("lambda > %w", err)
 	}
 
 	body := l[2:] // the rest
@@ -159,7 +143,7 @@ func evalLambda(l list, env *env) (exp, error) {
 
 	return &Procedure{
 		name:    "lambda",
-		parms:   parms,
+		params:  paramList,
 		body:    body,
 		closure: env,
 	}, nil
@@ -208,19 +192,11 @@ func evalOr(list list, env *env) (exp, error) {
 // NORMAL PROCEDURES
 
 func evalApplication(list list, env *env) (exp, error) {
+	keywordIdx := findFirstKeyword(list)
+
 	proc, err := eval(list[0], env)
 	if err != nil {
 		return nil, err
-	}
-
-	// get args
-	args := make([]any, len(list)-1)
-	for i := range args {
-		arg, err := eval(list[i+1], env)
-		if err != nil {
-			return nil, err
-		}
-		args[i] = arg
 	}
 
 	castProc, ok := proc.(*Procedure)
@@ -228,5 +204,92 @@ func evalApplication(list list, env *env) (exp, error) {
 		return nil, fmt.Errorf("cannot call non-procedure: %T", proc)
 	}
 
-	return castProc.Call(args...)
+	if keywordIdx == -1 {
+		// No keywords - regular call
+		args := make([]any, len(list)-1)
+		for i := 1; i < len(list); i++ {
+			args[i-1], err = eval(list[i], env)
+			if err != nil {
+				return nil, fmt.Errorf("%s parsing args > %w", castProc.name, err)
+			}
+		}
+
+		return castProc.Call(args, make(table))
+	}
+	// keywords present
+	positionalExpr := list[1:keywordIdx]
+	keywordSection := list[keywordIdx:]
+
+	if (len(keywordSection) % 2) != 0 {
+		return nil, fmt.Errorf("%s parsing args > badly-formed keyword args, expected even number of terms (:key value) but got %d",
+			castProc.name, len(keywordSection))
+	}
+
+	args := make([]any, len(positionalExpr))
+	for i, expr := range positionalExpr {
+		arg, err := eval(expr, env)
+		if err != nil {
+			return nil, fmt.Errorf("%s parsing args > %w", castProc.name, err)
+		}
+		args[i] = arg
+	}
+
+	// build a table from keywords
+	kwargs := make(table)
+	for i := 0; i < len(keywordSection); i += 2 {
+		key, ok := keywordSection[i].(keyword)
+		if !ok {
+			return nil, fmt.Errorf("%s parsing args > badly-formed keyword args, expected keyword at position %d, got %T",
+				castProc.name, i+len(positionalExpr), keywordSection[i])
+		}
+
+		value, err := eval(keywordSection[i+1], env)
+		if err != nil {
+			return nil, fmt.Errorf("%s parsing args > %w", castProc.name, err)
+		}
+
+		kwargs[string(key)] = value
+	}
+
+	return castProc.Call(args, kwargs)
+}
+
+// HELPERS
+
+func parseParamList(paramExpr exp) (paramList, error) {
+	var params paramList
+	l, ok := paramExpr.(list)
+	if !ok {
+		return params, fmt.Errorf("expects list for parameters but got %T", paramExpr)
+	}
+
+	ampersandEncountered := false
+	for i, param := range l {
+		sym, ok := param.(symbol)
+		if !ok {
+			return params, fmt.Errorf("expects symbols as parameters but got %T at position %d", param, i)
+		}
+
+		if sym == symbol("&") {
+			ampersandEncountered = true
+			continue
+		}
+
+		if !ampersandEncountered {
+			params.positional = append(params.positional, sym)
+		} else {
+			params.named = append(params.named, sym)
+		}
+	}
+
+	return params, nil
+}
+
+func findFirstKeyword(l list) int {
+	for i, exp := range l {
+		if _, ok := exp.(keyword); ok {
+			return i
+		}
+	}
+	return -1
 }

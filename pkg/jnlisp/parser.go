@@ -8,16 +8,12 @@ import (
 
 // basic types
 type symbol string
-
-func (s symbol) String() string {
-	return fmt.Sprintf("%q", string(s))
-}
-
+type keyword string
 type list []exp
-
 type exp any
 
-func newSymbol(s string) symbol { return symbol(s) }
+func newSymbol(s string) symbol   { return symbol(s) }
+func newKeyword(s string) keyword { return keyword(s) }
 
 // doesn't expect any markdown block stuff in between - only s-exps
 func parseREPL(tokens []token) ([]exp, error) {
@@ -72,6 +68,8 @@ func parseExpression(tokens []token, idx *int) (exp, error) {
 		return parseNumber(token.val), nil
 	case tokenSymbol:
 		return newSymbol(token.val), nil
+	case tokenKeyword:
+		return newKeyword(token.val), nil
 	default:
 		return nil, fmt.Errorf("unexpected token: %v", token)
 	}

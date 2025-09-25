@@ -19,7 +19,7 @@ func newEnv(outer *env) *env {
 
 func (e *env) defineProc(name symbol, p ProcFunc) {
 	procedure := &Procedure{
-		proc:    p, // this means it's got a concrete go procedure so no need for body/parms
+		proc:    p, // this means it's got a concrete go procedure so no need for body/params
 		name:    string(name),
 		closure: e,
 	}
@@ -64,30 +64,49 @@ func newStandardEnv() (e *env) {
 	return
 }
 
-type ProcFunc func(args ...any) (any, error)
+type table map[string]any // TOOD move this to parser when I add a vector type etc
+
+type ProcFunc func(args []any, kwargs table) (any, error)
+
+type paramList struct {
+	positional []symbol
+	named      []symbol
+}
 
 type Procedure struct {
 	proc    ProcFunc
 	name    string
-	parms   []symbol
+	params   paramList
 	body    []exp
 	closure *env
 }
 
-func (p *Procedure) Call(args ...any) (exp, error) {
+func (p *Procedure) Call(args []any, kwargs table) (exp, error) {
 	if p.proc != nil { // given a go binding
-		return p.proc(args...)
+		return p.proc(args, kwargs)
 	}
 
 	activationEnv := newEnv(p.closure)
 
-	if len(args) != len(p.parms) {
-		return nil, fmt.Errorf("'%s' expects %d argument(s), but got %d",
-			p.name, len(p.parms), len(args))
+	if len(args) != len(p.params.positional) {
+		return nil, fmt.Errorf("'%s' expects %d positional args, got %d",
+			p.name, len(p.params.positional), len(args))
 	}
 
-	for i, parm := range p.parms {
-		activationEnv.bind(parm, args[i])
+	// bind positional parameters
+	for i, param := range p.params.positional {
+		activationEnv.bind(param, args[i])
+	}
+
+	// bind named parameters from table
+	for _, namedParam := range p.params.named {
+		paramName := string(namedParam)
+		if value, exists := kwargs[paramName]; exists {
+			activationEnv.bind(namedParam, value)
+		} else {
+			// TODO consider defaults later
+			activationEnv.bind(namedParam, nil)
+		}
 	}
 
 	var result exp
@@ -104,7 +123,7 @@ func (p *Procedure) Call(args ...any) (exp, error) {
 
 // STANDARD MATHS
 
-func lispAdd(args ...any) (any, error) {
+func lispAdd(args []any, _ table) (any, error) {
 	castArgs, err := toComplex(args, "-")
 	if err != nil {
 		return nil, err
@@ -118,7 +137,7 @@ func lispAdd(args ...any) (any, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispSubtract(args ...any) (any, error) {
+func lispSubtract(args []any, _ table) (any, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("- requires at least 1 argument")
 	}
@@ -140,7 +159,7 @@ func lispSubtract(args ...any) (any, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispMultiply(args ...any) (any, error) {
+func lispMultiply(args []any, _ table) (any, error) {
 	castArgs, err := toComplex(args, "*")
 	if err != nil {
 		return nil, err
@@ -154,7 +173,7 @@ func lispMultiply(args ...any) (any, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispDivide(args ...any) (any, error) {
+func lispDivide(args []any, _ table) (any, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("/ requires at least 1 argument")
 	}
@@ -176,7 +195,7 @@ func lispDivide(args ...any) (any, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispModulo(args ...any) (any, error) {
+func lispModulo(args []any, _ table) (any, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("%% requires exactly 2 arguments")
 	}
@@ -194,7 +213,7 @@ func lispModulo(args ...any) (any, error) {
 	return arg1 % arg2, nil
 }
 
-func lispSine(args ...any) (any, error) {
+func lispSine(args []any, _ table) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("sin expects exactly 1 argument, got %d", len(args))
 	}
@@ -207,7 +226,7 @@ func lispSine(args ...any) (any, error) {
 	return math.Sin(castArgs[0]), nil
 }
 
-func lispCosine(args ...any) (any, error) {
+func lispCosine(args []any, _ table) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("cos expects exactly 1 argument, got %d", len(args))
 	}
@@ -220,7 +239,7 @@ func lispCosine(args ...any) (any, error) {
 	return math.Cos(castArgs[0]), nil
 }
 
-func lispSqrt(args ...any) (any, error) {
+func lispSqrt(args []any, _ table) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("sqrt expects exactly 1 argument, got %d", len(args))
 	}
@@ -240,7 +259,7 @@ func lispSqrt(args ...any) (any, error) {
 
 // COMPARISONS
 
-func lispGreaterThan(args ...any) (any, error) {
+func lispGreaterThan(args []any, _ table) (any, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("> expects exactly 2 arguments, got %d", len(args))
 	}
@@ -253,7 +272,7 @@ func lispGreaterThan(args ...any) (any, error) {
 	return castArgs[0] > castArgs[1], nil
 }
 
-func lispLessThan(args ...any) (any, error) {
+func lispLessThan(args []any, _ table) (any, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("< expects exactly 2 arguments, got %d", len(args))
 	}
@@ -266,7 +285,7 @@ func lispLessThan(args ...any) (any, error) {
 	return castArgs[0] < castArgs[1], nil
 }
 
-func lispEqual(args ...any) (any, error) {
+func lispEqual(args []any, _ table) (any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("= expects at least 2 arguments, got %d", len(args))
 	}
@@ -281,7 +300,7 @@ func lispEqual(args ...any) (any, error) {
 	return true, nil
 }
 
-func lispNot(args ...any) (any, error) {
+func lispNot(args []any, _ table) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("not expects at least 1 argument, got %d", len(args))
 	}
