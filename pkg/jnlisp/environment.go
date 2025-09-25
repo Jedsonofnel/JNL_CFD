@@ -18,15 +18,6 @@ func newEnv(outer *env) *env {
 	}
 }
 
-func (e *env) defineProc(name string, p ProcFunc) {
-	procedure := &Procedure{
-		proc:    p, // this means it's got a concrete go procedure so no need for body/params
-		name:    string(name),
-		closure: e,
-	}
-	e.bindings[name] = ProcedureAtom{procedure}
-}
-
 func (e *env) find(s string) (Atom, bool) {
 	val, exists := e.bindings[s]
 	if exists {
