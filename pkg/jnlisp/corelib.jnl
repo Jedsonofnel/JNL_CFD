@@ -1,0 +1,30 @@
+# Core Library for JNLISP
+
+Here we define all the source code for standard programming functionality
+not included as go primitives in the corresponding go library.  This library 
+does not need to be imported with `(import stdlib)`, it will be included
+in the global environment by default.
+
+## Logic programming
+
+Defined as go bindings are "and", "or", "not", ">", and "=".  The rest
+are derived here in lisp.
+
+### Less than
+
+j(define (< a b)
+  (and (not (> a b)) (not (= a b))))
+
+### Greater than or equal to
+
+j(define (>= a b)
+  (or (> a b) (= a b)))
+
+### Less than or equal to
+
+j(define (<= a b)
+  (or (< a b) (= a b)))
+
+## Iterators
+
+TODO 

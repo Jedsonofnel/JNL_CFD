@@ -4,77 +4,98 @@ import (
 	"fmt"
 )
 
-func eval(x exp, env *env) (exp, error) {
-	if env == nil {
-		panic("no environment passed to eval")
-	}
+// EVAL IMPLEMENTATION
 
-	if sym, ok := x.(symbol); ok {
-		val, exists := env.find(sym)
-		if !exists {
-			return nil, fmt.Errorf("undefined symbol: %s", sym)
+func eval(expr any, ctx *Context) (Atom, error) {
+	switch v := expr.(type) {
+	case Atom:
+		// already evaluated, return as-is
+		return v, nil
+
+	case list:
+		return evalList(v, ctx)
+
+	case symbol:
+		symbolName := string(v)
+
+		if ctx.importPrefix != "" {
+			prefixedName := ctx.importPrefix + "/" + symbolName
+			if atom, exists := ctx.env.find(prefixedName); exists {
+				return atom, nil
+			}
 		}
-		return val, nil
-	}
 
-	// base types
-	switch x.(type) {
-	case int, float32, float64, complex64, complex128:
-		return x, nil
-	case bool:
-		return x, nil
+		if atom, exists := ctx.env.find(symbolName); exists {
+			return atom, nil
+		}
+		return nil, fmt.Errorf("undefined symbol: %s", v)
+
 	case string:
-		return x, nil
-	}
+		return StringAtom{v}, nil
 
-	list, ok := x.(list)
-	if !ok {
-		return nil, fmt.Errorf("unexpected expression type, got %T", x)
-	}
+	case int, float32, float64, complex64, complex128:
+		return NumberAtom{v}, nil
 
+	case bool:
+		return BooleanAtom{v}, nil
+
+	default:
+		return nil, fmt.Errorf("unknown expression type %T", expr)
+	}
+}
+
+func evalList(list list, ctx *Context) (Atom, error) {
 	if len(list) == 0 {
 		return nil, fmt.Errorf("empty list cannot be evaluated")
 	}
 
+	// special forms
 	if sym, ok := list[0].(symbol); ok {
 		switch sym {
 		case "if":
-			return evalIf(list, env)
+			return evalIf(list, ctx)
 		case "define":
-			return evalDefine(list, env)
+			return evalDefine(list, ctx)
 		case "lambda":
-			return evalLambda(list, env)
+			return evalLambda(list, ctx)
+		case "import":
+			return evalImport(list, ctx)
 		case "and":
-			return evalAnd(list, env)
+			return evalAnd(list, ctx)
 		case "or":
-			return evalOr(list, env)
+			return evalOr(list, ctx)
 		}
 	}
 
-	return evalApplication(list, env)
+	return evalApplication(list, ctx)
 }
 
 // SPECIAL FORMS
 
-func evalIf(list list, env *env) (exp, error) {
+func evalIf(list list, ctx *Context) (Atom, error) {
 	if len(list) != 4 {
 		return nil, fmt.Errorf("if expects exactly 3 arguments (test consequence alternative), got %d", len(list)-1)
 	}
 
 	test, conseq, alt := list[1], list[2], list[3]
-	testResult, err := eval(test, env)
+	testResult, err := eval(test, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if testResult.(bool) {
-		return eval(conseq, env)
+	boolean, ok := testResult.(BooleanAtom)
+	if !ok {
+		return nil, fmt.Errorf("if expects to test a boolean, cannot test %s", testResult.Type())
+	}
+
+	if boolean.value {
+		return eval(conseq, ctx)
 	} else {
-		return eval(alt, env)
+		return eval(alt, ctx)
 	}
 }
 
-func evalDefine(l list, env *env) (exp, error) {
+func evalDefine(l list, ctx *Context) (Atom, error) {
 	if varName, ok := l[1].(symbol); ok {
 		// handle variable
 		if len(l) != 3 {
@@ -83,12 +104,16 @@ func evalDefine(l list, env *env) (exp, error) {
 		}
 
 		defExp := l[2]
-		defExpResult, err := eval(defExp, env)
+		defExpResult, err := eval(defExp, ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		env.bind(varName, defExpResult)
+		bindName := string(varName)
+		if ctx.importPrefix != "" {
+			bindName = ctx.importPrefix + "/" + bindName
+		}
+		ctx.env.bind(bindName, defExpResult)
 		return defExpResult, nil
 	}
 
@@ -111,14 +136,19 @@ func evalDefine(l list, env *env) (exp, error) {
 		}
 
 		proc := &Procedure{
-			name:    string(funcName),
-			params:  paramList,
-			body:    body,
-			closure: env,
+			name:         string(funcName),
+			params:       paramList,
+			body:         body,
+			closure:      ctx.env,
+			importPrefix: ctx.importPrefix,
 		}
 
-		env.bind(funcName, proc)
-		return funcName, nil
+		bindName := string(funcName)
+		if ctx.importPrefix != "" {
+			bindName = ctx.importPrefix + "/" + bindName
+		}
+		ctx.env.bind(bindName, ProcedureAtom{proc})
+		return ProcedureAtom{proc}, nil
 	}
 
 	// handle error
@@ -126,7 +156,7 @@ func evalDefine(l list, env *env) (exp, error) {
 		l[1])
 }
 
-func evalLambda(l list, env *env) (exp, error) {
+func evalLambda(l list, ctx *Context) (Atom, error) {
 	if len(l) != 3 {
 		return nil, fmt.Errorf("lambda expects exactly 2 args ((params) expression), got %d", len(l)-1)
 	}
@@ -141,80 +171,105 @@ func evalLambda(l list, env *env) (exp, error) {
 		return nil, fmt.Errorf("lambda expects body expression(s) but was empty")
 	}
 
-	return &Procedure{
+	proc := &Procedure{
 		name:    "lambda",
 		params:  paramList,
 		body:    body,
-		closure: env,
-	}, nil
+		closure: ctx.env,
+	}
+
+	return ProcedureAtom{proc}, nil
 }
 
-func evalAnd(list list, env *env) (exp, error) {
-	for i := 1; i < len(list); i++ {
-		result, err := eval(list[i], env)
-		if err != nil {
-			return nil, err
-		}
+func evalImport(list list, ctx *Context) (Atom, error) {
+	if len(list) != 2 && len(list) != 3 {
+		return nil, fmt.Errorf("import expects 1 or 2 arguments")
+	}
 
-		condition, ok := result.(bool)
-		if !ok {
-			return nil, fmt.Errorf("and expects boolean arguments, got %T at position %d", result, i-1)
-		}
+	libName, ok := list[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("import expects library name as string")
+	}
 
-		if !condition {
-			return false, nil
+	prefix := libName // Default prefix
+	if len(list) == 3 {
+		if prefixArg, ok := list[2].(string); ok {
+			prefix = prefixArg
+		} else {
+			return nil, fmt.Errorf("import prefix must be string")
 		}
 	}
 
-	return true, nil
+	return BooleanAtom{true}, ctx.ImportLibrary(libName, prefix)
 }
 
-func evalOr(list list, env *env) (exp, error) {
+func evalAnd(list list, ctx *Context) (Atom, error) {
 	for i := 1; i < len(list); i++ {
-		result, err := eval(list[i], env)
+		result, err := eval(list[i], ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		condition, ok := result.(bool)
+		boolean, ok := result.(BooleanAtom)
+		if !ok {
+			return nil, fmt.Errorf("and expects boolean arguments, got %s at position %d",
+				result.Type(), i-1)
+		}
+
+		if !boolean.value {
+			return BooleanAtom{false}, nil
+		}
+	}
+
+	return BooleanAtom{true}, nil
+}
+
+func evalOr(list list, ctx *Context) (Atom, error) {
+	for i := 1; i < len(list); i++ {
+		result, err := eval(list[i], ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		boolean, ok := result.(BooleanAtom)
 		if !ok {
 			return nil, fmt.Errorf("or expects boolean arguments, got %T at position %d", result, i-1)
 		}
 
-		if condition {
-			return true, nil
+		if boolean.value {
+			return BooleanAtom{true}, nil
 		}
 	}
 
-	return false, nil
+	return BooleanAtom{false}, nil
 }
 
 // NORMAL PROCEDURES
 
-func evalApplication(list list, env *env) (exp, error) {
+func evalApplication(list list, ctx *Context) (Atom, error) {
 	keywordIdx := findFirstKeyword(list)
 
-	proc, err := eval(list[0], env)
+	proc, err := eval(list[0], ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	castProc, ok := proc.(*Procedure)
+	castProc, ok := proc.(ProcedureAtom)
 	if !ok {
-		return nil, fmt.Errorf("cannot call non-procedure: %T", proc)
+		return nil, fmt.Errorf("cannot call non-procedure: %s", proc.Type())
 	}
 
 	if keywordIdx == -1 {
 		// No keywords - regular call
-		args := make([]any, len(list)-1)
+		args := make([]Atom, len(list)-1)
 		for i := 1; i < len(list); i++ {
-			args[i-1], err = eval(list[i], env)
+			args[i-1], err = eval(list[i], ctx)
 			if err != nil {
 				return nil, fmt.Errorf("%s parsing args > %w", castProc.name, err)
 			}
 		}
 
-		return castProc.Call(args, make(table))
+		return castProc.Call(args, make(table), ctx)
 	}
 	// keywords present
 	positionalExpr := list[1:keywordIdx]
@@ -225,9 +280,9 @@ func evalApplication(list list, env *env) (exp, error) {
 			castProc.name, len(keywordSection))
 	}
 
-	args := make([]any, len(positionalExpr))
+	args := make([]Atom, len(positionalExpr))
 	for i, expr := range positionalExpr {
-		arg, err := eval(expr, env)
+		arg, err := eval(expr, ctx)
 		if err != nil {
 			return nil, fmt.Errorf("%s parsing args > %w", castProc.name, err)
 		}
@@ -243,7 +298,7 @@ func evalApplication(list list, env *env) (exp, error) {
 				castProc.name, i+len(positionalExpr), keywordSection[i])
 		}
 
-		value, err := eval(keywordSection[i+1], env)
+		value, err := eval(keywordSection[i+1], ctx)
 		if err != nil {
 			return nil, fmt.Errorf("%s parsing args > %w", castProc.name, err)
 		}
@@ -251,20 +306,16 @@ func evalApplication(list list, env *env) (exp, error) {
 		kwargs[string(key)] = value
 	}
 
-	return castProc.Call(args, kwargs)
+	return castProc.Call(args, kwargs, ctx)
 }
 
 // HELPERS
 
-func parseParamList(paramExpr exp) (paramList, error) {
+func parseParamList(paramExpr list) (paramList, error) {
 	var params paramList
-	l, ok := paramExpr.(list)
-	if !ok {
-		return params, fmt.Errorf("expects list for parameters but got %T", paramExpr)
-	}
 
 	ampersandEncountered := false
-	for i, param := range l {
+	for i, param := range paramExpr {
 		sym, ok := param.(symbol)
 		if !ok {
 			return params, fmt.Errorf("expects symbols as parameters but got %T at position %d", param, i)
@@ -292,4 +343,69 @@ func findFirstKeyword(l list) int {
 		}
 	}
 	return -1
+}
+
+// ATOMS (eval turns []any into Atom)
+
+type Atom interface {
+	fmt.Stringer
+	Type() string
+	ToJSON() map[string]any
+}
+
+type NumberAtom struct{ value any }
+
+func (n NumberAtom) Type() string   { return "number" }
+func (n NumberAtom) String() string { return fmt.Sprintf("%v", n.value) }
+func (n NumberAtom) ToJSON() map[string]any {
+	return map[string]any{
+		"type":  "number",
+		"value": n.value,
+		"repr":  n.String(),
+	}
+}
+
+type BooleanAtom struct{ value bool }
+
+func (b BooleanAtom) Type() string { return "boolean" }
+func (b BooleanAtom) String() string {
+	if b.value {
+		return "#t"
+	} else {
+		return "#f"
+	}
+}
+func (b BooleanAtom) ToJSON() map[string]any {
+	return map[string]any{
+		"type":  "boolean",
+		"value": b.value,
+		"repr":  b.String(),
+	}
+}
+
+type StringAtom struct{ value string }
+
+func (s StringAtom) Type() string   { return "string" }
+func (s StringAtom) String() string { return s.value }
+func (s StringAtom) ToJSON() map[string]any {
+	return map[string]any{
+		"type":  "string",
+		"value": s.value,
+		"repr":  s.String(),
+	}
+}
+
+type ProcedureAtom struct{ *Procedure }
+
+func (p ProcedureAtom) Type() string { return "procedure" }
+func (p ProcedureAtom) String() string {
+	// TODO: maybe add a pretty print of params
+	return fmt.Sprintf("#<procedure:%s>", p.name)
+}
+func (p ProcedureAtom) ToJSON() map[string]any {
+	return map[string]any{
+		"type":  "procedure",
+		"value": p.name,
+		"repr":  p.String(),
+	}
 }

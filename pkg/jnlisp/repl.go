@@ -7,10 +7,8 @@ import (
 	"strings"
 )
 
-var globalEnv = newStandardEnv()
-
-// public entrypoint
 func REPL() {
+	context := NewContext()
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("JNLisp REPL")
 	fmt.Println("Ctrl-c to quit")
@@ -45,7 +43,7 @@ func REPL() {
 
 		// loop through expressions in ast and evaluate them
 		for _, exp := range ast {
-			exp, err := eval(exp, globalEnv)
+			exp, err := eval(exp, context)
 			if err != nil {
 				text.Reset()
 				fmt.Printf("error: %s\n", err)
@@ -59,56 +57,10 @@ func REPL() {
 	}
 }
 
-func tokenizeREPL(input string) []token {
-	l := lex(input, lexScanExpr)
-	tokens := make([]token, 0)
-
-	for {
-		next := l.nextItem()
-		if next.typ == tokenEOF || next.typ == tokenError {
-			tokens = append(tokens, next)
-			break
-		}
-		tokens = append(tokens, next)
-	}
-
-	return tokens
-}
-
-func tokenizeMd(input string) string {
-	lex := lex(input, lexScanMdExpr)
-	tokens := make([]token, 0)
-
-	for {
-		next := lex.nextItem()
-		if next.typ == tokenEOF || next.typ == tokenError {
-			break
-		}
-		tokens = append(tokens, next)
-	}
-
-	return fmt.Sprintf("%v", tokens)
-}
-
 func buildPrompt(missingParens int) (prompt string) {
 	for range missingParens {
 		prompt += "("
 	}
 	prompt += "> "
 	return
-}
-
-func validateTokens(tokens []token) (int, error) {
-	count := 0
-	for _, token := range tokens {
-		if token.typ == tokenMissingParen {
-			count++
-		}
-
-		if token.typ == tokenError {
-			return 0, fmt.Errorf("%s", token.val)
-		}
-	}
-
-	return count, nil
 }

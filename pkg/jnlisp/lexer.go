@@ -7,22 +7,72 @@ import (
 	"unicode/utf8"
 )
 
+// MAIN INTERACTION
+
+// looks for 'j(' glyph to start top-level s-exp
+func tokenizeSrc(input string) []token {
+	lex := lex(input, lexScanSrcExpr)
+	tokens := make([]token, 0)
+
+	for {
+		next := lex.nextItem()
+		if next.typ == tokenEOF || next.typ == tokenError {
+			break
+		}
+		tokens = append(tokens, next)
+	}
+
+	return tokens
+}
+
+// just looks for '(' to start top-level s-exp
+func tokenizeREPL(input string) []token {
+	l := lex(input, lexScanExpr)
+	tokens := make([]token, 0)
+
+	for {
+		next := l.nextItem()
+		if next.typ == tokenEOF || next.typ == tokenError {
+			tokens = append(tokens, next)
+			break
+		}
+		tokens = append(tokens, next)
+	}
+
+	return tokens
+}
+
+func validateTokens(tokens []token) (int, error) {
+	count := 0
+	for _, token := range tokens {
+		if token.typ == tokenMissingParen {
+			count++
+		}
+
+		if token.typ == tokenError {
+			return 0, fmt.Errorf("%s", token.val)
+		}
+	}
+
+	return count, nil
+}
+
 // LEXER
 
 type token struct {
 	typ tokenType // Type, such as tokenNumber
 	val string    // Value such as "23.2"
-	pos pos
+	pos Pos
 }
 
-type pos struct {
-	line   int // 1-based line number
-	column int // 1-based column number
-	offset int // 0-based byte offset
+type Pos struct {
+	Line   int `json:"line"`   // 1-based line number
+	Column int `json:"column"` // 1-based column number
+	Offset int `json:"offset"` // 0-based byte offset
 }
 
-func (p pos) String() string {
-	return fmt.Sprintf("%d:%d", p.line, p.column)
+func (p Pos) String() string {
+	return fmt.Sprintf("%d:%d", p.Line, p.Column)
 }
 
 type tokenType int
@@ -43,10 +93,10 @@ const (
 
 // some strings we're looking for
 const (
-	openList   = "("
-	openMdList = "j("
-	closeList  = ")"
-	eof        = -1
+	openList    = "("
+	openSrcList = "j("
+	closeList   = ")"
+	eof         = -1
 )
 
 func (i token) String() string {
@@ -118,11 +168,11 @@ func (l *lexer) nextItem() token {
 // HELPER METHODS ON LEXER
 
 // get current position
-func (l *lexer) currentPos() pos {
-	return pos{
-		line:   l.line,
-		column: l.start - l.lineStart + 1,
-		offset: l.start,
+func (l *lexer) currentPos() Pos {
+	return Pos{
+		Line:   l.line,
+		Column: l.start - l.lineStart + 1,
+		Offset: l.start,
 	}
 }
 
@@ -242,21 +292,23 @@ func lexScanExpr(l *lexer) stateFn {
 		if l.next() == eof { // advance input checking for EOF
 			break
 		}
+		l.ignore()
 	}
 	// reached EOF
 	l.emit(tokenEOF)
 	return nil
 }
 
-// Start markdown file (ie looking for openParenMd)
-func lexScanMdExpr(l *lexer) stateFn {
+// Start source file (ie looking for openParenMd)
+func lexScanSrcExpr(l *lexer) stateFn {
 	for {
-		if strings.HasPrefix(l.input[l.pos:], openMdList) {
-			return lexOpenMdList
+		if strings.HasPrefix(l.input[l.pos:], openSrcList) {
+			return lexOpenSrcList
 		}
 		if l.next() == eof {
 			break
 		}
+		l.ignore()
 	}
 
 	l.emit(tokenEOF)
@@ -269,8 +321,8 @@ func lexOpenList(l *lexer) stateFn {
 	return lexInsideList
 }
 
-func lexOpenMdList(l *lexer) stateFn {
-	l.pos += len(openMdList)
+func lexOpenSrcList(l *lexer) stateFn {
+	l.pos += len(openSrcList)
 	l.emit(tokenOpenParen)
 	return lexInsideList
 }
