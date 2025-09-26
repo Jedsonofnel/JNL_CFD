@@ -1,3 +1,5 @@
+//go:generate go run generate_assets.go
+
 package web
 
 import (

@@ -1,3 +1,9 @@
 .do
 *.wasm
 bin
+
+# asset copying for production
+internal/web/assets.go
+internal/web/assets
+internal/web/templates
+internal/web/jnlisp
