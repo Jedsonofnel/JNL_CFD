@@ -173,7 +173,12 @@ func evalLambda(l list, ctx *Context) (Atom, error) {
 		return nil, fmt.Errorf("lambda expects exactly 2 args ((params) expression), got %d", len(l)-1)
 	}
 
-	paramList, err := parseParamList(l[1:])
+	params, ok := l[1].(list)
+	if !ok {
+		return nil, fmt.Errorf("lambda expects a list at position 1, got %T", l[1])
+	}
+
+	paramList, err := parseParamList(params)
 	if err != nil {
 		return nil, fmt.Errorf("lambda > %w", err)
 	}

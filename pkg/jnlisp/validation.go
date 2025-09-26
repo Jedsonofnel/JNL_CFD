@@ -7,14 +7,19 @@ import (
 
 // Argument validation helpers
 type ArgValidator struct {
-	args     []Atom
-	kwargs   Table
-	argIndex int
-	errors   []string
+	args           []Atom
+	kwargs         Table
+	argIndex       int
+	consumedKwargs map[string]bool
+	errors         []string
 }
 
 func ValidateArgs(args []Atom, kwargs Table) *ArgValidator {
-	return &ArgValidator{args: args, kwargs: kwargs}
+	return &ArgValidator{
+		args:           args,
+		kwargs:         kwargs,
+		consumedKwargs: make(map[string]bool),
+	}
 }
 
 func (av *ArgValidator) GetString() (string, *ArgValidator) {
@@ -24,6 +29,7 @@ func (av *ArgValidator) GetString() (string, *ArgValidator) {
 	}
 
 	if str, ok := As[StringAtom](av.args[av.argIndex]); ok {
+		av.argIndex++
 		return str.Value, av
 	}
 
@@ -68,6 +74,31 @@ func (av *ArgValidator) GetFloat64() (float64, *ArgValidator) {
 		}
 		if i, ok := num.Value.(int); ok {
 			return float64(i), av
+		}
+	}
+
+	av.errors = append(av.errors, fmt.Sprintf("arg %d: expected number, got %s",
+		av.argIndex, av.args[av.argIndex].Type()))
+	av.argIndex++
+	return 0, av
+}
+
+func (av *ArgValidator) GetFloat32() (float32, *ArgValidator) {
+	if av.argIndex >= len(av.args) {
+		av.errors = append(av.errors, fmt.Sprintf("missing positional arg %d (expected number)", av.argIndex))
+		return 0, av
+	}
+
+	if num, ok := As[NumberAtom](av.args[av.argIndex]); ok {
+		av.argIndex++
+		if f, ok := num.Value.(float64); ok {
+			return float32(f), av
+		}
+		if f, ok := num.Value.(float32); ok {
+			return f, av
+		}
+		if i, ok := num.Value.(int); ok {
+			return float32(i), av
 		}
 	}
 
@@ -131,14 +162,6 @@ func Get[T Atom](av *ArgValidator) (T, *ArgValidator) {
 		av.argIndex, zero, av.args[av.argIndex].Type()))
 	av.argIndex++
 	return zero, av
-}
-
-func (av *ArgValidator) ExpectNoMoreArgs() *ArgValidator {
-	if av.argIndex < len(av.args) {
-		av.errors = append(av.errors, fmt.Sprintf("unexpected extra arguments: expected %d, got %d",
-			av.argIndex, len(av.args)))
-	}
-	return av
 }
 
 // VARIADIC ARGS
@@ -205,6 +228,34 @@ func (av *ArgValidator) GetVariadicComplex128() ([]complex128, *ArgValidator) {
 	return complexes, av
 }
 
+func (av *ArgValidator) GetVariadicAtoms() ([]Atom, *ArgValidator) {
+	var atoms []Atom
+
+	for av.argIndex < len(av.args) {
+		atoms = append(atoms, av.args[av.argIndex])
+		av.argIndex++
+	}
+
+	return atoms, av
+}
+
+func GetVariadic[T Atom](av *ArgValidator) ([]T, *ArgValidator) {
+	var zero T
+	var atoms []T
+
+	for av.argIndex < len(av.args) {
+		if arg, ok := As[T](av.args[av.argIndex]); ok {
+			atoms = append(atoms, arg)
+		} else {
+			av.errors = append(av.errors, fmt.Sprintf("arg %d: expected %s, got %s",
+				av.argIndex, zero.Type(), av.args[av.argIndex].Type()))
+		}
+		av.argIndex++
+	}
+
+	return atoms, av
+}
+
 // KEYWORD ARGS
 
 func (av *ArgValidator) GetKeywordInt(key string) (int, *ArgValidator) {
@@ -213,6 +264,8 @@ func (av *ArgValidator) GetKeywordInt(key string) (int, *ArgValidator) {
 		av.errors = append(av.errors, fmt.Sprintf("missing required keyword: %s", key))
 		return 0, av
 	}
+
+	av.consumedKwargs[key] = true
 
 	if num, ok := As[NumberAtom](atom); ok {
 		if i, ok := num.Value.(int); ok {
@@ -231,6 +284,8 @@ func (av *ArgValidator) GetKeywordFloat32(key string) (float32, *ArgValidator) {
 		av.errors = append(av.errors, fmt.Sprintf("missing required keyword: %s", key))
 		return 0, av
 	}
+
+	av.consumedKwargs[key] = true
 
 	if num, ok := As[NumberAtom](atom); ok {
 		if i, ok := num.Value.(int); ok {
@@ -256,6 +311,8 @@ func (av *ArgValidator) GetKeywordFloat64(key string) (float64, *ArgValidator) {
 		return 0, av
 	}
 
+	av.consumedKwargs[key] = true
+
 	if num, ok := As[NumberAtom](atom); ok {
 		if i, ok := num.Value.(int); ok {
 			return float64(i), av
@@ -270,6 +327,59 @@ func (av *ArgValidator) GetKeywordFloat64(key string) (float64, *ArgValidator) {
 
 	av.errors = append(av.errors, fmt.Sprintf("keyword %s: expected number, got %s", key, atom.Type()))
 	return 0, av
+}
+
+func (av *ArgValidator) GetKeywordVector(key string) (VectorAtom, *ArgValidator) {
+	atom, exists := av.kwargs[key]
+	if !exists {
+		av.errors = append(av.errors, fmt.Sprintf("missing required keyword: %s", key))
+		return VectorAtom{}, av
+	}
+
+	av.consumedKwargs[key] = true
+
+	if vec, ok := As[VectorAtom](atom); ok {
+		return vec, av
+	}
+
+	av.errors = append(av.errors, fmt.Sprintf("keyword %s: expected vector, got %s", key, atom.Type()))
+	return VectorAtom{}, av
+}
+
+func GetKeyword[T Atom](av *ArgValidator, key string) (T, *ArgValidator) {
+	var zero T
+
+	atom, exists := av.kwargs[key]
+	if !exists {
+		av.errors = append(av.errors, fmt.Sprintf("missing required keyword: %s", key))
+		return zero, av
+	}
+
+	av.consumedKwargs[key] = true
+
+	if a, ok := As[T](atom); ok {
+		return a, av
+	}
+
+	av.errors = append(av.errors, fmt.Sprintf("keyword %s: expected %s, got %s",
+		key, zero.Type(), atom.Type()))
+	return zero, av
+}
+
+// VALIDATION
+
+func (av *ArgValidator) ExpectNoMoreArgs() *ArgValidator {
+	if av.argIndex < len(av.args) {
+		av.errors = append(av.errors, fmt.Sprintf("unexpected extra arguments (%s): expected %d, got %d",
+			av.args[av.argIndex].String(), av.argIndex, len(av.args)))
+	}
+
+	for key := range av.kwargs {
+		if !av.consumedKwargs[key] {
+			av.errors = append(av.errors, fmt.Sprintf("unexpected keyword argument: %s", key))
+		}
+	}
+	return av
 }
 
 func (av *ArgValidator) Validate() error {

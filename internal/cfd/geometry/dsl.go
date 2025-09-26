@@ -14,7 +14,7 @@ func init() {
 	})
 }
 
-type MeshDefinitionAtom struct{ value MeshDefinition }
+type MeshDefinitionAtom struct{ Value MeshDefinition }
 
 func (md MeshDefinitionAtom) Type() string   { return "cfd.MeshDefinition" }
 func (md MeshDefinitionAtom) String() string { return "cfd.MeshDefinition" }
@@ -28,12 +28,12 @@ func (md MeshDefinitionAtom) ToJSON() map[string]any {
 
 func lispStructuredMesh(args []jnlisp.Atom, kwargs jnlisp.Table) (jnlisp.Atom, error) {
 	v := jnlisp.ValidateArgs(args, kwargs)
-	v = v.ExpectNoMoreArgs()
 	nx, v := v.GetKeywordInt("nx")
 	ny, v := v.GetKeywordInt("ny")
 	width, v := v.GetKeywordFloat64("width")
 	height, v := v.GetKeywordFloat64("height")
 
+	v = v.ExpectNoMoreArgs()
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}

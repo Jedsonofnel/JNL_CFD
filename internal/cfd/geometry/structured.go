@@ -14,7 +14,7 @@ func NewStructuredMesh(nX, nY int, width, height float64) MeshDefinition {
 		NY:         nY,
 		Width:      float32(width),
 		Height:     float32(height),
-		Boundaries: []string{"northBorder", "eastBorder", "southBorder", "westBorder"},
+		Boundaries: []string{"north-border", "east-border", "south-border", "west-border"},
 	}
 }
 
@@ -28,7 +28,7 @@ func (sm *structuredMesh) Resolve() *Mesh {
 	sX, sY := sm.Width/float32(sm.NX), sm.Height/float32(sm.NY)
 
 	bounds := Rectangle{Width: sm.Width, Height: sm.Height}
-	boundaries := []string{"northBorder", "eastBorder", "southBorder", "westBorder"}
+	boundaries := sm.Boundaries
 
 	vertices := make([]Vec2, nCells*4)
 	vertexIndices := make([]int, nCells*4)

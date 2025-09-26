@@ -3,3 +3,131 @@
 An example of the passive transport solver I have currently.
 SIMPLE is not far away as my abstractions are very extensible
 and it shouldn't be so hard to implement 
+
+## Meshing
+
+Currently the meshing capabilities is very limited but this will be extended
+with an expressive toolkit for defining parametric 2D geometries.  Though
+for now we'll stick to a uniform cartesian mesh for simplicity.
+
+j(define mesh
+  (structured-mesh :nx 50 :ny 25 :width 1 :height 0.5))
+
+Notice the keyword arguments (`kwargs`) which start with a colon.  These aren't
+strictly a feature of Scheme, the lisp I am mostly basing this dialect on,
+but for a config DSL they seemed like a really nice bit of syntactic sugar.
+
+## Fields
+
+A field (when resolved) is just a container for cell data like cellValues,
+cellValues0 (values from previous timestep) and faceValues.
+
+j(define dye-field
+  (prognostic-scalar-field "dye" :initial-value 0))
+
+Until I get a SIMPLE solver fully working, I'm using a derived vector field
+that takes a callback function to calculate it's uniform value every timestep.
+I'm going to make it sinusoidal so I'll import my maths library.
+
+(import "maths")
+
+j(define x-velocity 0.03)
+
+j(define (y-velocity time)
+  (* 0.01 (maths/sin time)))
+
+j(define velocity-field
+  (derived-vector-field "velocity"
+    (lambda (time) [x-velocity (y-velocity time)])))
+
+## Equations
+
+An equation is the orchestrator for assembling the system(s) of linear equations
+that get solved every iteration.  The basic flow is it takes an arbritrary
+amount of operators (allowing for lovely mathematical expressiveness and
+experimentation), and then at resolution it sorts them into `fluxOps` and
+`srcOps` whereby:
+
+- **Flux Operators**: calculate a "flux" for every *connection* in the mesh, eg
+  for basic heat diffusion the laplacian operator will calculate
+  `k * A / d`. 
+
+- **Source Operators**: calculate a source term for the rhs vector and some
+  diagonal contribution for the matrix for every *cell* in the mesh.  For
+  example a point source just adds some constant to the rhs, but the
+  unsteady operator (`ddt`) adds `a_P^0 / dt` to the rhs and `a_P^0` to
+  the diagonal.
+
+j(define density 1) ;; A dye is just concentration so density=1
+
+j(define diffusivity 1e-6) ;; To keep the Peclet number high
+
+j(define dye-equation
+  (equation dye-field
+    (ddt dye-field density)
+    (div dye-field density velocity-field)
+    (laplacian dye-field diffusivity)
+    (scalar-point-src [-1 0] 0.1)))
+
+Note the point source coordinates are in [-1, 1] space rather than the actual
+physics space for consistency.
+
+### Boundary conditions
+
+The equation is responsible for boundary conditions rather than the field,
+as I want to keep the `field` data type as dumb as possible.  Boundary conditions
+are applied with the source terms as "decorators" of the matrix and rhs, using
+cached flux values from fluxOps corresponding to boundary connections.
+
+j(set-boundary-conditions dye-equation mesh
+  :north-border (scalar-neumann 0)
+  :east-border (scalar-outflow)
+  :south-border (scalar-neumann 0)
+  :west-border (scalar-dirichlet 0))
+
+## Solver
+
+This is pretty self explanatory, the solver used by a scenario. I've implemented
+the CG method with a basic Jacobi preconditioner as a sweeet spot for simplicity
+and performance on the browser, however for more advanced use cases of running
+many convergence cases back-to-back I'd implement a more complicated
+multi-threaded solver and then serialise the problem definition (ie the 
+workbook) and send it from the browser to a server somewhere to run it at full
+speed.  For small visualisations on the browser though CG seems pretty good.
+
+j(define solver 
+  (jacobi-preconditioned-cg :max-iterations 100 :tolerance 1e-3))
+
+## Scenario
+
+A `Scenario` is the main orchestrator of fields and equations, and is responsible
+for orchestrating an iteration step and relaying if it's reached convergence
+for a given time step.  For a pressure-velocity solver this'll involved multiple
+iterations and lots of complicated bits like organising Rhie-Chow MWI for the
+velocity face values and caching that in an iteration etc.  For my basic
+passive transport case I need none of that - I just assemble equations and solve
+and assume convergence in one step.
+
+Furthermore, a `Scenario` is responsible for the complete "resolution" of the
+problem - the data structures declared earlier (meshes, fields, equations) are
+very sparse definition types under the hood that do not have any of the long
+data arrays initialised yet, to avoid allocating memory while defining the
+problem.  When it comes time to run a visualisation or run a scenario to
+convergence the scenario will resolve all its components and only then will
+the long data arrays be initialised.
+
+j(passive-transport
+  :mesh mesh
+  :solver solver
+  :fields [dye-field velocity-field]
+  :equations [dye-equation])
+
+And there you have it - a complete definition for a scenario that can be
+run as a visualisation.  Under the hood the interpreter for this DSL
+lexes and parses the file, complaining if there are any syntax errors,
+and then evaluates every top-level expression (ie the ones starting with
+the `j` glyph) and responds with a json list of every block, it's location
+in the code and some metadata about the thing it has evaluated to.
+My web-interface can read this and knows that if it's resolved to a
+MeshDefinition or a ScenarioDefinition to offer UI to visualise them
+and then to interact with the solver code to do that.

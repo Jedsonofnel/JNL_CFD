@@ -31,6 +31,7 @@ type OperatorDefinition interface {
 	Validate() error
 	resolve(mesh *geometry.Mesh, fields map[string]field) (operator, error)
 	rank() rank
+	operatorType() opType
 }
 
 type operator interface {
@@ -51,34 +52,34 @@ type scalarOperatorPrecalcProcedure func(
 	mesh *geometry.Mesh, coeff float32) (precals, fluxes []float32)
 
 func newScalarLaplacian(owner FieldDefinition, coeffs ...any) *scalarOperatorDefinition {
-	newLaplacian, err := parseScalarCoeffs(coeffs...)
-	newLaplacian.opType = laplacian
-	newLaplacian.error = err
-	return newLaplacian
+	coeff, couplings, err := parseScalarCoeffs(coeffs...)
+	return &scalarOperatorDefinition{
+		laplacian, coeff, couplings, err,
+	}
 }
 
 func newScalarDDT(owner FieldDefinition, coeffs ...any) *scalarOperatorDefinition {
-	newDDT, err := parseScalarCoeffs(coeffs...)
-	newDDT.opType = ddt
-	newDDT.error = err
-	return newDDT
+	coeff, couplings, err := parseScalarCoeffs(coeffs...)
+	return &scalarOperatorDefinition{
+		ddt, coeff, couplings, err,
+	}
 }
 
 func newScalarDiv(owner FieldDefinition, coeffs ...any) *scalarOperatorDefinition {
-	newDiv, err := parseScalarCoeffs(coeffs...)
-	newDiv.opType = div
-	newDiv.error = err
-	return newDiv
+	coeff, couplings, err := parseScalarCoeffs(coeffs...)
+	return &scalarOperatorDefinition{
+		div, coeff, couplings, err,
+	}
 }
 
 func newScalarLinearSource(owner FieldDefinition, coeffs ...any) *scalarOperatorDefinition {
-	newReaction, err := parseScalarCoeffs(coeffs...)
-	newReaction.opType = linearSrc
-	newReaction.error = err
-	return newReaction
+	coeff, couplings, err := parseScalarCoeffs(coeffs...)
+	return &scalarOperatorDefinition{
+		linearSrc, coeff, couplings, err,
+	}
 }
 
-func parseScalarCoeffs(coeffs ...any) (*scalarOperatorDefinition, error) {
+func parseScalarCoeffs(coeffs ...any) (float32, []FieldDefinition, error) {
 	var coeff float32 = 1
 	coupledFields := make([]FieldDefinition, 0)
 
@@ -93,14 +94,13 @@ func parseScalarCoeffs(coeffs ...any) (*scalarOperatorDefinition, error) {
 		case FieldDefinition:
 			coupledFields = append(coupledFields, field)
 		default:
-			return nil,
+			return 0, nil,
 				fmt.Errorf("parseScalarCoeffs > cannot parse type '%T' as scalar operator coeff",
 					c)
 		}
 	}
 
-	return &scalarOperatorDefinition{
-		coeff: coeff, coupledFields: coupledFields}, nil
+	return coeff, coupledFields, nil
 }
 
 func (sod *scalarOperatorDefinition) Validate() error {
@@ -217,6 +217,8 @@ func scalarLinearSourcePrecalcs(mesh *geometry.Mesh, coeff float32) (precalcs, f
 
 func (sld *scalarOperatorDefinition) rank() rank { return scalar }
 
+func (sld *scalarOperatorDefinition) operatorType() opType { return sld.opType }
+
 type scalarPointSourceDefinition struct {
 	handler *ScalarPointSourceHandler
 }
@@ -248,6 +250,8 @@ func (psd *scalarPointSourceDefinition) resolve(mesh *geometry.Mesh, _ map[strin
 }
 
 func (psd *scalarPointSourceDefinition) rank() rank { return scalar }
+
+func (psd *scalarPointSourceDefinition) operatorType() opType { return pointSrc }
 
 // DEFINITION FACTORIES
 

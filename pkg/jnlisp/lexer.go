@@ -417,16 +417,17 @@ func dispatchToken(l *lexer, r rune) stateFn {
 		return lexComment
 	case '"':
 		return lexString
-	case '[':
-		return lexOpenVec
 	case '#':
 		return lexLiteral
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		return lexNumber
 	case '+', '-':
+		l.next() // consume the +/-
 		if next := l.peek(); isDigit(next) {
+			l.backup() // put the +/- back
 			return lexNumber
 		}
+		l.backup() // put the +/- back
 		return lexSymbol
 	case ':':
 		return lexKeyword

@@ -16,6 +16,7 @@ func init() {
 	ctx = jnlisp.NewContext()
 	ctx.ImportLibrary("cfd/fvm", "")
 	ctx.ImportLibrary("cfd/geometry", "")
+	ctx.ImportLibrary("cfd/linalg", "")
 }
 
 func main() {
