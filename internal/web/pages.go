@@ -1,7 +1,6 @@
 package web
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd"
 	"log"
 	"net/http"
 )
@@ -20,48 +19,39 @@ func handleHome(_ *log.Logger, view *View) http.Handler {
 	)
 }
 
-func handleViewports(_ *log.Logger, view *View) http.Handler {
+func handleWorkbooks(_ *log.Logger, view *View) http.Handler {
 	data := map[string]string{}
 
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			view.Render(w, "viewports-index", data)
+			view.Render(w, "workbooks-index", data)
 		},
 	)
 }
 
-func handleViewportShow(_ *log.Logger, view *View) http.Handler {
+func handleWorkbookShow(_ *log.Logger, view *View) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		idString := r.PathValue("id")
-		viewport, found := predefinedViewports[idString]
 
+		workbook, found := predefinedWorkbooks(idString)
 		if !found {
 			w.WriteHeader(http.StatusNotFound)
-			view.Render(w, "404", map[string]string{"path": r.URL.Path, "return": "/viewports"})
+			view.Render(w, "404", map[string]string{"path": r.URL.Path, "return": "/workbooks"})
 			return
 		}
 
-		view.Render(w, "viewport-show", map[string]any{
-			idString: viewport,
-			"name":   viewport.Name,
-			"family": viewport.Family,
+		view.Render(w, "workbook-show", map[string]any{
+			"contents": workbook,
 		})
 	})
 }
 
-// Viewports
+// workbooks
 
-var predefinedViewports = map[string]cfd.DefinitionEnvelope{
-	"structured-mesh": {
-		Name:   "Structured Mesh",
-		Type:   "structuredMeshDefinition",
-		Family: "mesh",
-		Data:   cfd.SampleStructuredMesh(),
-	},
-	"passive-transport-scenario": {
-		Name:   "Passive Transport",
-		Type:   "passiveTransportScenario",
-		Family: "scenario",
-		Data:   cfd.SampleStructuredMesh(),
-	},
+func predefinedWorkbooks(name string) (string, bool) {
+	// TODO get FS from ../../jnlisp/workbooks/*.jnl
+	// find if there's a file with the name and return
+	// it's contents as a string if so
+
+	return "", false
 }

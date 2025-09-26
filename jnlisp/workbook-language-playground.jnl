@@ -1,0 +1,53 @@
+# JNLisp Language Playground
+
+A little workbook for playing with the features of my literate Lisp-based
+Domain Specific Language (DSL) for interacting with my CFD library, but
+it can also do lots of cool things!  It is reasonably complete with most
+Lisps aside from any quoting/macro features (som maybe it's actually not
+that complete).  But, for basic algorithms and maths-y stuff it's pretty
+convenient.  Here are some examples:
+
+## Core data types
+
+TODO:  Write up a section on the core language constructs and special
+forms.
+
+## Let's define a factorial procedure
+
+j(define (fact n) 
+  (if (= n 1)
+    1
+    (* n (fact (- n 1)))))
+
+## Let's try run it
+
+j(fact 4)
+
+j(fact 10)
+
+## Importing Libraries
+
+You can import other libraries with the special form `import` which takes
+the name of the library as a string as the first argument and optionally
+a specific prefix as a second.  By default anything defined in the library
+is prefixed with "lib-name/".  Libraries can currently only be defined
+through Go bindings at the moment which means they must be specified
+at compile time.  Eventually I'll add dynamic filepath-based import resolution
+but given the main use-case is to run in the browser (where the idea of a
+filepath is murky at best) it requires some nuance and isn't very important
+for now.  My CFD code gets imported by default without a prefix so you
+can use it by default.
+
+j(import "maths")
+
+Let's use this to find the square root of 16
+
+j(maths/sqrt 16)
+
+You can also use maths-defined symbols inside user-defined procedures,
+for example.
+
+j(define (circle-area r) 
+  (* r r maths/pi))
+
+j(circle-area 10)
