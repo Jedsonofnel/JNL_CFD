@@ -84,6 +84,8 @@ const (
 
 	tokenOpenParen
 	tokenCloseParen
+	tokenOpenVec
+	tokenCloseVec
 	tokenNumber
 	tokenString
 	tokenBool
@@ -96,6 +98,8 @@ const (
 	openList    = "("
 	openSrcList = "j("
 	closeList   = ")"
+	openVec     = "["
+	closeVec    = "]"
 	eof         = -1
 )
 
@@ -126,11 +130,12 @@ func (i token) String() string {
 }
 
 type lexer struct {
-	input     string
-	state     stateFn
-	rootState stateFn
-	tokens    chan token
-	stack     []stateFn // for nested lists
+	input        string
+	state        stateFn
+	rootState    stateFn
+	tokens       chan token
+	stack        []stateFn // for nested lists
+	bracketStack []rune    // track what we're inside of '(' or '['
 
 	// Position tracking
 	pos       int // current position in input (bytes)
@@ -279,6 +284,27 @@ func (l *lexer) pop() stateFn {
 	return state
 }
 
+func (l *lexer) pushContext(bracket rune) {
+	l.bracketStack = append(l.bracketStack, bracket)
+}
+
+func (l *lexer) popContext() rune {
+	if len(l.bracketStack) == 0 {
+		return 0
+	}
+
+	bracket := l.bracketStack[len(l.bracketStack)-1]
+	l.bracketStack = l.bracketStack[:len(l.bracketStack)-1]
+	return bracket
+}
+
+func (l *lexer) currentContext() rune {
+	if len(l.bracketStack) == 0 {
+		return 0
+	}
+	return l.bracketStack[len(l.bracketStack)-1]
+}
+
 // STATE FUNCTIONS
 
 type stateFn func(l *lexer) stateFn
@@ -318,13 +344,42 @@ func lexScanSrcExpr(l *lexer) stateFn {
 func lexOpenList(l *lexer) stateFn {
 	l.pos += len(openList)
 	l.emit(tokenOpenParen)
+	l.pushContext('(')
 	return lexInsideList
 }
 
 func lexOpenSrcList(l *lexer) stateFn {
 	l.pos += len(openSrcList)
 	l.emit(tokenOpenParen)
+	l.pushContext('(')
 	return lexInsideList
+}
+
+func lexCloseList(l *lexer) stateFn {
+	if l.currentContext() != '(' {
+		return l.errorf("mismatched brackets: expected ']' but found ')'")
+	}
+	l.pos += len(closeList)
+	l.emit(tokenCloseParen)
+	l.popContext()
+	return l.pop()
+}
+
+func lexOpenVec(l *lexer) stateFn {
+	l.pos += len(openVec)
+	l.emit(tokenOpenVec)
+	l.pushContext('[')
+	return lexInsideList
+}
+
+func lexCloseVec(l *lexer) stateFn {
+	if l.currentContext() != '[' {
+		return l.errorf("mismatched brackets: expected ')' but found ']'")
+	}
+	l.pos += len(closeVec)
+	l.emit(tokenCloseVec)
+	l.popContext()
+	return l.pop()
 }
 
 func lexInsideList(l *lexer) stateFn {
@@ -335,6 +390,13 @@ func lexInsideList(l *lexer) stateFn {
 		}
 		if strings.HasPrefix(l.input[l.pos:], closeList) {
 			return lexCloseList
+		}
+		if strings.HasPrefix(l.input[l.pos:], openVec) {
+			l.push(lexInsideList)
+			return lexOpenVec
+		}
+		if strings.HasPrefix(l.input[l.pos:], closeVec) {
+			return lexCloseVec
 		}
 		switch r := l.next(); {
 		case r == eof:
@@ -355,6 +417,8 @@ func dispatchToken(l *lexer, r rune) stateFn {
 		return lexComment
 	case '"':
 		return lexString
+	case '[':
+		return lexOpenVec
 	case '#':
 		return lexLiteral
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
@@ -373,12 +437,6 @@ func dispatchToken(l *lexer, r rune) stateFn {
 
 		return l.errorf("unexpected character: %c", r)
 	}
-}
-
-func lexCloseList(l *lexer) stateFn {
-	l.pos += len(closeList)
-	l.emit(tokenCloseParen)
-	return l.pop()
 }
 
 func lexLiteral(l *lexer) stateFn {

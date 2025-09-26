@@ -26,6 +26,7 @@ func REPL() {
 		if err != nil {
 			text.Reset()
 			fmt.Printf("error: %s\n", err)
+			prompt = buildPrompt(0)
 			continue
 		}
 

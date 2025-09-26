@@ -2,6 +2,7 @@ package jnlisp
 
 import (
 	"fmt"
+	"strings"
 )
 
 // EVAL IMPLEMENTATION
@@ -14,6 +15,17 @@ func eval(expr any, ctx *Context) (Atom, error) {
 
 	case list:
 		return evalList(v, ctx)
+
+	case vector:
+		elements := make([]Atom, len(v))
+		for i, elem := range v {
+			evaluated, err := eval(elem, ctx)
+			if err != nil {
+				return nil, fmt.Errorf("vector element %d > %w", i, err)
+			}
+			elements[i] = evaluated
+		}
+		return VectorAtom{elements}, nil
 
 	case symbol:
 		symbolName := string(v)
@@ -407,6 +419,24 @@ func (p ProcedureAtom) ToJSON() map[string]any {
 		"type":  "procedure",
 		"value": p.name,
 		"repr":  p.String(),
+	}
+}
+
+type VectorAtom struct{ elements []Atom }
+
+func (v VectorAtom) Type() string { return "vector" }
+func (v VectorAtom) String() string {
+	var parts []string
+	for _, elem := range v.elements {
+		parts = append(parts, elem.String())
+	}
+	return "[" + strings.Join(parts, " ") + "]"
+}
+func (v VectorAtom) ToJSON() map[string]any {
+	return map[string]any{
+		"type":  v.Type(),
+		"value": v.String(),
+		"repr":  v.String(),
 	}
 }
 

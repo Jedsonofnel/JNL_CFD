@@ -10,6 +10,7 @@ import (
 type symbol string
 type keyword string
 type list []any
+type vector []any
 
 func newSymbol(s string) symbol   { return symbol(s) }
 func newKeyword(s string) keyword { return keyword(s) }
@@ -87,18 +88,44 @@ func parseExpression(tokens []token, idx *int) (any, error) {
 		}
 		*idx++ // consume ")"
 		return list, nil
+
 	case tokenCloseParen:
 		return nil, fmt.Errorf("unexpected ')'")
+
+	case tokenOpenVec:
+		var vec vector
+		for *idx < len(tokens) && tokens[*idx].typ != tokenCloseVec {
+			exp, err := parseExpression(tokens, idx)
+			if err != nil {
+				return nil, err
+			}
+			vec = append(vec, exp)
+		}
+
+		if *idx >= len(tokens) || tokens[*idx].typ != tokenCloseVec {
+			return nil, fmt.Errorf("missing closing bracket")
+		}
+		*idx++ // consume "]"
+		return vec, nil
+
+	case tokenCloseVec:
+		return nil, fmt.Errorf("unexpected ']'")
+
 	case tokenString:
 		return token.val, nil
+
 	case tokenBool:
 		return parseBool(token.val), nil
+
 	case tokenNumber:
 		return parseNumber(token.val), nil
+
 	case tokenSymbol:
 		return newSymbol(token.val), nil
+
 	case tokenKeyword:
 		return newKeyword(token.val), nil
+
 	default:
 		return nil, fmt.Errorf("unexpected token: %v", token)
 	}

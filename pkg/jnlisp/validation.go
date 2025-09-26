@@ -33,7 +33,26 @@ func (av *ArgValidator) GetString() (string, *ArgValidator) {
 	return "", av
 }
 
-func (av *ArgValidator) GetFloat() (float64, *ArgValidator) {
+func (av *ArgValidator) GetInt() (int, *ArgValidator) {
+	if av.argIndex >= len(av.args) {
+		av.errors = append(av.errors, fmt.Sprintf("missing positional arg %d (expected number)", av.argIndex))
+		return 0, av
+	}
+
+	if num, ok := As[NumberAtom](av.args[av.argIndex]); ok {
+		av.argIndex++
+		if i, ok := num.value.(int); ok {
+			return i, av
+		}
+	}
+
+	av.errors = append(av.errors, fmt.Sprintf("arg %d: expected integer, got %s",
+		av.argIndex, av.args[av.argIndex].Type()))
+	av.argIndex++
+	return 0, av
+}
+
+func (av *ArgValidator) GetFloat64() (float64, *ArgValidator) {
 	if av.argIndex >= len(av.args) {
 		av.errors = append(av.errors, fmt.Sprintf("missing positional arg %d (expected number)", av.argIndex))
 		return 0, av
@@ -47,12 +66,33 @@ func (av *ArgValidator) GetFloat() (float64, *ArgValidator) {
 		if f, ok := num.value.(float32); ok {
 			return float64(f), av
 		}
+		if i, ok := num.value.(int); ok {
+			return float64(i), av
+		}
 	}
 
 	av.errors = append(av.errors, fmt.Sprintf("arg %d: expected number, got %s",
 		av.argIndex, av.args[av.argIndex].Type()))
 	av.argIndex++
 	return 0, av
+}
+
+func (av *ArgValidator) GetVector() (VectorAtom, *ArgValidator) {
+	if av.argIndex >= len(av.args) {
+		av.errors = append(av.errors, fmt.Sprintf("missing positional arg %d (expected vector)",
+			av.argIndex))
+		return VectorAtom{}, av
+	}
+
+	if vec, ok := As[VectorAtom](av.args[av.argIndex]); ok {
+		av.argIndex++
+		return vec, av
+	}
+
+	av.errors = append(av.errors, fmt.Sprintf("arg %d: expected vector, got %s",
+		av.argIndex, av.args[av.argIndex].Type()))
+	av.argIndex++
+	return VectorAtom{}, av
 }
 
 func Get[T Atom](av *ArgValidator) (T, *ArgValidator) {
@@ -81,6 +121,70 @@ func (av *ArgValidator) ExpectNoMoreArgs() *ArgValidator {
 			av.argIndex, len(av.args)))
 	}
 	return av
+}
+
+// VARIADIC ARGS
+
+func (av *ArgValidator) GetVariadicFloat32() ([]float32, *ArgValidator) {
+	var floats []float32
+
+	// Process all remaining positional arguments
+	for av.argIndex < len(av.args) {
+		if num, ok := As[NumberAtom](av.args[av.argIndex]); ok {
+			switch v := num.value.(type) {
+			case float64:
+				floats = append(floats, float32(v))
+			case float32:
+				floats = append(floats, v)
+			case int:
+				floats = append(floats, float32(v))
+			default:
+				av.errors = append(av.errors, fmt.Sprintf("arg %d: cannot convert %T to float64",
+					av.argIndex, v))
+				av.argIndex++
+				continue
+			}
+		} else {
+			av.errors = append(av.errors, fmt.Sprintf("arg %d: expected number, got %s", av.argIndex, av.args[av.argIndex].Type()))
+			av.argIndex++
+			continue
+		}
+		av.argIndex++
+	}
+
+	return floats, av
+}
+
+func (av *ArgValidator) GetVariadicComplex128() ([]complex128, *ArgValidator) {
+	var complexes []complex128
+
+	// Process all remaining positional arguments
+	for av.argIndex < len(av.args) {
+		if num, ok := As[NumberAtom](av.args[av.argIndex]); ok {
+			switch v := num.value.(type) {
+			case float64:
+				complexes = append(complexes, complex(v, 0))
+			case float32:
+				complexes = append(complexes, complex(float64(v), 0))
+			case int:
+				complexes = append(complexes, complex(float64(v), 0))
+			case complex128:
+				complexes = append(complexes, v)
+			default:
+				av.errors = append(av.errors, fmt.Sprintf("arg %d: cannot convert %T to complex",
+					av.argIndex, v))
+				av.argIndex++
+				continue
+			}
+		} else {
+			av.errors = append(av.errors, fmt.Sprintf("arg %d: expected number, got %s", av.argIndex, av.args[av.argIndex].Type()))
+			av.argIndex++
+			continue
+		}
+		av.argIndex++
+	}
+
+	return complexes, av
 }
 
 // KEYWORD ARGS

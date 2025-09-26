@@ -3,6 +3,7 @@
 build:
 	go build -o ./bin/cli ./cmd/cli/main.go
 	go build -o ./bin/web ./cmd/web/main.go
+	go build -o ./bin/repl ./cmd/repl/main.go
 
 clean:
 	rm -rf bin/*

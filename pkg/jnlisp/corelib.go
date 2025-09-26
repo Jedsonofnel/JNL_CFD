@@ -21,6 +21,9 @@ func init() {
 			"=":   lispEqual,
 			">":   lispGreaterThan,
 			"not": lispNot,
+
+			"vec-ref": lispVectorRef,
+			"vec-len": lispVectorLength,
 		},
 		Atoms: map[string]Atom{},
 	})
@@ -213,6 +216,36 @@ func lispNot(args []Atom, _ Table) (Atom, error) {
 	}
 
 	return BooleanAtom{!boolean.value}, nil
+}
+
+// VECTOR OPERATIONS
+
+func lispVectorRef(args []Atom, _ Table) (Atom, error) {
+	vec, v := ValidateArgs(args, nil).GetVector()
+	index, v := v.GetInt()
+	v = v.ExpectNoMoreArgs()
+
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+
+	if index < 0 || index >= len(vec.elements) {
+		return nil, fmt.Errorf("index %d out of bounds for vector of length %d",
+			index, len(vec.elements))
+	}
+
+	return vec.elements[index], nil
+}
+
+func lispVectorLength(args []Atom, _ Table) (Atom, error) {
+	vec, v := ValidateArgs(args, nil).GetVector()
+	v = v.ExpectNoMoreArgs()
+
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+
+	return NumberAtom{len(vec.elements)}, nil
 }
 
 // HELPERS
