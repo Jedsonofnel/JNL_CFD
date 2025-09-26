@@ -1,0 +1,5 @@
+# Passive Tracer Workbook
+
+An example of the passive transport solver I have currently.
+SIMPLE is not far away as my abstractions are very extensible
+and it shouldn't be so hard to implement 

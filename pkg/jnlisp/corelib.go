@@ -35,7 +35,7 @@ func lispAdd(args []Atom, _ Table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
-			values = append(values, num.value)
+			values = append(values, num.Value)
 		} else {
 			return nil, fmt.Errorf("+ expects numbers, got %s", arg.Type())
 		}
@@ -62,7 +62,7 @@ func lispSubtract(args []Atom, _ Table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
-			values = append(values, num.value)
+			values = append(values, num.Value)
 		} else {
 			return nil, fmt.Errorf("- expects numbers, got %s", arg.Type())
 		}
@@ -89,7 +89,7 @@ func lispMultiply(args []Atom, _ Table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
-			values = append(values, num.value)
+			values = append(values, num.Value)
 		} else {
 			return nil, fmt.Errorf("/ expects numbers, got %s", arg.Type())
 		}
@@ -116,7 +116,7 @@ func lispDivide(args []Atom, _ Table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
-			values = append(values, num.value)
+			values = append(values, num.Value)
 		} else {
 			return nil, fmt.Errorf("/ expects numbers, got %s", arg.Type())
 		}
@@ -147,7 +147,7 @@ func lispModulo(args []Atom, _ Table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
-			values = append(values, num.value)
+			values = append(values, num.Value)
 		} else {
 			return nil, fmt.Errorf("%% expects numbers, got %s", arg.Type())
 		}
@@ -191,7 +191,7 @@ func lispGreaterThan(args []Atom, _ Table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
-			values = append(values, num.value)
+			values = append(values, num.Value)
 		} else {
 			return nil, fmt.Errorf("> expects numbers, got %s", arg.Type())
 		}
@@ -215,7 +215,7 @@ func lispNot(args []Atom, _ Table) (Atom, error) {
 		return nil, fmt.Errorf("not expects a boolean, got %s", args[0].Type())
 	}
 
-	return BooleanAtom{!boolean.value}, nil
+	return BooleanAtom{!boolean.Value}, nil
 }
 
 // VECTOR OPERATIONS
@@ -229,12 +229,12 @@ func lispVectorRef(args []Atom, _ Table) (Atom, error) {
 		return nil, err
 	}
 
-	if index < 0 || index >= len(vec.elements) {
+	if index < 0 || index >= len(vec.Elements) {
 		return nil, fmt.Errorf("index %d out of bounds for vector of length %d",
-			index, len(vec.elements))
+			index, len(vec.Elements))
 	}
 
-	return vec.elements[index], nil
+	return vec.Elements[index], nil
 }
 
 func lispVectorLength(args []Atom, _ Table) (Atom, error) {
@@ -245,7 +245,7 @@ func lispVectorLength(args []Atom, _ Table) (Atom, error) {
 		return nil, err
 	}
 
-	return NumberAtom{len(vec.elements)}, nil
+	return NumberAtom{len(vec.Elements)}, nil
 }
 
 // HELPERS
@@ -253,7 +253,7 @@ func lispVectorLength(args []Atom, _ Table) (Atom, error) {
 func atomsEqual(a, b Atom) bool {
 	if numA, okA := As[NumberAtom](a); okA {
 		if numB, okB := As[NumberAtom](b); okB {
-			values := []any{numA.value, numB.value}
+			values := []any{numA.Value, numB.Value}
 			castArgs, _ := toComplex(values, "")
 			return castArgs[0] == castArgs[1]
 		}
@@ -266,9 +266,9 @@ func atomsEqual(a, b Atom) bool {
 
 	switch va := a.(type) {
 	case BooleanAtom:
-		return va.value == b.(BooleanAtom).value
+		return va.Value == b.(BooleanAtom).Value
 	case StringAtom:
-		return va.value == b.(StringAtom).value
+		return va.Value == b.(StringAtom).Value
 	default:
 		return false
 	}

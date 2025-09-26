@@ -62,6 +62,7 @@ type Procedure struct {
 	params       paramList
 	body         []any
 	closure      *env
+	definingCtx  *Context
 	importPrefix string
 }
 
@@ -91,6 +92,10 @@ func (p *Procedure) Call(args []Atom, kwargs Table, ctx *Context) (Atom, error) 
 			// TODO consider defaults later
 			activationEnv.bind(string(namedParam), nil)
 		}
+	}
+
+	if ctx == nil {
+		ctx = p.definingCtx
 	}
 
 	callCtx := &Context{

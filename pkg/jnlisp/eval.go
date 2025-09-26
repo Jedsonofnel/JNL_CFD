@@ -100,7 +100,7 @@ func evalIf(list list, ctx *Context) (Atom, error) {
 		return nil, fmt.Errorf("if expects to test a boolean, cannot test %s", testResult.Type())
 	}
 
-	if boolean.value {
+	if boolean.Value {
 		return eval(conseq, ctx)
 	} else {
 		return eval(alt, ctx)
@@ -151,6 +151,7 @@ func evalDefine(l list, ctx *Context) (Atom, error) {
 			params:       paramList,
 			body:         body,
 			closure:      ctx.env,
+			definingCtx:  ctx,
 			importPrefix: ctx.importPrefix,
 		}
 
@@ -183,10 +184,12 @@ func evalLambda(l list, ctx *Context) (Atom, error) {
 	}
 
 	proc := &Procedure{
-		name:    "lambda",
-		params:  paramList,
-		body:    body,
-		closure: ctx.env,
+		name:         "lambda",
+		params:       paramList,
+		body:         body,
+		closure:      ctx.env,
+		definingCtx:  ctx,
+		importPrefix: ctx.importPrefix,
 	}
 
 	return ProcedureAtom{proc}, nil
@@ -227,7 +230,7 @@ func evalAnd(list list, ctx *Context) (Atom, error) {
 				result.Type(), i-1)
 		}
 
-		if !boolean.value {
+		if !boolean.Value {
 			return BooleanAtom{false}, nil
 		}
 	}
@@ -247,7 +250,7 @@ func evalOr(list list, ctx *Context) (Atom, error) {
 			return nil, fmt.Errorf("or expects boolean arguments, got %T at position %d", result, i-1)
 		}
 
-		if boolean.value {
+		if boolean.Value {
 			return BooleanAtom{true}, nil
 		}
 	}
@@ -364,23 +367,36 @@ type Atom interface {
 	ToJSON() map[string]any
 }
 
-type NumberAtom struct{ value any }
+type NumberAtom struct{ Value any }
 
 func (n NumberAtom) Type() string   { return "number" }
-func (n NumberAtom) String() string { return fmt.Sprintf("%v", n.value) }
+func (n NumberAtom) String() string { return fmt.Sprintf("%v", n.Value) }
 func (n NumberAtom) ToJSON() map[string]any {
 	return map[string]any{
 		"type":  "number",
-		"value": n.value,
+		"value": n.Value,
 		"repr":  n.String(),
 	}
 }
 
-type BooleanAtom struct{ value bool }
+func (n NumberAtom) ToFloat64() (float64, error) {
+	switch v := n.Value.(type) {
+	case float64:
+		return v, nil
+	case float32:
+		return float64(v), nil
+	case int:
+		return float64(v), nil
+	default:
+		return 0, fmt.Errorf("cannot convert %T to float64", v)
+	}
+}
+
+type BooleanAtom struct{ Value bool }
 
 func (b BooleanAtom) Type() string { return "boolean" }
 func (b BooleanAtom) String() string {
-	if b.value {
+	if b.Value {
 		return "#t"
 	} else {
 		return "#f"
@@ -389,19 +405,19 @@ func (b BooleanAtom) String() string {
 func (b BooleanAtom) ToJSON() map[string]any {
 	return map[string]any{
 		"type":  "boolean",
-		"value": b.value,
+		"value": b.Value,
 		"repr":  b.String(),
 	}
 }
 
-type StringAtom struct{ value string }
+type StringAtom struct{ Value string }
 
 func (s StringAtom) Type() string   { return "string" }
-func (s StringAtom) String() string { return s.value }
+func (s StringAtom) String() string { return s.Value }
 func (s StringAtom) ToJSON() map[string]any {
 	return map[string]any{
 		"type":  "string",
-		"value": s.value,
+		"value": s.Value,
 		"repr":  s.String(),
 	}
 }
@@ -422,12 +438,12 @@ func (p ProcedureAtom) ToJSON() map[string]any {
 	}
 }
 
-type VectorAtom struct{ elements []Atom }
+type VectorAtom struct{ Elements []Atom }
 
 func (v VectorAtom) Type() string { return "vector" }
 func (v VectorAtom) String() string {
 	var parts []string
-	for _, elem := range v.elements {
+	for _, elem := range v.Elements {
 		parts = append(parts, elem.String())
 	}
 	return "[" + strings.Join(parts, " ") + "]"
@@ -438,6 +454,10 @@ func (v VectorAtom) ToJSON() map[string]any {
 		"value": v.String(),
 		"repr":  v.String(),
 	}
+}
+
+func (v VectorAtom) Length() int {
+	return len(v.Elements)
 }
 
 // WRAPPER TYPE FOR QUERYING ENV

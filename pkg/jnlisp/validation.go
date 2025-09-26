@@ -24,7 +24,7 @@ func (av *ArgValidator) GetString() (string, *ArgValidator) {
 	}
 
 	if str, ok := As[StringAtom](av.args[av.argIndex]); ok {
-		return str.value, av
+		return str.Value, av
 	}
 
 	av.errors = append(av.errors, fmt.Sprintf("arg %d: expected string, got %s",
@@ -41,7 +41,7 @@ func (av *ArgValidator) GetInt() (int, *ArgValidator) {
 
 	if num, ok := As[NumberAtom](av.args[av.argIndex]); ok {
 		av.argIndex++
-		if i, ok := num.value.(int); ok {
+		if i, ok := num.Value.(int); ok {
 			return i, av
 		}
 	}
@@ -60,13 +60,13 @@ func (av *ArgValidator) GetFloat64() (float64, *ArgValidator) {
 
 	if num, ok := As[NumberAtom](av.args[av.argIndex]); ok {
 		av.argIndex++
-		if f, ok := num.value.(float64); ok {
+		if f, ok := num.Value.(float64); ok {
 			return f, av
 		}
-		if f, ok := num.value.(float32); ok {
+		if f, ok := num.Value.(float32); ok {
 			return float64(f), av
 		}
-		if i, ok := num.value.(int); ok {
+		if i, ok := num.Value.(int); ok {
 			return float64(i), av
 		}
 	}
@@ -93,6 +93,24 @@ func (av *ArgValidator) GetVector() (VectorAtom, *ArgValidator) {
 		av.argIndex, av.args[av.argIndex].Type()))
 	av.argIndex++
 	return VectorAtom{}, av
+}
+
+func (av *ArgValidator) GetProcedure() (ProcedureAtom, *ArgValidator) {
+	if av.argIndex >= len(av.args) {
+		av.errors = append(av.errors, fmt.Sprintf("missing positional arg %d (expected procedure)",
+			av.argIndex))
+		return ProcedureAtom{}, av
+	}
+
+	if proc, ok := As[ProcedureAtom](av.args[av.argIndex]); ok {
+		av.argIndex++
+		return proc, av
+	}
+
+	av.errors = append(av.errors, fmt.Sprintf("arg %d: expected procedure, got %s",
+		av.argIndex, av.args[av.argIndex].Type()))
+	av.argIndex++
+	return ProcedureAtom{}, av
 }
 
 func Get[T Atom](av *ArgValidator) (T, *ArgValidator) {
@@ -131,7 +149,7 @@ func (av *ArgValidator) GetVariadicFloat32() ([]float32, *ArgValidator) {
 	// Process all remaining positional arguments
 	for av.argIndex < len(av.args) {
 		if num, ok := As[NumberAtom](av.args[av.argIndex]); ok {
-			switch v := num.value.(type) {
+			switch v := num.Value.(type) {
 			case float64:
 				floats = append(floats, float32(v))
 			case float32:
@@ -161,7 +179,7 @@ func (av *ArgValidator) GetVariadicComplex128() ([]complex128, *ArgValidator) {
 	// Process all remaining positional arguments
 	for av.argIndex < len(av.args) {
 		if num, ok := As[NumberAtom](av.args[av.argIndex]); ok {
-			switch v := num.value.(type) {
+			switch v := num.Value.(type) {
 			case float64:
 				complexes = append(complexes, complex(v, 0))
 			case float32:
@@ -197,7 +215,7 @@ func (av *ArgValidator) GetKeywordInt(key string) (int, *ArgValidator) {
 	}
 
 	if num, ok := As[NumberAtom](atom); ok {
-		if i, ok := num.value.(int); ok {
+		if i, ok := num.Value.(int); ok {
 			return i, av
 		}
 	}
@@ -215,13 +233,13 @@ func (av *ArgValidator) GetKeywordFloat32(key string) (float32, *ArgValidator) {
 	}
 
 	if num, ok := As[NumberAtom](atom); ok {
-		if i, ok := num.value.(int); ok {
+		if i, ok := num.Value.(int); ok {
 			return float32(i), av
 		}
-		if f, ok := num.value.(float64); ok {
+		if f, ok := num.Value.(float64); ok {
 			return float32(f), av
 		}
-		if f, ok := num.value.(float32); ok {
+		if f, ok := num.Value.(float32); ok {
 			return f, av
 		}
 	}
@@ -239,13 +257,13 @@ func (av *ArgValidator) GetKeywordFloat64(key string) (float64, *ArgValidator) {
 	}
 
 	if num, ok := As[NumberAtom](atom); ok {
-		if i, ok := num.value.(int); ok {
+		if i, ok := num.Value.(int); ok {
 			return float64(i), av
 		}
-		if f, ok := num.value.(float64); ok {
+		if f, ok := num.Value.(float64); ok {
 			return f, av
 		}
-		if f, ok := num.value.(float32); ok {
+		if f, ok := num.Value.(float32); ok {
 			return float64(f), av
 		}
 	}
