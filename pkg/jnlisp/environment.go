@@ -30,7 +30,7 @@ func (e *env) find(s string) (Atom, bool) {
 	return nil, false
 }
 
-func (e *env) bind(s string, atom Atom) boundAtom{
+func (e *env) bind(s string, atom Atom) boundAtom {
 	boundAtom := boundAtom{
 		Atom:   atom,
 		handle: s,
@@ -45,11 +45,11 @@ func newStandardEnv() (e *env) {
 	return
 }
 
-type table map[string]Atom // TODO: move this to parser when I add a vector type etc
+type Table map[string]Atom // TODO: move this to parser when I add a vector type etc
 
 // PROCEDURES
 
-type ProcFunc func(args []Atom, kwargs table) (Atom, error)
+type ProcFunc func(args []Atom, kwargs Table) (Atom, error)
 
 type paramList struct {
 	positional []symbol
@@ -65,7 +65,7 @@ type Procedure struct {
 	importPrefix string
 }
 
-func (p *Procedure) Call(args []Atom, kwargs table, ctx *Context) (Atom, error) {
+func (p *Procedure) Call(args []Atom, kwargs Table, ctx *Context) (Atom, error) {
 	if p.proc != nil { // given a go binding
 		return p.proc(args, kwargs)
 	}

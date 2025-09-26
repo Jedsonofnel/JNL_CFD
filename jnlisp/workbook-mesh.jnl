@@ -1,0 +1,10 @@
+# Mesh example workbook
+
+Currently the meshing functionality is super limited.  You can only create
+a very basic cartesian uniform structured mesh with the following code:
+
+j(define mesh (structured-mesh
+  :nx 50
+  :ny 25
+  :width 1
+  :height 0.5))

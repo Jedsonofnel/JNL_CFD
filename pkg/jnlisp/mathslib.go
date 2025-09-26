@@ -22,7 +22,7 @@ func init() {
 	})
 }
 
-func lispSine(args []Atom, _ table) (Atom, error) {
+func lispSine(args []Atom, _ Table) (Atom, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("sin expects exactly 1 argument, got %d", len(args))
 	}
@@ -40,7 +40,7 @@ func lispSine(args []Atom, _ table) (Atom, error) {
 	return NumberAtom{math.Sin(castArgs[0])}, nil
 }
 
-func lispCosine(args []Atom, _ table) (Atom, error) {
+func lispCosine(args []Atom, _ Table) (Atom, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("cos expects exactly 1 argument, got %d", len(args))
 	}
@@ -58,7 +58,7 @@ func lispCosine(args []Atom, _ table) (Atom, error) {
 	return NumberAtom{math.Cos(castArgs[0])}, nil
 }
 
-func lispSqrt(args []Atom, _ table) (Atom, error) {
+func lispSqrt(args []Atom, _ Table) (Atom, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("sqrt expects exactly 1 argument, got %d", len(args))
 	}

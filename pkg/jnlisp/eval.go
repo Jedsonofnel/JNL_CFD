@@ -268,7 +268,7 @@ func evalApplication(list list, ctx *Context) (Atom, error) {
 			}
 		}
 
-		return castProc.Call(args, make(table), ctx)
+		return castProc.Call(args, make(Table), ctx)
 	}
 	// keywords present
 	positionalExpr := list[1:keywordIdx]
@@ -289,7 +289,7 @@ func evalApplication(list list, ctx *Context) (Atom, error) {
 	}
 
 	// build a table from keywords
-	kwargs := make(table)
+	kwargs := make(Table)
 	for i := 0; i < len(keywordSection); i += 2 {
 		key, ok := keywordSection[i].(keyword)
 		if !ok {

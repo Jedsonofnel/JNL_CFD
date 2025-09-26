@@ -28,7 +28,7 @@ func init() {
 
 // STANDARD MATHS
 
-func lispAdd(args []Atom, _ table) (Atom, error) {
+func lispAdd(args []Atom, _ Table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
@@ -51,7 +51,7 @@ func lispAdd(args []Atom, _ table) (Atom, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispSubtract(args []Atom, _ table) (Atom, error) {
+func lispSubtract(args []Atom, _ Table) (Atom, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("- requires at least 1 argument")
 	}
@@ -82,7 +82,7 @@ func lispSubtract(args []Atom, _ table) (Atom, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispMultiply(args []Atom, _ table) (Atom, error) {
+func lispMultiply(args []Atom, _ Table) (Atom, error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
@@ -105,7 +105,7 @@ func lispMultiply(args []Atom, _ table) (Atom, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispDivide(args []Atom, _ table) (Atom, error) {
+func lispDivide(args []Atom, _ Table) (Atom, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("/ requires at least 1 argument")
 	}
@@ -136,7 +136,7 @@ func lispDivide(args []Atom, _ table) (Atom, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispModulo(args []Atom, _ table) (Atom, error) {
+func lispModulo(args []Atom, _ Table) (Atom, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("%% requires exactly 2 arguments")
 	}
@@ -165,7 +165,7 @@ func lispModulo(args []Atom, _ table) (Atom, error) {
 
 // BASIC COMPARATORS
 
-func lispEqual(args []Atom, _ table) (Atom, error) {
+func lispEqual(args []Atom, _ Table) (Atom, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("= expects at least 2 arguments, got %d", len(args))
 	}
@@ -180,7 +180,7 @@ func lispEqual(args []Atom, _ table) (Atom, error) {
 	return BooleanAtom{true}, nil
 }
 
-func lispGreaterThan(args []Atom, _ table) (Atom, error) {
+func lispGreaterThan(args []Atom, _ Table) (Atom, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("> expects exactly 2 arguments, got %d", len(args))
 	}
@@ -202,7 +202,7 @@ func lispGreaterThan(args []Atom, _ table) (Atom, error) {
 	return BooleanAtom{castArgs[0] > castArgs[1]}, nil
 }
 
-func lispNot(args []Atom, _ table) (Atom, error) {
+func lispNot(args []Atom, _ Table) (Atom, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("not expects at least 1 argument, got %d", len(args))
 	}
