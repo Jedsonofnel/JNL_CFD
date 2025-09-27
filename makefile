@@ -15,7 +15,8 @@ clean: clean-web-assets
 	rm -rf bin/*
 
 clean-web-assets:
-	rm -rf internal/web/templates internal/web/assets internal/web/assets.go
+	rm -rf internal/web/templates internal/web/assets internal/web/assets.go \
+		internal/web/jnlisp
 
 dev:
 	git ls-files -cdmo --exclude-standard | entr -dr go run ./cmd/web

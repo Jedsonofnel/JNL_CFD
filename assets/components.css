@@ -1,7 +1,54 @@
 /* self-contained components:
  * following https://rstacruz.github.io/rscss/index.html */
 
+/* footer */
+footer {
+	margin-top: 100px;
+	border-top: 1px solid var(--fg);
+	padding: 1rem 0;
+}
+
+.jnl-mark {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	font-size: 1.8rem;
+	margin: 32px 0 8px 0;
+}
+
+.jnl-mark__img {
+	object-fit: contain;
+	max-height: 2.4rem;
+}
+
+.jnl-copyright {
+	font-size: 0.8rem;
+}
+
 /* canvas element for rendering */
 .renderer-canvas {
 	width: 100%;
+}
+
+/* workbook stuff */
+.code-editor {
+	font-family: "Fira Code", monospace;
+	white-space: pre-wrap;
+	flex: 72ch 1 0;
+	outline: none;
+	padding: 0.5em;
+}
+
+.editor-container {
+	display: flex;
+	overflow-x: auto;
+	border: 1px solid var(--fg);
+}
+
+.workbook-menu {
+	padding: 8px 0;
+	display: flex;
+	justify-content: end;
+	align-items: start;
+	gap: 2px;
 }

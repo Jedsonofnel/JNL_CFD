@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Fira+Code&family=IBM+Plex+Sans:ital@0;1&display=swap");
+
 :root {
 	--fg: hsl(220, 35%, 15%);
 	--bg: hsl(220, 35%, 95%);
@@ -5,9 +7,10 @@
 
 html {
 	box-sizing: border-box;
-	font-size: 16px;
 	background-color: var(--bg);
 	color: var(--fg);
+	font-family: "IBM Plex Sans", sans-serif;
+	font-size: 16px;
 }
 
 *,
@@ -18,11 +21,10 @@ html {
 }
 
 body {
-	width: min(90%, 72ch);
+	width: min(90%, 80ch);
 	margin: 0 auto;
 	padding: 0;
 
-	font-family: sans-serif;
 	line-height: 1.5;
 	font-weight: normal;
 }
@@ -39,4 +41,49 @@ p {
 
 ul {
 	list-style-type: "▸  ";
+}
+
+/* CORE components used frequently */
+
+header {
+	display: flex;
+	flex-direction: column-reverse;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 1rem;
+	margin: min(30vh, 200px) 0 32px 0;
+
+	h1 {
+		margin: 0;
+		min-width: 0;
+	}
+
+	nav {
+		flex-shrink: 0;
+	}
+}
+
+header.thin {
+	flex-direction: row;
+	align-items: baseline;
+	justify-content: space-between;
+	margin: 16px 0;
+}
+
+button {
+	background-color: var(--bg);
+	border: 1px solid var(--fg);
+	border-bottom: 2px solid var(--fg);
+	cursor: pointer;
+	padding: 2px 16px;
+
+	&:hover {
+		background-color: var(--fg);
+		color: var(--bg);
+	}
+
+	&[disabled] {
+		border-bottom: 1px solid var(--fg);
+		padding-bottom: 3px;
+	}
 }

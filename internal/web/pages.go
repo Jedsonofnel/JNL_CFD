@@ -45,13 +45,3 @@ func handleWorkbookShow(_ *log.Logger, view *View) http.Handler {
 		})
 	})
 }
-
-// workbooks
-
-func predefinedWorkbooks(name string) (string, bool) {
-	// TODO get FS from ../../jnlisp/workbooks/*.jnl
-	// find if there's a file with the name and return
-	// it's contents as a string if so
-
-	return "", false
-}

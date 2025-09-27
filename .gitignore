@@ -7,3 +7,6 @@ internal/web/assets.go
 internal/web/assets
 internal/web/templates
 internal/web/jnlisp
+
+# production logs
+logs/

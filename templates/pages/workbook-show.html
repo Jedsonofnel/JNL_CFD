@@ -1,12 +1,28 @@
 <main>
-	<h1>Viewport{{# Page.name }}: {{ . }}{{/ Page.name }}</h1>
+	<header class="thin">
+		<h1>Workbook</h1>
+		<nav><a href="/#menu">Menu</a> / <a href="/workbooks">Workbooks</a></nav>
+	</header>
 
-	<nav>
-		<ul>
-			<li><a href="/#menu">Menu</a></li>
-			<li><a href="/viewports">Viewports</a></li>
-		</ul>
-	</nav>
+	<section data-js-context="workbook" data-js-behaviour="workbook-layout">
+		<div data-js-workbook="menu-bar" class="workbook-menu">
+			<button data-js-workbook-layout="editor-btn" disabled>View Editor</button>
+			<button data-js-workbook-layout="results-btn">View Results</button>
+		</div>
+
+		<div class="editor-container" data-js-workbook="editor-pane">
+			<div contenteditable="true" class="code-editor" data-js-behaviour="code-editor"
+				data-js-workbook="code-editor" spellcheck="false">
+				{{ Page.contents }}
+			</div>
+		</div>
+
+		<div data-js-workbook="results-pane" hidden>
+			<div data-js-behaviour="results-list">
+				Future results table
+			</div>
+		</div>
+	</section>
 
 	<div data-js-viz="{{ Page.family }}">
 		<canvas data-js-viz-canvas width="800" height="600" class="renderer-canvas"></canvas>

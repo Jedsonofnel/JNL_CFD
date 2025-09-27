@@ -17,6 +17,9 @@ func main() {
 	if err := copyDir("../../assets", "assets"); err != nil {
 		panic(err)
 	}
+	if err := copyDir("../../jnlisp", "jnlisp"); err != nil {
+		panic(err)
+	}
 
 	// Generate the embed file
 	content := `package web
@@ -26,7 +29,7 @@ import (
 	"io/fs"
 )
 
-//go:embed templates assets
+//go:embed templates assets jnlisp
 var embeddedAssets embed.FS
 
 func getEmbeddedFS() fs.FS {

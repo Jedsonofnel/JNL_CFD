@@ -3,13 +3,14 @@
 package web
 
 import (
-	"github.com/cbroglie/mustache"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cbroglie/mustache"
 )
 
 type View struct {
@@ -33,9 +34,10 @@ func (fp *FSPartialProvider) Get(name string) (string, error) {
 }
 
 func NewView() *View {
-	fileSystem := getFS()
+	templateFs, _ := fs.Sub(getFS(), "templates")
 
-	fp := &FSPartialProvider{fileSystem}
+	partialFs, _ := fs.Sub(templateFs, "partials")
+	fp := &FSPartialProvider{partialFs}
 
 	layoutData := make(map[string]any)
 	layoutData["timestamp"] = time.Now().UnixMilli()
@@ -45,20 +47,19 @@ func NewView() *View {
 		pageStore:       make(map[string]*mustache.Template),
 		partialProvider: fp,
 		layoutData:      layoutData,
-		fs:              fileSystem,
+		fs:              templateFs,
 	}
 
 	return &v
 }
 
 func (v *View) LoadTemplates() error {
-	pagesDir := filepath.Join("templates", "pages")
-
+	pagesDir := filepath.Join("pages")
 	if err := v.populateStore(v.pageStore, pagesDir); err != nil {
 		return err
 	}
 
-	layoutsDir := filepath.Join("templates", "layouts")
+	layoutsDir := filepath.Join("layouts")
 	if err := v.populateStore(v.layoutStore, layoutsDir); err != nil {
 		return err
 	}
@@ -103,8 +104,8 @@ func (v *View) Render(w http.ResponseWriter, name string, context any) error {
 }
 
 func getFS() fs.FS {
-	if os.Getenv("APP_ENV") == "production" {
+	if os.Getenv("ENV") == "production" {
 		return getEmbeddedFS() // This will be generated
 	}
-	return os.DirFS("../../") // Go up to project root
+	return os.DirFS("./")
 }

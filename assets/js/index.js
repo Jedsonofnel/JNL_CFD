@@ -1,9 +1,16 @@
+import { WorkbookLayoutBehaviour } from "./behaviours/workbook-layout.js";
+import { WorkbookContext } from "./contexts/workbook.js";
 import { BehaviourManager } from "./lib/behaviour-manager.js";
-import { MeshViz } from "./mesh-viz.js";
-import { ScenarioViz } from "./scenario-viz.js";
+import { CodeEditorBehaviour } from "./behaviours/code-editor.js";
 
 const manager = new BehaviourManager();
-manager.register(`[data-js-viz="mesh"]`, MeshViz);
-manager.register(`[data-js-viz="scenario"]`, ScenarioViz);
 
-document.addEventListener("DOMContentLoaded", () => manager.init());
+manager.registerContext(`[data-js-context="workbook"]`, WorkbookContext);
+
+manager.register(
+	`[data-js-behaviour*="workbook-layout"]`,
+	WorkbookLayoutBehaviour,
+);
+manager.register(`[data-js-behaviour*="code-editor"]`, CodeEditorBehaviour)
+
+document.addEventListener("DOMContentLoaded", async () => await manager.init());
