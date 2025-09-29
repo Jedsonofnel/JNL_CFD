@@ -58,6 +58,27 @@
 	grid-column: 1 / -1;
 }
 
+.menu-bar__interp-indicator {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 8px;
+	--glyph-size: 8px;
+
+	&::before {
+		content: "";
+		display: block;
+		border: 1px solid var(--fg);
+		width: var(--glyph-size);
+		height: var(--glyph-size);
+		background-color: var(--bg);
+	}
+}
+
+.menu-bar__interp-indicator.menu-bar__interp-indicator--ready::before {
+	background-color: var(--fg);
+}
+
 .menu-bar__push-right {
 	margin-left: auto;
 }

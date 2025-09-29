@@ -15,6 +15,27 @@ type vector []any
 func newSymbol(s string) symbol   { return symbol(s) }
 func newKeyword(s string) keyword { return keyword(s) }
 
+// ERROR TYPES
+
+type SyntaxError struct {
+	token   token
+	Message string
+}
+
+func (e SyntaxError) Error() string {
+	return "Syntax error at " + e.token.pos.String() + ": " + e.Message
+}
+
+func newSyntaxError(t token) error {
+	var message string
+	switch t.typ {
+	default:
+		panic("Called newSyntaxError with non-error type: " + t.typ.String())
+	}
+
+	return SyntaxError{t, message}
+}
+
 // doesn't expect any markdown block stuff in between - only s-exps
 func parseREPL(tokens []token) ([]any, error) {
 	var expressions []any

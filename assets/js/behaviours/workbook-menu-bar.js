@@ -22,20 +22,24 @@ export class WorkbookMenuBarBehaviour extends ContextAwareBehaviour {
 	}
 
 	setupIndicator() {
-		this.context.events.addEventListener(
-			"interpreter:start",
-			() => this.interpIndicator.textContent = "Running...",
-		);
+		this.context.events.addEventListener("interpreter:start", () => {
+			this.interpIndicator.textContent = "Running...";
+			this.interpIndicator.classList.remove(
+				"menu-bar__interp-indicator--ready",
+			);
+		});
 
-		this.context.events.addEventListener(
-			"interpreter:finish",
-			() => this.interpIndicator.textContent = "Ready",
-		);
+		this.context.events.addEventListener("interpreter:finish", () => {
+			this.interpIndicator.textContent = "Ready";
+			this.interpIndicator.classList.add("menu-bar__interp-indicator--ready");
+		});
 
-		this.context.events.addEventListener(
-			"interpreter:dirty",
-			() => this.interpIndicator.textContent = "Modified",
-		);
+		this.context.events.addEventListener("interpreter:dirty", () => {
+			this.interpIndicator.textContent = "Modified";
+			this.interpIndicator.classList.remove(
+				"menu-bar__interp-indicator--ready",
+			);
+		});
 	}
 
 	setupBtns() {

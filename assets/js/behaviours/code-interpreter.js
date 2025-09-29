@@ -10,10 +10,11 @@ export class CodeInterpreterBehaviour extends ContextAwareBehaviour {
 			this.interpret.bind(this),
 		);
 
-		this.element.addEventListener("input", () =>
-			this.context.events.dispatchEvent(new CustomEvent("interpreter:dirty")),
-			debounce(() => this.interpret.bind(this))
-		);
+		this.debouncedInterpreter = debounce(this.interpret.bind(this));
+		this.element.addEventListener("input", () => {
+			this.context.events.dispatchEvent(new CustomEvent("interpreter:dirty"));
+			this.debouncedInterpreter();
+		});
 
 		this.interpreterWorker = new Worker(
 			new URL("../workers/interpret-workbook.js", import.meta.url),

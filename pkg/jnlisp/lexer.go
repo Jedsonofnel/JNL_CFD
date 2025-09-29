@@ -3,37 +3,26 @@ package jnlisp
 import (
 	"fmt"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
-// MAIN INTERACTION
+// MAIN EXTERNAL INTERACTION
 
 // looks for 'j(' glyph to start top-level s-exp
 func tokenizeSrc(input string) []token {
-	lex := lex(input, lexScanSrcExpr)
-	tokens := make([]token, 0)
-
-	for {
-		next := lex.nextItem()
-		if next.typ == tokenEOF || next.typ == tokenError {
-			break
-		}
-		tokens = append(tokens, next)
-	}
-
-	return tokens
+	return tokenize(input, lexScanSrcExpr)
 }
 
 // just looks for '(' to start top-level s-exp
 func tokenizeREPL(input string) []token {
-	l := lex(input, lexScanExpr)
-	tokens := make([]token, 0)
+	return tokenize(input, lexScanExpr)
+}
 
+func tokenize(input string, rootLexer stateFn) (tokens []token) {
+	lex := lex(input, rootLexer)
 	for {
-		next := l.nextItem()
-		if next.typ == tokenEOF || next.typ == tokenError {
-			tokens = append(tokens, next)
+		next := lex.nextItem()
+		if next.typ == tokenEOF {
 			break
 		}
 		tokens = append(tokens, next)
@@ -42,22 +31,21 @@ func tokenizeREPL(input string) []token {
 	return tokens
 }
 
-func validateTokens(tokens []token) (int, error) {
-	count := 0
+// TODO: make this also return a list of syntax errors
+func validateTokens(tokens []token) (missing []string) {
 	for _, token := range tokens {
-		if token.typ == tokenMissingParen {
-			count++
-		}
-
-		if token.typ == tokenError {
-			return 0, fmt.Errorf("%s", token.val)
+		switch token.typ {
+		case tokenMissingCloseList:
+			missing = append(missing, ")")
+		case tokenMissingCloseVec:
+			missing = append(missing, "]")
 		}
 	}
 
-	return count, nil
+	return missing
 }
 
-// LEXER
+// CORE TYPES
 
 type token struct {
 	typ tokenType // Type, such as tokenNumber
@@ -78,12 +66,16 @@ func (p Pos) String() string {
 type tokenType int
 
 const (
-	tokenError tokenType = iota
-	tokenEOF
-	tokenMissingParen
+	tokenEOF tokenType = iota
 
-	tokenOpenParen
-	tokenCloseParen
+	tokenMissingCloseList
+	tokenMissingCloseVec
+	tokenMissingCloseString
+	tokenMalformedNumber
+	tokenInvalidLiteral
+
+	tokenOpenList
+	tokenCloseList
 	tokenOpenVec
 	tokenCloseVec
 	tokenNumber
@@ -93,49 +85,67 @@ const (
 	tokenKeyword
 )
 
-// some strings we're looking for
+var tokenStrings = []string{
+	"tokenEOF",
+
+	"tokenMissingCloseList",
+	"tokenMissingCloseVec",
+	"tokenMissingCloseString",
+	"tokenMalformedNumber",
+	"tokenInvalidLiteral",
+
+	"tokenOpenList",
+	"tokenCloseList",
+	"tokenOpenVec",
+	"tokenCloseVec",
+	"tokenNumber",
+	"tokenString",
+	"tokenBool",
+	"tokenSymbol",
+	"tokenKeyword",
+}
+
+func (tt tokenType) String() string {
+	return tokenStrings[tt]
+}
+
+// glyphs we're looking for
 const (
-	openList    = "("
 	openSrcList = "j("
-	closeList   = ")"
-	openVec     = "["
-	closeVec    = "]"
 	eof         = -1
 )
 
 func (i token) String() string {
 	switch i.typ {
 	case tokenEOF:
-		return fmt.Sprintf("EOF@%s", i.pos)
-	case tokenError:
-		return fmt.Sprintf("ERROR@%s: %s", i.pos, i.val)
-	case tokenMissingParen:
-		return fmt.Sprintf("MISSING_PAREN@%s", i.pos)
+		return fmt.Sprintf("EOF@%s\n", i.pos)
+	case tokenMissingCloseList:
+		return fmt.Sprintf("MISSING_PAREN@%s\n", i.pos)
+	case tokenMissingCloseVec:
+		return fmt.Sprintf("MISSING_PAREN@%s\n", i.pos)
 	case tokenNumber:
-		return fmt.Sprintf("NUMBER:%q@%s", i.val, i.pos)
+		return fmt.Sprintf("NUMBER:%q@%s ", i.val, i.pos)
 	case tokenString:
-		return fmt.Sprintf("STRING:%q@%s", i.val, i.pos)
+		return fmt.Sprintf("STRING:%q@%s ", i.val, i.pos)
 	case tokenBool:
-		return fmt.Sprintf("BOOL:%q@%s", i.val, i.pos)
+		return fmt.Sprintf("BOOL:%q@%s ", i.val, i.pos)
 	case tokenSymbol:
-		return fmt.Sprintf("SYMBOL:%q@%s", i.val, i.pos)
+		return fmt.Sprintf("SYMBOL:%q@%s ", i.val, i.pos)
 	case tokenKeyword:
-		return fmt.Sprintf("KEYWORD:%q@%s", i.val, i.pos)
+		return fmt.Sprintf("KEYWORD:%q@%s ", i.val, i.pos)
 	}
 
 	if len(i.val) > 10 {
-		return fmt.Sprintf("%.10q...@%s", i.val, i.pos)
+		return fmt.Sprintf("%.10q...@%s ", i.val, i.pos)
 	}
-	return fmt.Sprintf("%q@%s", i.val, i.pos)
+	return fmt.Sprintf("%q@%s ", i.val, i.pos)
 }
 
 type lexer struct {
-	input        string
-	state        stateFn
-	rootState    stateFn
-	tokens       chan token
-	stack        []stateFn // for nested lists
-	bracketStack []rune    // track what we're inside of '(' or '['
+	input  string
+	state  stateFn
+	tokens chan token
+	stack  []stateFn // for nested lists
 
 	// Position tracking
 	pos       int // current position in input (bytes)
@@ -145,14 +155,15 @@ type lexer struct {
 	lineStart int // byte offset where current line started
 }
 
-func lex(input string, state stateFn) *lexer {
+func lex(input string, rootState stateFn) *lexer {
 	l := &lexer{
-		input:     input,
-		state:     state,               // the starting state
-		rootState: state,               // keeping track of the starting state
-		tokens:    make(chan token, 2), // two tokens sufficient - ring buffer
-		line:      1,                   // start at line 1
-		lineStart: 0,                   // line starts at beginning
+		input:  input,
+		state:  rootState,           // the starting state
+		tokens: make(chan token, 2), // two tokens sufficient - ring buffer
+		stack:  []stateFn{},
+
+		line:      1, // start at line 1
+		lineStart: 0, // line starts at beginning
 	}
 	return l
 }
@@ -257,16 +268,6 @@ func (l *lexer) acceptRun(valid string) {
 	l.backup()
 }
 
-// returns an error token to terminate the scan
-func (l *lexer) errorf(format string, args ...any) stateFn {
-	l.tokens <- token{
-		typ: tokenError,
-		val: fmt.Sprintf(format, args...),
-		pos: l.currentPos(),
-	}
-	return nil
-}
-
 // to go "down" a layer
 func (l *lexer) push(returnState stateFn) {
 	l.stack = append(l.stack, returnState)
@@ -275,34 +276,13 @@ func (l *lexer) push(returnState stateFn) {
 // to go "up" a layer
 func (l *lexer) pop() stateFn {
 	if len(l.stack) == 0 {
-		return l.rootState
+		panic("LEXER: tried to pop out of root state - asymmetry detected")
 	}
 
 	n := len(l.stack) - 1
 	state := l.stack[n]
 	l.stack = l.stack[:n]
 	return state
-}
-
-func (l *lexer) pushContext(bracket rune) {
-	l.bracketStack = append(l.bracketStack, bracket)
-}
-
-func (l *lexer) popContext() rune {
-	if len(l.bracketStack) == 0 {
-		return 0
-	}
-
-	bracket := l.bracketStack[len(l.bracketStack)-1]
-	l.bracketStack = l.bracketStack[:len(l.bracketStack)-1]
-	return bracket
-}
-
-func (l *lexer) currentContext() rune {
-	if len(l.bracketStack) == 0 {
-		return 0
-	}
-	return l.bracketStack[len(l.bracketStack)-1]
 }
 
 // STATE FUNCTIONS
@@ -312,7 +292,8 @@ type stateFn func(l *lexer) stateFn
 // Start normal code block (no literate stuff)
 func lexScanExpr(l *lexer) stateFn {
 	for {
-		if strings.HasPrefix(l.input[l.pos:], openList) {
+		if strings.HasPrefix(l.input[l.pos:], "(") {
+			l.push(lexScanExpr)
 			return lexOpenList // Next state
 		}
 		if l.next() == eof { // advance input checking for EOF
@@ -325,10 +306,11 @@ func lexScanExpr(l *lexer) stateFn {
 	return nil
 }
 
-// Start source file (ie looking for openParenMd)
+// Start source file (ie looking for openParenSrc)
 func lexScanSrcExpr(l *lexer) stateFn {
 	for {
 		if strings.HasPrefix(l.input[l.pos:], openSrcList) {
+			l.push(lexScanSrcExpr) // return here after top level block
 			return lexOpenSrcList
 		}
 		if l.next() == eof {
@@ -341,87 +323,136 @@ func lexScanSrcExpr(l *lexer) stateFn {
 	return nil
 }
 
-func lexOpenList(l *lexer) stateFn {
-	l.pos += len(openList)
-	l.emit(tokenOpenParen)
-	l.pushContext('(')
+func lexOpenSrcList(l *lexer) stateFn {
+	l.pos += len(openSrcList)
+	l.emit(tokenOpenList)
 	return lexInsideList
 }
 
-func lexOpenSrcList(l *lexer) stateFn {
-	l.pos += len(openSrcList)
-	l.emit(tokenOpenParen)
-	l.pushContext('(')
+func lexOpenList(l *lexer) stateFn {
+	l.pos += len("(")
+	l.emit(tokenOpenList)
 	return lexInsideList
 }
 
 func lexCloseList(l *lexer) stateFn {
-	if l.currentContext() != '(' {
-		return l.errorf("mismatched brackets: expected ']' but found ')'")
-	}
-	l.pos += len(closeList)
-	l.emit(tokenCloseParen)
-	l.popContext()
-	return l.pop()
-}
-
-func lexOpenVec(l *lexer) stateFn {
-	l.pos += len(openVec)
-	l.emit(tokenOpenVec)
-	l.pushContext('[')
-	return lexInsideList
-}
-
-func lexCloseVec(l *lexer) stateFn {
-	if l.currentContext() != '[' {
-		return l.errorf("mismatched brackets: expected ')' but found ']'")
-	}
-	l.pos += len(closeVec)
-	l.emit(tokenCloseVec)
-	l.popContext()
+	l.pos += len(")")
+	l.emit(tokenCloseList)
 	return l.pop()
 }
 
 func lexInsideList(l *lexer) stateFn {
 	for {
-		if strings.HasPrefix(l.input[l.pos:], openList) {
-			l.push(lexInsideList) // return here when it closes
+		if strings.HasPrefix(l.input[l.pos:], openSrcList) {
+			l.emit(tokenMissingCloseList)
+			return l.pop()
+		}
+
+		switch r := l.next(); r {
+		case '(':
+			l.push(lexInsideList) // return here when finished
 			return lexOpenList
-		}
-		if strings.HasPrefix(l.input[l.pos:], closeList) {
-			return lexCloseList
-		}
-		if strings.HasPrefix(l.input[l.pos:], openVec) {
+		case '[':
 			l.push(lexInsideList)
 			return lexOpenVec
-		}
-		if strings.HasPrefix(l.input[l.pos:], closeVec) {
-			return lexCloseVec
-		}
-		switch r := l.next(); {
-		case r == eof:
-			l.emit(tokenMissingParen)
+		case ')':
+			return lexCloseList
+		case ']':
+			l.emit(tokenMissingCloseList)
 			return l.pop()
-		case isSpace(r):
+		case '"':
+			l.push(lexInsideList)
+			return lexString
+		case eof:
+			l.emit(tokenMissingCloseList)
+			return l.pop()
+		case '\n':
+			l.backup()
+			l.push(lexInsideList)
+			return lexNewline(l, tokenMissingCloseList)
+		case ' ', '\t', '\r':
 			l.ignore()
 		default:
+			l.push(lexInsideList)
 			l.backup()
 			return dispatchToken(l, r)
 		}
 	}
 }
 
+func lexOpenVec(l *lexer) stateFn {
+	l.pos += len("[")
+	l.emit(tokenOpenVec)
+	return lexInsideVec
+}
+
+func lexCloseVec(l *lexer) stateFn {
+	l.pos += len("]")
+	l.emit(tokenCloseVec)
+	return l.pop()
+}
+
+func lexInsideVec(l *lexer) stateFn {
+	for {
+		if strings.HasPrefix(l.input[l.pos:], openSrcList) {
+			l.emit(tokenMissingCloseVec)
+			return l.pop()
+		}
+
+		switch r := l.next(); r {
+		case '[':
+			l.push(lexInsideVec) // return here when finished
+			return lexOpenVec
+		case '(':
+			l.push(lexInsideVec)
+			return lexOpenList
+		case ']':
+			return lexCloseVec
+		case ')':
+			l.emit(tokenMissingCloseVec)
+			return l.pop()
+		case eof:
+			l.emit(tokenMissingCloseVec)
+			return l.pop()
+		case '\n':
+			l.backup()
+			l.push(lexInsideVec)
+			return lexNewline(l, tokenMissingCloseVec)
+		case ' ', '\t', '\r': // if whitespace then ignore
+			l.ignore()
+		default:
+			l.push(lexInsideVec)
+			l.backup()
+			return dispatchToken(l, r)
+		}
+	}
+}
+
+// ensure the newline is just as single newline inside a list otherwise throw
+// the specified missingToken and pop()
+func lexNewline(l *lexer, missingToken tokenType) stateFn {
+	r := l.peek() // ie we don't consume the double newline
+	if r == '\n' {
+		l.emit(missingToken)
+		l.pop()        // back to parent
+		return l.pop() // escape parent for cascade
+	}
+
+	l.ignore()
+	return l.pop()
+}
+
 func dispatchToken(l *lexer, r rune) stateFn {
-	switch r {
-	case ';':
-		return lexComment
-	case '"':
+	switch {
+	case r == '"':
 		return lexString
-	case '#':
+	case r == ';':
+		return lexComment
+	case r == '#':
 		return lexLiteral
-	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+	case isDigit(r):
 		return lexNumber
-	case '+', '-':
+	case r == '+' || r == '-':
 		l.next() // consume the +/-
 		if next := l.peek(); isDigit(next) {
 			l.backup() // put the +/- back
@@ -429,14 +460,10 @@ func dispatchToken(l *lexer, r rune) stateFn {
 		}
 		l.backup() // put the +/- back
 		return lexSymbol
-	case ':':
+	case r == ':':
 		return lexKeyword
 	default:
-		if isSymbolChar(r) {
-			return lexSymbol
-		}
-
-		return l.errorf("unexpected character: %c", r)
+		return lexSymbol
 	}
 }
 
@@ -446,9 +473,19 @@ func lexLiteral(l *lexer) stateFn {
 	switch r := l.next(); r {
 	case 't', 'T', 'f', 'F':
 		l.emit(tokenBool)
-		return lexInsideList
+		return l.pop()
+	default:
+		// invalid literal - consume until delimiter
+		for {
+			r := l.next()
+			if !isSymbolChar(r) {
+				l.backup()
+				break
+			}
+		}
+		l.emit(tokenInvalidLiteral)
+		return l.pop()
 	}
-	return nil
 }
 
 func lexString(l *lexer) stateFn {
@@ -458,18 +495,22 @@ func lexString(l *lexer) stateFn {
 	for {
 		switch r := l.next(); r {
 		case eof:
-			return l.errorf("unterminated string")
+			l.emit(tokenMissingCloseString)
+			return l.pop()
+		case '\n': // string must be on one line
+			l.emit(tokenMissingCloseString)
+			return l.pop()
 		case '"':
 			l.backup()
 			l.emit(tokenString)
 			l.next()
 			l.ignore()
-			return lexInsideList
+			return l.pop()
 		case '\\':
-			if l.next() == eof {
-				return l.errorf("unterminated string escape")
+			if l.next() == eof { // next consumes the escaped char
+				l.emit(tokenMissingCloseString)
+				return l.pop()
 			}
-			// the next() consumes the escaped char and will be inside the string
 		}
 	}
 }
@@ -506,21 +547,29 @@ func lexNumber(l *lexer) stateFn {
 	if l.accept("+-") {
 		lexNumberPart()
 		if !l.accept("ij") {
-			return l.errorf("invalid complex number format")
+			// TODO: new type of token?
+			l.emit(tokenMalformedNumber)
+			return l.pop()
 		}
 	} else {
 		l.accept("ij")
 	}
 
 	l.emit(tokenNumber)
-	return lexInsideList
+	return l.pop()
 }
 
 func lexSymbol(l *lexer) stateFn {
-	l.acceptRun(symbolChars())
-	l.emit(tokenSymbol)
+	for {
+		r := l.next()
+		if !isSymbolChar(r) {
+			l.backup() // put the delimeter back
+			break
+		}
+	}
 
-	return lexInsideList
+	l.emit(tokenSymbol)
+	return l.pop()
 }
 
 func lexComment(l *lexer) stateFn {
@@ -532,34 +581,34 @@ func lexComment(l *lexer) stateFn {
 	}
 
 	l.ignore() // we don't do anything with comments
-	return lexInsideList
+	return l.pop()
 }
 
 func lexKeyword(l *lexer) stateFn {
 	l.next() // consume ':'
 	l.ignore()
 
-	l.acceptRun(symbolChars())
-	l.emit(tokenKeyword)
+	for {
+		r := l.next()
+		if !isSymbolChar(r) {
+			l.backup()
+			break
+		}
+	}
 
-	return lexInsideList
+	l.emit(tokenKeyword)
+	return l.pop()
 }
 
 // helpers
 
-func isSpace(r rune) bool {
-	return unicode.IsSpace(r)
-}
+const digitChars = "0123456789"
+const specialChars = "()[]\"';#: \t\n\r"
 
 func isSymbolChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) ||
-		strings.ContainsRune("-+*/%?!<>=_&|^~", r)
-}
-
-func symbolChars() string {
-	return "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-+*/%?!<>=_&|^~"
+	return r != eof && !strings.ContainsRune(specialChars, r)
 }
 
 func isDigit(r rune) bool {
-	return unicode.IsDigit(r)
+	return strings.ContainsRune(digitChars, r)
 }

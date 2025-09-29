@@ -3,14 +3,13 @@
 A little workbook for playing with the features of my literate Lisp-based
 Domain Specific Language (DSL) for interacting with my CFD library, but
 it can also do lots of cool things!  It is reasonably complete with most
-Lisps aside from any quoting/macro features (som maybe it's actually not
+Lisps aside from any quoting/macro features (so maybe it's actually not
 that complete).  But, for basic algorithms and maths-y stuff it's pretty
 convenient.  Here are some examples:
 
 ## Core data types
 
-TODO:  Write up a section on the core language constructs and special
-forms.
+Some errors that should show up as syntax errors
 
 ## Let's define a factorial procedure
 
