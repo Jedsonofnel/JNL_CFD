@@ -1,121 +1,47 @@
-<main>
-	<header class="thin">
-		<h1>Workbook</h1>
-		<nav><a href="/#menu">Menu</a> / <a href="/workbooks">Workbooks</a></nav>
-	</header>
+<header class="header--thin">
+	<h1>Workbook</h1>
+	<nav><a href="/#menu">Menu</a> / <a href="/workbooks">Workbooks</a></nav>
+</header>
 
-	<section data-js-context="workbook" data-js-behaviour="workbook-layout">
-		<div data-js-workbook="menu-bar" class="workbook-menu">
-			<button data-js-workbook-layout="editor-btn" disabled>View Editor</button>
-			<button data-js-workbook-layout="results-btn">View Results</button>
+<main class="main--fw">
+	<section data-context="workbook" data-behaviour="workbook-layout" class="workbook-layout layout--editor">
+		<div data-workbook="menu-bar" data-behaviour="workbook-menu-bar" class="workbook-menu">
+			<button data-menu-bar="run-btn">Run</button>
+			<div data-menu-bar="interpreter-indicator">Up to date</div>
+
+			<div class="menu-bar__push-right"></div>
+
+			<button data-menu-bar="split-btn" disabled>Split View</button>
+			<button data-menu-bar="editor-btn" disabled>View Editor</button>
+			<button data-menu-bar="results-btn">View Results</button>
 		</div>
 
-		<div class="editor-container" data-js-workbook="editor-pane">
-			<div contenteditable="true" class="code-editor" data-js-behaviour="code-editor"
-				data-js-workbook="code-editor" spellcheck="false">
+		<div class="editor-container" data-workbook="editor-pane">
+			<div contenteditable="true" class="code-editor" data-behaviour="code-editor code-interpreter"
+				data-workbook="code-editor" spellcheck="false">
 				{{ Page.contents }}
 			</div>
 		</div>
 
-		<div data-js-workbook="results-pane" hidden>
-			<div data-js-behaviour="results-list">
-				Future results table
+		<div data-workbook="results-pane">
+			<div data-behaviour="results-table" class="results-table-container">
+				<table data-results-table="table">
+					<thead>
+						<tr>
+							<th>Block</th>
+							<th>Position</th>
+							<th>Result Type</th>
+							<th>Result Value</th>
+						</tr>
+					</thead>
+					<tbody data-results-table="table-body">
+						<tr>
+							<td colspan="100%">No results yet</td>
+						</tr>
+					</tbody>
+				</table>
 			</div>
+			<canvas data-js-viz-canvas width="800" height="600" class="renderer-canvas"></canvas>
 		</div>
 	</section>
-
-	<div data-js-viz="{{ Page.family }}">
-		<canvas data-js-viz-canvas width="800" height="600" class="renderer-canvas"></canvas>
-
-		{{# Page.structured-mesh }}
-		<fieldset data-js-viz-data>
-			<legend>Structured mesh parameters</legend>
-
-			<input name="type" value="{{ Type }}" type="hidden">
-
-			<div>
-				<label for="nx">Columns</label>
-				<input id="nx" type="number" name="nx" value="{{ Data.NX }}">
-			</div>
-
-			<div>
-				<label for="ny">Rows</label>
-				<input id="ny" type="number" name="ny" value="{{ Data.NY }}">
-			</div>
-
-
-			<div>
-				<label for="width">Width (m)</label>
-				<input id="width" type="number" name="width" value="{{ Data.Width }}">
-			</div>
-
-			<div>
-				<label for="height">Height (m)</label>
-				<input id="height" type="number" name="height" value="{{ Data.Height }}">
-			</div>
-		</fieldset>
-
-		<button data-js-viz-button="reload">Reload</button>
-		{{/ Page.structured-mesh }}
-
-		{{# Page.passive-transport-scenario }}
-		<fieldset data-js-viz-data>
-			<legend>Scenario parameters</legend>
-
-			<input name="type" value="{{ Type }}" type="hidden">
-
-			<fieldset>
-				<legend>Physics parameters</legend>
-				<div>
-					<label for="density">Density</label>
-					<input id="density" type="number" name="density" value="1" step="1" min="0">
-				</div>
-
-				<div>
-					<label for="diffusivity">Diffusivity</label>
-					<input id="diffusivity" type="number" name="diffusivity" value="0.0001" step="0.0001" min="0">
-				</div>
-
-				<div>
-					<label for="velocityX">X Velocity (m/s)</label>
-					<input id="velocityX" type="number" name="velocityX" value="0.3" step="0.05" min="0">
-				</div>
-
-				<div>
-					<label for="velocityY">Y Velocity (m/s)</label>
-					<input id="velocityY" type="number" name="velocityY" value="0.1" step="0.05" min="0">
-				</div>
-			</fieldset>
-
-			<fieldset>
-				<legend>Structured mesh parameters</legend>
-
-				<div>
-					<label for="nx">Columns</label>
-					<input id="nx" type="number" name="nx" value="24">
-				</div>
-
-				<div>
-					<label for="ny">Rows</label>
-					<input id="ny" type="number" name="ny" value="12">
-				</div>
-
-
-				<div>
-					<label for="width">Width (m)</label>
-					<input id="width" type="number" name="width" value="1">
-				</div>
-
-				<div>
-					<label for="height">Height (m)</label>
-					<input id="height" type="number" name="height" value="0.5">
-				</div>
-			</fieldset>
-		</fieldset>
-
-		<button data-js-viz-button="start">Start</button>
-		<button data-js-viz-button="stop">Stop</button>
-		<button data-js-viz-button="reset">Reset</button>
-		{{/ Page.passive-transport-scenario }}
-	</div>
 </main>

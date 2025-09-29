@@ -52,6 +52,15 @@ func NewContext() *Context {
 	return ctx
 }
 
+func (c *Context) Extend() *Context {
+	localCtx := &Context{
+		env:          newEnv(c.env),
+		importedLibs: c.importedLibs,
+	}
+
+	return localCtx
+}
+
 func (c *Context) ImportLibrary(name, prefix string) error {
 	if c.importedLibs[name] {
 		return nil // already imported

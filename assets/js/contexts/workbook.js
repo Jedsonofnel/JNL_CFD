@@ -3,38 +3,22 @@ import { ReactiveContext } from "../lib/reactive-context.js";
 export class WorkbookContext extends ReactiveContext {
 	constructor(element) {
 		super(element, {
-			sourceeCode: "",
-			intepretationResults: null,
-			isInterpreting: false,
+			layout: "editor",
+			interpreterResults: [],
 		});
-
-		this.wasmInstance = null
 
 		// creating actions
-		this.actions = this.createActions({
-			updateSourceCode: (state, code) => ({
-				sourceCode: code,
-				interpretationResults:
-					code !== state.sourceCode ? null : state.interpretationResults,
-			}),
+		this.actions = this.setActions();
+	}
+
+	setActions() {
+		return this.createActions({
+			updateLayout: (_, layout) => {
+				if (["editor", "results", "split"].includes(layout)) {
+					return { layout: layout };
+				}
+			},
 		});
-	}
-
-	async ready() {
-		this.wasmInstance = await this.initWasm();
-		return true
-	}
-
-	async initWasm() {
-		await import("/assets/wasm/wasm_exec.js");
-
-		const go = new Go();
-		const wasmInstance = await WebAssembly.instantiateStreaming(
-			fetch("/assets/wasm/cfd-latest.wasm"),
-			go.importObject,
-		);
-		go.run(wasmInstance.instance);
-		return wasmInstance.instance
 	}
 
 	// Helper to find the context from child elements

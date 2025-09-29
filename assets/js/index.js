@@ -1,16 +1,44 @@
-import { WorkbookLayoutBehaviour } from "./behaviours/workbook-layout.js";
+import {
+	CodeEditorBehaviour,
+	CodeInterpreterBehaviour,
+	WorkbookLayoutBehaviour,
+	WorkbookMenuBarBehaviour,
+	WorkbookResultsTableBehaviour,
+} from "./behaviours/index.js";
+
 import { WorkbookContext } from "./contexts/workbook.js";
 import { BehaviourManager } from "./lib/behaviour-manager.js";
-import { CodeEditorBehaviour } from "./behaviours/code-editor.js";
 
 const manager = new BehaviourManager();
 
-manager.registerContext(`[data-js-context="workbook"]`, WorkbookContext);
+// REGISTER CONTEXTS
+
+manager.registerContext(`[data-context="workbook"]`, WorkbookContext);
+
+// REGISTER BEHAVIOURS
 
 manager.register(
-	`[data-js-behaviour*="workbook-layout"]`,
+	`[data-behaviour*="workbook-layout"]`,
 	WorkbookLayoutBehaviour,
 );
-manager.register(`[data-js-behaviour*="code-editor"]`, CodeEditorBehaviour)
 
-document.addEventListener("DOMContentLoaded", async () => await manager.init());
+manager.register(
+	`[data-behaviour*="workbook-menu-bar"]`,
+	WorkbookMenuBarBehaviour,
+);
+
+manager.register(`[data-behaviour*="code-editor"]`, CodeEditorBehaviour);
+
+manager.register(
+	`[data-behaviour*="code-interpreter"]`,
+	CodeInterpreterBehaviour,
+);
+
+manager.register(
+	`[data-behaviour*="results-table"]`,
+	WorkbookResultsTableBehaviour,
+);
+
+// INIT BEHAVIOURS
+
+document.addEventListener("DOMContentLoaded", () => manager.init());

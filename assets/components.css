@@ -1,13 +1,7 @@
 /* self-contained components:
  * following https://rstacruz.github.io/rscss/index.html */
 
-/* footer */
-footer {
-	margin-top: 100px;
-	border-top: 1px solid var(--fg);
-	padding: 1rem 0;
-}
-
+/* footer assets */
 .jnl-mark {
 	display: flex;
 	align-items: baseline;
@@ -30,7 +24,45 @@ footer {
 	width: 100%;
 }
 
-/* workbook stuff */
+/* workbook layout */
+.workbook-layout {
+	width: 100%;
+	margin: 0 auto;
+	position: relative;
+}
+
+.workbook-layout.layout--editor,
+.workbook-layout.layout--results {
+	max-width: 80ch;
+}
+
+.workbook-layout.layout--split {
+	max-width: 161ch;
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 24px;
+
+	@media only screen and (min-width: 1000px) {
+		grid-template-columns: 1fr 1fr;
+	}
+}
+
+/* workbook menu */
+.workbook-menu {
+	position: sticky;
+	top: 0;
+	background-color: var(--bg);
+	padding: 16px 0;
+	display: flex;
+	gap: 2px;
+	grid-column: 1 / -1;
+}
+
+.menu-bar__push-right {
+	margin-left: auto;
+}
+
+/* code editor */
 .code-editor {
 	font-family: "Fira Code", monospace;
 	white-space: pre-wrap;
@@ -42,13 +74,13 @@ footer {
 .editor-container {
 	display: flex;
 	overflow-x: auto;
-	border: 1px solid var(--fg);
+
+	&[hidden] {
+		display: none;
+	}
 }
 
-.workbook-menu {
-	padding: 8px 0;
-	display: flex;
-	justify-content: end;
-	align-items: start;
-	gap: 2px;
+/* results table */
+.results-table-container {
+	overflow-x: auto;
 }

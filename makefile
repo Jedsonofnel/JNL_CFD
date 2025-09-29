@@ -19,7 +19,26 @@ clean-web-assets:
 		internal/web/jnlisp
 
 dev:
-	git ls-files -cdmo --exclude-standard | entr -dr go run ./cmd/web
+	@echo "Starting development servers..."
+	@$(MAKE) -j2 dev-server dev-wasm 2>&1 | sed 's/^/[DEV] /'
+
+dev-server:
+	@while true; do \
+		echo "[SERVER] Starting Go server watcher..."; \
+		git ls-files -cdmo --exclude-standard | grep -v '^wasm/' | entr -dr go run ./cmd/web; \
+		sleep 1; \
+	done
+
+dev-wasm:
+	@while true; do \
+		echo "[WASM] Starting WASM watcher..."; \
+		find wasm -name "*.go" | entr -dr $(MAKE) build-wasm-quiet; \
+		sleep 1; \
+	done
+
+build-wasm-quiet: clean-wasm
+	@echo "[WASM] Rebuilding..."
+	@$(MAKE) build-wasm > /dev/null 2>&1 && echo "[WASM] Build complete!"
 
 build-wasm: clean-wasm
 	$(eval TIMESTAMP := $(shell date +%s))

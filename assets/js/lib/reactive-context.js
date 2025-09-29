@@ -9,8 +9,10 @@ export class ReactiveContext {
 				target[prop] = value;
 
 				this.subscribers.forEach((subscriber) => {
-					if (subscriber.selector(this.state, prop, oldValue, value)) {
-						subscriber.callback(this.state, { prop, oldValue, value });
+					if (
+						subscriber.selector({ state: this.state, prop, oldValue, value })
+					) {
+						subscriber.callback({ state: this.state, prop, oldValue, value });
 					}
 				});
 
@@ -20,12 +22,6 @@ export class ReactiveContext {
 
 		// event bus
 		this.events = new EventTarget();
-
-		this.isReady = this.ready()
-	}
-
-	async ready() {
-		return true
 	}
 
 	subscribe(callback, selector = () => true) {

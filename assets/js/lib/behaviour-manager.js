@@ -13,19 +13,18 @@ class BehaviourManager {
 		this.contexts.set(selector, ContextClass);
 	}
 
-	async init() {
-		await this.initContexts(document);
+	init() {
+		this.initContexts(document);
 		this.applyBehaviours(document);
 		this.startObserving();
 	}
 
-	async initContexts(root) {
+	initContexts(root) {
 		for (const [selector, ContextClass] of this.contexts) {
 			const elements = root.querySelectorAll(selector);
 			for (const el of elements) {
 				if (!el._contextInstance) {
 					const context = new ContextClass(el);
-					await context.isReady; // Wait for whatever ready() does
 					el._contextInstance = context;
 					el._hasContext = true;
 				}

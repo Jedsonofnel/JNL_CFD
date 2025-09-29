@@ -21,12 +21,14 @@ html {
 }
 
 body {
-	width: min(90%, 80ch);
-	margin: 0 auto;
-	padding: 0;
-
 	line-height: 1.5;
 	font-weight: normal;
+
+	header,
+	main,
+	footer {
+		width: min(90%, 80ch);
+	}
 }
 
 h1,
@@ -43,7 +45,7 @@ ul {
 	list-style-type: "▸  ";
 }
 
-/* CORE components used frequently */
+/* LAYOUT */
 
 header {
 	display: flex;
@@ -51,7 +53,7 @@ header {
 	justify-content: space-between;
 	flex-wrap: wrap;
 	gap: 1rem;
-	margin: min(30vh, 200px) 0 32px 0;
+	margin: min(30vh, 200px) auto 32px auto;
 
 	h1 {
 		margin: 0;
@@ -63,27 +65,72 @@ header {
 	}
 }
 
-header.thin {
+header.header--thin {
 	flex-direction: row;
 	align-items: baseline;
 	justify-content: space-between;
-	margin: 16px 0;
+	margin: 16px auto;
 }
+
+main {
+	margin: 0 auto;
+}
+
+main.main--fw {
+	width: 90%;
+}
+
+footer {
+	margin: 100px auto 0 auto;
+	border-top: 1px solid var(--fg);
+	padding: 1rem 0;
+}
+
+/* CORE COMPONENTS */
 
 button {
 	background-color: var(--bg);
 	border: 1px solid var(--fg);
-	border-bottom: 2px solid var(--fg);
+	border-bottom: 3px solid var(--fg);
 	cursor: pointer;
-	padding: 2px 16px;
+	padding: 2px 16px 1px 16px;
 
 	&:hover {
 		background-color: var(--fg);
 		color: var(--bg);
 	}
+}
 
-	&[disabled] {
-		border-bottom: 1px solid var(--fg);
-		padding-bottom: 3px;
+button[disabled] {
+	border-bottom: 1px solid var(--fg);
+	padding-bottom: 3px;
+	cursor: default;
+
+	&:hover {
+		background-color: var(--bg);
+		color: var(--fg);
 	}
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	border: 1px solid var(--fg);
+	border-left: 3px solid var(--fg);
+}
+
+th,
+td {
+	border-bottom: 1px solid var(--fg);
+	padding: 2 4px;
+	vertical-align: top;
+	line-height: 1.5;
+}
+
+td.td--right {
+	text-align: right;
+}
+
+td.td--center {
+	text-align: center;
 }
