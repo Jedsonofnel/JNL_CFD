@@ -11,42 +11,8 @@ convenient.  Here are some examples:
 
 Some errors that should show up as syntax errors
 
-## Let's define a factorial procedure
+j(define (jed n y) (* n (* 5 y)
 
-j(define (fact n) 
-  (if (= n 1)
-    1
-    (* n (fact (- n 1)))))
+j(define (hello y) [5 6 7)
 
-## Let's try run it
-
-j(fact 4)
-
-j(fact 10)
-
-## Importing Libraries
-
-You can import other libraries with the special form `import` which takes
-the name of the library as a string as the first argument and optionally
-a specific prefix as a second.  By default anything defined in the library
-is prefixed with "lib-name/".  Libraries can currently only be defined
-through Go bindings at the moment which means they must be specified
-at compile time.  Eventually I'll add dynamic filepath-based import resolution
-but given the main use-case is to run in the browser (where the idea of a
-filepath is murky at best) it requires some nuance and isn't very important
-for now.  My CFD code gets imported by default without a prefix so you
-can use it by default.
-
-j(import "maths")
-
-Let's use this to find the square root of 16
-
-j(maths/sqrt 16)
-
-You can also use maths-defined symbols inside user-defined procedures,
-for example.
-
-j(define (circle-area r) 
-  (* r r maths/pi))
-
-j(circle-area 10)
+j(define name "hello)

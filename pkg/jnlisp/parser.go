@@ -1,7 +1,6 @@
 package jnlisp
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -18,17 +17,27 @@ func newKeyword(s string) keyword { return keyword(s) }
 // ERROR TYPES
 
 type SyntaxError struct {
-	token   token
-	Message string
+	Token   token  `json:"token"`
+	Message string `json:"message"`
 }
 
 func (e SyntaxError) Error() string {
-	return "Syntax error at " + e.token.pos.String() + ": " + e.Message
+	return "Syntax error at " + e.Token.pos.String() + ": " + e.Message
 }
 
-func newSyntaxError(t token) error {
+func newSyntaxErrorFromToken(t token) SyntaxError {
 	var message string
 	switch t.typ {
+	case tokenMissingCloseList:
+		message = "missing closing list parenthesis"
+	case tokenMissingCloseVec:
+		message = "missing closing vector bracket"
+	case tokenMissingCloseString:
+		message = "missing closing string double quotation mark"
+	case tokenMalformedNumber:
+		message = "malformed number: " + t.val
+	case tokenInvalidLiteral:
+		message = "invalid literal: " + t.val
 	default:
 		panic("Called newSyntaxError with non-error type: " + t.typ.String())
 	}
@@ -36,24 +45,35 @@ func newSyntaxError(t token) error {
 	return SyntaxError{t, message}
 }
 
+func newUnexpectedClosingTokenError(t token) SyntaxError {
+	return SyntaxError{
+		Token:   t,
+		Message: "unexpected '" + t.val + "'",
+	}
+}
+
+func newUnexpectedTokenError(t token) SyntaxError {
+	return SyntaxError{
+		Token:   t,
+		Message: "unexpected token '" + t.String() + "', value: " + t.val,
+	}
+}
+
 // doesn't expect any markdown block stuff in between - only s-exps
-func parseREPL(tokens []token) ([]any, error) {
-	var expressions []any
+func parseREPL(tokens []token) []ParseExprResult {
+	var expressions []ParseExprResult
 	idx := 0
 
 	for idx < len(tokens) && tokens[idx].typ != tokenEOF {
-		if tokens[idx].typ == tokenOpenParen {
-			exp, err := parseExpression(tokens, &idx)
-			if err != nil {
-				return nil, err
-			}
-			expressions = append(expressions, exp)
+		if tokens[idx].typ == tokenOpenList {
+			result := parseExpression(tokens, &idx)
+			expressions = append(expressions, result)
 		} else {
 			idx++ // skipping unexpected tokens
 		}
 	}
 
-	return expressions, nil
+	return expressions
 }
 
 type srcPosition struct {
@@ -61,21 +81,18 @@ type srcPosition struct {
 	endPos   Pos
 }
 
-func parseSrc(tokens []token) ([]any, []srcPosition, error) {
-	var expressions []any
+func parseSrc(tokens []token) ([]ParseExprResult, []srcPosition) {
+	var expressions []ParseExprResult
 	var srcPositions []srcPosition
 	idx := 0
 
 	for idx < len(tokens) && tokens[idx].typ != tokenEOF {
-		if tokens[idx].typ == tokenOpenParen {
+		if tokens[idx].typ == tokenOpenList {
 			pos := srcPosition{startPos: tokens[idx].pos}
 
-			exp, err := parseExpression(tokens, &idx)
-			if err != nil {
-				return nil, nil, err
-			}
+			result := parseExpression(tokens, &idx)
 
-			expressions = append(expressions, exp)
+			expressions = append(expressions, result)
 			pos.endPos = tokens[idx-1].pos
 			srcPositions = append(srcPositions, pos)
 		} else {
@@ -83,72 +100,108 @@ func parseSrc(tokens []token) ([]any, []srcPosition, error) {
 		}
 	}
 
-	return expressions, srcPositions, nil
+	return expressions, srcPositions
 }
 
-func parseExpression(tokens []token, idx *int) (any, error) {
-	if *idx > len(tokens) {
-		return nil, fmt.Errorf("unexpected EOF")
+// PARSING EXPRESSIONS
+
+type ParseExprResult struct {
+	Expr   any
+	Errors []SyntaxError
+}
+
+func parseExpression(tokens []token, idx *int) (result ParseExprResult) {
+	if *idx >= len(tokens) {
+		return result
 	}
 
 	token := tokens[*idx]
 	*idx++
+
 	switch token.typ {
-	case tokenOpenParen:
+	case tokenOpenList:
 		var list list
-		for *idx < len(tokens) && tokens[*idx].typ != tokenCloseParen {
-			exp, err := parseExpression(tokens, idx)
-			if err != nil {
-				return nil, err
+		for *idx < len(tokens) {
+			if tokens[*idx].typ == tokenCloseList {
+				*idx++
+				break
 			}
-			list = append(list, exp)
+
+			if tokens[*idx].typ == tokenMissingCloseList {
+				result.Errors = append(result.Errors, newSyntaxErrorFromToken(tokens[*idx]))
+				*idx++
+				break
+			}
+
+			child := parseExpression(tokens, idx)
+			result.Errors = append(result.Errors, child.Errors...)
+			if child.Expr != nil {
+				list = append(list, child.Expr)
+			}
 		}
 
-		if *idx >= len(tokens) || tokens[*idx].typ != tokenCloseParen {
-			return nil, fmt.Errorf("missing closing paren")
-		}
-		*idx++ // consume ")"
-		return list, nil
-
-	case tokenCloseParen:
-		return nil, fmt.Errorf("unexpected ')'")
+		result.Expr = list
+		return result
 
 	case tokenOpenVec:
 		var vec vector
-		for *idx < len(tokens) && tokens[*idx].typ != tokenCloseVec {
-			exp, err := parseExpression(tokens, idx)
-			if err != nil {
-				return nil, err
+		for *idx < len(tokens) {
+			if tokens[*idx].typ != tokenCloseVec {
+				*idx++
+				break
 			}
-			vec = append(vec, exp)
+
+			if tokens[*idx].typ == tokenMissingCloseVec {
+				result.Errors = append(result.Errors, newSyntaxErrorFromToken(tokens[*idx]))
+				*idx++
+				break
+			}
+
+			child := parseExpression(tokens, idx)
+			result.Errors = append(result.Errors, child.Errors...)
+			if child.Expr != nil {
+				vec = append(vec, child.Expr)
+			}
 		}
 
-		if *idx >= len(tokens) || tokens[*idx].typ != tokenCloseVec {
-			return nil, fmt.Errorf("missing closing bracket")
-		}
-		*idx++ // consume "]"
-		return vec, nil
+		result.Expr = vec
+		return result
 
-	case tokenCloseVec:
-		return nil, fmt.Errorf("unexpected ']'")
-
-	case tokenString:
-		return token.val, nil
-
-	case tokenBool:
-		return parseBool(token.val), nil
+	case tokenCloseList, tokenCloseVec:
+		result.Errors = append(result.Errors, newUnexpectedClosingTokenError(token))
+		return result
 
 	case tokenNumber:
-		return parseNumber(token.val), nil
+		result.Expr = parseNumber(token.val)
+		return result
+
+	case tokenString:
+		result.Expr = token.val
+		return result
+
+	case tokenBool:
+		result.Expr = parseBool(token.val)
+		return result
 
 	case tokenSymbol:
-		return newSymbol(token.val), nil
+		result.Expr = newSymbol(token.val)
+		return result
 
 	case tokenKeyword:
-		return newKeyword(token.val), nil
+		result.Expr = newKeyword(token.val)
+		return result
+
+	case tokenMissingCloseList,
+		tokenMissingCloseVec,
+		tokenMissingCloseString,
+		tokenMalformedNumber,
+		tokenInvalidLiteral:
+		result.Errors = append(result.Errors, newSyntaxErrorFromToken(token))
+		return result
 
 	default:
-		return nil, fmt.Errorf("unexpected token: %v", token)
+		result.Errors = append(result.Errors, newUnexpectedTokenError(token))
+		return result
 	}
 }
 

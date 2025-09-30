@@ -1,7 +1,7 @@
 package jnlisp
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -22,17 +22,16 @@ func tokenize(input string, rootLexer stateFn) (tokens []token) {
 	lex := lex(input, rootLexer)
 	for {
 		next := lex.nextItem()
+		tokens = append(tokens, next)
 		if next.typ == tokenEOF {
 			break
 		}
-		tokens = append(tokens, next)
 	}
 
 	return tokens
 }
 
-// TODO: make this also return a list of syntax errors
-func validateTokens(tokens []token) (missing []string) {
+func countMissingTokens(tokens []token) (missing []string) {
 	for _, token := range tokens {
 		switch token.typ {
 		case tokenMissingCloseList:
@@ -60,7 +59,7 @@ type Pos struct {
 }
 
 func (p Pos) String() string {
-	return fmt.Sprintf("%d:%d", p.Line, p.Column)
+	return strconv.Itoa(p.Line) + ":" + strconv.Itoa(p.Column)
 }
 
 type tokenType int
@@ -118,27 +117,38 @@ const (
 func (i token) String() string {
 	switch i.typ {
 	case tokenEOF:
-		return fmt.Sprintf("EOF@%s\n", i.pos)
+		return "EOF(@" + i.pos.String() + ")\n"
 	case tokenMissingCloseList:
-		return fmt.Sprintf("MISSING_PAREN@%s\n", i.pos)
+		return "MISSING_PAREN(@" + i.pos.String() + ")\n"
 	case tokenMissingCloseVec:
-		return fmt.Sprintf("MISSING_PAREN@%s\n", i.pos)
-	case tokenNumber:
-		return fmt.Sprintf("NUMBER:%q@%s ", i.val, i.pos)
-	case tokenString:
-		return fmt.Sprintf("STRING:%q@%s ", i.val, i.pos)
-	case tokenBool:
-		return fmt.Sprintf("BOOL:%q@%s ", i.val, i.pos)
-	case tokenSymbol:
-		return fmt.Sprintf("SYMBOL:%q@%s ", i.val, i.pos)
-	case tokenKeyword:
-		return fmt.Sprintf("KEYWORD:%q@%s ", i.val, i.pos)
-	}
+		return "MISSING_BRACKET(@" + i.pos.String() + ")\n"
+	case tokenMissingCloseString:
+		return "MISSING_STRING_CLOSE(@" + i.pos.String() + ")\n"
+	case tokenMalformedNumber:
+		return "MALFORMED_NUMBER(@" + i.val + ", " + i.pos.String() + ")\n"
 
-	if len(i.val) > 10 {
-		return fmt.Sprintf("%.10q...@%s ", i.val, i.pos)
+	case tokenOpenList:
+		return "\nOPENLIST( "
+	case tokenCloseList:
+		return " )CLOSELIST\n"
+	case tokenOpenVec:
+		return "\nOPENVEC[ "
+	case tokenCloseVec:
+		return " ]CLOSEVEC\n"
+
+	case tokenNumber:
+		return "number(" + i.val + ", @" + i.pos.String() + ") "
+	case tokenString:
+		return "string(" + i.val + ", @" + i.pos.String() + ") "
+	case tokenBool:
+		return "bool(" + i.val + ", @" + i.pos.String() + ") "
+	case tokenSymbol:
+		return "symbol(" + i.val + ", @" + i.pos.String() + ") "
+	case tokenKeyword:
+		return "keyword(" + i.val + ", @" + i.pos.String() + ") "
+	default:
+		return "UNKNOWN(" + i.val + ")\n"
 	}
-	return fmt.Sprintf("%q@%s ", i.val, i.pos)
 }
 
 type lexer struct {
@@ -293,8 +303,10 @@ type stateFn func(l *lexer) stateFn
 func lexScanExpr(l *lexer) stateFn {
 	for {
 		if strings.HasPrefix(l.input[l.pos:], "(") {
+			l.pos += len("(")
+			l.emit(tokenOpenList)
 			l.push(lexScanExpr)
-			return lexOpenList // Next state
+			return lexInsideList // Next state
 		}
 		if l.next() == eof { // advance input checking for EOF
 			break
@@ -310,8 +322,10 @@ func lexScanExpr(l *lexer) stateFn {
 func lexScanSrcExpr(l *lexer) stateFn {
 	for {
 		if strings.HasPrefix(l.input[l.pos:], openSrcList) {
+			l.pos += len(openSrcList)
+			l.emit(tokenOpenList)
 			l.push(lexScanSrcExpr) // return here after top level block
-			return lexOpenSrcList
+			return lexInsideList
 		}
 		if l.next() == eof {
 			break
@@ -323,24 +337,6 @@ func lexScanSrcExpr(l *lexer) stateFn {
 	return nil
 }
 
-func lexOpenSrcList(l *lexer) stateFn {
-	l.pos += len(openSrcList)
-	l.emit(tokenOpenList)
-	return lexInsideList
-}
-
-func lexOpenList(l *lexer) stateFn {
-	l.pos += len("(")
-	l.emit(tokenOpenList)
-	return lexInsideList
-}
-
-func lexCloseList(l *lexer) stateFn {
-	l.pos += len(")")
-	l.emit(tokenCloseList)
-	return l.pop()
-}
-
 func lexInsideList(l *lexer) stateFn {
 	for {
 		if strings.HasPrefix(l.input[l.pos:], openSrcList) {
@@ -350,24 +346,24 @@ func lexInsideList(l *lexer) stateFn {
 
 		switch r := l.next(); r {
 		case '(':
+			l.emit(tokenOpenList)
 			l.push(lexInsideList) // return here when finished
-			return lexOpenList
+			return lexInsideList
 		case '[':
+			l.emit(tokenOpenVec)
 			l.push(lexInsideList)
-			return lexOpenVec
+			return lexInsideVec
 		case ')':
-			return lexCloseList
+			l.emit(tokenCloseList)
+			return l.pop()
 		case ']':
+			l.backup()
 			l.emit(tokenMissingCloseList)
 			return l.pop()
-		case '"':
-			l.push(lexInsideList)
-			return lexString
 		case eof:
 			l.emit(tokenMissingCloseList)
 			return l.pop()
 		case '\n':
-			l.backup()
 			l.push(lexInsideList)
 			return lexNewline(l, tokenMissingCloseList)
 		case ' ', '\t', '\r':
@@ -375,21 +371,9 @@ func lexInsideList(l *lexer) stateFn {
 		default:
 			l.push(lexInsideList)
 			l.backup()
-			return dispatchToken(l, r)
+			return dispatchToken(l)
 		}
 	}
-}
-
-func lexOpenVec(l *lexer) stateFn {
-	l.pos += len("[")
-	l.emit(tokenOpenVec)
-	return lexInsideVec
-}
-
-func lexCloseVec(l *lexer) stateFn {
-	l.pos += len("]")
-	l.emit(tokenCloseVec)
-	return l.pop()
 }
 
 func lexInsideVec(l *lexer) stateFn {
@@ -401,14 +385,18 @@ func lexInsideVec(l *lexer) stateFn {
 
 		switch r := l.next(); r {
 		case '[':
+			l.emit(tokenOpenVec)
 			l.push(lexInsideVec) // return here when finished
-			return lexOpenVec
+			return lexInsideVec
 		case '(':
+			l.emit(tokenOpenList)
 			l.push(lexInsideVec)
-			return lexOpenList
+			return lexInsideList
 		case ']':
-			return lexCloseVec
+			l.emit(tokenCloseVec)
+			return l.pop()
 		case ')':
+			l.backup()
 			l.emit(tokenMissingCloseVec)
 			return l.pop()
 		case eof:
@@ -423,7 +411,7 @@ func lexInsideVec(l *lexer) stateFn {
 		default:
 			l.push(lexInsideVec)
 			l.backup()
-			return dispatchToken(l, r)
+			return dispatchToken(l)
 		}
 	}
 }
@@ -433,6 +421,7 @@ func lexInsideVec(l *lexer) stateFn {
 func lexNewline(l *lexer, missingToken tokenType) stateFn {
 	r := l.peek() // ie we don't consume the double newline
 	if r == '\n' {
+		l.backup()
 		l.emit(missingToken)
 		l.pop()        // back to parent
 		return l.pop() // escape parent for cascade
@@ -442,7 +431,9 @@ func lexNewline(l *lexer, missingToken tokenType) stateFn {
 	return l.pop()
 }
 
-func dispatchToken(l *lexer, r rune) stateFn {
+func dispatchToken(l *lexer) stateFn {
+	r := l.next()
+
 	switch {
 	case r == '"':
 		return lexString
@@ -453,7 +444,6 @@ func dispatchToken(l *lexer, r rune) stateFn {
 	case isDigit(r):
 		return lexNumber
 	case r == '+' || r == '-':
-		l.next() // consume the +/-
 		if next := l.peek(); isDigit(next) {
 			l.backup() // put the +/- back
 			return lexNumber
@@ -489,8 +479,7 @@ func lexLiteral(l *lexer) stateFn {
 }
 
 func lexString(l *lexer) stateFn {
-	l.next()   // consume "
-	l.ignore() // ignore it
+	l.ignore() // ignore the "
 
 	for {
 		switch r := l.next(); r {
@@ -498,6 +487,7 @@ func lexString(l *lexer) stateFn {
 			l.emit(tokenMissingCloseString)
 			return l.pop()
 		case '\n': // string must be on one line
+			l.backup() // go back to end of string
 			l.emit(tokenMissingCloseString)
 			return l.pop()
 		case '"':

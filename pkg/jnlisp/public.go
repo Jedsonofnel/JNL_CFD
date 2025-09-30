@@ -147,27 +147,28 @@ func (c *Context) evaluateSrc(src string) ([]Block, error) {
 	var blocks []Block
 
 	tokens := tokenizeSrc(src)
-	missingParens, err := validateTokens(tokens)
-	if missingParens > 0 {
-		return nil, fmt.Errorf("Missing %d closing parentheses", missingParens)
-	}
+	parsedResults, positions := parseSrc(tokens)
 
-	if err != nil {
-		return nil, fmt.Errorf("Syntax error > %w", err)
-	}
-
-	expressions, positions, err := parseSrc(tokens)
-	if err != nil {
-		return nil, fmt.Errorf("Parsing error > %w", err)
-	}
-
-	for i, expr := range expressions {
+	for i, parsedResult := range parsedResults {
 		b := Block{
 			StartPos: positions[i].startPos,
 			EndPos:   positions[i].endPos,
 		}
 
-		result, err := eval(expr, c)
+		isSyntaxError := false
+		errors := []any{}
+		for _, err := range parsedResult.Errors {
+			isSyntaxError = true
+			errors = append(errors, err)
+		}
+
+		if isSyntaxError {
+			b.Error = errors
+			blocks = append(blocks, b)
+			continue
+		}
+
+		result, err := eval(parsedResult.Expr, c)
 		if result != nil {
 			b.Result = result.ToJSON()
 		}

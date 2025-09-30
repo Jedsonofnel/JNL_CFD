@@ -24,6 +24,7 @@ func main() {
 	filename := flag.Arg(0)
 
 	blocks, err := ctx.LoadFromFile(filename)
+
 	if err != nil {
 		fmt.Println(err)
 		return

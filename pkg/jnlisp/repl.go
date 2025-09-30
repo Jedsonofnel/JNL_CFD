@@ -2,7 +2,6 @@ package jnlisp
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"strings"
 )
@@ -10,57 +9,60 @@ import (
 func REPL() {
 	context := NewContext()
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("JNLisp REPL")
-	fmt.Println("Ctrl-c to quit")
+	println("JNLisp REPL")
+	println("Ctrl-c to quit")
 
 	var text strings.Builder
-	prompt := buildPrompt(0)
+	prompt := buildPrompt(nil)
 
 	for {
-		fmt.Print(prompt)
+		print(prompt)
 		newText, _ := reader.ReadString('\n')
 		text.WriteString(newText)
+
 		tokens := tokenizeREPL(text.String())
+		missing := countMissingTokens(tokens)
 
-		missing, err := validateTokens(tokens)
-		if err != nil {
-			text.Reset()
-			fmt.Printf("error: %s\n", err)
-			prompt = buildPrompt(0)
-			continue
-		}
-
-		if missing > 0 {
+		if len(missing) > 0 {
 			prompt = buildPrompt(missing)
 			continue
 		}
 
-		ast, err := parseREPL(tokens)
-		if err != nil {
+		parsedResult := parseREPL(tokens)
+		isError := false
+		for _, res := range parsedResult {
+			for _, err := range res.Errors {
+				println(err.Error())
+				isError = true
+			}
+		}
+
+		if isError {
 			text.Reset()
-			fmt.Printf("error: %s\n", err)
+			prompt =  buildPrompt(nil)
 			continue
 		}
 
 		// loop through expressions in ast and evaluate them
-		for _, exp := range ast {
-			exp, err := eval(exp, context)
+		for _, res := range parsedResult {
+			exp, err := eval(res.Expr, context)
 			if err != nil {
 				text.Reset()
-				fmt.Printf("error: %s\n", err)
+				println("ERROR EVALUATING: ", err.Error())
 				continue
 			}
 
-			fmt.Printf("%v\n", exp)
+			println(exp.String())
 		}
+
 		text.Reset()
-		prompt = buildPrompt(0)
+		prompt = buildPrompt(nil)
 	}
 }
 
-func buildPrompt(missingParens int) (prompt string) {
-	for range missingParens {
-		prompt += "("
+func buildPrompt(missingDelims []string) (prompt string) {
+	for _, delim := range missingDelims {
+		prompt += delim
 	}
 	prompt += "> "
 	return
