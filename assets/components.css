@@ -93,8 +93,20 @@
 }
 
 .editor-container {
+	border-left: 1px solid var(--fg);
+	padding-left: 2px;
 	display: flex;
 	overflow-x: auto;
+
+	&:hover {
+		border-left: 2px solid var(--fg);
+		padding-left: 1px;
+	}
+
+	&:focus-within {
+		border-left: 3px solid var(--fg);
+		padding-left: 0;
+	}
 
 	&[hidden] {
 		display: none;

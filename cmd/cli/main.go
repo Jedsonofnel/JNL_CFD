@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 	filename := flag.Arg(0)
 
-	blocks, err := ctx.LoadFromFile(filename)
+	blocks, err := ctx.EvalFile(filename)
 
 	if err != nil {
 		fmt.Println(err)

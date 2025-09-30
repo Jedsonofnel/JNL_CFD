@@ -60,59 +60,73 @@ func newUnexpectedTokenError(t token) SyntaxError {
 }
 
 // doesn't expect any markdown block stuff in between - only s-exps
-func parseREPL(tokens []token) []ParseExprResult {
-	var expressions []ParseExprResult
+func parseREPL(tokens []token) (exps []any, errors []SyntaxError) {
 	idx := 0
 
 	for idx < len(tokens) && tokens[idx].typ != tokenEOF {
 		if tokens[idx].typ == tokenOpenList {
-			result := parseExpression(tokens, &idx)
-			expressions = append(expressions, result)
+			exp, expErrors := parseExpression(tokens, &idx)
+			exps = append(exps, exp)
+			errors = append(errors, expErrors...)
 		} else {
 			idx++ // skipping unexpected tokens
 		}
 	}
 
-	return expressions
+	return exps, errors
 }
 
-type srcPosition struct {
-	startPos Pos
-	endPos   Pos
-}
-
-func parseSrc(tokens []token) ([]ParseExprResult, []srcPosition) {
-	var expressions []ParseExprResult
-	var srcPositions []srcPosition
+func parseDocument(src string, tokens []token) (blocks []Block) {
 	idx := 0
 
 	for idx < len(tokens) && tokens[idx].typ != tokenEOF {
-		if tokens[idx].typ == tokenOpenList {
-			pos := srcPosition{startPos: tokens[idx].pos}
+		tok := tokens[idx]
 
-			result := parseExpression(tokens, &idx)
-
-			expressions = append(expressions, result)
-			pos.endPos = tokens[idx-1].pos
-			srcPositions = append(srcPositions, pos)
-		} else {
-			idx++ // skipping anything between top level s-exps
+		if tok.typ == tokenProse && isWhitespaceOnly(tok.val) {
+			idx++
+			continue
 		}
+
+		b := Block{StartPos: tok.pos}
+
+		switch t := tok.typ; t {
+		case tokenProse:
+			b.Type = "prose"
+			idx++
+
+		case tokenOpenList:
+			b.Type = "code"
+
+			exp, errors := parseExpression(tokens, &idx)
+			b.exp = exp
+
+			// turn []SyntaxError into []InterpreterError
+			for _, err := range errors {
+				b.Errors = append(b.Errors, InterpreterError{err.token.pos, err.Error()})
+			}
+
+			// pos is really the end position of a token so the end of the last token in
+			// this code block is the end of idx-1 (as idx points to the NEXT thing)
+
+		default:
+			panic("unexpected token type in parseDocument: " + t.String())
+		}
+
+		// At this point idx points to the next token
+		// EndPos is the start of the next token (which could be EOF)
+		b.EndPos = tokens[idx].pos
+		b.Content = src[b.StartPos.Offset:b.EndPos.Offset]
+		blocks = append(blocks, b)
 	}
 
-	return expressions, srcPositions
+	return blocks
 }
 
 // PARSING EXPRESSIONS
 
-type ParseExprResult struct {
-	Expr   any
-	Errors []SyntaxError
-}
-
-func parseExpression(tokens []token, idx *int) (result ParseExprResult) {
+func parseExpression(tokens []token, idx *int) (exp any, errors []SyntaxError) {
 	if *idx >= len(tokens) {
-		return result
+		return exp, errors
 	}
 
 	token := tokens[*idx]
@@ -128,20 +142,19 @@ func parseExpression(tokens []token, idx *int) (result ParseExprResult) {
 			}
 
 			if tokens[*idx].typ == tokenMissingCloseList {
-				result.Errors = append(result.Errors, newSyntaxErrorFromToken(tokens[*idx]))
+				errors = append(errors, newSyntaxErrorFromToken(tokens[*idx]))
 				*idx++
 				break
 			}
 
-			child := parseExpression(tokens, idx)
-			result.Errors = append(result.Errors, child.Errors...)
-			if child.Expr != nil {
-				list = append(list, child.Expr)
+			childExp, childErrors := parseExpression(tokens, idx)
+			errors = append(errors, childErrors...)
+			if childExp != nil {
+				list = append(list, childExp)
 			}
 		}
 
-		result.Expr = list
-		return result
+		return list, errors
 
 	case tokenOpenVec:
 		var vec vector
@@ -152,57 +165,50 @@ func parseExpression(tokens []token, idx *int) (result ParseExprResult) {
 			}
 
 			if tokens[*idx].typ == tokenMissingCloseVec {
-				result.Errors = append(result.Errors, newSyntaxErrorFromToken(tokens[*idx]))
+				errors = append(errors, newSyntaxErrorFromToken(tokens[*idx]))
 				*idx++
 				break
 			}
 
-			child := parseExpression(tokens, idx)
-			result.Errors = append(result.Errors, child.Errors...)
-			if child.Expr != nil {
-				vec = append(vec, child.Expr)
+			childExp, childErrors := parseExpression(tokens, idx)
+			errors = append(errors, childErrors...)
+			if childExp != nil {
+				vec = append(vec, childExp)
 			}
 		}
 
-		result.Expr = vec
-		return result
+		return vec, errors
 
 	case tokenCloseList, tokenCloseVec:
-		result.Errors = append(result.Errors, newUnexpectedClosingTokenError(token))
-		return result
+		errors = append(errors, newUnexpectedClosingTokenError(token))
 
 	case tokenNumber:
-		result.Expr = parseNumber(token.val)
-		return result
+		exp = parseNumber(token.val)
 
 	case tokenString:
-		result.Expr = token.val
-		return result
+		exp = token.val
 
 	case tokenBool:
-		result.Expr = parseBool(token.val)
-		return result
+		exp = parseBool(token.val)
 
 	case tokenSymbol:
-		result.Expr = newSymbol(token.val)
-		return result
+		exp = newSymbol(token.val)
 
 	case tokenKeyword:
-		result.Expr = newKeyword(token.val)
-		return result
+		exp = newKeyword(token.val)
 
 	case tokenMissingCloseList,
 		tokenMissingCloseVec,
 		tokenMissingCloseString,
 		tokenMalformedNumber,
 		tokenInvalidLiteral:
-		result.Errors = append(result.Errors, newSyntaxErrorFromToken(token))
-		return result
+		errors = append(errors, newSyntaxErrorFromToken(token))
 
 	default:
-		result.Errors = append(result.Errors, newUnexpectedTokenError(token))
-		return result
+		errors = append(errors, newUnexpectedTokenError(token))
 	}
+
+	return exp, errors
 }
 
 func parseBool(t string) bool {
@@ -225,4 +231,8 @@ func parseNumber(t string) any {
 
 	i, _ := strconv.Atoi(t)
 	return i
+}
+
+func isWhitespaceOnly(s string) bool {
+	return strings.TrimSpace(s) == ""
 }

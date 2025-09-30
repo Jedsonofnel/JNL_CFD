@@ -9,32 +9,31 @@ import (
 	"sync"
 )
 
-// GLOBAL LIBRARY REGISTRY
+// DOCUMENT BLOCKS FOR CONSUMPTION
 
-var libraryRegistry = make(map[string]Library)
-var registryMutex sync.RWMutex
+type Block struct {
+	// Lexer/parser metadata
+	Type     string `json:"type"` // "prose" | "code"
+	Content  string `json:"content"`
+	StartPos Pos    `json:"startPos"`
+	EndPos   Pos    `json:"endPos"`
 
-type Library struct {
-	Name     string
-	Src      embed.FS
-	Bindings map[string]ProcFunc
-	Atoms    map[string]Atom
+	// OPTIONAL: If evaluated
+	Result map[string]any `json:"result,omitempty"`
+
+	// SyntaxErrors (parser) or RuntimeErrors (evaluator)
+	Errors []InterpreterError `json:"errors,omitempty"`
+
+	// OPTIONAL: If code block - the parsed expression AST
+	exp any
 }
 
-func RegisterLibrary(lib Library) error {
-	registryMutex.Lock()
-	defer registryMutex.Unlock()
-
-	if _, exists := libraryRegistry[lib.Name]; exists {
-		return fmt.Errorf("library with name '%s' already exists", lib.Name)
-	}
-
-	libraryRegistry[lib.Name] = lib
-
-	return nil
+type InterpreterError struct {
+	Pos     Pos    `json:"position"`
+	Message string `json:"message"`
 }
 
-// CONTEXTS
+// CONTEXT TO MANAGE ENV
 
 type Context struct {
 	env          *env
@@ -59,6 +58,73 @@ func (c *Context) Extend() *Context {
 	}
 
 	return localCtx
+}
+
+// GLOBAL LIBRARY REGISTRY
+
+var libraryRegistry = make(map[string]Library)
+var registryMutex sync.RWMutex
+
+type Library struct {
+	Name     string
+	FS       embed.FS
+	Bindings map[string]ProcFunc
+	Atoms    map[string]Atom
+}
+
+func RegisterLibrary(lib Library) error {
+	registryMutex.Lock()
+	defer registryMutex.Unlock()
+
+	if _, exists := libraryRegistry[lib.Name]; exists {
+		return fmt.Errorf("library with name '%s' already exists", lib.Name)
+	}
+
+	libraryRegistry[lib.Name] = lib
+
+	return nil
+}
+
+// OTHER METHODS
+
+func (c *Context) BindProcedure(name string, proc ProcFunc) {
+	c.env.bind(name, ProcedureAtom{&Procedure{
+		proc: proc,
+		name: name,
+	}})
+}
+
+func (c *Context) BindAtom(name string, atom Atom) {
+	c.env.bind(name, atom)
+}
+
+func (c *Context) Reset() {
+	c.env = newStandardEnv()
+}
+
+// PARSING (for syntax highlighting etc)
+
+func ParseBytes(bytes []byte) []Block {
+	tokens := tokenizeDocument(string(bytes))
+	return parseDocument(string(bytes), tokens)
+}
+
+// EVALUATING
+
+func (c *Context) EvalString(source string) []Block {
+	return c.evalDocument(source)
+}
+
+func (c *Context) EvalBytes(bytes []byte) []Block {
+	return c.evalDocument(string(bytes))
+}
+
+func (c *Context) EvalFile(contents string) ([]Block, error) {
+	content, err := os.ReadFile(contents)
+	if err != nil {
+		return nil, err
+	}
+	return c.evalDocument(string(content)), nil
 }
 
 func (c *Context) ImportLibrary(name, prefix string) error {
@@ -98,7 +164,7 @@ func (c *Context) ImportLibrary(name, prefix string) error {
 	}()
 
 	// execute library source in SAME environment
-	err := c.evaluateEmbeddedSrc(lib.Src)
+	err := c.evalEmbeddedDocuments(lib.FS)
 	if err != nil {
 		return err
 	}
@@ -107,87 +173,31 @@ func (c *Context) ImportLibrary(name, prefix string) error {
 	return nil
 }
 
-func (c *Context) BindProcedure(name string, proc ProcFunc) {
-	c.env.bind(name, ProcedureAtom{&Procedure{
-		proc: proc,
-		name: name,
-	}})
-}
-
-func (c *Context) BindAtom(name string, atom Atom) {
-	c.env.bind(name, atom)
-}
-
-func (c *Context) Reset() {
-	c.env = newStandardEnv()
-}
-
-type Block struct {
-	StartPos Pos                `json:"startPos"`
-	EndPos   Pos                `json:"endPos"`
-	Result   map[string]any     `json:"result"`
-	Errors   []InterpreterError `json:"errors"`
-}
-
-func (c *Context) LoadFromString(source string) ([]Block, error) {
-	return c.evaluateSrc(source)
-}
-
-func (c *Context) LoadFromFile(contents string) ([]Block, error) {
-	content, err := os.ReadFile(contents)
-	if err != nil {
-		return nil, err
-	}
-	return c.evaluateSrc(string(content))
-}
-
-type InterpreterError struct {
-	Pos     Pos    `json:"position"`
-	Message string `json:"message"`
-}
-
 // IMPLEMENTATION
 
-func (c *Context) evaluateSrc(src string) ([]Block, error) {
-	var blocks []Block
+func (c *Context) evalDocument(src string) []Block {
+	tokens := tokenizeDocument(src)
+	blocks := parseDocument(src, tokens)
 
-	tokens := tokenizeSrc(src)
-	parsedResults, positions := parseSrc(tokens)
-
-	for i, parsedResult := range parsedResults {
-		b := Block{
-			StartPos: positions[i].startPos,
-			EndPos:   positions[i].endPos,
-		}
-
-		isSyntaxError := false
-		for _, err := range parsedResult.Errors {
-			isSyntaxError = true
-			b.Errors = append(b.Errors, InterpreterError{err.token.pos, err.Error()})
-		}
-
-		if isSyntaxError {
-			blocks = append(blocks, b)
+	for i := range blocks {
+		if blocks[i].Type != "code" || len(blocks[i].Errors) > 0 {
 			continue
 		}
 
-		result, err := eval(parsedResult.Expr, c)
+		result, err := eval(blocks[i].exp, c)
+
 		if result != nil {
-			b.Result = result.ToJSON()
+			blocks[i].Result = result.ToJSON()
 		}
-
 		if err != nil {
-			// line -1 means no position specified
-			b.Errors = append(b.Errors, InterpreterError{Pos{Line: -1}, err.Error()})
+			blocks[i].Errors = append(blocks[i].Errors, InterpreterError{Pos{Line: -1}, err.Error()})
 		}
-
-		blocks = append(blocks, b)
 	}
 
-	return blocks, nil
+	return blocks
 }
 
-func (c *Context) evaluateEmbeddedSrc(fsys embed.FS) error {
+func (c *Context) evalEmbeddedDocuments(fsys embed.FS) error {
 	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -202,10 +212,7 @@ func (c *Context) evaluateEmbeddedSrc(fsys embed.FS) error {
 			return fmt.Errorf("failed to read %s: %w", path, err)
 		}
 
-		_, err = c.evaluateSrc(string(content))
-		if err != nil {
-			return fmt.Errorf("error in %s: %w", path, err)
-		}
+		_ = c.evalDocument(string(content))
 
 		return nil
 	})

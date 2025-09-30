@@ -23,12 +23,6 @@ html {
 body {
 	line-height: 1.5;
 	font-weight: normal;
-
-	header,
-	main,
-	footer {
-		width: min(90%, 80ch);
-	}
 }
 
 h1,
@@ -86,16 +80,27 @@ footer {
 	padding: 1rem 0;
 }
 
+body > header,
+body > main,
+body > footer {
+	width: min(90%, 80ch);
+}
+
 /* CORE COMPONENTS */
 
 button {
 	background-color: var(--bg);
 	border: 1px solid var(--fg);
-	border-bottom: 3px solid var(--fg);
+	border-bottom: 2px solid var(--fg);
 	cursor: pointer;
-	padding: 2px 16px 1px 16px;
+	padding: 2px 16px 2px 16px;
 
 	&:hover {
+		border-bottom: 3px solid var(--fg);
+		padding-bottom: 1px;
+	}
+
+	&:active {
 		background-color: var(--fg);
 		color: var(--bg);
 	}
@@ -106,7 +111,7 @@ button[disabled] {
 	padding-bottom: 3px;
 	cursor: default;
 
-	&:hover {
+	&:active {
 		background-color: var(--bg);
 		color: var(--fg);
 	}

@@ -28,24 +28,21 @@ func REPL() {
 			continue
 		}
 
-		parsedResult := parseREPL(tokens)
-		isError := false
-		for _, res := range parsedResult {
-			for _, err := range res.Errors {
-				println(err.Error())
-				isError = true
-			}
+		exps, errors := parseREPL(tokens)
+		for i := range errors {
+			println(errors[i].Error())
 		}
 
-		if isError {
+		if len(errors) > 0 {
 			text.Reset()
-			prompt =  buildPrompt(nil)
+			prompt = buildPrompt(nil)
 			continue
 		}
 
 		// loop through expressions in ast and evaluate them
-		for _, res := range parsedResult {
-			exp, err := eval(res.Expr, context)
+		for i := range exps {
+			exp, err := eval(exps[i], context)
+
 			if err != nil {
 				text.Reset()
 				println("ERROR EVALUATING: ", err.Error())

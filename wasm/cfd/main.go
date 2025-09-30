@@ -47,8 +47,7 @@ func getTextView() uint64 {
 func evalText(textLen int) uint64 {
 	ctx := lispCtx.Extend()
 
-	text := string(textBuf[:textLen])
-	blocks, _ := ctx.LoadFromString(text)
+	blocks := ctx.EvalBytes(textBuf[:textLen])
 	jsonData, _ := json.Marshal(blocks)
 
 	// PERF: consider whether GC might move the slice before consumption
@@ -57,7 +56,15 @@ func evalText(textLen int) uint64 {
 	return (uint64(ptr) << 32) | uint64(length)
 }
 
-// state
+//export parseText
+func parseText(textLen int) uint64 {
+	blocks := jnlisp.ParseBytes(textBuf[:textLen])
+	jsonBlock, _ := json.Marshal(blocks)
+
+	ptr := uintptr(unsafe.Pointer(&jsonBlock[0]))
+	length := int32(len(jsonBlock))
+	return (uint64(ptr) << 32) | uint64(length)
+}
 
 //export runFrame
 func runFrame(dt float32) uint64 {

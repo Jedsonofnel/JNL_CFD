@@ -7,12 +7,12 @@ import (
 )
 
 //go:embed mathslib.jnl
-var mathsLibSrc embed.FS
+var mathsLibFS embed.FS
 
 func init() {
 	RegisterLibrary(Library{
 		Name: "maths",
-		Src:  mathsLibSrc,
+		FS:   mathsLibFS,
 		Bindings: map[string]ProcFunc{
 			"sin":  lispSine,
 			"cos":  lispCosine,

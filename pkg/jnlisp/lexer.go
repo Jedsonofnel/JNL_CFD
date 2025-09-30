@@ -9,13 +9,14 @@ import (
 // MAIN EXTERNAL INTERACTION
 
 // looks for 'j(' glyph to start top-level s-exp
-func tokenizeSrc(input string) []token {
-	return tokenize(input, lexScanSrcExpr)
+func tokenizeDocument(input string) []token {
+	return tokenize(input, lexDocument)
 }
 
 // just looks for '(' to start top-level s-exp
 func tokenizeREPL(input string) []token {
-	return tokenize(input, lexScanExpr)
+	cleanedInput := strings.ReplaceAll(input, "\n", " ")
+	return tokenize(cleanedInput, lexREPL)
 }
 
 func tokenize(input string, rootLexer stateFn) (tokens []token) {
@@ -47,9 +48,9 @@ func countMissingTokens(tokens []token) (missing []string) {
 // CORE TYPES
 
 type token struct {
-	typ tokenType // Type, such as tokenNumber
-	val string    // Value such as "23.2"
-	pos Pos
+	typ tokenType // type, such as tokenNumber
+	val string    // value such as "23.2"
+	pos Pos       // starting position of the token (first character)
 }
 
 type Pos struct {
@@ -67,6 +68,7 @@ type tokenType int
 const (
 	tokenEOF tokenType = iota
 
+	// Code block tokens
 	tokenMissingCloseList
 	tokenMissingCloseVec
 	tokenMissingCloseString
@@ -82,6 +84,9 @@ const (
 	tokenBool
 	tokenSymbol
 	tokenKeyword
+
+	// Markdown block (prose) tokens
+	tokenProse
 )
 
 var tokenStrings = []string{
@@ -102,6 +107,8 @@ var tokenStrings = []string{
 	"tokenBool",
 	"tokenSymbol",
 	"tokenKeyword",
+
+	"tokenProse",
 }
 
 func (tt tokenType) String() string {
@@ -146,6 +153,9 @@ func (i token) String() string {
 		return "symbol(" + i.val + ", @" + i.pos.String() + ") "
 	case tokenKeyword:
 		return "keyword(" + i.val + ", @" + i.pos.String() + ") "
+
+	case tokenProse:
+		return "--PROSE @" + i.pos.String() + "--\n"
 	default:
 		return "UNKNOWN(" + i.val + ")\n"
 	}
@@ -163,6 +173,10 @@ type lexer struct {
 	width     int // width of last rune read
 	line      int // current line (1-based)
 	lineStart int // byte offset where current line started
+
+	// Capture position at token start
+	startLine int // current token's starting line
+	startCol  int // current token's starting column
 }
 
 func lex(input string, rootState stateFn) *lexer {
@@ -174,12 +188,16 @@ func lex(input string, rootState stateFn) *lexer {
 
 		line:      1, // start at line 1
 		lineStart: 0, // line starts at beginning
+
+		startLine: 1,
+		startCol:  1,
 	}
 	return l
 }
 
-// returns the next token from the input
-// bit of cleverness using concurrency thanks to Rob Pike
+// returns the next token from the input.
+// A bit of cleverness using concurrency thanks to Rob Pike's wonderful
+// "lexical scanning in go" talk on youtube
 func (l *lexer) nextItem() token {
 	for {
 		select {
@@ -193,24 +211,23 @@ func (l *lexer) nextItem() token {
 
 // HELPER METHODS ON LEXER
 
-// get current position
-func (l *lexer) currentPos() Pos {
-	return Pos{
-		Line:   l.line,
-		Column: l.start - l.lineStart + 1,
-		Offset: l.start,
-	}
-}
-
 // passes an token block back to the client
 // decorated with currentPos() data
 func (l *lexer) emit(t tokenType) {
 	l.tokens <- token{
 		typ: t,
 		val: l.input[l.start:l.pos],
-		pos: l.currentPos(),
+		pos: Pos{
+			Line:   l.startLine,
+			Column: l.startCol,
+			Offset: l.start,
+		},
 	}
+
+	// reset start data
 	l.start = l.pos
+	l.startLine = l.line
+	l.startCol = l.start - l.lineStart + 1
 }
 
 // consume next rune with line tracking
@@ -234,6 +251,8 @@ func (l *lexer) next() (r rune) {
 
 func (l *lexer) ignore() {
 	l.start = l.pos
+	l.startLine = l.line
+	l.startCol = l.start - l.lineStart + 1
 }
 
 func (l *lexer) backup() {
@@ -300,37 +319,46 @@ func (l *lexer) pop() stateFn {
 type stateFn func(l *lexer) stateFn
 
 // Start normal code block (no literate stuff)
-func lexScanExpr(l *lexer) stateFn {
+func lexREPL(l *lexer) stateFn {
 	for {
 		if strings.HasPrefix(l.input[l.pos:], "(") {
 			l.pos += len("(")
 			l.emit(tokenOpenList)
-			l.push(lexScanExpr)
+			l.push(lexREPL)
 			return lexInsideList // Next state
 		}
 		if l.next() == eof { // advance input checking for EOF
 			break
 		}
-		l.ignore()
+		l.ignore() // ignore if not an open paren
 	}
 	// reached EOF
 	l.emit(tokenEOF)
 	return nil
 }
 
-// Start source file (ie looking for openParenSrc)
-func lexScanSrcExpr(l *lexer) stateFn {
+// Start document (ie markdown + code blocks)
+func lexDocument(l *lexer) stateFn {
 	for {
 		if strings.HasPrefix(l.input[l.pos:], openSrcList) {
+			// only emit prose if we've accumulated content
+			if l.pos > l.start {
+				l.emit(tokenProse)
+			}
+
 			l.pos += len(openSrcList)
 			l.emit(tokenOpenList)
-			l.push(lexScanSrcExpr) // return here after top level block
+			l.push(lexDocument) // return here after top level block
 			return lexInsideList
 		}
+
 		if l.next() == eof {
+			// only emit trailing prose if there's content
+			if l.pos > l.start {
+				l.emit(tokenProse)
+			}
 			break
 		}
-		l.ignore()
 	}
 
 	l.emit(tokenEOF)

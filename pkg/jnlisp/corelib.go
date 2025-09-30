@@ -6,12 +6,12 @@ import (
 )
 
 //go:embed corelib.jnl
-var coreLibSrc embed.FS
+var coreLibFS embed.FS
 
 func init() {
 	RegisterLibrary(Library{
 		Name: "core",
-		Src:  coreLibSrc,
+		FS:   coreLibFS,
 		Bindings: map[string]ProcFunc{
 			"+":   lispAdd,
 			"-":   lispSubtract,
