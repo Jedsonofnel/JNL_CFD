@@ -575,8 +575,7 @@ func lexComment(l *lexer) stateFn {
 }
 
 func lexKeyword(l *lexer) stateFn {
-	l.next() // consume ':'
-	l.ignore()
+	l.ignore() // consume the :
 
 	for {
 		r := l.next()

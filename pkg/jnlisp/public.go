@@ -123,10 +123,10 @@ func (c *Context) Reset() {
 }
 
 type Block struct {
-	StartPos Pos            `json:"startPos"`
-	EndPos   Pos            `json:"endPos"`
-	Result   map[string]any `json:"result"`
-	Error    any            `json:"error"`
+	StartPos Pos                `json:"startPos"`
+	EndPos   Pos                `json:"endPos"`
+	Result   map[string]any     `json:"result"`
+	Errors   []InterpreterError `json:"errors"`
 }
 
 func (c *Context) LoadFromString(source string) ([]Block, error) {
@@ -139,6 +139,11 @@ func (c *Context) LoadFromFile(contents string) ([]Block, error) {
 		return nil, err
 	}
 	return c.evaluateSrc(string(content))
+}
+
+type InterpreterError struct {
+	Pos     Pos    `json:"position"`
+	Message string `json:"message"`
 }
 
 // IMPLEMENTATION
@@ -156,14 +161,12 @@ func (c *Context) evaluateSrc(src string) ([]Block, error) {
 		}
 
 		isSyntaxError := false
-		errors := []any{}
 		for _, err := range parsedResult.Errors {
 			isSyntaxError = true
-			errors = append(errors, err)
+			b.Errors = append(b.Errors, InterpreterError{err.token.pos, err.Error()})
 		}
 
 		if isSyntaxError {
-			b.Error = errors
 			blocks = append(blocks, b)
 			continue
 		}
@@ -174,7 +177,8 @@ func (c *Context) evaluateSrc(src string) ([]Block, error) {
 		}
 
 		if err != nil {
-			b.Error = err.Error()
+			// line -1 means no position specified
+			b.Errors = append(b.Errors, InterpreterError{Pos{Line: -1}, err.Error()})
 		}
 
 		blocks = append(blocks, b)

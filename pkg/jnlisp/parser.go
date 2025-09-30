@@ -17,12 +17,12 @@ func newKeyword(s string) keyword { return keyword(s) }
 // ERROR TYPES
 
 type SyntaxError struct {
-	Token   token  `json:"token"`
-	Message string `json:"message"`
+	token   token
+	message string
 }
 
 func (e SyntaxError) Error() string {
-	return "Syntax error at " + e.Token.pos.String() + ": " + e.Message
+	return "Syntax error at " + e.token.pos.String() + ": " + e.message
 }
 
 func newSyntaxErrorFromToken(t token) SyntaxError {
@@ -47,15 +47,15 @@ func newSyntaxErrorFromToken(t token) SyntaxError {
 
 func newUnexpectedClosingTokenError(t token) SyntaxError {
 	return SyntaxError{
-		Token:   t,
-		Message: "unexpected '" + t.val + "'",
+		token:   t,
+		message: "unexpected '" + t.val + "'",
 	}
 }
 
 func newUnexpectedTokenError(t token) SyntaxError {
 	return SyntaxError{
-		Token:   t,
-		Message: "unexpected token '" + t.String() + "', value: " + t.val,
+		token:   t,
+		message: "unexpected token '" + t.String() + "', value: " + t.val,
 	}
 }
 
@@ -146,7 +146,7 @@ func parseExpression(tokens []token, idx *int) (result ParseExprResult) {
 	case tokenOpenVec:
 		var vec vector
 		for *idx < len(tokens) {
-			if tokens[*idx].typ != tokenCloseVec {
+			if tokens[*idx].typ == tokenCloseVec {
 				*idx++
 				break
 			}
