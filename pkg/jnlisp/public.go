@@ -178,6 +178,7 @@ func (c *Context) ImportLibrary(name, prefix string) error {
 func (c *Context) evalDocument(src string) []Block {
 	tokens := tokenizeDocument(src)
 	blocks := parseDocument(src, tokens)
+	var codeBlocks []Block
 
 	for i := range blocks {
 		if blocks[i].Type != "code" || len(blocks[i].Errors) > 0 {
@@ -192,9 +193,11 @@ func (c *Context) evalDocument(src string) []Block {
 		if err != nil {
 			blocks[i].Errors = append(blocks[i].Errors, InterpreterError{Pos{Line: -1}, err.Error()})
 		}
+
+		codeBlocks = append(codeBlocks, blocks[i])
 	}
 
-	return blocks
+	return codeBlocks
 }
 
 func (c *Context) evalEmbeddedDocuments(fsys embed.FS) error {

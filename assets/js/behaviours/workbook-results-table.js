@@ -13,7 +13,6 @@ export class WorkbookResultsTableBehaviour extends ContextAwareBehaviour {
 
 	renderTable(results) {
 		const tableEntries = []
-		console.log(results)
 		for (const [index, result] of results.entries()) {
 			const resultType = result.result ? result.result.type : "ERROR"
 			const resultValue = this.parseResultValue(result)
