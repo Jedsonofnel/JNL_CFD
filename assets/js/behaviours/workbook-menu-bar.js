@@ -17,8 +17,8 @@ export class WorkbookMenuBarBehaviour extends ContextAwareBehaviour {
 		this.setupIndicator();
 
 		this.setupBtns();
-		this.updateLayoutBtns(this.context.state.layout);
 		this.setupSubscriptions();
+		this.setupHeightVar();
 	}
 
 	setupIndicator() {
@@ -40,6 +40,16 @@ export class WorkbookMenuBarBehaviour extends ContextAwareBehaviour {
 				"menu-bar__interp-indicator--ready",
 			);
 		});
+	}
+
+	setupHeightVar() {
+		this.setMenuHeight();
+		window.addEventListener("resize", this.setMenuHeight.bind(this));
+	}
+
+	setMenuHeight() {
+		const height = this.element.offsetHeight;
+		this.context.element.style.setProperty("--menu-height", `${height}px`);
 	}
 
 	setupBtns() {
@@ -78,6 +88,8 @@ export class WorkbookMenuBarBehaviour extends ContextAwareBehaviour {
 	}
 
 	setupSubscriptions() {
+		this.updateLayoutBtns(this.context.state.layout);
+
 		this.subscribe(
 			({ value }) => this.updateLayoutBtns(value),
 			({ prop }) => prop === "layout",

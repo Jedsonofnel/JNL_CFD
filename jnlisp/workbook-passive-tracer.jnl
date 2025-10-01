@@ -22,10 +22,10 @@ Until I get a SIMPLE solver fully working, I'm using a derived vector field that
 
 j(import "maths")
 
-j(define x-velocity 0.03)
+j(define x-velocity 0.3)
 
 j(define (y-velocity time)
-  (* 0.01 (maths/sin time)))
+  (* 0.2 (maths/sin time)))
 
 j(define velocity-field
   (derived-vector-field "velocity"
@@ -75,10 +75,10 @@ A `Scenario` is the main orchestrator of fields and equations, and is responsibl
 
 Furthermore, a `Scenario` is responsible for the complete "resolution" of the problem - the data structures declared earlier (meshes, fields, equations) are very sparse definition types under the hood that do not have any of the long data arrays initialised yet, to avoid allocating memory while defining the problem.  When it comes time to run a visualisation or run a scenario to convergence the scenario will resolve all its components and only then will the long data arrays be initialised.
 
-j(passive-transport
-  :mesh mesh
-  :solver solver
-  :fields [dye-field velocity-field]
-  :equations [dye-equation])
+j(define scenario (passive-transport
+                  :mesh mesh
+                  :solver solver
+                  :fields [dye-field velocity-field]
+                  :equations [dye-equation]))
 
 And there you have it - a complete definition for a scenario that can be run as a visualisation.  Under the hood the interpreter for this DSL lexes and parses the file, complaining if there are any syntax errors, and then evaluates every top-level expression (ie the ones starting with the `j` glyph) and responds with a json list of every block, it's location in the code and some metadata about the thing it has evaluated to. My web-interface can read this and knows that if it's resolved to a MeshDefinition or a ScenarioDefinition to offer UI to visualise them and then to interact with the solver code to do that.

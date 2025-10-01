@@ -102,6 +102,10 @@ func (c *Context) Reset() {
 	c.env = newStandardEnv()
 }
 
+func (c *Context) GetBinding(name string) (Atom, bool) {
+	return c.env.find(name)
+}
+
 // PARSING (for syntax highlighting etc)
 
 func ParseBytes(bytes []byte) []Block {

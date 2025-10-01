@@ -33,6 +33,9 @@ h5,
 h6,
 p {
 	font-weight: normal;
+	&.thin {
+		margin: 0;
+	}
 }
 
 ul {
@@ -127,7 +130,7 @@ table {
 th,
 td {
 	border-bottom: 1px solid var(--fg);
-	padding: 2 4px;
+	padding: 2px 8px;
 	vertical-align: top;
 	line-height: 1.5;
 }
@@ -138,4 +141,9 @@ td.td--right {
 
 td.td--center {
 	text-align: center;
+}
+
+.table-col--min-width {
+	width: 1px;
+	whitespace: nowrap;
 }

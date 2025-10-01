@@ -259,8 +259,7 @@ class ScenarioRenderer {
 
 const scenarioRendererPromise = new ScenarioRenderer().init();
 
-// biome-ignore lint/suspicious/noGlobalAssign: onmessage is fine to set in a web worker
-onmessage = async ({ data }) => {
+self.onmessage = async ({ data }) => {
 	const scenarioRenderer = await scenarioRendererPromise;
 
 	switch (data.type) {

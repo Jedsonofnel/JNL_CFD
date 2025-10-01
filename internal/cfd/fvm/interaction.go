@@ -24,7 +24,7 @@ type RenderData struct {
 }
 
 func NewRenderData(scenario Scenario) *RenderData {
-	mesh := scenario.getMesh()
+	mesh := scenario.GetMesh()
 	mrd := geometry.NewMeshRenderData(mesh)
 
 	triangleVertices := mrd.TriangleVertices

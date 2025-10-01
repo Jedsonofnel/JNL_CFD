@@ -23,15 +23,23 @@
 			</div>
 		</div>
 
-		<div data-workbook="results-pane">
+		<div data-workbook="results-pane" class="results-pane">
 			<div data-behaviour="results-table" class="results-table-container">
 				<table data-results-table="table">
+					<colgroup>
+						<col class="table-col--min-width table-col--right-aligned">
+						<col class="table-col--centered">
+						<col>
+						<col>
+						<col class="table-col--min-width table-col--centered">
+					</colgroup>
 					<thead>
 						<tr>
 							<th>Block</th>
 							<th>Position</th>
 							<th>Result Type</th>
 							<th>Result Value</th>
+							<th>Extra</th>
 						</tr>
 					</thead>
 					<tbody data-results-table="table-body">
@@ -41,7 +49,6 @@
 					</tbody>
 				</table>
 			</div>
-			<canvas data-js-viz-canvas width="800" height="600" class="renderer-canvas"></canvas>
 		</div>
 	</section>
 </main>

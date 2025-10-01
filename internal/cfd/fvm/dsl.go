@@ -88,6 +88,7 @@ func lispDerivedVectorField(args []jnlisp.Atom, kwargs jnlisp.Table) (jnlisp.Ato
 	cb := func(t float32) Vec2 {
 		timeAtom := jnlisp.NumberAtom{Value: t}
 		result, err := timeFunc.Call([]jnlisp.Atom{timeAtom}, nil, nil)
+
 		if err != nil {
 			return Vec2{}
 		}

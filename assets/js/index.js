@@ -1,8 +1,11 @@
 import {
 	CodeEditorBehaviour,
 	CodeInterpreterBehaviour,
+	MeshViz,
+	ScenarioViz,
 	WorkbookLayoutBehaviour,
 	WorkbookMenuBarBehaviour,
+	WorkbookResultsExtraBehaviour,
 	WorkbookResultsTableBehaviour,
 } from "./behaviours/index.js";
 
@@ -29,9 +32,17 @@ manager.register(
 
 manager.register(`[data-behaviour*="code-editor"]`, CodeEditorBehaviour);
 
+manager.register(`[data-viz-behaviour*="mesh-viz"]`, MeshViz);
+manager.register(`[data-viz-behaviour*="scenario-viz"]`, ScenarioViz);
+
 manager.register(
 	`[data-behaviour*="code-interpreter"]`,
 	CodeInterpreterBehaviour,
+);
+
+manager.register(
+	`[data-behaviour*="results-extra"]`,
+	WorkbookResultsExtraBehaviour,
 );
 
 manager.register(

@@ -55,6 +55,19 @@ class BehaviourManager {
 			mutations.forEach((mutation) => {
 				mutation.addedNodes.forEach((node) => {
 					if (node.nodeType === Node.ELEMENT_NODE) {
+						// Check if the node itself matches any selectors
+						this.behaviours.forEach((BehaviourClass, selector) => {
+							if (node.matches(selector)) {
+								if (!node._appliedBehaviours) {
+									node._appliedBehaviours = new Set();
+								}
+								const behaviourKey = BehaviourClass.name;
+								if (!node._appliedBehaviours.has(behaviourKey)) {
+									new BehaviourClass(node);
+									node._appliedBehaviours.add(behaviourKey);
+								}
+							}
+						});
 						this.applyBehaviours(node);
 					}
 				});

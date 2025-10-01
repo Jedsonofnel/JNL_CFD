@@ -31,6 +31,7 @@ func (e *env) find(s string) (Atom, bool) {
 }
 
 func (e *env) bind(s string, atom Atom) boundAtom {
+	atom = UnwrapAtom(atom)
 	boundAtom := boundAtom{
 		Atom:   atom,
 		handle: s,

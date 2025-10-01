@@ -20,7 +20,7 @@ func (md MeshDefinitionAtom) Type() string   { return "cfd.MeshDefinition" }
 func (md MeshDefinitionAtom) String() string { return "cfd.MeshDefinition" }
 func (md MeshDefinitionAtom) ToJSON() map[string]any {
 	return map[string]any{
-		"type":  "cfd.MeshDefinition",
+		"type":  "cfd/geometry.MeshDefinition",
 		"value": "INTERFACE TYPE",
 		"repr":  md.String(),
 	}

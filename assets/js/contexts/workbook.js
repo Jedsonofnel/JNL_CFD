@@ -5,6 +5,7 @@ export class WorkbookContext extends ReactiveContext {
 		super(element, {
 			layout: "editor",
 			interpreterResults: [],
+			documentSrc: "",
 		});
 
 		// creating actions

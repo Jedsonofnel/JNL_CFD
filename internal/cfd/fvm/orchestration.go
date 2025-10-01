@@ -33,9 +33,9 @@ type ScenarioDefinition interface {
 }
 
 type Scenario interface {
+	GetMesh() *geometry.Mesh
 	step(prof profiler.Profiler) bool
 	getTracerFieldValues() []float32
-	getMesh() *geometry.Mesh
 	advanceTime(dt float32)
 }
 
@@ -207,7 +207,7 @@ func (pts *passiveTransportScenario) getTracerFieldValues() []float32 {
 	return field.cellValues
 }
 
-func (pts *passiveTransportScenario) getMesh() *geometry.Mesh {
+func (pts *passiveTransportScenario) GetMesh() *geometry.Mesh {
 	return pts.mesh
 }
 

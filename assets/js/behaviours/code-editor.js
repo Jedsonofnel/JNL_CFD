@@ -13,6 +13,8 @@ export class CodeEditorBehaviour extends ContextAwareBehaviour {
 		);
 		this.setupWorker();
 
+		this.setupWatcher();
+
 		this.parse();
 	}
 
@@ -24,6 +26,14 @@ export class CodeEditorBehaviour extends ContextAwareBehaviour {
 		this.element.textContent = this.element.textContent.trim();
 	}
 
+	setupWatcher() {
+		this.context.state.documentSrc = this.element.textContent
+
+		this.element.addEventListener("input", () => {
+			this.context.state.documentSrc = this.element.textContent;
+		});
+	}
+
 	setupWorker() {
 		this.parserWorker.onmessage = ({ data }) => {
 			console.log(data);
@@ -33,4 +43,14 @@ export class CodeEditorBehaviour extends ContextAwareBehaviour {
 			console.error("Parser worker error: ", error.message);
 		};
 	}
+}
+
+function debounce(func, timeout = 200) {
+	let timer;
+	return (...args) => {
+		clearTimeout(timer);
+		timer = setTimeout(() => {
+			func.apply(this, args);
+		}, timeout);
+	};
 }

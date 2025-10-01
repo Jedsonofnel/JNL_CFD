@@ -29,7 +29,7 @@ func lispSine(args []Atom, _ Table) (Atom, error) {
 
 	num, ok := As[NumberAtom](args[0])
 	if !ok {
-		return nil, fmt.Errorf("cos expects a number, got %s", args[0].Type())
+		return nil, fmt.Errorf("sin expects a number, got %s", args[0].Type())
 	}
 
 	castArgs, err := toRational([]any{num.Value}, "sin")
