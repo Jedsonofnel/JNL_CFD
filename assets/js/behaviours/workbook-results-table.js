@@ -22,7 +22,7 @@ export class WorkbookResultsTableBehaviour extends ContextAwareBehaviour {
 					<td class="td--right">${index + 1}</td>
 					<td class="td--center">${result.startPos.line}:${result.endPos.line}</td>
 					<td>${escapeHTML(resultType)}</td>
-					<td>${resultValue}</td>
+					<td>${escapeHTML(resultValue)}</td>
 					<td class="td--center">${optionValue}</td>
 				</tr>
 			`);

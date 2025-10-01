@@ -89,7 +89,7 @@ body > footer {
 	width: min(90%, 80ch);
 }
 
-/* CORE COMPONENTS */
+/* INPUT COMPONENTS */
 
 button {
 	background-color: var(--bg);
@@ -119,6 +119,8 @@ button[disabled] {
 		color: var(--fg);
 	}
 }
+
+/* TABLE */
 
 table {
 	width: 100%;

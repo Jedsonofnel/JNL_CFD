@@ -1,10 +1,38 @@
-# Passive Tracer Workbook
+# Proof of Concept
 
-An example of the passive transport solver I have currently. SIMPLE is not far away as my abstractions are very extensible and it shouldn't be so hard to implement 
+This is a sample CFD workbook I've written up to showcase the core idea behind this project: specifying CFD scenarios in a literate lisp and web-based environment.  This was done as a "walking skeleton" - ie each component (the Lisp interpreter, the CFD library and the web text editor) is as bare bones as it can be to get to a point where the core loop of edit workbook, evaluate output, view CFD, is achievable to function as a proof of concept.
+
+All that to say, it's pretty basic but better than just using your imagination.
+
+## Brief intro to what you're looking at and some Lisp
+
+This is a "workbook", which is just plaintext that can be interpreted by an interpreter.  The core premise is by default, you can just write markdown prose (which is like a very basic HTML/LaTeX) and the intepreter ignores it, but if it sees the following (ie the j and then an opening parentheses) then it interprets it as lisp code and returns the result in the results table.  As this is the first code block it's the first in the table.
+
+j(define this-is "a code block")
+
+We can use these to define symbols (ie `this-is` now evaluates to the string "a code block") or procedures (functions) with the following syntax:
+
+j(define ^2 (lambda (x) (* x x)))
+
+j(^2 5) ;; this should be 25 in the results table!
+
+A `lambda` expression takes a list of parameters as it's first argument and evaluates to the result of its second argument.  The rule for evaluation is very simple: if you have a list enclosed by (parentheses) then to evaluate it, the first item is the procedure and the rest are passed to the procedure as arguments.  The only exceptions are special forms, like `define` which binds a symbol to some other expression, `if` which takes a predicate (test) as its first argument and then replaces itself with the first expression after that if true or the next if false, and `lambda` which returns an anonymous procedure.  As a shorthand for `(define symbol (lambda (arg) expr))` you can write bound procedures like this:
+
+j(define (factorial n)
+         (if (= n 1)
+         1
+         (* n (factorial (- n 1)))))
+
+j(factorial 10)
+
+I'll get to some CFD now but the key points are:
+- You can write code like a report or document
+- Everything evaluates to something
+- The language features are minimal but very powerful
 
 ## Meshing
 
-Currently the meshing capabilities are very limited but this will be extended with an expressive toolkit for defining parametric 2D geometries.  Though for now we'll stick to a uniform cartesian mesh for simplicity.
+The first step of creating a fully defined scenario.  Currently the meshing capabilities are limited to generating a simple uniform cartesian mesh with no internal geometry.
 
 j(define mesh
   (structured-mesh :nx 50 :ny 25 :width 1 :height 0.5))
@@ -22,24 +50,19 @@ Until I get a SIMPLE solver fully working, I'm using a derived vector field that
 
 j(import "maths")
 
-j(define x-velocity 0.3)
-
-j(define (y-velocity time)
-  (* 0.2 (maths/sin time)))
-
+j(define (velocity-time-unsteadiness time) 
+         [0.3 (* 0.1 (maths/sin time))])
+        
 j(define velocity-field
-  (derived-vector-field "velocity"
-    (lambda (time) [x-velocity (y-velocity time)])))
+  (derived-vector-field "velocity" velocity-time-unsteadiness))
+
+It's not super obvious but I happen to know (as I wrote the code) that the function `derived-vector-field` "binds" to a compiled go function that takes the name of the new vector field and a function that accepts a time value and returns a vector (what the square brackets represent, notice there's no need for commas - everything is delimited by spaces) for x and y values.  In the hot loop of the simulation the compiled go code will run this interpreted function to update the field's uniform value!
 
 ## Equations
 
-An equation is the orchestrator for assembling the system(s) of linear equations that get solved every iteration.  The basic flow is it takes an arbritrary amount of operators (allowing for lovely mathematical expressiveness and experimentation), and then at resolution it sorts them into `fluxOps` and `srcOps` whereby:
+An `equation` is the orchestrator for assembling the system of linear equations to be solved.  It takes a number of operators which themselves contain behaviour for what coefficients to add where based on the fields passed to the operator.  This approach is based on the way OpenFOAM writes equations in an almost symbolic maths way.
 
-- **Flux Operators**: calculate a "flux" for every *connection* in the mesh, eg for basic heat diffusion the laplacian operator will calculate `k * A / d`. 
-
-- **Source Operators**: calculate a source term for the rhs vector and some diagonal contribution for the matrix for every *cell* in the mesh.  For example a point source just adds some constant to the rhs, but the unsteady operator (`ddt`) adds `a_P^0 / dt` to the rhs and `a_P^0` to the diagonal.
-
-j(define density 1) ;; A dye is just concentration so density=1
+j(define density 1) ;; conserving dye concentration so density = 1
 
 j(define diffusivity 1e-6) ;; To keep the Peclet number high
 
@@ -54,13 +77,15 @@ Note the point source coordinates are in [-1, 1] space rather than the actual ph
 
 ### Boundary conditions
 
-The equation is responsible for boundary conditions rather than the field as I want to keep the `field` data type as dumb as possible.  Boundary conditions are applied with the source terms as "decorators" of the matrix and rhs, using cached flux values from fluxOps corresponding to boundary connections.
+The equation is responsible for boundary conditions rather than the field as I want to keep the `field` data type as dumb as possible.  Boundary conditions are applied with the source terms as "decorators" of the matrix and rhs, using cached flux values from flux operators corresponding to boundary connections.
 
 j(set-boundary-conditions dye-equation mesh
   :north-border (scalar-neumann 0)
   :east-border (scalar-outflow)
   :south-border (scalar-neumann 0)
   :west-border (scalar-dirichlet 0))
+
+It's the mesh that's responsible for exposing what named boundaries need to have boundary conditions applied.  If you remove one of the boundary conditions the scenario won't resolve and I don't have a solid error propogation system from compiled code back to interpreted land so for now trust that the keyword boundary conditions above are the ones required for the mesh.
 
 ## Solver
 
@@ -81,4 +106,4 @@ j(define scenario (passive-transport
                   :fields [dye-field velocity-field]
                   :equations [dye-equation]))
 
-And there you have it - a complete definition for a scenario that can be run as a visualisation.  Under the hood the interpreter for this DSL lexes and parses the file, complaining if there are any syntax errors, and then evaluates every top-level expression (ie the ones starting with the `j` glyph) and responds with a json list of every block, it's location in the code and some metadata about the thing it has evaluated to. My web-interface can read this and knows that if it's resolved to a MeshDefinition or a ScenarioDefinition to offer UI to visualise them and then to interact with the solver code to do that.
+If you go to the results table there should be a button to "View" the scenario definition.  Please feel free to tweak and change values and see if you can get other cool behaviour - currently I don't have a way to persist changes: on refresh the page will just reset to the original workbook I've hardcoded in so go nuts.  I hope it's clear that with a bit of syntax highlighting and cleverness (ie rendering the prose in a normal font and rendering headings like headings etc) this could be a really powerful way of describing fully reproducible CFD setups and more.
