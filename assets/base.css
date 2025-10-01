@@ -62,11 +62,12 @@ header {
 	}
 }
 
-header.header--thin {
+header.header--slim {
 	flex-direction: row;
 	align-items: baseline;
 	justify-content: space-between;
 	margin: 16px auto;
+	width: min(90%, 161ch);
 }
 
 main {

@@ -25,6 +25,11 @@ ul.checklist {
 	padding-left: 0;
 }
 
+/* main menu nav anchor */
+#menu {
+	scroll-margin-top: 200px;
+}
+
 /* viz display for rendering */
 .viz-container {
 	margin-bottom: 24px;
