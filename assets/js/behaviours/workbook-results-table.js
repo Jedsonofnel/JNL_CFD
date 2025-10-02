@@ -45,6 +45,8 @@ export class WorkbookResultsTableBehaviour extends ContextAwareBehaviour {
 	}
 
 	getOptions(result) {
+		if (!result) return "-";
+
 		if (result.type === "cfd/geometry.MeshDefinition") {
 			return `<button style="margin-left:auto;" data-behaviour="results-extra"
 					data-workbook-results-extra="mesh-viz"
