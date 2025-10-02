@@ -1,12 +1,14 @@
 package web
 
 import (
+	"io/fs"
 	"log"
 	"net/http"
 )
 
 func addRoutes(mux *http.ServeMux, logger *log.Logger, view *View) {
-	assets := http.FileServer(http.Dir("assets/"))
+	assetsFS, _ := fs.Sub(getFS(), "assets")
+	assets := http.FileServer(http.FS(assetsFS))
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", assets))
 
 	// pages
