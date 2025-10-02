@@ -5,7 +5,7 @@ build:
 	go build -o ./bin/web ./cmd/web/main.go
 	go build -o ./bin/repl ./cmd/repl/main.go
 
-build-prod: clean-web-assets
+build-prod: clean-web-assets build-wasm
 	cd internal/web && go generate
 	ENV=production go build -o ./bin/cli ./cmd/cli/main.go
 	ENV=production go build -o ./bin/web ./cmd/web/main.go
