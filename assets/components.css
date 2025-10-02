@@ -136,8 +136,6 @@ ul.checklist {
 
 /* results table */
 .results-pane {
-	position: sticky;
-	top: var(--menu-height);
 	align-self: start;
 }
 
