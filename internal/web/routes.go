@@ -13,6 +13,7 @@ func addRoutes(mux *http.ServeMux, logger *log.Logger, view *View) {
 
 	// pages
 	mux.Handle("GET /", handleHome(logger, view))
+	mux.Handle("GET /fyp-proposal", handleFYPProposal(logger, view))
 	mux.Handle("GET /workbooks", handleWorkbooks(logger, view))
 	mux.Handle("GET /workbooks/{id}", handleWorkbookShow(logger, view))
 

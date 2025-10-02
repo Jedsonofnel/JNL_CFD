@@ -19,6 +19,15 @@ func handleHome(_ *log.Logger, view *View) http.Handler {
 	)
 }
 
+func handleFYPProposal(log *log.Logger, view *View) http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			log.Println("FYP PROPOSAL ACCESSED")
+			view.Render(w, "fyp-proposal", nil)
+		},
+	)
+}
+
 func handleWorkbooks(_ *log.Logger, view *View) http.Handler {
 	data := map[string]string{}
 

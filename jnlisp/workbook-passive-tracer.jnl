@@ -1,5 +1,7 @@
 # Proof of Concept
 
+TL;DR the results table on the right are live results of running each code block in this document, and if you press "View" on the code block at the bottom that evaluates to a `cfd/fvm.ScenarioDefinition` then it will run it live in the browser.
+
 This is a sample CFD workbook I've written up to showcase the core idea behind this project: specifying CFD scenarios in a literate lisp and web-based environment.  This was done as a "walking skeleton" - ie each component (the Lisp interpreter, the CFD library and the web text editor) is as bare bones as it can be to get to a point where the core loop of edit workbook, evaluate output, view CFD, is achievable to function as a proof of concept.
 
 All that to say, it's pretty basic but better than just using your imagination.

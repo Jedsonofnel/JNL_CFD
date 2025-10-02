@@ -1,0 +1,132 @@
+<header>
+	<h1>FYP Proposal</h1>
+	<nav><a href="/#menu">Menu</a></nav>
+</header>
+
+<main>
+	<p>
+		I would like to propose an FYP on fleshing out a scriptable, web-based
+		CFD code, for browser-based problem exploration and transparent,
+		reproducible workflows. To make that concrete I've put together a
+		proof of concept, drawing on some work I've done this summer, which
+		would be my starting point for the actual project.
+	</p>
+
+	<p>
+		<a href="/workbooks/workbook-passive-tracer">Proof of concept</a>
+	</p>
+
+	<h2>The Potential</h2>
+
+	<p>
+		The cool potential in such a system that I'd like to flesh out in an
+		FYP are the following:
+	</p>
+
+	<ol>
+		<li>
+			<em>It's Reproducible</em>:
+			If the full spec for a CFD procedure is just lisp code in plaintext
+			then others can run it for the same result.  The exact settings are 
+			not hidden in an opaque piece of software on someone else's computer. 
+		</li>
+
+		<li>
+			<em>It's Self-Documenting</em>:
+			Given the literate programming paradigm (the combination of prose
+			and code), CFD specs read like technical reports rather than
+			esoteric code.
+		</li>
+
+		<li>
+			<em>It's Transparent</em>:
+			"What boundary conditions and discretisation method did you use?"
+			becomes very easy to answer when it's browser based - just share
+			a link to the actual workbook.
+		</li>
+
+		<li>
+			<em>It's Meta</em>:
+			You can still use classic programming control structures like loops
+			and conditionals in your CFD spec so you could write a script that
+			orchestrates multiple convergence jobs, for example an optimisation
+			algorithm that seeks to maximise lift given some geometric parameters.
+			This doesn't require a separate scripting environment - it comes for
+			free when your CFD code is embedded into a full-fat programming
+			language.
+		</li>
+
+		<li>
+			<em>It's Persistent</em>:
+			Being on the web there's a clear client-server (browser-web
+			server) boundary, making the idea of sending long running jobs to
+			persist on a server more natural, no need for a "don't switch off"
+			sign on a computer.  You could send heavy computational jobs (like
+			the optimisation algorithm in point 4) to a job queue on the server
+			and have a nice status UI in the browser, rather than ssh-ing into a
+			computing cluster and running bash scripts.
+		</li>
+	</ol>
+
+	<h2>Scope and outcomes</h2>
+
+	<p>
+		I'd stick to 2D CFD to keep things manageable, and aim to provide a
+		fully-featured experience for at least one case that's actually
+		useful for engineers, like flow over an aerofoil.  I have a reasonably
+		clear idea of what needs to be done to get there and how I'd do it,
+		but that is probably beyond the scope of this proposal.
+	</p>
+
+	<p>
+		One main outcome I'd like to spin the project narrative about is trying
+		to setup the exact same problem in a traditional CFD code and my
+		web-based one and then discuss the pros and cons.
+	</p>
+
+	<h2>Budget</h2>
+
+	<p>
+		I'd put the budget towards hosting costs for the website.  Or even more
+		fun would be to put together a thrifted web server from a
+		decommissioned office PC from 2018 with a decent CPU (~£80), 64Gb of
+		RAM (~£50) and a 1Tb SSD (~£50) and a few months of a static IP address
+		to sit in the corner of a room and chug away.  Other than that programming
+		is free.
+	</p>
+
+	<h2>Extra Bits</h2>
+	
+	<p>
+		I think I've slightly cheated by writing this up on a website so consider
+		this the end of the A4 piece of paper.  The rest is just helpful context.
+	</p>
+
+	<h3>Background</h3>
+
+	<p>
+		For some background, a number of threads came together this summer such
+		that I'd have this idea. Firstly, I was looking to show off a basic
+		interactive diffusion/convection solver in python that I'd written
+		on my portfolio website, and so learnt about WebAssembly (WASM) and ported
+		my code to Go to be able to compile it to WASM. As I was refactoring
+		that code I found it increasingly annoying to have to recompile every
+		time I wanted to tweak a parameter, and so I was inspired to write
+		a Lisp interpreter to embed into the CFD code so I could tweak
+		parameters at runtime rather than compile time.
+	</p>
+
+	<p>
+		The main inspiration for Lisp was that I'm working through the wonderful
+		<a href="https://web.mit.edu/6.001/6.037/sicp.pdf">
+			Structure and Interpretation of Computer Programs
+		</a>, which exposes the power of Lisp as a programming language for writing
+		programs that program programs (metaprograms).  What this means is that
+		rather than starting with "what code do I need to solve this problem"
+		you can instead begin at "what sort of code do I <em>want</em> to write
+		to solve this problem", and then use Lisp as the basis for an elegant
+		Domain-Specific Language (DSL) for your problem.  This felt like a
+		marvelous tool for specifying CFD procedures and so the concept for
+		the project was born.
+	</p>
+</main>
