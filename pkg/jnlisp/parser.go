@@ -273,6 +273,12 @@ func expandWithDepth(raw any, depth int) (any, []Error) {
 					return errorRaw{}, []Error{err}
 				}
 				r = expanded.(listRaw) // fall through to child recursion
+			case "lambda":
+				expanded, err := expandLambda(r[1:])
+				if err != nil {
+					return errorRaw{}, []Error{err}
+				}
+				r = expanded.(listRaw)
 			case "let":
 				expanded, err := expandLet(r[1:])
 				if err != nil {
@@ -361,6 +367,26 @@ func expandDefine(args listRaw) (any, Error) {
 	lambda = append(lambda, args[1:]...)
 	defineProc := listRaw{symbol("define"), funcSymArgs[0], lambda}
 	return defineProc, nil
+}
+
+func expandLambda(args listRaw) (any, Error) {
+	if len(args) < 2 {
+		return nil, ExpansionError{
+			Message: "lambda expects at least 2 arguments",
+		}
+	}
+
+	// early termination if just one body
+	if len(args) == 2 {
+		return args, nil
+	}
+
+	// expand multiple bodies to use begin
+	bodies := args[1:]
+	begin := listRaw{symbol("begin")}
+	begin = append(begin, bodies...)
+
+	return listRaw{symbol("lambda"), args[0], begin}, nil
 }
 
 func expandLet(args listRaw) (any, Error) {
