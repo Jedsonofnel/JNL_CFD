@@ -69,6 +69,8 @@ func evalList(list listRaw, ctx *Context) (Atom, Error) {
 			return evalDefine(list, ctx)
 		case "lambda":
 			return evalLambda(list, ctx)
+		case "begin":
+			return evalBegin(list, ctx)
 		case "import":
 			return evalImport(list, ctx)
 		}
@@ -190,6 +192,27 @@ func evalLambda(list listRaw, ctx *Context) (Atom, Error) {
 	}
 
 	return ProcedureAtom{proc}, nil
+}
+
+func evalBegin(list listRaw, ctx *Context) (Atom, Error) {
+	if len(list) < 2 {
+		return nil, RuntimeError{Message: "error parsing begin"}
+	}
+
+	exprs := list[1:]
+
+	// only return last result
+	var result Atom
+	var err Error
+	for i := range exprs {
+		expr := exprs[i]
+		result, err = eval(expr, ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
 }
 
 func evalImport(list listRaw, ctx *Context) (Atom, Error) {
