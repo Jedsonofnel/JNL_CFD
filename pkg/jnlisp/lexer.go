@@ -15,8 +15,29 @@ func tokenizeDocument(input string) []token {
 
 // just looks for '(' to start top-level s-exp
 func tokenizeREPL(input string) []token {
-	cleanedInput := strings.ReplaceAll(input, "\n", " ")
+	cleanedInput := collapseNewlines(input)
 	return tokenize(cleanedInput, lexREPL)
+}
+
+// collapseNewlines replaces any sequence of 2+ newlines with a single newline
+func collapseNewlines(input string) string {
+	var result strings.Builder
+	result.Grow(len(input))
+
+	prevWasNewline := false
+	for _, r := range input {
+		if r == '\n' {
+			if !prevWasNewline {
+				result.WriteRune(r)
+			}
+			prevWasNewline = true
+		} else {
+			result.WriteRune(r)
+			prevWasNewline = false
+		}
+	}
+
+	return result.String()
 }
 
 func tokenize(input string, rootLexer stateFn) (tokens []token) {

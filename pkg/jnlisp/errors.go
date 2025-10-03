@@ -6,6 +6,7 @@ import (
 
 type Error interface {
 	error
+	Msg() string
 	ToJSON() string
 }
 
@@ -22,6 +23,10 @@ type SyntaxError struct {
 
 func (e SyntaxError) Error() string {
 	return "Syntax error at " + e.Pos.String() + ": " + e.Message
+}
+
+func (e SyntaxError) Msg() string {
+	return e.Message
 }
 
 func (e SyntaxError) ToJSON() string {
@@ -66,16 +71,37 @@ func newUnexpectedTokenError(t token) SyntaxError {
 
 // Created during expansion
 type ExpansionError struct {
-	Pos     Pos
 	Message string
 }
 
 func (e ExpansionError) Error() string {
-	return "Expansion error at " + e.Pos.String() + ": " + e.Message
+	return "Expansion error: " + e.Message
+}
+
+func (e ExpansionError) Msg() string {
+	return e.Message
 }
 
 func (e ExpansionError) ToJSON() string {
-	return formatErrJSON("ExpansionError", e.Message, &e.Pos)
+	return formatErrJSON("ExpansionError", e.Message, nil)
+}
+
+// ELABORATION ERROR
+
+type ElaborationError struct {
+	Message string
+}
+
+func (e ElaborationError) Error() string {
+	return "Elaboration error: " + e.Message
+}
+
+func (e ElaborationError) Msg() string {
+	return e.Message
+}
+
+func (e ElaborationError) ToJSON() string {
+	return formatErrJSON("ElaborationError", e.Message, nil)
 }
 
 // RUNTIME ERROR
@@ -87,6 +113,10 @@ type RuntimeError struct {
 
 func (e RuntimeError) Error() string {
 	return "Runtime error: " + e.Message
+}
+
+func (e RuntimeError) Msg() string {
+	return e.Message
 }
 
 func (e RuntimeError) ToJSON() string {

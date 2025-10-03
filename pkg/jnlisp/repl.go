@@ -1,8 +1,8 @@
 package jnlisp
 
 import (
-	"fmt"
 	"bufio"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -29,13 +29,11 @@ func REPL() {
 			continue
 		}
 
-		exps, errors := parseREPL(tokens)
+		blocks, errors := parseREPL(tokens)
 
 		for i := range errors {
 			println(errors[i].Error())
 		}
-
-		fmt.Printf("%v\n", exps)
 
 		if len(errors) > 0 {
 			text.Reset()
@@ -44,16 +42,32 @@ func REPL() {
 		}
 
 		// loop through expressions in ast and evaluate them
-		for i := range exps {
-			exp, err := eval(exps[i], context)
-
+		for i := range blocks {
+			ast, err := expand(blocks[i])
 			if err != nil {
 				text.Reset()
-				println("ERROR EVALUATING: ", err.Error())
+				println(err.Error())
 				continue
 			}
 
-			println(exp.String())
+			expr, err := elaborate(ast)
+			if err != nil {
+				text.Reset()
+				println(err.Error())
+				continue
+			}
+			fmt.Printf("%v\n", expr)
+
+			// TODO include elaboration here
+
+			atom, err := eval(ast, context)
+			if err != nil {
+				text.Reset()
+				println(err.Error())
+				continue
+			}
+
+			println(atom.String())
 		}
 
 		text.Reset()
