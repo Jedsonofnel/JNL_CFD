@@ -2,7 +2,6 @@ package jnlisp
 
 import (
 	"embed"
-	"fmt"
 	"math"
 )
 
@@ -22,61 +21,36 @@ func init() {
 	})
 }
 
-func lispSine(args []Atom, _ Table) (Atom, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("sin expects exactly 1 argument, got %d", len(args))
-	}
-
-	num, ok := As[NumberAtom](args[0])
-	if !ok {
-		return nil, fmt.Errorf("sin expects a number, got %s", args[0].Type())
-	}
-
-	castArgs, err := toRational([]any{num.Value}, "sin")
-	if err != nil {
+func lispSine(args []Atom, kwargs Table) (Atom, Error) {
+	num, v := ValidateArgs(args, kwargs).GetFloat64()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate("sin"); err != nil {
 		return nil, err
 	}
 
-	return NumberAtom{math.Sin(castArgs[0])}, nil
+	return NumberAtom{math.Sin(num)}, nil
 }
 
-func lispCosine(args []Atom, _ Table) (Atom, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("cos expects exactly 1 argument, got %d", len(args))
-	}
-
-	num, ok := As[NumberAtom](args[0])
-	if !ok {
-		return nil, fmt.Errorf("cos expects a number, got %s", args[0].Type())
-	}
-
-	castArgs, err := toRational([]any{num.Value}, "cos")
-	if err != nil {
+func lispCosine(args []Atom, kwargs Table) (Atom, Error) {
+	num, v := ValidateArgs(args, kwargs).GetFloat64()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate("cos"); err != nil {
 		return nil, err
 	}
 
-	return NumberAtom{math.Cos(castArgs[0])}, nil
+	return NumberAtom{math.Cos(num)}, nil
 }
 
-func lispSqrt(args []Atom, _ Table) (Atom, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("sqrt expects exactly 1 argument, got %d", len(args))
-	}
-
-	num, ok := As[NumberAtom](args[0])
-	if !ok {
-		return nil, fmt.Errorf("sqrt expects a number, got %s", args[0].Type())
-	}
-
-	castArgs, err := toRational([]any{num.Value}, "sqrt")
-	if err != nil {
+func lispSqrt(args []Atom, kwargs Table) (Atom, Error) {
+	num, v := ValidateArgs(args, kwargs).GetFloat64()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate("cos"); err != nil {
 		return nil, err
 	}
-	arg := castArgs[0]
 
-	if arg < 0 {
-		return nil, fmt.Errorf("sqrt expects a postiive number, got %v", arg)
+	if num < 0 {
+		return nil, RuntimeError{Message: "sqrt expects a positive number"}
 	}
 
-	return NumberAtom{math.Sqrt(arg)}, nil
+	return NumberAtom{math.Sqrt(num)}, nil
 }

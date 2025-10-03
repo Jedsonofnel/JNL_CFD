@@ -1,6 +1,7 @@
 package jnlisp
 
 import (
+	"fmt"
 	"bufio"
 	"os"
 	"strings"
@@ -29,9 +30,12 @@ func REPL() {
 		}
 
 		exps, errors := parseREPL(tokens)
+
 		for i := range errors {
 			println(errors[i].Error())
 		}
+
+		fmt.Printf("%v\n", exps)
 
 		if len(errors) > 0 {
 			text.Reset()

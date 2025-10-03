@@ -5,8 +5,6 @@ import (
 	"flag"
 	"fmt"
 
-	_ "github.com/Jedsonofnel/jnlcfd/internal/cfd/fvm"
-	_ "github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/pkg/jnlisp"
 )
 
@@ -14,9 +12,6 @@ var ctx *jnlisp.Context
 
 func init() {
 	ctx = jnlisp.NewContext()
-	ctx.ImportLibrary("cfd/fvm", "")
-	ctx.ImportLibrary("cfd/geometry", "")
-	ctx.ImportLibrary("cfd/linalg", "")
 }
 
 func main() {

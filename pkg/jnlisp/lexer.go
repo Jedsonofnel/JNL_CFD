@@ -54,13 +54,19 @@ type token struct {
 }
 
 type Pos struct {
-	Line   int `json:"line"`   // 1-based line number
-	Column int `json:"column"` // 1-based column number
-	Offset int `json:"offset"` // 0-based byte offset
+	Line   int // 1-based line number
+	Column int // 1-based column number
+	Offset int // 0-based byte offset
 }
 
 func (p Pos) String() string {
 	return strconv.Itoa(p.Line) + ":" + strconv.Itoa(p.Column)
+}
+
+func (p Pos) ToJSON() string {
+	return `{"line": ` + strconv.Itoa(p.Line) +
+		`, "column": ` + strconv.Itoa(p.Column) +
+		`, "offset": ` + strconv.Itoa(p.Offset) + `}`
 }
 
 type tokenType int
@@ -71,6 +77,7 @@ const (
 	// Code block tokens
 	tokenMissingCloseList
 	tokenMissingCloseVec
+	tokenMissingCloseTable
 	tokenMissingCloseString
 	tokenMalformedNumber
 	tokenInvalidLiteral
@@ -79,6 +86,9 @@ const (
 	tokenCloseList
 	tokenOpenVec
 	tokenCloseVec
+	tokenOpenTable
+	tokenCloseTable
+
 	tokenNumber
 	tokenString
 	tokenBool
@@ -94,6 +104,7 @@ var tokenStrings = []string{
 
 	"tokenMissingCloseList",
 	"tokenMissingCloseVec",
+	"tokenMissingCloseTable",
 	"tokenMissingCloseString",
 	"tokenMalformedNumber",
 	"tokenInvalidLiteral",
@@ -102,6 +113,9 @@ var tokenStrings = []string{
 	"tokenCloseList",
 	"tokenOpenVec",
 	"tokenCloseVec",
+	"tokenOpenTable",
+	"tokenCloseTable",
+
 	"tokenNumber",
 	"tokenString",
 	"tokenBool",
@@ -129,6 +143,8 @@ func (i token) String() string {
 		return "MISSING_PAREN(@" + i.pos.String() + ")\n"
 	case tokenMissingCloseVec:
 		return "MISSING_BRACKET(@" + i.pos.String() + ")\n"
+	case tokenMissingCloseTable:
+		return "MISSING_BRACE(@" + i.pos.String() + ")\n"
 	case tokenMissingCloseString:
 		return "MISSING_STRING_CLOSE(@" + i.pos.String() + ")\n"
 	case tokenMalformedNumber:
@@ -142,6 +158,10 @@ func (i token) String() string {
 		return "\nOPENVEC[ "
 	case tokenCloseVec:
 		return " ]CLOSEVEC\n"
+	case tokenOpenTable:
+		return "\nOPENTABLE[ "
+	case tokenCloseTable:
+		return " ]CLOSETABLE\n"
 
 	case tokenNumber:
 		return "number(" + i.val + ", @" + i.pos.String() + ") "
@@ -381,10 +401,14 @@ func lexInsideList(l *lexer) stateFn {
 			l.emit(tokenOpenVec)
 			l.push(lexInsideList)
 			return lexInsideVec
+		case '{':
+			l.emit(tokenOpenTable)
+			l.push(lexInsideList)
+			return lexInsideTable
 		case ')':
 			l.emit(tokenCloseList)
 			return l.pop()
-		case ']':
+		case ']', '}':
 			l.backup()
 			l.emit(tokenMissingCloseList)
 			return l.pop()
@@ -412,20 +436,24 @@ func lexInsideVec(l *lexer) stateFn {
 		}
 
 		switch r := l.next(); r {
-		case '[':
-			l.emit(tokenOpenVec)
-			l.push(lexInsideVec) // return here when finished
-			return lexInsideVec
 		case '(':
 			l.emit(tokenOpenList)
 			l.push(lexInsideVec)
 			return lexInsideList
-		case ']':
-			l.emit(tokenCloseVec)
-			return l.pop()
-		case ')':
+		case '[':
+			l.emit(tokenOpenVec)
+			l.push(lexInsideVec) // return here when finished
+			return lexInsideVec
+		case '{':
+			l.emit(tokenOpenTable)
+			l.push(lexInsideVec)
+			return lexInsideTable
+		case ')', '}':
 			l.backup()
 			l.emit(tokenMissingCloseVec)
+			return l.pop()
+		case ']':
+			l.emit(tokenCloseVec)
 			return l.pop()
 		case eof:
 			l.emit(tokenMissingCloseVec)
@@ -438,6 +466,50 @@ func lexInsideVec(l *lexer) stateFn {
 			l.ignore()
 		default:
 			l.push(lexInsideVec)
+			l.backup()
+			return dispatchToken(l)
+		}
+	}
+}
+
+func lexInsideTable(l *lexer) stateFn {
+	for {
+		if strings.HasPrefix(l.input[l.pos:], openSrcList) {
+			l.emit(tokenMissingCloseTable)
+			return l.pop()
+		}
+
+		switch r := l.next(); r {
+		case '(':
+			l.emit(tokenOpenList)
+			l.push(lexInsideTable) // return here when finished
+			return lexInsideList
+		case '[':
+			l.emit(tokenOpenVec)
+			l.push(lexInsideTable)
+			return lexInsideVec
+		case '{':
+			l.emit(tokenOpenTable)
+			l.push(lexInsideTable)
+			return lexInsideTable
+		case ')', ']':
+			l.backup()
+			l.emit(tokenMissingCloseTable)
+			return l.pop()
+		case '}':
+			l.emit(tokenCloseTable)
+			return l.pop()
+		case eof:
+			l.emit(tokenMissingCloseTable)
+			return l.pop()
+		case '\n':
+			l.backup()
+			l.push(lexInsideVec)
+			return lexNewline(l, tokenMissingCloseTable)
+		case ' ', '\t', '\r': // if whitespace then ignore
+			l.ignore()
+		default:
+			l.push(lexInsideTable)
 			l.backup()
 			return dispatchToken(l)
 		}

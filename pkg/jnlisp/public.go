@@ -19,18 +19,13 @@ type Block struct {
 	EndPos   Pos    `json:"endPos"`
 
 	// OPTIONAL: If evaluated
-	Result map[string]any `json:"result,omitempty"`
+	Result Atom
 
 	// SyntaxErrors (parser) or RuntimeErrors (evaluator)
-	Errors []InterpreterError `json:"errors,omitempty"`
+	Errors []Error `json:"errors,omitempty"`
 
 	// OPTIONAL: If code block - the parsed expression AST
 	exp any
-}
-
-type InterpreterError struct {
-	Pos     Pos    `json:"position"`
-	Message string `json:"message"`
 }
 
 // CONTEXT TO MANAGE ENV
@@ -131,7 +126,7 @@ func (c *Context) EvalFile(contents string) ([]Block, error) {
 	return c.evalDocument(string(content)), nil
 }
 
-func (c *Context) ImportLibrary(name, prefix string) error {
+func (c *Context) ImportLibrary(name, prefix string) Error {
 	if c.importedLibs[name] {
 		return nil // already imported
 	}
@@ -141,7 +136,7 @@ func (c *Context) ImportLibrary(name, prefix string) error {
 	registryMutex.RUnlock()
 
 	if !exists {
-		return fmt.Errorf("library not found: %s", name)
+		return RuntimeError{Message: "library not found: " + name}
 	}
 
 	// bind library's procedures with prefix
@@ -170,7 +165,7 @@ func (c *Context) ImportLibrary(name, prefix string) error {
 	// execute library source in SAME environment
 	err := c.evalEmbeddedDocuments(lib.FS)
 	if err != nil {
-		return err
+		return RuntimeError{Message: "library filesystem error: " + err.Error()}
 	}
 
 	c.importedLibs[name] = true
@@ -192,10 +187,10 @@ func (c *Context) evalDocument(src string) []Block {
 		result, err := eval(blocks[i].exp, c)
 
 		if result != nil {
-			blocks[i].Result = result.ToJSON()
+			blocks[i].Result = result
 		}
 		if err != nil {
-			blocks[i].Errors = append(blocks[i].Errors, InterpreterError{Pos{Line: -1}, err.Error()})
+			blocks[i].Errors = append(blocks[i].Errors, err)
 		}
 
 		codeBlocks = append(codeBlocks, blocks[i])

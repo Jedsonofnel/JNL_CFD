@@ -1,7 +1,7 @@
 package jnlisp
 
 import (
-	"fmt"
+	"strconv"
 )
 
 // ENV
@@ -50,7 +50,7 @@ type Table map[string]Atom // TODO: move this to parser when I add a vector type
 
 // PROCEDURES
 
-type ProcFunc func(args []Atom, kwargs Table) (Atom, error)
+type ProcFunc func(args []Atom, kwargs Table) (Atom, Error)
 
 type paramList struct {
 	positional []symbol
@@ -67,7 +67,7 @@ type Procedure struct {
 	importPrefix string
 }
 
-func (p *Procedure) Call(args []Atom, kwargs Table, ctx *Context) (Atom, error) {
+func (p *Procedure) Call(args []Atom, kwargs Table, ctx *Context) (Atom, Error) {
 	if p.proc != nil { // given a go binding
 		return p.proc(args, kwargs)
 	}
@@ -75,8 +75,11 @@ func (p *Procedure) Call(args []Atom, kwargs Table, ctx *Context) (Atom, error) 
 	activationEnv := newEnv(p.closure)
 
 	if len(args) != len(p.params.positional) {
-		return nil, fmt.Errorf("'%s' expects %d positional args, got %d",
-			p.name, len(p.params.positional), len(args))
+		return nil, RuntimeError{
+			Message: p.name + " expects " +
+				strconv.Itoa(len(p.params.positional)) +
+				" positional args, got " + strconv.Itoa(len(args)),
+		}
 	}
 
 	// bind positional parameters
@@ -106,7 +109,7 @@ func (p *Procedure) Call(args []Atom, kwargs Table, ctx *Context) (Atom, error) 
 	}
 
 	var result Atom
-	var err error
+	var err Error
 	for _, expr := range p.body {
 		result, err = eval(expr, callCtx)
 		if err != nil {

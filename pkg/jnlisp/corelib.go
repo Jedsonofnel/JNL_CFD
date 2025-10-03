@@ -2,7 +2,7 @@ package jnlisp
 
 import (
 	"embed"
-	"fmt"
+	"strconv"
 )
 
 //go:embed corelib.jnl
@@ -22,8 +22,8 @@ func init() {
 			">":   lispGreaterThan,
 			"not": lispNot,
 
-			"vec-ref": lispVectorRef,
-			"vec-len": lispVectorLength,
+			"vector-ref": lispVectorRef,
+			"vector-length": lispVectorLength,
 		},
 		Atoms: map[string]Atom{},
 	})
@@ -31,13 +31,13 @@ func init() {
 
 // STANDARD MATHS
 
-func lispAdd(args []Atom, _ Table) (Atom, error) {
+func lispAdd(args []Atom, _ Table) (Atom, Error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
-			return nil, fmt.Errorf("+ expects numbers, got %s", arg.Type())
+			return nil, RuntimeError{Message: "+ expects numbers, got " + arg.Type()}
 		}
 	}
 
@@ -54,9 +54,9 @@ func lispAdd(args []Atom, _ Table) (Atom, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispSubtract(args []Atom, _ Table) (Atom, error) {
+func lispSubtract(args []Atom, _ Table) (Atom, Error) {
 	if len(args) == 0 {
-		return nil, fmt.Errorf("- requires at least 1 argument")
+		return nil, RuntimeError{Message: "- expects at least 1 argument"}
 	}
 
 	var values []any
@@ -64,7 +64,7 @@ func lispSubtract(args []Atom, _ Table) (Atom, error) {
 		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
-			return nil, fmt.Errorf("- expects numbers, got %s", arg.Type())
+			return nil, RuntimeError{Message: "- expects numbers, got " + arg.Type()}
 		}
 	}
 
@@ -85,13 +85,13 @@ func lispSubtract(args []Atom, _ Table) (Atom, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispMultiply(args []Atom, _ Table) (Atom, error) {
+func lispMultiply(args []Atom, _ Table) (Atom, Error) {
 	var values []any
 	for _, arg := range args {
 		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
-			return nil, fmt.Errorf("/ expects numbers, got %s", arg.Type())
+			return nil, RuntimeError{Message: "* expects numbers, got " + arg.Type()}
 		}
 	}
 
@@ -108,9 +108,9 @@ func lispMultiply(args []Atom, _ Table) (Atom, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispDivide(args []Atom, _ Table) (Atom, error) {
+func lispDivide(args []Atom, _ Table) (Atom, Error) {
 	if len(args) == 0 {
-		return nil, fmt.Errorf("/ requires at least 1 argument")
+		return nil, RuntimeError{Message: "/ requires at least 1 argument"}
 	}
 
 	var values []any
@@ -118,7 +118,7 @@ func lispDivide(args []Atom, _ Table) (Atom, error) {
 		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
-			return nil, fmt.Errorf("/ expects numbers, got %s", arg.Type())
+			return nil, RuntimeError{Message: "/ expects numbers, got " + arg.Type()}
 		}
 	}
 
@@ -139,9 +139,9 @@ func lispDivide(args []Atom, _ Table) (Atom, error) {
 	return simplifyNumber(result), nil
 }
 
-func lispModulo(args []Atom, _ Table) (Atom, error) {
+func lispModulo(args []Atom, _ Table) (Atom, Error) {
 	if len(args) != 2 {
-		return nil, fmt.Errorf("%% requires exactly 2 arguments")
+		return nil, RuntimeError{Message: "%% requires exactly 2 arguments"}
 	}
 
 	var values []any
@@ -149,18 +149,14 @@ func lispModulo(args []Atom, _ Table) (Atom, error) {
 		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
-			return nil, fmt.Errorf("%% expects numbers, got %s", arg.Type())
+			return nil, RuntimeError{Message: "%% expects numbers, got " + arg.Type()}
 		}
 	}
 
-	arg1, ok := values[0].(int)
-	if !ok {
-		return nil, fmt.Errorf("%% expects integers, got %T at position 0", args[0])
-	}
-
-	arg2, ok := values[1].(int)
-	if !ok {
-		return nil, fmt.Errorf("%% expects integers, got %T at position 1", args[1])
+	arg1, ok1 := values[0].(int)
+	arg2, ok2 := values[1].(int)
+	if !ok1 || !ok2 {
+		return nil, RuntimeError{Message: "%% expects integer arguments"}
 	}
 
 	return NumberAtom{arg1 % arg2}, nil
@@ -168,9 +164,11 @@ func lispModulo(args []Atom, _ Table) (Atom, error) {
 
 // BASIC COMPARATORS
 
-func lispEqual(args []Atom, _ Table) (Atom, error) {
+func lispEqual(args []Atom, _ Table) (Atom, Error) {
 	if len(args) < 2 {
-		return nil, fmt.Errorf("= expects at least 2 arguments, got %d", len(args))
+		return nil, RuntimeError{
+			Message: "= expects at least 2 arguments, got " + strconv.Itoa(len(args)),
+		}
 	}
 
 	first := args[0]
@@ -183,9 +181,11 @@ func lispEqual(args []Atom, _ Table) (Atom, error) {
 	return BooleanAtom{true}, nil
 }
 
-func lispGreaterThan(args []Atom, _ Table) (Atom, error) {
+func lispGreaterThan(args []Atom, _ Table) (Atom, Error) {
 	if len(args) != 2 {
-		return nil, fmt.Errorf("> expects exactly 2 arguments, got %d", len(args))
+		return nil, RuntimeError{
+			Message: "> expects at least 2 arguments, got " + strconv.Itoa(len(args)),
+		}
 	}
 
 	var values []any
@@ -193,7 +193,7 @@ func lispGreaterThan(args []Atom, _ Table) (Atom, error) {
 		if num, ok := As[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
-			return nil, fmt.Errorf("> expects numbers, got %s", arg.Type())
+			return nil, RuntimeError{Message: "> expects numbers, got " + arg.Type()}
 		}
 	}
 
@@ -205,14 +205,14 @@ func lispGreaterThan(args []Atom, _ Table) (Atom, error) {
 	return BooleanAtom{castArgs[0] > castArgs[1]}, nil
 }
 
-func lispNot(args []Atom, _ Table) (Atom, error) {
+func lispNot(args []Atom, _ Table) (Atom, Error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("not expects at least 1 argument, got %d", len(args))
+		return nil, RuntimeError{Message: "not expects at least 1 argument"}
 	}
 
 	boolean, ok := args[0].(BooleanAtom)
 	if !ok {
-		return nil, fmt.Errorf("not expects a boolean, got %s", args[0].Type())
+		return nil, RuntimeError{Message: "not expects a boolean"}
 	}
 
 	return BooleanAtom{!boolean.Value}, nil
@@ -220,28 +220,29 @@ func lispNot(args []Atom, _ Table) (Atom, error) {
 
 // VECTOR OPERATIONS
 
-func lispVectorRef(args []Atom, _ Table) (Atom, error) {
-	vec, v := ValidateArgs(args, nil).GetVector()
+func lispVectorRef(args []Atom, kwargs Table) (Atom, Error) {
+	vec, v := ValidateArgs(args, kwargs).GetVector()
 	index, v := v.GetInt()
-	v = v.ExpectNoMoreArgs()
 
-	if err := v.Validate(); err != nil {
+	v = v.ExpectNoMoreArgs()
+	if err := v.Validate("vector-ref"); err != nil {
 		return nil, err
 	}
 
 	if index < 0 || index >= len(vec.Elements) {
-		return nil, fmt.Errorf("index %d out of bounds for vector of length %d",
-			index, len(vec.Elements))
+		return nil, RuntimeError{
+			Message: "index out of bounds for vector",
+		}
 	}
 
 	return vec.Elements[index], nil
 }
 
-func lispVectorLength(args []Atom, _ Table) (Atom, error) {
+func lispVectorLength(args []Atom, _ Table) (Atom, Error) {
 	vec, v := ValidateArgs(args, nil).GetVector()
 	v = v.ExpectNoMoreArgs()
 
-	if err := v.Validate(); err != nil {
+	if err := v.Validate("vector-length"); err != nil {
 		return nil, err
 	}
 
@@ -274,10 +275,10 @@ func atomsEqual(a, b Atom) bool {
 	}
 }
 
-func toRational(args []any, name string) ([]float64, error) {
+func toRational(args []any, name string) ([]float64, Error) {
 	cast := make([]float64, 0)
 
-	for i, arg := range args {
+	for _, arg := range args {
 		switch v := arg.(type) {
 		case int:
 			cast = append(cast, float64(v))
@@ -286,17 +287,17 @@ func toRational(args []any, name string) ([]float64, error) {
 		case float64:
 			cast = append(cast, float64(v))
 		default:
-			return nil, fmt.Errorf("%s expects numbers, got %T at position %d", name, arg, i)
+			return nil, RuntimeError{Message: name + " expects numbers"}
 		}
 	}
 
 	return cast, nil
 }
 
-func toComplex(args []any, name string) ([]complex128, error) {
+func toComplex(args []any, name string) ([]complex128, Error) {
 	cast := make([]complex128, 0)
 
-	for i, arg := range args {
+	for _, arg := range args {
 		switch v := arg.(type) {
 		case int:
 			cast = append(cast, complex(float64(v), 0))
@@ -307,7 +308,7 @@ func toComplex(args []any, name string) ([]complex128, error) {
 		case complex128:
 			cast = append(cast, v)
 		default:
-			return nil, fmt.Errorf("%s expects numbers, got %T at position %d", name, arg, i)
+			return nil, RuntimeError{Message: name + " expects numbers"}
 		}
 	}
 
