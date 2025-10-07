@@ -12,6 +12,7 @@ type Atom interface {
 	ToJSON() string
 }
 
+// Implementations
 type NumberAtom struct{ Value any }
 
 // TODO: get number atom String() to work better
@@ -49,6 +50,12 @@ type StringAtom struct{ Value string }
 func (s StringAtom) Type() string   { return "string" }
 func (s StringAtom) String() string { return s.Value }
 func (s StringAtom) ToJSON() string { return "JSON PENDING" }
+
+type SymbolAtom struct{ Value string }
+
+func (s SymbolAtom) Type() string   { return "symbol" }
+func (s SymbolAtom) String() string { return s.Value }
+func (s SymbolAtom) ToJSON() string { return "JSON PENDING" }
 
 type ProcedureAtom struct{ *Procedure }
 
