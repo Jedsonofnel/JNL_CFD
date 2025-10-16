@@ -1,6 +1,7 @@
 package jnlisp
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -9,16 +10,37 @@ import (
 type Atom interface {
 	String() string
 	Type() string
-	ToJSON() string
 }
 
-// Implementations
+func CastAtom[T Atom](atom Atom) (T, bool) {
+	var zero T
+
+	if result, ok := (atom).(T); ok {
+		return result, true
+	}
+
+	return zero, false
+}
+
+// LITERAL ATOM TYPES
+
 type NumberAtom struct{ Value any }
 
-// TODO: get number atom String() to work better
-func (n NumberAtom) Type() string   { return "number" }
-func (n NumberAtom) String() string { return "NUMBER" }
-func (n NumberAtom) ToJSON() string { return "JSON PENDING" }
+func (n NumberAtom) Type() string { return "number" }
+func (n NumberAtom) String() string {
+	switch v := n.Value.(type) {
+	case int:
+		return strconv.Itoa(v)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'g', -1, 32)
+	case float64:
+		return strconv.FormatFloat(v, 'g', -1, 64)
+	case complex128:
+		return strconv.FormatComplex(v, 'g', -1, 128)
+	default:
+		return "UNKNOWN NUMBER TYPE"
+	}
+}
 
 func (n NumberAtom) ToFloat64() (float64, error) {
 	switch v := n.Value.(type) {
@@ -43,19 +65,11 @@ func (b BooleanAtom) String() string {
 		return "#f"
 	}
 }
-func (b BooleanAtom) ToJSON() string { return "JSON PENDING" }
 
 type StringAtom struct{ Value string }
 
 func (s StringAtom) Type() string   { return "string" }
 func (s StringAtom) String() string { return s.Value }
-func (s StringAtom) ToJSON() string { return "JSON PENDING" }
-
-type SymbolAtom struct{ Value string }
-
-func (s SymbolAtom) Type() string   { return "symbol" }
-func (s SymbolAtom) String() string { return s.Value }
-func (s SymbolAtom) ToJSON() string { return "JSON PENDING" }
 
 type ProcedureAtom struct{ *Procedure }
 
@@ -64,7 +78,8 @@ func (p ProcedureAtom) String() string {
 	// TODO: maybe add a pretty print of params
 	return "#<procedure:" + p.name + ">"
 }
-func (p ProcedureAtom) ToJSON() string { return "JSON PENDING" }
+
+// COMPOUND DATA TYPES
 
 type VectorAtom struct{ Elements []Atom }
 
@@ -76,41 +91,90 @@ func (v VectorAtom) String() string {
 	}
 	return "[" + strings.Join(parts, " ") + "]"
 }
-func (v VectorAtom) ToJSON() string { return "JSON PENDING" }
 
 func (v VectorAtom) Length() int {
 	return len(v.Elements)
 }
 
-// WRAPPER TYPE FOR QUERYING ENV
+type TableAtom struct{ Elements map[string]Atom }
 
-type boundAtom struct {
-	Atom
-	handle string
-	env    *env
-}
-
-func (b boundAtom) ToJSON() string {
-	return b.Atom.ToJSON()
-}
-
-func (b boundAtom) Type() string   { return b.Atom.Type() }
-func (b boundAtom) String() string { return b.Atom.String() }
-
-func As[T Atom](atom Atom) (T, bool) {
-	var zero T
-	atom = UnwrapAtom(atom)
-
-	if result, ok := (atom).(T); ok {
-		return result, true
+func (t TableAtom) Type() string { return "table" }
+func (t TableAtom) String() string {
+	var parts []string
+	for k, v := range t.Elements {
+		parts = append(parts, ":"+k+" "+v.String())
 	}
-
-	return zero, false
+	return "{" + strings.Join(parts, " ") + "}"
 }
 
-func UnwrapAtom(atom Atom) Atom {
-	if boundAtom, ok := atom.(boundAtom); ok {
-		return boundAtom.Atom
+// HOMOICONIC DATA TYPES
+
+type SymbolAtom struct{ Name string }
+
+func (s SymbolAtom) Type() string   { return "symbol" }
+func (s SymbolAtom) String() string { return s.Name }
+
+type ListAtom struct{ Elements []Atom }
+
+func (l ListAtom) Type() string { return "list" }
+func (l ListAtom) String() string {
+	var parts []string
+	for _, elem := range l.Elements {
+		parts = append(parts, elem.String())
 	}
-	return atom
+	return "(" + strings.Join(parts, " ") + ")"
+}
+
+// METAPROGRAMMING HELPERS
+
+func atomToRaw(atom Atom) (any, Error) {
+	switch a := atom.(type) {
+	case SymbolAtom:
+		return symbol(a.Name), nil
+	case ListAtom:
+		raw := make(listRaw, len(a.Elements))
+		for i, elem := range a.Elements {
+			r, err := atomToRaw(elem)
+			if err != nil {
+				return nil, err
+			}
+			raw[i] = r
+		}
+		return raw, nil
+	case VectorAtom:
+		raw := make(vectorRaw, len(a.Elements))
+		for i, elem := range a.Elements {
+			r, err := atomToRaw(elem)
+			if err != nil {
+				return nil, err
+			}
+			raw[i] = r
+		}
+		return raw, nil
+	case TableAtom:
+		raw := make(tableRaw, 0, len(a.Elements)*2)
+		for k, v := range a.Elements {
+			raw = append(raw, keyword(k))
+			vraw, err := atomToRaw(v)
+			if err != nil {
+				return nil, err
+			}
+			raw = append(raw, vraw)
+		}
+		return raw, nil
+	case NumberAtom:
+		return a.Value, nil
+	case BooleanAtom:
+		return a.Value, nil
+	case StringAtom:
+		return a.Value, nil
+	case ProcedureAtom:
+		return nil, RuntimeError{
+			Message: "cannot convert procedure to raw AST",
+		}
+	default:
+		return nil, RuntimeError{
+			Message: "cannot convert " + a.Type() + " to raw AST",
+		}
+	}
 }
