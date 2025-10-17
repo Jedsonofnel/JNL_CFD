@@ -5,32 +5,19 @@ import (
 	"strings"
 )
 
-// doesn't expect any markdown block stuff in between - only s-exps
-func parseREPL(tokens []token) (blocks []any, errors []Error) {
+func parse(src string, tokens []token) (blocks []Block) {
 	idx := 0
 
-	for idx < len(tokens) && tokens[idx].typ != tokenEOF {
-		if tokens[idx].typ == tokenOpenList {
-			ast, syntaxErrs := parseCode(tokens, &idx)
-			blocks = append(blocks, ast)
-			errors = append(errors, syntaxErrs...)
-		} else {
-			idx++ // skipping unexpected tokens
-		}
-	}
-
-	return blocks, errors
-}
-
-func parseDocument(src string, tokens []token) (blocks []Block) {
-	idx := 0
-
-	for idx < len(tokens) && tokens[idx].typ != tokenEOF {
+	for idx < len(tokens) {
 		tok := tokens[idx]
 
 		if tok.typ == tokenProse && isWhitespaceOnly(tok.val) {
 			idx++
 			continue
+		}
+
+		if tok.typ == tokenEOF || tok.typ == tokenAbandoned {
+			break
 		}
 
 		b := Block{StartPos: tok.pos}

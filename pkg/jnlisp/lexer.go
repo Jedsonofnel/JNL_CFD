@@ -8,62 +8,17 @@ import (
 
 // MAIN EXTERNAL INTERACTION
 
-// looks for 'j(' glyph to start top-level s-exp
-func tokenizeDocument(input string) []token {
-	return tokenize(input, lexDocument)
-}
-
-// just looks for '(' to start top-level s-exp
-func tokenizeREPL(input string) []token {
-	cleanedInput := collapseNewlines(input)
-	return tokenize(cleanedInput, lexREPL)
-}
-
-// collapseNewlines replaces any sequence of 2+ newlines with a single newline
-func collapseNewlines(input string) string {
-	var result strings.Builder
-	result.Grow(len(input))
-
-	prevWasNewline := false
-	for _, r := range input {
-		if r == '\n' {
-			if !prevWasNewline {
-				result.WriteRune(r)
-			}
-			prevWasNewline = true
-		} else {
-			result.WriteRune(r)
-			prevWasNewline = false
-		}
-	}
-
-	return result.String()
-}
-
-func tokenize(input string, rootLexer stateFn) (tokens []token) {
-	lex := lex(input, rootLexer)
+func tokenize(input string) (tokens []token) {
+	lex := lex(input, lexStart)
 	for {
 		next := lex.nextItem()
 		tokens = append(tokens, next)
-		if next.typ == tokenEOF {
+		if next.typ == tokenEOF || next.typ == tokenAbandoned {
 			break
 		}
 	}
 
 	return tokens
-}
-
-func countMissingTokens(tokens []token) (missing []string) {
-	for _, token := range tokens {
-		switch token.typ {
-		case tokenMissingCloseList:
-			missing = append(missing, ")")
-		case tokenMissingCloseVec:
-			missing = append(missing, "]")
-		}
-	}
-
-	return missing
 }
 
 // CORE TYPES
@@ -94,14 +49,10 @@ type tokenType int
 
 const (
 	tokenEOF tokenType = iota
+	tokenAbandoned
 
-	// Code block tokens
-	tokenMissingCloseList
-	tokenMissingCloseVec
-	tokenMissingCloseTable
-	tokenMissingCloseString
-	tokenMalformedNumber
-	tokenInvalidLiteral
+	tokenDocument
+	tokenREPL
 
 	tokenOpenList
 	tokenCloseList
@@ -118,17 +69,32 @@ const (
 
 	// Markdown block (prose) tokens
 	tokenProse
+
+	// sentinel marker - everything after is an error
+	ERROR_TOKENS // not a real token
+
+	// recoverable
+	tokenMissingCloseList
+	tokenMissingCloseVec
+	tokenMissingCloseTable
+
+	// unrecoverable errors
+	tokenMissingCloseString
+	tokenMalformedNumber
+	tokenInvalidLiteral
+
+	// unrecoverable
+	tokenUnexpectedCloseList
+	tokenUnexpectedCloseVec
+	tokenUnexpectedCloseTable
 )
 
 var tokenStrings = []string{
 	"tokenEOF",
+	"tokenAbandoned",
 
-	"tokenMissingCloseList",
-	"tokenMissingCloseVec",
-	"tokenMissingCloseTable",
-	"tokenMissingCloseString",
-	"tokenMalformedNumber",
-	"tokenInvalidLiteral",
+	"tokenDocument",
+	"tokenREPL",
 
 	"tokenOpenList",
 	"tokenCloseList",
@@ -144,10 +110,41 @@ var tokenStrings = []string{
 	"tokenKeyword",
 
 	"tokenProse",
+
+	"ERROR_TOKENS_SENTINEL",
+
+	"tokenMissingCloseList",
+	"tokenMissingCloseVec",
+	"tokenMissingCloseTable",
+
+	"tokenMissingCloseString",
+	"tokenMalformedNumber",
+	"tokenInvalidLiteral",
+
+	"tokenUnexpectedCloseList",
+	"tokenUnexpectedCloseVec",
+	"tokenUnexpectedCloseTable",
 }
 
 func (tt tokenType) String() string {
 	return tokenStrings[tt]
+}
+
+func (tt tokenType) isError() bool {
+	return tt > ERROR_TOKENS
+}
+
+func (tt tokenType) isMissingDelim() (bool, string) {
+	switch tt {
+	case tokenMissingCloseList:
+		return true, ")"
+	case tokenMissingCloseVec:
+		return true, "]"
+	case tokenMissingCloseTable:
+		return true, "}"
+	default:
+		return false, ""
+	}
 }
 
 // glyphs we're looking for
@@ -160,16 +157,13 @@ func (i token) String() string {
 	switch i.typ {
 	case tokenEOF:
 		return "EOF(@" + i.pos.String() + ")\n"
-	case tokenMissingCloseList:
-		return "MISSING_PAREN(@" + i.pos.String() + ")\n"
-	case tokenMissingCloseVec:
-		return "MISSING_BRACKET(@" + i.pos.String() + ")\n"
-	case tokenMissingCloseTable:
-		return "MISSING_BRACE(@" + i.pos.String() + ")\n"
-	case tokenMissingCloseString:
-		return "MISSING_STRING_CLOSE(@" + i.pos.String() + ")\n"
-	case tokenMalformedNumber:
-		return "MALFORMED_NUMBER(@" + i.val + ", " + i.pos.String() + ")\n"
+	case tokenAbandoned:
+		return "ABANDONED"
+
+	case tokenDocument:
+		return "DOCUMENT START"
+	case tokenREPL:
+		return "REPL START"
 
 	case tokenOpenList:
 		return "\nOPENLIST( "
@@ -197,6 +191,28 @@ func (i token) String() string {
 
 	case tokenProse:
 		return "--PROSE @" + i.pos.String() + "--\n"
+
+	case ERROR_TOKENS:
+		return "unexpected sentinel token\n"
+
+	case tokenMissingCloseList:
+		return "MISSING_PAREN(@" + i.pos.String() + ")\n"
+	case tokenMissingCloseVec:
+		return "MISSING_BRACKET(@" + i.pos.String() + ")\n"
+	case tokenMissingCloseTable:
+		return "MISSING_BRACE(@" + i.pos.String() + ")\n"
+	case tokenMissingCloseString:
+		return "MISSING_STRING_CLOSE(@" + i.pos.String() + ")\n"
+	case tokenMalformedNumber:
+		return "MALFORMED_NUMBER(@" + i.val + ", " + i.pos.String() + ")\n"
+
+	case tokenUnexpectedCloseList:
+		return "UNEXPECTED_PAREN(@" + i.pos.String() + ")\n"
+	case tokenUnexpectedCloseVec:
+		return "UNEXPECTED_BRACKET(@" + i.pos.String() + ")\n"
+	case tokenUnexpectedCloseTable:
+		return "UNEXPECTED_BRACE(@" + i.pos.String() + ")\n"
+
 	default:
 		return "UNKNOWN(" + i.val + ")\n"
 	}
@@ -359,7 +375,36 @@ func (l *lexer) pop() stateFn {
 
 type stateFn func(l *lexer) stateFn
 
-// Start normal code block (no literate stuff)
+// Looks for open paren - if otherwise assume it's a document rather than REPL
+func lexStart(l *lexer) stateFn {
+	for {
+		switch r := l.next(); r {
+		case '(': // if open paren backup and start REPL
+			l.backup()
+			l.emit(tokenREPL)
+			if strings.HasSuffix(l.input, "\n\n") {
+				l.emit(tokenAbandoned)
+				return nil
+			}
+			return lexREPL
+		case ';': // ignore comments
+			l.push(lexStart)
+			return lexComment
+		case ' ', '\n', '\t', '\r':
+			l.ignore()
+		case eof:
+			l.emit(tokenREPL) // empty input = REPL mode
+			l.emit(tokenEOF)
+			return nil
+		default:
+			l.backup()
+			l.emit(tokenDocument)
+			return lexDocument
+		}
+	}
+}
+
+// Start normal code scanning (no literate stuff)
 func lexREPL(l *lexer) stateFn {
 	for {
 		if strings.HasPrefix(l.input[l.pos:], "(") {
@@ -429,10 +474,10 @@ func lexInsideList(l *lexer) stateFn {
 		case ')':
 			l.emit(tokenCloseList)
 			return l.pop()
-		case ']', '}':
-			l.backup()
-			l.emit(tokenMissingCloseList)
-			return l.pop()
+		case ']':
+			l.emit(tokenUnexpectedCloseVec)
+		case '}':
+			l.emit(tokenUnexpectedCloseTable)
 		case eof:
 			l.emit(tokenMissingCloseList)
 			return l.pop()
@@ -469,10 +514,10 @@ func lexInsideVec(l *lexer) stateFn {
 			l.emit(tokenOpenTable)
 			l.push(lexInsideVec)
 			return lexInsideTable
-		case ')', '}':
-			l.backup()
-			l.emit(tokenMissingCloseVec)
-			return l.pop()
+		case ')':
+			l.emit(tokenUnexpectedCloseList)
+		case '}':
+			l.emit(tokenUnexpectedCloseTable)
 		case ']':
 			l.emit(tokenCloseVec)
 			return l.pop()
@@ -513,10 +558,10 @@ func lexInsideTable(l *lexer) stateFn {
 			l.emit(tokenOpenTable)
 			l.push(lexInsideTable)
 			return lexInsideTable
-		case ')', ']':
-			l.backup()
-			l.emit(tokenMissingCloseTable)
-			return l.pop()
+		case ')':
+			l.emit(tokenUnexpectedCloseList)
+		case ']':
+			l.emit(tokenUnexpectedCloseVec)
 		case '}':
 			l.emit(tokenCloseTable)
 			return l.pop()

@@ -93,7 +93,7 @@ func evalCall(expr callExpr, ctx *Context) (Atom, Error) {
 	castProc, ok := CastAtom[ProcedureAtom](proc)
 	if !ok {
 		return nil, RuntimeError{
-			Message: "cannot call non-procedure: %s" + proc.Type(),
+			Message: "cannot call non-procedure: " + proc.Type(),
 		}
 	}
 

@@ -104,8 +104,8 @@ func (c *Context) GetBinding(name string) (Atom, bool) {
 // PARSING (for syntax highlighting etc)
 
 func ParseBytes(bytes []byte) []Block {
-	tokens := tokenizeDocument(string(bytes))
-	return parseDocument(string(bytes), tokens)
+	rr := Read(string(bytes))
+	return rr.blocks
 }
 
 // EVALUATING
@@ -175,30 +175,31 @@ func (c *Context) ImportLibrary(name, prefix string) Error {
 // IMPLEMENTATION
 
 func (c *Context) evalDocument(src string) []Block {
-	tokens := tokenizeDocument(src)
-	blocks := parseDocument(src, tokens)
+	rr := Read(src)
 	var codeBlocks []Block
 
-	for i := range blocks {
-		if blocks[i].Type != "code" || len(blocks[i].Errors) > 0 {
+	for i := range rr.blocks {
+		b := rr.blocks[i]
+
+		if b.Type != "code" || len(b.Errors) > 0 {
 			continue
 		}
 
-		elaboratedAST, err := elaborate(blocks[i].rawAST)
+		elaboratedAST, err := elaborate(b.rawAST)
 		if err != nil {
-			blocks[i].Errors = append(blocks[i].Errors, err)
+			b.Errors = append(b.Errors, err)
 			continue
 		}
 
 		result, err := eval(elaboratedAST, c)
 		if result != nil {
-			blocks[i].Result = result
+			b.Result = result
 		}
 		if err != nil {
-			blocks[i].Errors = append(blocks[i].Errors, err)
+			b.Errors = append(b.Errors, err)
 		}
 
-		codeBlocks = append(codeBlocks, blocks[i])
+		codeBlocks = append(codeBlocks, b)
 	}
 
 	return codeBlocks
