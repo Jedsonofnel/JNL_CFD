@@ -107,7 +107,7 @@ func (t TableAtom) String() string {
 	return "{" + strings.Join(parts, " ") + "}"
 }
 
-// HOMOICONIC DATA TYPES
+// HOMOICONIC DATA TYPES (ie for use with quoting)
 
 type SymbolAtom struct{ Name string }
 

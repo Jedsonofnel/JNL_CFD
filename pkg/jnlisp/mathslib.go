@@ -21,7 +21,7 @@ func init() {
 	})
 }
 
-func lispSine(args []Atom, kwargs Table) (Atom, Error) {
+func lispSine(args []Atom, kwargs TableAtom) (Atom, Error) {
 	num, v := ValidateArgs(args, kwargs).GetFloat64()
 	v.ExpectNoMoreArgs()
 	if err := v.Validate("sin"); err != nil {
@@ -31,7 +31,7 @@ func lispSine(args []Atom, kwargs Table) (Atom, Error) {
 	return NumberAtom{math.Sin(num)}, nil
 }
 
-func lispCosine(args []Atom, kwargs Table) (Atom, Error) {
+func lispCosine(args []Atom, kwargs TableAtom) (Atom, Error) {
 	num, v := ValidateArgs(args, kwargs).GetFloat64()
 	v.ExpectNoMoreArgs()
 	if err := v.Validate("cos"); err != nil {
@@ -41,7 +41,7 @@ func lispCosine(args []Atom, kwargs Table) (Atom, Error) {
 	return NumberAtom{math.Cos(num)}, nil
 }
 
-func lispSqrt(args []Atom, kwargs Table) (Atom, Error) {
+func lispSqrt(args []Atom, kwargs TableAtom) (Atom, Error) {
 	num, v := ValidateArgs(args, kwargs).GetFloat64()
 	v.ExpectNoMoreArgs()
 	if err := v.Validate("cos"); err != nil {

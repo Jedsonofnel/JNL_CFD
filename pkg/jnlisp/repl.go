@@ -2,7 +2,6 @@ package jnlisp
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"strings"
 )
@@ -56,11 +55,8 @@ func REPL() {
 				println(err.Error())
 				continue
 			}
-			fmt.Printf("%v\n", expr)
 
-			// TODO include elaboration here
-
-			atom, err := eval(ast, context)
+			atom, err := eval(expr, context)
 			if err != nil {
 				text.Reset()
 				println(err.Error())

@@ -43,7 +43,7 @@ func parseDocument(src string, tokens []token) (blocks []Block) {
 			b.Type = "code"
 
 			expression, errors := parseCode(tokens, &idx)
-			b.exp = expression
+			b.rawAST = expression
 
 			// cast []SyntaxError into []Error
 			for _, err := range errors {

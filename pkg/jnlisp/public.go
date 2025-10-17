@@ -25,7 +25,7 @@ type Block struct {
 	Errors []Error `json:"errors,omitempty"`
 
 	// OPTIONAL: If code block - the parsed expression AST
-	exp any
+	rawAST any
 }
 
 // CONTEXT TO MANAGE ENV
@@ -184,8 +184,13 @@ func (c *Context) evalDocument(src string) []Block {
 			continue
 		}
 
-		result, err := eval(blocks[i].exp, c)
+		elaboratedAST, err := elaborate(blocks[i].rawAST)
+		if err != nil {
+			blocks[i].Errors = append(blocks[i].Errors, err)
+			continue
+		}
 
+		result, err := eval(elaboratedAST, c)
 		if result != nil {
 			blocks[i].Result = result
 		}

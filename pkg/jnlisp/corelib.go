@@ -31,10 +31,10 @@ func init() {
 
 // STANDARD MATHS
 
-func lispAdd(args []Atom, _ Table) (Atom, Error) {
+func lispAdd(args []Atom, _ TableAtom) (Atom, Error) {
 	var values []any
 	for _, arg := range args {
-		if num, ok := As[NumberAtom](arg); ok {
+		if num, ok := CastAtom[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
 			return nil, RuntimeError{Message: "+ expects numbers, got " + arg.Type()}
@@ -54,14 +54,14 @@ func lispAdd(args []Atom, _ Table) (Atom, Error) {
 	return simplifyNumber(result), nil
 }
 
-func lispSubtract(args []Atom, _ Table) (Atom, Error) {
+func lispSubtract(args []Atom, _ TableAtom) (Atom, Error) {
 	if len(args) == 0 {
 		return nil, RuntimeError{Message: "- expects at least 1 argument"}
 	}
 
 	var values []any
 	for _, arg := range args {
-		if num, ok := As[NumberAtom](arg); ok {
+		if num, ok := CastAtom[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
 			return nil, RuntimeError{Message: "- expects numbers, got " + arg.Type()}
@@ -85,10 +85,10 @@ func lispSubtract(args []Atom, _ Table) (Atom, Error) {
 	return simplifyNumber(result), nil
 }
 
-func lispMultiply(args []Atom, _ Table) (Atom, Error) {
+func lispMultiply(args []Atom, _ TableAtom) (Atom, Error) {
 	var values []any
 	for _, arg := range args {
-		if num, ok := As[NumberAtom](arg); ok {
+		if num, ok := CastAtom[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
 			return nil, RuntimeError{Message: "* expects numbers, got " + arg.Type()}
@@ -108,14 +108,14 @@ func lispMultiply(args []Atom, _ Table) (Atom, Error) {
 	return simplifyNumber(result), nil
 }
 
-func lispDivide(args []Atom, _ Table) (Atom, Error) {
+func lispDivide(args []Atom, _ TableAtom) (Atom, Error) {
 	if len(args) == 0 {
 		return nil, RuntimeError{Message: "/ requires at least 1 argument"}
 	}
 
 	var values []any
 	for _, arg := range args {
-		if num, ok := As[NumberAtom](arg); ok {
+		if num, ok := CastAtom[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
 			return nil, RuntimeError{Message: "/ expects numbers, got " + arg.Type()}
@@ -139,14 +139,14 @@ func lispDivide(args []Atom, _ Table) (Atom, Error) {
 	return simplifyNumber(result), nil
 }
 
-func lispModulo(args []Atom, _ Table) (Atom, Error) {
+func lispModulo(args []Atom, _ TableAtom) (Atom, Error) {
 	if len(args) != 2 {
 		return nil, RuntimeError{Message: "%% requires exactly 2 arguments"}
 	}
 
 	var values []any
 	for _, arg := range args {
-		if num, ok := As[NumberAtom](arg); ok {
+		if num, ok := CastAtom[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
 			return nil, RuntimeError{Message: "%% expects numbers, got " + arg.Type()}
@@ -164,7 +164,7 @@ func lispModulo(args []Atom, _ Table) (Atom, Error) {
 
 // BASIC COMPARATORS
 
-func lispEqual(args []Atom, _ Table) (Atom, Error) {
+func lispEqual(args []Atom, _ TableAtom) (Atom, Error) {
 	if len(args) < 2 {
 		return nil, RuntimeError{
 			Message: "= expects at least 2 arguments, got " + strconv.Itoa(len(args)),
@@ -181,7 +181,7 @@ func lispEqual(args []Atom, _ Table) (Atom, Error) {
 	return BooleanAtom{true}, nil
 }
 
-func lispGreaterThan(args []Atom, _ Table) (Atom, Error) {
+func lispGreaterThan(args []Atom, _ TableAtom) (Atom, Error) {
 	if len(args) != 2 {
 		return nil, RuntimeError{
 			Message: "> expects at least 2 arguments, got " + strconv.Itoa(len(args)),
@@ -190,7 +190,7 @@ func lispGreaterThan(args []Atom, _ Table) (Atom, Error) {
 
 	var values []any
 	for _, arg := range args {
-		if num, ok := As[NumberAtom](arg); ok {
+		if num, ok := CastAtom[NumberAtom](arg); ok {
 			values = append(values, num.Value)
 		} else {
 			return nil, RuntimeError{Message: "> expects numbers, got " + arg.Type()}
@@ -205,7 +205,7 @@ func lispGreaterThan(args []Atom, _ Table) (Atom, Error) {
 	return BooleanAtom{castArgs[0] > castArgs[1]}, nil
 }
 
-func lispNot(args []Atom, _ Table) (Atom, Error) {
+func lispNot(args []Atom, _ TableAtom) (Atom, Error) {
 	if len(args) != 1 {
 		return nil, RuntimeError{Message: "not expects at least 1 argument"}
 	}
@@ -220,7 +220,7 @@ func lispNot(args []Atom, _ Table) (Atom, Error) {
 
 // VECTOR OPERATIONS
 
-func lispVectorRef(args []Atom, kwargs Table) (Atom, Error) {
+func lispVectorRef(args []Atom, kwargs TableAtom) (Atom, Error) {
 	vec, v := ValidateArgs(args, kwargs).GetVector()
 	index, v := v.GetInt()
 
@@ -238,8 +238,8 @@ func lispVectorRef(args []Atom, kwargs Table) (Atom, Error) {
 	return vec.Elements[index], nil
 }
 
-func lispVectorLength(args []Atom, _ Table) (Atom, Error) {
-	vec, v := ValidateArgs(args, nil).GetVector()
+func lispVectorLength(args []Atom, _ TableAtom) (Atom, Error) {
+	vec, v := ValidateArgs(args, TableAtom{}).GetVector()
 	v = v.ExpectNoMoreArgs()
 
 	if err := v.Validate("vector-length"); err != nil {
@@ -252,8 +252,8 @@ func lispVectorLength(args []Atom, _ Table) (Atom, Error) {
 // HELPERS
 
 func atomsEqual(a, b Atom) bool {
-	if numA, okA := As[NumberAtom](a); okA {
-		if numB, okB := As[NumberAtom](b); okB {
+	if numA, okA := CastAtom[NumberAtom](a); okA {
+		if numB, okB := CastAtom[NumberAtom](b); okB {
 			values := []any{numA.Value, numB.Value}
 			castArgs, _ := toComplex(values, "")
 			return castArgs[0] == castArgs[1]
