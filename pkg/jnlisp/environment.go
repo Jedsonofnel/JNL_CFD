@@ -70,7 +70,7 @@ func (e *env) forEachBinding(cb func(string, Atom)) {
 
 type Function interface {
 	Atom
-	Call(args []Atom, kwargs TableAtom) (Atom, Error)
+	Call(args []Atom, kwargs TableAtom, depth int) (Atom, Error)
 }
 
 type fnParams struct {
@@ -91,7 +91,7 @@ func (f *lispFunction) String() string {
 	return "#<function:" + f.name + ">"
 }
 
-func (f *lispFunction) Call(args []Atom, kwargs TableAtom) (Atom, Error) {
+func (f *lispFunction) Call(args []Atom, kwargs TableAtom, depth int) (Atom, Error) {
 	activationEnv := newEnv(f.closure)
 
 	if len(args) != len(f.params.positional) {
@@ -118,12 +118,18 @@ func (f *lispFunction) Call(args []Atom, kwargs TableAtom) (Atom, Error) {
 		}
 	}
 
-	return f.ctx.eval(f.body, activationEnv)
+	return f.ctx.eval(f.body, activationEnv, depth)
 }
 
 // Foreign bindings
 
-type NativeFunction func(args []Atom, kwargs TableAtom) (Atom, Error)
+type NativeFunction func(args []Atom, kwargs TableAtom, depth int) (Atom, Error)
+
+func SimpleNative(fn func([]Atom, TableAtom) (Atom, Error)) NativeFunction {
+	return func(args []Atom, kwargs TableAtom, depth int) (Atom, Error) {
+		return fn(args, kwargs)
+	}
+}
 
 type foreignFunction struct {
 	name string
@@ -135,6 +141,6 @@ func (f *foreignFunction) String() string {
 	return "#<function:" + f.name + ">"
 }
 
-func (f *foreignFunction) Call(args []Atom, kwargs TableAtom) (Atom, Error) {
-	return f.fn(args, kwargs)
+func (f *foreignFunction) Call(args []Atom, kwargs TableAtom, depth int) (Atom, Error) {
+	return f.fn(args, kwargs, depth)
 }

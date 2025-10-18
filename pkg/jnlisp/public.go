@@ -186,7 +186,7 @@ func (ctx *Context) executeWithEnv(blocks []Block, env *env) []Block {
 			continue
 		}
 
-		result, err := ctx.eval(elaboratedAST, env)
+		result, err := ctx.eval(elaboratedAST, env, 0)
 		if result != nil {
 			block.Result = result
 		}

@@ -12,9 +12,9 @@ var mathsPkg = Package{
 	Name: "maths",
 	FS:   mathsLibFS,
 	Bindings: map[string]NativeFunction{
-		"sin":  lispSine,
-		"cos":  lispCosine,
-		"sqrt": lispSqrt,
+		"sin":  SimpleNative(lispSine),
+		"cos":  SimpleNative(lispCosine),
+		"sqrt": SimpleNative(lispSqrt),
 	},
 	Atoms: map[string]Atom{},
 }
