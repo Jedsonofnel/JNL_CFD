@@ -129,11 +129,11 @@ func (tt tokenType) isError() bool {
 func (tt tokenType) isMissingDelim() (bool, string) {
 	switch tt {
 	case tokenMissingCloseList:
-		return true, ")"
+		return true, "("
 	case tokenMissingCloseVec:
-		return true, "]"
+		return true, "["
 	case tokenMissingCloseTable:
-		return true, "}"
+		return true, "{"
 	default:
 		return false, ""
 	}
