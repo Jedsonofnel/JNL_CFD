@@ -23,8 +23,7 @@ func elaborate(raw any) (expr, Error) {
 }
 
 func elaborateCall(list listRaw) (expr, Error) {
-	switch head := list[0].(type) {
-	case symbol:
+	if head, ok := list[0].(symbol); ok {
 		switch head {
 		case "define":
 			return elaborateDefine(list[1:])
@@ -39,25 +38,19 @@ func elaborateCall(list listRaw) (expr, Error) {
 		case "import":
 			return elaborateImport(list[1:])
 		}
-
-		headExpr, err := elaborate(list[0])
-		args, kwargs, err := elaborateArgs(list[1:])
-		if err != nil {
-			return nil, err
-		}
-		return callExpr{headExpr, args, kwargs}, nil
-	case callExpr:
-		headExpr, err := elaborate(list[0])
-		args, kwargs, err := elaborateArgs(list[1:])
-		if err != nil {
-			return nil, err
-		}
-		return callExpr{headExpr, args, kwargs}, nil
-	default:
-		return nil, ElaborationError{
-			Message: "list expects a function at head to evaluate",
-		}
 	}
+
+	headExpr, err := elaborate(list[0])
+	if err != nil {
+		return nil, err
+	}
+
+	args, kwargs, err := elaborateArgs(list[1:])
+	if err != nil {
+		return nil, err
+	}
+
+	return callExpr{headExpr, args, kwargs}, nil
 }
 
 func elaborateVector(vector vectorRaw) (vectorExpr, Error) {

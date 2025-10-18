@@ -36,6 +36,7 @@ func main() {
 		}
 
 		blocks, promptDisplay := ctx.Step(line)
+
 		fmt.Print(blocks.String())
 		fmt.Print(promptDisplay)
 	}

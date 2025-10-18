@@ -42,6 +42,14 @@ func (ctx *Context) ImportPackage(name, prefix string) Error {
 func (ctx *Context) executePackage(pkg Package) (*env, Error) {
 	pkgEnv := newEnv(ctx.importEnv)
 
+	// bind packages procedures
+	for name, fn := range pkg.Bindings {
+		pkgEnv.bind(name, &foreignFunction{name, fn})
+	}
+	for name, atom := range pkg.Atoms {
+		pkgEnv.bind(name, atom)
+	}
+
 	fileContents, err := ctx.getFSSourceCode(pkg.FS)
 	if err != nil {
 		return nil, RuntimeError{
@@ -59,14 +67,6 @@ func (ctx *Context) executePackage(pkg Package) (*env, Error) {
 				Message: "Error executing package '" + pkg.Name + "': " + err.Error(),
 			}
 		}
-	}
-
-	// bind packages procedures
-	for name, fn := range pkg.Bindings {
-		pkgEnv.bind(name, &foreignFunction{name, fn})
-	}
-	for name, atom := range pkg.Atoms {
-		pkgEnv.bind(name, atom)
 	}
 
 	return pkgEnv, nil

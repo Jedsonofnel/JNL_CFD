@@ -201,7 +201,7 @@ func expandAnd(args listRaw) any {
 	}
 
 	if len(args) == 1 {
-		return true
+		return args[0]
 	}
 
 	rest := listRaw{symbol("and")}

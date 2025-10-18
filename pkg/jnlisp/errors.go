@@ -54,7 +54,7 @@ type BlockError struct {
 }
 
 func (e BlockError) Error() string {
-	return "Error in block " + strconv.Itoa(e.BlockIndex) + ": " + e.Err.Error()
+	return "Error in block " + strconv.Itoa(e.BlockIndex+1) + ": " + e.Err.Error()
 }
 
 func (e BlockError) Msg() string { return e.Err.Error() }

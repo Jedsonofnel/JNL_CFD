@@ -71,7 +71,10 @@ func NewContext() *Context {
 
 	ctx.RegisterPackage(corePkg)
 
-	ctx.ImportPackage("core", "")
+	err := ctx.ImportPackage("core", "")
+	if err != nil {
+		panic("Error importing package core: " + err.Error())
+	}
 	return ctx
 }
 
@@ -91,7 +94,9 @@ func (ctx *Context) Step(input string) (ExecutionResponse, string) {
 
 	missingDelims := ""
 	incomplete := true
-	for i := len(tokens) - 1; i >= 0; i-- {
+
+	// -2 to ignore EOF as well
+	for i := len(tokens) - 2; i >= 0; i-- {
 		if yes, delim := tokens[i].typ.isMissingDelim(); yes {
 			missingDelims = delim + missingDelims // prepend with missing delimeter
 		} else {
@@ -99,18 +104,18 @@ func (ctx *Context) Step(input string) (ExecutionResponse, string) {
 		}
 	}
 
-	if len(missingDelims) == 0 {
+	if missingDelims == "" {
 		incomplete = false
 	}
 
-	for i := 0; i < len(tokens)-len(missingDelims); i++ {
+	for i := 0; i < len(tokens)-len(missingDelims)-1; i++ {
 		if tokens[i].typ.isError() {
 			incomplete = false
 		}
 	}
 
 	// if ending on a double newline is definitely complete
-	if strings.HasSuffix(strings.TrimRight(input, " \t"), "\n\n") {
+	if strings.HasSuffix(strings.TrimRight(ctx.stepBuf.String(), " \t"), "\n\n") {
 		incomplete = false
 	}
 
@@ -153,26 +158,32 @@ func (ctx *Context) executeWithEnv(blocks []Block, env *env) []Block {
 	var codeBlocks []Block
 	for i := range blocks {
 		b := blocks[i]
-
 		if b.Type != "code" || len(b.Errors) > 0 {
 			continue
 		}
 
-		elaboratedAST, err := elaborate(b.rawAST)
+		codeBlocks = append(codeBlocks, b)
+		block := &codeBlocks[len(codeBlocks)-1]
+
+		expandedAST, err := expand(block.rawAST)
 		if err != nil {
-			b.Errors = append(b.Errors, err)
+			block.Errors = append(block.Errors, err)
+			continue
+		}
+
+		elaboratedAST, err := elaborate(expandedAST)
+		if err != nil {
+			block.Errors = append(block.Errors, err)
 			continue
 		}
 
 		result, err := ctx.eval(elaboratedAST, env)
 		if result != nil {
-			b.Result = result
+			block.Result = result
 		}
 		if err != nil {
-			b.Errors = append(b.Errors, err)
+			block.Errors = append(block.Errors, err)
 		}
-
-		codeBlocks = append(codeBlocks, b)
 	}
 
 	return codeBlocks
