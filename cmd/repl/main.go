@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
-	"github.com/Jedsonofnel/jnlcfd/pkg/jnlisp"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/Jedsonofnel/jnlcfd/pkg/jnlisp"
 )
 
 func main() {
@@ -18,5 +20,23 @@ func main() {
 		os.Exit(0)
 	}()
 
-	jnlisp.REPL()
+	ctx := jnlisp.NewContext()
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("JNLisp REPL")
+	fmt.Println("Ctrl-c to quit")
+
+	for {
+		fmt.Print("> ")
+
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error getting input")
+			break
+		}
+
+		blocks, promptDisplay := ctx.Step(line)
+		fmt.Print(blocks.String())
+		fmt.Print(promptDisplay)
+	}
 }

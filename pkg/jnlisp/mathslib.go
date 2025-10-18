@@ -8,17 +8,15 @@ import (
 //go:embed mathslib.jnl
 var mathsLibFS embed.FS
 
-func init() {
-	RegisterLibrary(Library{
-		Name: "maths",
-		FS:   mathsLibFS,
-		Bindings: map[string]ProcFunc{
-			"sin":  lispSine,
-			"cos":  lispCosine,
-			"sqrt": lispSqrt,
-		},
-		Atoms: map[string]Atom{},
-	})
+var mathsPkg = Package{
+	Name: "maths",
+	FS:   mathsLibFS,
+	Bindings: map[string]NativeFunction{
+		"sin":  lispSine,
+		"cos":  lispCosine,
+		"sqrt": lispSqrt,
+	},
+	Atoms: map[string]Atom{},
 }
 
 func lispSine(args []Atom, kwargs TableAtom) (Atom, Error) {

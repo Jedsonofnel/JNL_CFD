@@ -13,7 +13,7 @@ func tokenize(input string) (tokens []token) {
 	for {
 		next := lex.nextItem()
 		tokens = append(tokens, next)
-		if next.typ == tokenEOF || next.typ == tokenAbandoned {
+		if next.typ == tokenEOF {
 			break
 		}
 	}
@@ -49,10 +49,6 @@ type tokenType int
 
 const (
 	tokenEOF tokenType = iota
-	tokenAbandoned
-
-	tokenDocument
-	tokenREPL
 
 	tokenOpenList
 	tokenCloseList
@@ -91,10 +87,6 @@ const (
 
 var tokenStrings = []string{
 	"tokenEOF",
-	"tokenAbandoned",
-
-	"tokenDocument",
-	"tokenREPL",
 
 	"tokenOpenList",
 	"tokenCloseList",
@@ -157,13 +149,6 @@ func (i token) String() string {
 	switch i.typ {
 	case tokenEOF:
 		return "EOF(@" + i.pos.String() + ")\n"
-	case tokenAbandoned:
-		return "ABANDONED"
-
-	case tokenDocument:
-		return "DOCUMENT START"
-	case tokenREPL:
-		return "REPL START"
 
 	case tokenOpenList:
 		return "\nOPENLIST( "
@@ -381,11 +366,6 @@ func lexStart(l *lexer) stateFn {
 		switch r := l.next(); r {
 		case '(': // if open paren backup and start REPL
 			l.backup()
-			l.emit(tokenREPL)
-			if strings.HasSuffix(l.input, "\n\n") {
-				l.emit(tokenAbandoned)
-				return nil
-			}
 			return lexREPL
 		case ';': // ignore comments
 			l.push(lexStart)
@@ -393,12 +373,10 @@ func lexStart(l *lexer) stateFn {
 		case ' ', '\n', '\t', '\r':
 			l.ignore()
 		case eof:
-			l.emit(tokenREPL) // empty input = REPL mode
 			l.emit(tokenEOF)
 			return nil
 		default:
 			l.backup()
-			l.emit(tokenDocument)
 			return lexDocument
 		}
 	}

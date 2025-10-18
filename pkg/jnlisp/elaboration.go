@@ -55,7 +55,7 @@ func elaborateCall(list listRaw) (expr, Error) {
 		return callExpr{headExpr, args, kwargs}, nil
 	default:
 		return nil, ElaborationError{
-			Message: "list expects a procedure at head to evaluate",
+			Message: "list expects a function at head to evaluate",
 		}
 	}
 }
@@ -178,7 +178,7 @@ func elaborateLambda(args listRaw) (lambdaExpr, Error) {
 			continue
 		}
 		return lambdaExpr{}, ElaborationError{
-			Message: "lambda expects procedure arguments to be symbols",
+			Message: "lambda expects function arguments to be symbols",
 		}
 	}
 
@@ -305,9 +305,9 @@ type expr interface {
 // CORE DATA TYPES
 
 type callExpr struct {
-	procedure expr
-	args      []expr
-	kwargs    tableExpr
+	fn     expr
+	args   []expr
+	kwargs tableExpr
 }
 
 func (ae callExpr) expr() {}
@@ -352,9 +352,9 @@ type defineExpr struct {
 func (de defineExpr) expr() {}
 
 type lambdaExpr struct {
-	args      []symbol
-	kwargs    []symbol
-	procedure expr
+	args   []symbol
+	kwargs []symbol
+	fn     expr
 }
 
 func (le lambdaExpr) expr() {}

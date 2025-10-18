@@ -8,25 +8,23 @@ import (
 //go:embed corelib.jnl
 var coreLibFS embed.FS
 
-func init() {
-	RegisterLibrary(Library{
-		Name: "core",
-		FS:   coreLibFS,
-		Bindings: map[string]ProcFunc{
-			"+":   lispAdd,
-			"-":   lispSubtract,
-			"*":   lispMultiply,
-			"/":   lispDivide,
-			"%":   lispModulo,
-			"=":   lispEqual,
-			">":   lispGreaterThan,
-			"not": lispNot,
+var corePkg = Package{
+	Name: "core",
+	FS:   coreLibFS,
+	Bindings: map[string]NativeFunction{
+		"+":   lispAdd,
+		"-":   lispSubtract,
+		"*":   lispMultiply,
+		"/":   lispDivide,
+		"%":   lispModulo,
+		"=":   lispEqual,
+		">":   lispGreaterThan,
+		"not": lispNot,
 
-			"vector-ref": lispVectorRef,
-			"vector-length": lispVectorLength,
-		},
-		Atoms: map[string]Atom{},
-	})
+		"vector-ref":    lispVectorRef,
+		"vector-length": lispVectorLength,
+	},
+	Atoms: map[string]Atom{},
 }
 
 // STANDARD MATHS
@@ -229,13 +227,13 @@ func lispVectorRef(args []Atom, kwargs TableAtom) (Atom, Error) {
 		return nil, err
 	}
 
-	if index < 0 || index >= len(vec.Elements) {
+	if index < 0 || index >= len(vec) {
 		return nil, RuntimeError{
 			Message: "index out of bounds for vector",
 		}
 	}
 
-	return vec.Elements[index], nil
+	return vec[index], nil
 }
 
 func lispVectorLength(args []Atom, _ TableAtom) (Atom, Error) {
@@ -246,7 +244,7 @@ func lispVectorLength(args []Atom, _ TableAtom) (Atom, Error) {
 		return nil, err
 	}
 
-	return NumberAtom{len(vec.Elements)}, nil
+	return NumberAtom{len(vec)}, nil
 }
 
 // HELPERS

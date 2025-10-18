@@ -7,11 +7,80 @@ import (
 type Error interface {
 	error
 	Msg() string
-	ToJSON() string
 }
 
 // IMPLEMENTATIONS
 // TODO: consider adding a "Suggestion" field
+
+// Combines multiple errors from different code blocks
+type BlockErrors struct {
+	Errors  []BlockError
+	Message string
+}
+
+func (e BlockErrors) Error() string {
+	return "Block errors:\n" + e.Message
+}
+
+func (e BlockErrors) Msg() string { return e.Message }
+
+func newBlockErrors(blocks []Block) Error {
+	var errors []BlockError
+	message := ""
+
+	for i := range blocks {
+		errs := blocks[i].Errors
+		if len(errs) == 0 {
+			continue
+		}
+
+		for j := range errs {
+			err := newBlockError(errs[j], i)
+			errors = append(errors, err)
+			message += "\t" + err.Error()
+		}
+	}
+
+	if len(errors) == 0 {
+		return nil
+	}
+
+	return BlockErrors{errors, message}
+}
+
+type BlockError struct {
+	Err        Error
+	BlockIndex int
+}
+
+func (e BlockError) Error() string {
+	return "Error in block " + strconv.Itoa(e.BlockIndex) + ": " + e.Err.Error()
+}
+
+func (e BlockError) Msg() string { return e.Err.Error() }
+
+func newBlockError(err Error, idx int) BlockError {
+	return BlockError{err, idx}
+}
+
+// created during filesystem lookups
+type FileSystemError struct {
+	path    string
+	op      string // "read", "walk", "stat" etc
+	err     error
+	Message string
+}
+
+func newFSError(path, op string, err error) FileSystemError {
+	message := "error during " + op + " of " + path + ": " + err.Error()
+	return FileSystemError{path, op, err, message}
+}
+
+func (e FileSystemError) Error() string {
+	return "File system error: " + e.Message
+}
+
+func (e FileSystemError) Msg() string { return e.Message }
 
 // SYNTAX ERROR
 
@@ -82,10 +151,6 @@ func (e ExpansionError) Msg() string {
 	return e.Message
 }
 
-func (e ExpansionError) ToJSON() string {
-	return formatErrJSON("ExpansionError", e.Message, nil)
-}
-
 // ELABORATION ERROR
 
 type ElaborationError struct {
@@ -98,10 +163,6 @@ func (e ElaborationError) Error() string {
 
 func (e ElaborationError) Msg() string {
 	return e.Message
-}
-
-func (e ElaborationError) ToJSON() string {
-	return formatErrJSON("ElaborationError", e.Message, nil)
 }
 
 // RUNTIME ERROR
@@ -117,10 +178,6 @@ func (e RuntimeError) Error() string {
 
 func (e RuntimeError) Msg() string {
 	return e.Message
-}
-
-func (e RuntimeError) ToJSON() string {
-	return formatErrJSON("RuntimeError", e.Message, nil)
 }
 
 func ArgCountErr(funcName string, expected, got int) RuntimeError {

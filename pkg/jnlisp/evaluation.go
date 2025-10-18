@@ -6,46 +6,39 @@ import (
 
 // EVAL IMPLEMENTATION
 
-func eval(expr expr, ctx *Context) (Atom, Error) {
+func (ctx *Context) eval(expr expr, env *env) (Atom, Error) {
 	switch e := expr.(type) {
 	case literalExpr:
-		return evalLiteral(e)
+		return ctx.evalLiteral(e)
 	case symbolExpr:
-		if ctx.importPrefix != "" {
-			prefixedName := ctx.importPrefix + "/" + e.name
-			if atom, exists := ctx.env.find(prefixedName); exists {
-				return atom, nil
-			}
-		}
-
-		if atom, exists := ctx.env.find(e.name); exists {
+		if atom, exists := env.find(e.name); exists {
 			return atom, nil
 		}
 		return nil, RuntimeError{Message: "undefined symbol: " + e.name}
 	case vectorExpr:
 		elements := make([]Atom, len(e.elements))
 		for i, elem := range e.elements {
-			evaluated, err := eval(elem, ctx)
+			evaluated, err := ctx.eval(elem, env)
 			if err != nil {
 				return nil, RuntimeError{Message: "vector element " + strconv.Itoa(i) + " > " + err.Error()}
 			}
 			elements[i] = evaluated
 		}
-		return VectorAtom{elements}, nil
+		return VectorAtom(elements), nil
 	case tableExpr:
-		return evalTable(e, ctx)
+		return ctx.evalTable(e, env)
 
 	// procedure calling
 	case callExpr:
-		return evalCall(e, ctx)
+		return ctx.evalCall(e, env)
 	case defineExpr:
-		return evalDefine(e, ctx)
+		return ctx.evalDefine(e, env)
 	case lambdaExpr:
-		return evalLambda(e, ctx)
+		return ctx.evalLambda(e, env)
 	case ifExpr:
-		return evalIf(e, ctx)
+		return ctx.evalIf(e, env)
 	case beginExpr:
-		return evalBegin(e, ctx)
+		return ctx.evalBegin(e, env)
 	case setBangExpr:
 		return evalSetBang(e, ctx)
 	case importExpr:
@@ -57,7 +50,7 @@ func eval(expr expr, ctx *Context) (Atom, Error) {
 
 // Primitive evaluation
 
-func evalLiteral(literal literalExpr) (Atom, Error) {
+func (ctx *Context) evalLiteral(literal literalExpr) (Atom, Error) {
 	switch v := literal.value.(type) {
 	case string:
 		return StringAtom{v}, nil
@@ -70,52 +63,52 @@ func evalLiteral(literal literalExpr) (Atom, Error) {
 	}
 }
 
-func evalTable(table tableExpr, ctx *Context) (TableAtom, Error) {
+func (ctx *Context) evalTable(table tableExpr, env *env) (TableAtom, Error) {
 	elements := make(map[string]Atom, len(table.elements))
 	for k, v := range table.elements {
-		evaluated, err := eval(v, ctx)
+		evaluated, err := ctx.eval(v, env)
 		if err != nil {
 			return TableAtom{}, RuntimeError{Message: "table element :" + k + " > " + err.Error()}
 		}
 		elements[k] = evaluated
 	}
-	return TableAtom{elements}, nil
+	return TableAtom(elements), nil
 }
 
 // Procedure evaluation
 
-func evalCall(expr callExpr, ctx *Context) (Atom, Error) {
-	proc, err := eval(expr.procedure, ctx)
+func (ctx *Context) evalCall(expr callExpr, env *env) (Atom, Error) {
+	fnAtom, err := ctx.eval(expr.fn, env)
 	if err != nil {
 		return nil, err
 	}
 
-	castProc, ok := CastAtom[ProcedureAtom](proc)
+	fn, ok := CastAtom[Function](fnAtom)
 	if !ok {
 		return nil, RuntimeError{
-			Message: "cannot call non-procedure: " + proc.Type(),
+			Message: "cannot call non-procedure: " + fn.Type(),
 		}
 	}
 
 	args := make([]Atom, len(expr.args))
 	for i, argExpr := range expr.args {
-		arg, err := eval(argExpr, ctx)
+		arg, err := ctx.eval(argExpr, env)
 		if err != nil {
 			return nil, err
 		}
 		args[i] = arg
 	}
 
-	kwargs, err := evalTable(expr.kwargs, ctx)
+	kwargs, err := ctx.evalTable(expr.kwargs, env)
 	if err != nil {
 		return nil, err
 	}
 
-	return castProc.Call(args, kwargs, ctx)
+	return fn.Call(args, kwargs)
 }
 
-func evalIf(expr ifExpr, ctx *Context) (Atom, Error) {
-	testResult, err := eval(expr.predicate, ctx)
+func (ctx *Context) evalIf(expr ifExpr, env *env) (Atom, Error) {
+	testResult, err := ctx.eval(expr.predicate, env)
 	if err != nil {
 		return nil, err
 	}
@@ -126,53 +119,50 @@ func evalIf(expr ifExpr, ctx *Context) (Atom, Error) {
 	}
 
 	if boolean.Value {
-		return eval(expr.consequent, ctx)
+		return ctx.eval(expr.consequent, env)
 	} else {
-		return eval(expr.alternative, ctx)
+		return ctx.eval(expr.alternative, env)
 	}
 }
 
-func evalDefine(expr defineExpr, ctx *Context) (Atom, Error) {
-	value, err := eval(expr.binding, ctx)
+func (ctx *Context) evalDefine(expr defineExpr, env *env) (Atom, Error) {
+	value, err := ctx.eval(expr.binding, env)
 	if err != nil {
 		return nil, err
 	}
-	bindName := string(expr.name)
-	if ctx.importPrefix != "" {
-		bindName = ctx.importPrefix + "/" + bindName
-	}
 
-	// if defining a lambda then name the procedure
-	if proc, ok := value.(ProcedureAtom); ok {
-		if proc.name == "lambda" {
-			proc.Procedure.name = bindName
+	name := string(expr.name)
+
+	// if defining a lambda then name it
+	if fn, ok := value.(*lispFunction); ok {
+		if fn.name == "lambda" {
+			fn.name = name
 		}
 	}
 
-	ctx.env.bind(bindName, value)
+	env.bind(name, value)
 	return value, nil
 }
 
-func evalLambda(expr lambdaExpr, ctx *Context) (Atom, Error) {
-	proc := &Procedure{
-		name:         "lambda",
-		params:       paramList{expr.args, expr.kwargs},
-		body:         expr.procedure,
-		closure:      ctx.env,
-		definingCtx:  ctx,
-		importPrefix: ctx.importPrefix,
+func (ctx *Context) evalLambda(expr lambdaExpr, env *env) (Function, Error) {
+	fn := &lispFunction{
+		name:    "lambda",
+		params:  fnParams{expr.args, expr.kwargs},
+		body:    expr.fn,
+		closure: env,
+		ctx:     ctx,
 	}
 
-	return ProcedureAtom{proc}, nil
+	return fn, nil
 }
 
-func evalBegin(expr beginExpr, ctx *Context) (Atom, Error) {
+func (ctx *Context) evalBegin(expr beginExpr, env *env) (Atom, Error) {
 	// only return last result
 	var result Atom
 	var err Error
 	for i := range expr.exprs {
 		expr := expr.exprs[i]
-		result, err = eval(expr, ctx)
+		result, err = ctx.eval(expr, env)
 		if err != nil {
 			return nil, err
 		}
@@ -186,6 +176,7 @@ func evalSetBang(expr setBangExpr, ctx *Context) (Atom, Error) {
 	return nil, nil
 }
 
+// TODO: complete this
 func evalImport(expr importExpr, ctx *Context) (Atom, Error) {
-	return BooleanAtom{true}, ctx.ImportLibrary(expr.name, expr.prefix)
+	return BooleanAtom{true}, ctx.ImportPackage(expr.name, expr.prefix)
 }

@@ -11,13 +11,13 @@ func parse(src string, tokens []token) (blocks []Block) {
 	for idx < len(tokens) {
 		tok := tokens[idx]
 
+		if tok.typ == tokenEOF {
+			break
+		}
+
 		if tok.typ == tokenProse && isWhitespaceOnly(tok.val) {
 			idx++
 			continue
-		}
-
-		if tok.typ == tokenEOF || tok.typ == tokenAbandoned {
-			break
 		}
 
 		b := Block{StartPos: tok.pos}

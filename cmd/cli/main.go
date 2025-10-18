@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 
@@ -16,16 +15,7 @@ func init() {
 
 func main() {
 	flag.Parse()
-	filename := flag.Arg(0)
+	// filename := flag.Arg(0)
 
-	blocks, err := ctx.EvalFile(filename)
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	jsonData, _ := json.Marshal(blocks)
-
-	fmt.Printf("%v", string(jsonData))
+	fmt.Printf("Hello")
 }

@@ -53,54 +53,64 @@ func (e *env) bind(s string, atom Atom) {
 	}
 }
 
-func newStandardEnv() (e *env) {
-	e = newEnv(nil)
-	return
+func (e *env) forEachBinding(cb func(string, Atom)) {
+	// do small
+	for i := range e.size {
+		b := e.small[i]
+		cb(b.name, b.atom)
+	}
+
+	// do large
+	for name, atom := range e.large {
+		cb(name, atom)
+	}
 }
 
-// PROCEDURES
+// Function bindings
 
-type ProcFunc func(args []Atom, kwargs TableAtom) (Atom, Error)
+type Function interface {
+	Atom
+	Call(args []Atom, kwargs TableAtom) (Atom, Error)
+}
 
-type paramList struct {
+type fnParams struct {
 	positional []symbol
 	named      []symbol
 }
 
-type Procedure struct {
-	proc         ProcFunc
-	name         string
-	params       paramList
-	body         expr
-	closure      *env
-	definingCtx  *Context
-	importPrefix string
+type lispFunction struct {
+	name    string
+	params  fnParams
+	body    expr
+	closure *env
+	ctx     *Context
 }
 
-func (p *Procedure) Call(args []Atom, kwargs TableAtom, ctx *Context) (Atom, Error) {
-	if p.proc != nil { // given a go binding
-		return p.proc(args, kwargs)
-	}
+func (f *lispFunction) Type() string { return "function" }
+func (f *lispFunction) String() string {
+	return "#<function:" + f.name + ">"
+}
 
-	activationEnv := newEnv(p.closure)
+func (f *lispFunction) Call(args []Atom, kwargs TableAtom) (Atom, Error) {
+	activationEnv := newEnv(f.closure)
 
-	if len(args) != len(p.params.positional) {
+	if len(args) != len(f.params.positional) {
 		return nil, RuntimeError{
-			Message: p.name + " expects " +
-				strconv.Itoa(len(p.params.positional)) +
+			Message: f.name + " expects " +
+				strconv.Itoa(len(f.params.positional)) +
 				" positional args, got " + strconv.Itoa(len(args)),
 		}
 	}
 
 	// bind positional parameters
-	for i, param := range p.params.positional {
+	for i, param := range f.params.positional {
 		activationEnv.bind(string(param), args[i])
 	}
 
 	// bind named parameters from table
-	for _, namedParam := range p.params.named {
+	for _, namedParam := range f.params.named {
 		paramName := string(namedParam)
-		if value, exists := kwargs.Elements[paramName]; exists {
+		if value, exists := kwargs[paramName]; exists {
 			activationEnv.bind(string(namedParam), value)
 		} else {
 			// TODO consider defaults later
@@ -108,15 +118,23 @@ func (p *Procedure) Call(args []Atom, kwargs TableAtom, ctx *Context) (Atom, Err
 		}
 	}
 
-	if ctx == nil {
-		ctx = p.definingCtx
-	}
+	return f.ctx.eval(f.body, activationEnv)
+}
 
-	callCtx := &Context{
-		env:          activationEnv,
-		importedLibs: ctx.importedLibs,
-		importPrefix: p.importPrefix,
-	}
+// Foreign bindings
 
-	return eval(p.body, callCtx)
+type NativeFunction func(args []Atom, kwargs TableAtom) (Atom, Error)
+
+type foreignFunction struct {
+	name string
+	fn   NativeFunction
+}
+
+func (f *foreignFunction) Type() string { return "function" }
+func (f *foreignFunction) String() string {
+	return "#<function:" + f.name + ">"
+}
+
+func (f *foreignFunction) Call(args []Atom, kwargs TableAtom) (Atom, Error) {
+	return f.fn(args, kwargs)
 }

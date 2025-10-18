@@ -120,20 +120,20 @@ func (av *ArgValidator) GetVector() (VectorAtom, *ArgValidator) {
 	return VectorAtom{}, av
 }
 
-func (av *ArgValidator) GetProcedure() (ProcedureAtom, *ArgValidator) {
+func (av *ArgValidator) GetFunction() (Function, *ArgValidator) {
 	if av.argIndex >= len(av.args) {
-		av.errors = append(av.errors, missingArgErr(av.argIndex, "procedure"))
-		return ProcedureAtom{}, av
+		av.errors = append(av.errors, missingArgErr(av.argIndex, "function"))
+		return nil, av
 	}
 
-	if proc, ok := CastAtom[ProcedureAtom](av.args[av.argIndex]); ok {
+	if proc, ok := CastAtom[Function](av.args[av.argIndex]); ok {
 		av.argIndex++
 		return proc, av
 	}
 
-	av.errors = append(av.errors, argTypeErr(av.argIndex, "procedure", av.args[av.argIndex].Type()))
+	av.errors = append(av.errors, argTypeErr(av.argIndex, "function", av.args[av.argIndex].Type()))
 	av.argIndex++
-	return ProcedureAtom{}, av
+	return nil, av
 }
 
 func Get[T Atom](av *ArgValidator) (T, *ArgValidator) {
@@ -248,7 +248,7 @@ func GetVariadic[T Atom](av *ArgValidator) ([]T, *ArgValidator) {
 // KEYWORD ARGS
 
 func (av *ArgValidator) GetKeywordInt(key string) (int, *ArgValidator) {
-	atom, exists := av.kwargs.Elements[key]
+	atom, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
 		return 0, av
@@ -267,7 +267,7 @@ func (av *ArgValidator) GetKeywordInt(key string) (int, *ArgValidator) {
 }
 
 func (av *ArgValidator) GetKeywordFloat32(key string) (float32, *ArgValidator) {
-	atom, exists := av.kwargs.Elements[key]
+	atom, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
 		return 0, av
@@ -292,7 +292,7 @@ func (av *ArgValidator) GetKeywordFloat32(key string) (float32, *ArgValidator) {
 }
 
 func (av *ArgValidator) GetKeywordFloat64(key string) (float64, *ArgValidator) {
-	atom, exists := av.kwargs.Elements[key]
+	atom, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
 		return 0, av
@@ -317,7 +317,7 @@ func (av *ArgValidator) GetKeywordFloat64(key string) (float64, *ArgValidator) {
 }
 
 func (av *ArgValidator) GetKeywordVector(key string) (VectorAtom, *ArgValidator) {
-	atom, exists := av.kwargs.Elements[key]
+	atom, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
 		return VectorAtom{}, av
@@ -336,7 +336,7 @@ func (av *ArgValidator) GetKeywordVector(key string) (VectorAtom, *ArgValidator)
 func GetKeyword[T Atom](av *ArgValidator, key string) (T, *ArgValidator) {
 	var zero T
 
-	atom, exists := av.kwargs.Elements[key]
+	atom, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
 		return zero, av
@@ -361,7 +361,7 @@ func (av *ArgValidator) ExpectNoMoreArgs() *ArgValidator {
 			strconv.Itoa(av.argIndex)+"got "+strconv.Itoa(len(av.args)))
 	}
 
-	for key := range av.kwargs.Elements {
+	for key := range av.kwargs {
 		if !av.consumedKwargs[key] {
 			av.errors = append(av.errors, "unexpected keyword argument: "+key)
 		}

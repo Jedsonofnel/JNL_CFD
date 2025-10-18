@@ -1,12 +1,8 @@
 package jnlisp
 
 import (
-	"embed"
-	"fmt"
 	"io/fs"
-	"os"
 	"strings"
-	"sync"
 )
 
 // DOCUMENT BLOCKS FOR CONSUMPTION
@@ -28,158 +24,135 @@ type Block struct {
 	rawAST any
 }
 
-// CONTEXT TO MANAGE ENV
+// for helpers around display
+type ExecutionResponse []Block
+
+func (r ExecutionResponse) String() string {
+	var sb strings.Builder
+	for i := range r {
+		block := r[i]
+
+		for _, err := range block.Errors {
+			sb.WriteString(err.Error())
+			sb.WriteString("\n")
+		}
+
+		if len(block.Errors) == 0 && block.Result != nil {
+			sb.WriteString(block.Result.String())
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+// CONTEXT
 
 type Context struct {
-	env          *env
-	importedLibs map[string]bool
-	importPrefix string
+	userEnv   *env
+	importEnv *env
+
+	pkgRegistry map[string]Package
+	loadedPkgs  map[string]*env
+
+	stepBuf strings.Builder
 }
 
 func NewContext() *Context {
+	importEnv := newEnv(nil)
+	userEnv := newEnv(importEnv)
+
 	ctx := &Context{
-		env:          newStandardEnv(),
-		importedLibs: make(map[string]bool),
+		importEnv:   importEnv,
+		userEnv:     userEnv,
+		pkgRegistry: make(map[string]Package),
+		loadedPkgs:  make(map[string]*env),
+		stepBuf:     strings.Builder{},
 	}
-	ctx.ImportLibrary("core", "")
 
+	ctx.RegisterPackage(corePkg)
+
+	ctx.ImportPackage("core", "")
 	return ctx
-}
-
-func (c *Context) Extend() *Context {
-	localCtx := &Context{
-		env:          newEnv(c.env),
-		importedLibs: c.importedLibs,
-	}
-
-	return localCtx
-}
-
-// GLOBAL LIBRARY REGISTRY
-
-var libraryRegistry = make(map[string]Library)
-var registryMutex sync.RWMutex
-
-type Library struct {
-	Name     string
-	FS       embed.FS
-	Bindings map[string]ProcFunc
-	Atoms    map[string]Atom
-}
-
-func RegisterLibrary(lib Library) error {
-	registryMutex.Lock()
-	defer registryMutex.Unlock()
-
-	if _, exists := libraryRegistry[lib.Name]; exists {
-		return fmt.Errorf("library with name '%s' already exists", lib.Name)
-	}
-
-	libraryRegistry[lib.Name] = lib
-
-	return nil
 }
 
 // OTHER METHODS
 
-func (c *Context) BindProcedure(name string, proc ProcFunc) {
-	c.env.bind(name, ProcedureAtom{&Procedure{
-		proc: proc,
-		name: name,
-	}})
-}
-
-func (c *Context) BindAtom(name string, atom Atom) {
-	c.env.bind(name, atom)
-}
-
 func (c *Context) Reset() {
-	c.env = newStandardEnv()
+	c.importEnv = newEnv(nil)
+	c.userEnv = newEnv(c.importEnv)
 }
 
-func (c *Context) GetBinding(name string) (Atom, bool) {
-	return c.env.find(name)
-}
+// EXECUTION
+// can be in a step() for a REPL or execute() for all in one go
 
-// PARSING (for syntax highlighting etc)
+func (ctx *Context) Step(input string) (ExecutionResponse, string) {
+	ctx.stepBuf.WriteString(input)
+	tokens := tokenize(ctx.stepBuf.String())
 
-func ParseBytes(bytes []byte) []Block {
-	rr := Read(string(bytes))
-	return rr.blocks
-}
-
-// EVALUATING
-
-func (c *Context) EvalString(source string) []Block {
-	return c.evalDocument(source)
-}
-
-func (c *Context) EvalBytes(bytes []byte) []Block {
-	return c.evalDocument(string(bytes))
-}
-
-func (c *Context) EvalFile(contents string) ([]Block, error) {
-	content, err := os.ReadFile(contents)
-	if err != nil {
-		return nil, err
-	}
-	return c.evalDocument(string(content)), nil
-}
-
-func (c *Context) ImportLibrary(name, prefix string) Error {
-	if c.importedLibs[name] {
-		return nil // already imported
-	}
-
-	registryMutex.RLock()
-	lib, exists := libraryRegistry[name]
-	registryMutex.RUnlock()
-
-	if !exists {
-		return RuntimeError{Message: "library not found: " + name}
-	}
-
-	// bind library's procedures with prefix
-	for procName, procFunc := range lib.Bindings {
-		bindName := procName
-		if prefix != "" {
-			bindName = prefix + "/" + procName
+	missingDelims := ""
+	incomplete := true
+	for i := len(tokens) - 1; i >= 0; i-- {
+		if yes, delim := tokens[i].typ.isMissingDelim(); yes {
+			missingDelims = delim + missingDelims // prepend with missing delimeter
+		} else {
+			break // stop looking when no longer doable
 		}
-		c.BindProcedure(bindName, procFunc)
 	}
 
-	for atomName, atom := range lib.Atoms {
-		bindName := atomName
-		if prefix != "" {
-			bindName = prefix + "/" + atomName
+	if len(missingDelims) == 0 {
+		incomplete = false
+	}
+
+	for i := 0; i < len(tokens)-len(missingDelims); i++ {
+		if tokens[i].typ.isError() {
+			incomplete = false
 		}
-		c.BindAtom(bindName, atom)
 	}
 
-	oldPrefix := c.importPrefix
-	c.importPrefix = prefix
-	defer func() {
-		c.importPrefix = oldPrefix
-	}()
-
-	// execute library source in SAME environment
-	err := c.evalEmbeddedDocuments(lib.FS)
-	if err != nil {
-		return RuntimeError{Message: "library filesystem error: " + err.Error()}
+	// if ending on a double newline is definitely complete
+	if strings.HasSuffix(strings.TrimRight(input, " \t"), "\n\n") {
+		incomplete = false
 	}
 
-	c.importedLibs[name] = true
-	return nil
+	if incomplete {
+		return nil, missingDelims
+	}
+
+	blocks := parse(ctx.stepBuf.String(), tokens)
+	ctx.stepBuf.Reset()
+
+	blocks = ctx.executeWithEnv(blocks, ctx.userEnv)
+	ctx.bindIt(blocks)
+
+	return blocks, ""
 }
 
-// IMPLEMENTATION
+func (ctx *Context) Execute(input string) ExecutionResponse {
+	tokens := tokenize(input)
+	blocks := parse(input, tokens)
+	blocks = ctx.executeWithEnv(blocks, ctx.userEnv)
+	ctx.bindIt(blocks)
+	return blocks
+}
 
-func (c *Context) evalDocument(src string) []Block {
-	rr := Read(src)
+func (ctx *Context) bindIt(blocks []Block) {
+	if len(blocks) == 0 {
+		return
+	}
+
+	last := blocks[len(blocks)-1]
+	if len(last.Errors) > 0 || last.Result == nil {
+		return
+	}
+
+	ctx.userEnv.bind("it", last.Result)
+}
+
+// allows for specific environment for usage with package importing
+func (ctx *Context) executeWithEnv(blocks []Block, env *env) []Block {
 	var codeBlocks []Block
-
-	for i := range rr.blocks {
-		b := rr.blocks[i]
+	for i := range blocks {
+		b := blocks[i]
 
 		if b.Type != "code" || len(b.Errors) > 0 {
 			continue
@@ -191,7 +164,7 @@ func (c *Context) evalDocument(src string) []Block {
 			continue
 		}
 
-		result, err := eval(elaboratedAST, c)
+		result, err := ctx.eval(elaboratedAST, env)
 		if result != nil {
 			b.Result = result
 		}
@@ -205,10 +178,12 @@ func (c *Context) evalDocument(src string) []Block {
 	return codeBlocks
 }
 
-func (c *Context) evalEmbeddedDocuments(fsys embed.FS) error {
-	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+func (ctx *Context) getFSSourceCode(fsys fs.FS) ([]string, Error) {
+	var fileContents []string
+
+	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return newFSError(path, "walk", err)
 		}
 
 		if d.IsDir() || !strings.HasSuffix(path, ".jnl") {
@@ -217,11 +192,15 @@ func (c *Context) evalEmbeddedDocuments(fsys embed.FS) error {
 
 		content, err := fs.ReadFile(fsys, path)
 		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", path, err)
+			return newFSError(path, "read", err)
 		}
-
-		_ = c.evalDocument(string(content))
-
+		fileContents = append(fileContents, string(content))
 		return nil
 	})
+
+	if err != nil {
+		return nil, err.(FileSystemError)
+	}
+
+	return fileContents, nil
 }

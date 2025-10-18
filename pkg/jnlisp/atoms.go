@@ -71,37 +71,29 @@ type StringAtom struct{ Value string }
 func (s StringAtom) Type() string   { return "string" }
 func (s StringAtom) String() string { return s.Value }
 
-type ProcedureAtom struct{ *Procedure }
-
-func (p ProcedureAtom) Type() string { return "procedure" }
-func (p ProcedureAtom) String() string {
-	// TODO: maybe add a pretty print of params
-	return "#<procedure:" + p.name + ">"
-}
-
 // COMPOUND DATA TYPES
 
-type VectorAtom struct{ Elements []Atom }
+type VectorAtom []Atom
 
 func (v VectorAtom) Type() string { return "vector" }
 func (v VectorAtom) String() string {
 	var parts []string
-	for _, elem := range v.Elements {
+	for _, elem := range v {
 		parts = append(parts, elem.String())
 	}
 	return "[" + strings.Join(parts, " ") + "]"
 }
 
 func (v VectorAtom) Length() int {
-	return len(v.Elements)
+	return len(v)
 }
 
-type TableAtom struct{ Elements map[string]Atom }
+type TableAtom map[string]Atom
 
 func (t TableAtom) Type() string { return "table" }
 func (t TableAtom) String() string {
 	var parts []string
-	for k, v := range t.Elements {
+	for k, v := range t {
 		parts = append(parts, ":"+k+" "+v.String())
 	}
 	return "{" + strings.Join(parts, " ") + "}"
@@ -114,12 +106,12 @@ type SymbolAtom struct{ Name string }
 func (s SymbolAtom) Type() string   { return "symbol" }
 func (s SymbolAtom) String() string { return s.Name }
 
-type ListAtom struct{ Elements []Atom }
+type ListAtom []Atom
 
 func (l ListAtom) Type() string { return "list" }
 func (l ListAtom) String() string {
 	var parts []string
-	for _, elem := range l.Elements {
+	for _, elem := range l {
 		parts = append(parts, elem.String())
 	}
 	return "(" + strings.Join(parts, " ") + ")"
@@ -132,8 +124,8 @@ func atomToRaw(atom Atom) (any, Error) {
 	case SymbolAtom:
 		return symbol(a.Name), nil
 	case ListAtom:
-		raw := make(listRaw, len(a.Elements))
-		for i, elem := range a.Elements {
+		raw := make(listRaw, len(a))
+		for i, elem := range a {
 			r, err := atomToRaw(elem)
 			if err != nil {
 				return nil, err
@@ -142,8 +134,8 @@ func atomToRaw(atom Atom) (any, Error) {
 		}
 		return raw, nil
 	case VectorAtom:
-		raw := make(vectorRaw, len(a.Elements))
-		for i, elem := range a.Elements {
+		raw := make(vectorRaw, len(a))
+		for i, elem := range a {
 			r, err := atomToRaw(elem)
 			if err != nil {
 				return nil, err
@@ -152,8 +144,8 @@ func atomToRaw(atom Atom) (any, Error) {
 		}
 		return raw, nil
 	case TableAtom:
-		raw := make(tableRaw, 0, len(a.Elements)*2)
-		for k, v := range a.Elements {
+		raw := make(tableRaw, 0, len(a)*2)
+		for k, v := range a {
 			raw = append(raw, keyword(k))
 			vraw, err := atomToRaw(v)
 			if err != nil {
@@ -168,10 +160,6 @@ func atomToRaw(atom Atom) (any, Error) {
 		return a.Value, nil
 	case StringAtom:
 		return a.Value, nil
-	case ProcedureAtom:
-		return nil, RuntimeError{
-			Message: "cannot convert procedure to raw AST",
-		}
 	default:
 		return nil, RuntimeError{
 			Message: "cannot convert " + a.Type() + " to raw AST",
