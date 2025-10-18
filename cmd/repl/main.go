@@ -22,7 +22,7 @@ func main() {
 	ctx := jnlisp.NewContext()
 
 	fmt.Print("JNLisp REPL\r\n")
-	fmt.Print("Ctrl-c to quit\r\n")
+	fmt.Print("Ctrl-d to quit, Ctrl-l to clear, Ctrl-c to cancel line\r\n")
 
 	for {
 		result, shouldExit := readCompleteForm(ctx)
@@ -34,7 +34,7 @@ func main() {
 }
 
 func readCompleteForm(ctx *jnlisp.Context) (string, bool) {
-	prompt := "> "
+	prompt := ctx.ReplPrompt("")
 
 	for {
 		line, interrupt := readline(prompt)
@@ -48,13 +48,13 @@ func readCompleteForm(ctx *jnlisp.Context) (string, bool) {
 		}
 
 		line += "\n"
-		blocks, promptDisplay := ctx.Step(line)
+		blocks, missingDelims := ctx.Step(line)
 
 		if blocks != nil { // input is complete
 			return blocks.String(), false
 		}
 
-		prompt = promptDisplay + "> "
+		prompt = ctx.ReplPrompt(missingDelims)
 	}
 }
 

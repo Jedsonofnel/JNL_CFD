@@ -2,6 +2,7 @@ package jnlisp
 
 import (
 	"io/fs"
+	"strconv"
 	"strings"
 )
 
@@ -54,7 +55,8 @@ type Context struct {
 	pkgRegistry map[string]Package
 	loadedPkgs  map[string]*env
 
-	stepBuf strings.Builder
+	replBuf  strings.Builder
+	replLine int
 }
 
 func NewContext() *Context {
@@ -66,7 +68,8 @@ func NewContext() *Context {
 		userEnv:     userEnv,
 		pkgRegistry: make(map[string]Package),
 		loadedPkgs:  make(map[string]*env),
-		stepBuf:     strings.Builder{},
+		replBuf:     strings.Builder{},
+		replLine:    1,
 	}
 
 	ctx.RegisterPackage(corePkg)
@@ -78,19 +81,25 @@ func NewContext() *Context {
 	return ctx
 }
 
-// OTHER METHODS
+func (ctx *Context) Reset() {
+	ctx.importEnv = newEnv(nil)
+	ctx.userEnv = newEnv(ctx.importEnv)
+	ctx.replBuf.Reset()
+	ctx.replLine = 1
+}
 
-func (c *Context) Reset() {
-	c.importEnv = newEnv(nil)
-	c.userEnv = newEnv(c.importEnv)
+func (ctx *Context) ReplPrompt(missingDelims string) string {
+	prompt := "jnlisp:" + strconv.Itoa(ctx.replLine) + ":" + missingDelims + "> "
+	ctx.replLine++
+	return prompt
 }
 
 // EXECUTION
 // can be in a step() for a REPL or execute() for all in one go
 
 func (ctx *Context) Step(input string) (ExecutionResponse, string) {
-	ctx.stepBuf.WriteString(input)
-	tokens := tokenize(ctx.stepBuf.String())
+	ctx.replBuf.WriteString(input)
+	tokens := tokenize(ctx.replBuf.String())
 
 	missingDelims := ""
 	incomplete := true
@@ -115,7 +124,7 @@ func (ctx *Context) Step(input string) (ExecutionResponse, string) {
 	}
 
 	// if ending on a double newline is definitely complete
-	if strings.HasSuffix(strings.TrimRight(ctx.stepBuf.String(), " \t"), "\n\n") {
+	if strings.HasSuffix(strings.TrimRight(ctx.replBuf.String(), " \t"), "\n\n") {
 		incomplete = false
 	}
 
@@ -123,8 +132,8 @@ func (ctx *Context) Step(input string) (ExecutionResponse, string) {
 		return nil, missingDelims
 	}
 
-	blocks := parse(ctx.stepBuf.String(), tokens)
-	ctx.stepBuf.Reset()
+	blocks := parse(ctx.replBuf.String(), tokens)
+	ctx.replBuf.Reset()
 
 	blocks = ctx.executeWithEnv(blocks, ctx.userEnv)
 	ctx.bindIt(blocks)
