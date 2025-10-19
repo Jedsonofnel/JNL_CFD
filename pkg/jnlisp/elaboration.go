@@ -1,29 +1,29 @@
 package jnlisp
 
-func elaborate(raw any) (expr, Error) {
-	switch r := raw.(type) {
-	case symbol:
+func elaborate(sexp Sexp) (expr, Error) {
+	switch r := sexp.(type) {
+	case Symbol:
 		return symbolExpr{string(r)}, nil
-	case listRaw:
+	case List:
 		if len(r) == 0 {
 			return nil, ElaborationError{
 				Message: "cannot evaluate empty list ()",
 			}
 		}
 		return elaborateCall(r)
-	case vectorRaw:
+	case Vector:
 		return elaborateVector(r)
-	case tableRaw:
+	case Table:
 		return elaborateTable(r)
-	case bool, int, float32, float64, complex128, string, keyword:
+	case Boolean, Number, String, Keyword:
 		return literalExpr{r}, nil
 	default:
 		panic("UNEXPECTED ELABORATION TYPE")
 	}
 }
 
-func elaborateCall(list listRaw) (expr, Error) {
-	if head, ok := list[0].(symbol); ok {
+func elaborateCall(list List) (expr, Error) {
+	if head, ok := list[0].(Symbol); ok {
 		switch head {
 		case "define":
 			return elaborateDefine(list[1:])
@@ -53,7 +53,7 @@ func elaborateCall(list listRaw) (expr, Error) {
 	return callExpr{headExpr, args, kwargs}, nil
 }
 
-func elaborateVector(vector vectorRaw) (vectorExpr, Error) {
+func elaborateVector(vector Vector) (vectorExpr, Error) {
 	elements := make([]expr, 0)
 	for i := range vector {
 		elem, err := elaborate(vector[i])
@@ -66,41 +66,26 @@ func elaborateVector(vector vectorRaw) (vectorExpr, Error) {
 	return vectorExpr{elements}, nil
 }
 
-func elaborateTable(table tableRaw) (tableExpr, Error) {
-	if len(table)%2 != 0 {
-		return tableExpr{}, ElaborationError{
-			Message: "table literal expects an even number of elements (key-value pairs)",
-		}
-	}
-
+func elaborateTable(table Table) (tableExpr, Error) {
 	elements := make(map[string]expr)
-
-	for i := 0; i < len(table); i += 2 {
-		key, ok := table[i].(keyword)
-		if !ok {
-			return tableExpr{}, ElaborationError{
-				Message: "table key must be a :keyword",
-			}
-		}
-
-		expr, err := elaborate(table[i+1])
+	for kword, value := range table {
+		expr, err := elaborate(value)
 		if err != nil {
 			return tableExpr{}, err
 		}
 
-		elements[string(key)] = expr
+		elements[kword] = expr
 	}
 
 	return tableExpr{elements}, nil
 }
 
-func elaborateArgs(list listRaw) (args []expr, kwargs tableExpr, err Error) {
+func elaborateArgs(list List) (args []expr, kwargs tableExpr, err Error) {
 	args = make([]expr, 0)
-	kwargMap := make(map[string]expr)
 
 	i := 0
 	for i < len(list) {
-		if _, ok := list[i].(keyword); ok {
+		if _, ok := list[i].(Keyword); ok {
 			break // start parsing table
 		}
 
@@ -112,28 +97,46 @@ func elaborateArgs(list listRaw) (args []expr, kwargs tableExpr, err Error) {
 		i++
 	}
 
-	remainingArgs := make(tableRaw, len(list)-i)
+	// TODO remove this!
+	table := make(Table)
+	remainingArgs := make(List, len(list)-i)
 	copy(remainingArgs, list[i:])
 
-	kwargs, err = elaborateTable(remainingArgs)
+	if len(remainingArgs)%2 != 0 {
+		return args, kwargs, ElaborationError{
+			"table literal expects an even number of elements (key-value pairs)",
+		}
+	}
+
+	for i := 0; i < len(remainingArgs); i += 2 {
+		key, ok := remainingArgs[i].(Keyword)
+		if !ok {
+			return args, kwargs, ElaborationError{
+				"table key must be a :keyword",
+			}
+		}
+
+		table[string(key)] = remainingArgs[i+1]
+	}
+
+	kwargs, err = elaborateTable(table)
 	if err != nil {
 		return args, kwargs, err
 	}
 
-	kwargs = tableExpr{kwargMap}
 	return args, kwargs, nil
 }
 
 // SPECIAL FORM ELABORATION
 
-func elaborateDefine(args listRaw) (defineExpr, Error) {
+func elaborateDefine(args List) (defineExpr, Error) {
 	if len(args) != 2 {
 		return defineExpr{}, ElaborationError{
 			Message: "define expects 2 arguments (symbol binding)",
 		}
 	}
 
-	sym, ok := args[0].(symbol)
+	sym, ok := args[0].(Symbol)
 	if !ok {
 		return defineExpr{}, ElaborationError{
 			Message: "define expects a symbol as its first argument",
@@ -148,14 +151,14 @@ func elaborateDefine(args listRaw) (defineExpr, Error) {
 	return defineExpr{sym, binding}, nil
 }
 
-func elaborateLambda(args listRaw) (lambdaExpr, Error) {
+func elaborateLambda(args List) (lambdaExpr, Error) {
 	if len(args) != 2 {
 		return lambdaExpr{}, ElaborationError{
 			Message: "lambda expects 2 arguments ((arguments...) body)",
 		}
 	}
 
-	argsList, ok := args[0].(listRaw)
+	argsList, ok := args[0].(List)
 	if !ok {
 		return lambdaExpr{}, ElaborationError{
 			Message: "lambda expects a list as its first argument",
@@ -163,10 +166,10 @@ func elaborateLambda(args listRaw) (lambdaExpr, Error) {
 	}
 
 	// get all the lambda arguments as symbols
-	allArgs := make([]symbol, len(argsList))
+	allArgs := make([]Symbol, len(argsList))
 
 	for i := range argsList {
-		if sym, ok := argsList[i].(symbol); ok {
+		if sym, ok := argsList[i].(Symbol); ok {
 			allArgs[i] = sym
 			continue
 		}
@@ -176,8 +179,8 @@ func elaborateLambda(args listRaw) (lambdaExpr, Error) {
 	}
 
 	// then split them if there's an ampersand
-	var positionalArgs []symbol
-	var kwargs []symbol
+	var positionalArgs []Symbol
+	var kwargs []Symbol
 
 	i := 0
 	for i < len(argsList) {
@@ -201,7 +204,7 @@ func elaborateLambda(args listRaw) (lambdaExpr, Error) {
 	return lambdaExpr{positionalArgs, kwargs, body}, nil
 }
 
-func elaborateIf(args listRaw) (ifExpr, Error) {
+func elaborateIf(args List) (ifExpr, Error) {
 	if len(args) != 3 {
 		return ifExpr{}, ElaborationError{
 			Message: "if expects 3 arguments (predicate consequent alternative)",
@@ -226,7 +229,7 @@ func elaborateIf(args listRaw) (ifExpr, Error) {
 	return ifExpr{predicate, consequent, alternative}, nil
 }
 
-func elaborateBegin(args listRaw) (beginExpr, Error) {
+func elaborateBegin(args List) (beginExpr, Error) {
 	exprs := make([]expr, len(args))
 	for i := range args {
 		bodyExpr, err := elaborate(args[i])
@@ -239,14 +242,14 @@ func elaborateBegin(args listRaw) (beginExpr, Error) {
 	return beginExpr{exprs}, nil
 }
 
-func elaborateSetBang(args listRaw) (setBangExpr, Error) {
+func elaborateSetBang(args List) (setBangExpr, Error) {
 	if len(args) != 2 {
 		return setBangExpr{}, ElaborationError{
 			Message: "set! expects 2 arguments (name binding)",
 		}
 	}
 
-	sym, ok := args[0].(symbol)
+	sym, ok := args[0].(Symbol)
 	if !ok {
 		return setBangExpr{}, ElaborationError{
 			Message: "set! expects a symbol for its first argument",
@@ -261,14 +264,14 @@ func elaborateSetBang(args listRaw) (setBangExpr, Error) {
 	return setBangExpr{sym, binding}, nil
 }
 
-func elaborateImport(args listRaw) (importExpr, Error) {
+func elaborateImport(args List) (importExpr, Error) {
 	if !(len(args) == 2 || len(args) == 1) {
 		return importExpr{}, ElaborationError{
 			Message: "import expects 1 or 2 arguments (library-name prefix)",
 		}
 	}
 
-	libraryName, ok := args[0].(string)
+	libraryName, ok := args[0].(String)
 	if !ok {
 		return importExpr{}, ElaborationError{
 			Message: "import expects a string for its first argument",
@@ -277,7 +280,7 @@ func elaborateImport(args listRaw) (importExpr, Error) {
 
 	prefix := libraryName
 	if len(args) == 2 {
-		prefix, ok = args[1].(string)
+		prefix, ok = args[1].(String)
 		if !ok {
 			return importExpr{}, ElaborationError{
 				Message: "import expects a string for its optional second argument",
@@ -285,7 +288,7 @@ func elaborateImport(args listRaw) (importExpr, Error) {
 		}
 	}
 
-	return importExpr{libraryName, prefix}, nil
+	return importExpr{string(libraryName), string(prefix)}, nil
 }
 
 // EXPRESSION TYPES - all corresponding to special forms, loosely based on
@@ -312,7 +315,7 @@ type symbolExpr struct {
 func (e symbolExpr) expr() {}
 
 type literalExpr struct {
-	value any
+	sexp Sexp
 }
 
 func (le literalExpr) expr() {}
@@ -330,7 +333,7 @@ type tableExpr struct {
 func (t tableExpr) expr() {}
 
 type quotedExpr struct {
-	quoted expr
+	quoted Sexp
 }
 
 func (q quotedExpr) expr() {}
@@ -338,15 +341,15 @@ func (q quotedExpr) expr() {}
 // SPECIAL FORMS
 
 type defineExpr struct {
-	name    symbol
+	name    Symbol
 	binding expr
 }
 
 func (de defineExpr) expr() {}
 
 type lambdaExpr struct {
-	args   []symbol
-	kwargs []symbol
+	args   []Symbol
+	kwargs []Symbol
 	fn     expr
 }
 
@@ -367,7 +370,7 @@ type beginExpr struct {
 func (be beginExpr) expr() {}
 
 type setBangExpr struct {
-	name    symbol
+	name    Symbol
 	binding expr
 }
 

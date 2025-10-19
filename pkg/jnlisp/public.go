@@ -16,13 +16,13 @@ type Block struct {
 	EndPos   Pos    `json:"endPos"`
 
 	// OPTIONAL: If evaluated
-	Result Atom
+	Result Sexp
 
 	// SyntaxErrors (parser) or RuntimeErrors (evaluator)
 	Errors []Error `json:"errors,omitempty"`
 
 	// OPTIONAL: If code block - the parsed expression AST
-	rawAST any
+	rawAST Sexp
 }
 
 // for helpers around display
@@ -174,7 +174,7 @@ func (ctx *Context) executeWithEnv(blocks []Block, env *env) []Block {
 		codeBlocks = append(codeBlocks, b)
 		block := &codeBlocks[len(codeBlocks)-1]
 
-		expandedAST, err := expand(block.rawAST)
+		expandedAST, err := expand(block.rawAST, 0)
 		if err != nil {
 			block.Errors = append(block.Errors, err)
 			continue

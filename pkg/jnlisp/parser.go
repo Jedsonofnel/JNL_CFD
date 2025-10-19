@@ -56,27 +56,10 @@ func isWhitespaceOnly(s string) bool {
 
 // PARSING CODE
 
-// basic types used throughout
-// string and number are just themselves
-type symbol string
-type keyword string
-
-func newSymbol(s string) symbol   { return symbol(s) }
-func newKeyword(s string) keyword { return keyword(s) }
-
-// compound raw types
-type listRaw []any
-type vectorRaw []any
-type tableRaw []any
-
-type errorRaw struct {
-	token token
-}
-
 // Creates a tree structure from tokens with no semantic analysis
-func parseCode(tokens []token, idx *int) (result any, errors []Error) {
+func parseCode(tokens []token, idx *int) (sexp Sexp, errors []Error) {
 	if *idx >= len(tokens) {
-		return result, errors
+		return sexp, errors
 	}
 
 	token := tokens[*idx]
@@ -84,41 +67,50 @@ func parseCode(tokens []token, idx *int) (result any, errors []Error) {
 
 	switch token.typ {
 	case tokenOpenList:
-		result, errors = parseList(tokens, idx)
+		sexp, errors = parseList(tokens, idx)
 	case tokenOpenVec:
-		result, errors = parseVector(tokens, idx)
+		sexp, errors = parseVector(tokens, idx)
 	case tokenOpenTable:
-		result, errors = parseTable(tokens, idx)
+		sexp, errors = parseTable(tokens, idx)
 	case tokenCloseList, tokenCloseVec, tokenCloseTable: // lexer catches these - shouldn't fire
-		errors = append(errors, newUnexpectedClosingTokenError(token))
-		result = errorRaw{token}
+		err := newUnexpectedClosingTokenError(token)
+		errors = append(errors, err)
+		sexp = err
 	case tokenNumber:
-		result = parseNumber(token.val)
+		sexp = parseNumber(token.val)
 	case tokenString:
-		result = token.val
+		sexp = String(token.val)
 	case tokenBool:
-		result = parseBool(token.val)
+		sexp = parseBool(token.val)
 	case tokenSymbol:
-		result = newSymbol(token.val)
+		sexp = Symbol(token.val)
 	case tokenKeyword:
-		result = newKeyword(token.val)
+		sexp = Symbol(token.val)
 	case tokenMissingCloseList,
 		tokenMissingCloseVec,
 		tokenMissingCloseTable,
 		tokenMissingCloseString,
 		tokenMalformedNumber,
-		tokenInvalidLiteral:
-		errors = append(errors, newSyntaxErrorFromToken(token))
-		result = errorRaw{token}
+		tokenInvalidLiteral,
+		tokenUnexpectedCloseList,
+		tokenUnexpectedCloseVec,
+		tokenUnexpectedCloseTable:
+		err := newSyntaxErrorFromToken(token)
+		errors = append(errors, err)
+		sexp = err
 	default:
-		errors = append(errors, newUnexpectedTokenError(token))
-		result = errorRaw{token}
+		err := newUnexpectedTokenError(token)
+		errors = append(errors, err)
+		sexp = err
 	}
 
-	return result, errors
+	return sexp, errors
 }
 
-func parseList(tokens []token, idx *int) (list listRaw, errors []Error) {
+func parseList(tokens []token, idx *int) (List, []Error) {
+	list := List{}
+	errors := []Error{}
+
 	for *idx < len(tokens) {
 		if tokens[*idx].typ == tokenCloseList {
 			*idx++
@@ -131,17 +123,20 @@ func parseList(tokens []token, idx *int) (list listRaw, errors []Error) {
 			break
 		}
 
-		childExp, childErrors := parseCode(tokens, idx)
+		childSexp, childErrors := parseCode(tokens, idx)
 		errors = append(errors, childErrors...)
-		if childExp != nil {
-			list = append(list, childExp)
+		if childSexp != nil {
+			list = append(list, childSexp)
 		}
 	}
 
 	return list, errors
 }
 
-func parseVector(tokens []token, idx *int) (vec vectorRaw, errors []Error) {
+func parseVector(tokens []token, idx *int) (Vector, []Error) {
+	vec := Vector{}
+	errors := []Error{}
+
 	for *idx < len(tokens) {
 		if tokens[*idx].typ == tokenCloseVec {
 			*idx++
@@ -154,17 +149,22 @@ func parseVector(tokens []token, idx *int) (vec vectorRaw, errors []Error) {
 			break
 		}
 
-		childExp, childErrors := parseCode(tokens, idx)
+		childSexp, childErrors := parseCode(tokens, idx)
 		errors = append(errors, childErrors...)
-		if childExp != nil {
-			vec = append(vec, childExp)
+		if childSexp != nil {
+			vec = append(vec, childSexp)
 		}
 	}
 
 	return vec, errors
 }
 
-func parseTable(tokens []token, idx *int) (table tableRaw, errors []Error) {
+func parseTable(tokens []token, idx *int) (Sexp, []Error) {
+	table := make(Table)
+	errors := []Error{}
+
+	firstIndex := *idx
+	var tableElements []Sexp
 	for *idx < len(tokens) {
 		if tokens[*idx].typ == tokenCloseTable {
 			*idx++
@@ -177,34 +177,52 @@ func parseTable(tokens []token, idx *int) (table tableRaw, errors []Error) {
 			break
 		}
 
-		childExp, childErrors := parseCode(tokens, idx)
+		childSexp, childErrors := parseCode(tokens, idx)
 		errors = append(errors, childErrors...)
-		if childExp != nil {
-			table = append(table, childExp)
+		if childSexp != nil {
+			tableElements = append(tableElements, childSexp)
 		}
+	}
+
+	tableErr := SyntaxError{Pos: tokens[firstIndex].pos}
+	if len(tableElements)%2 != 0 {
+		tableErr.Message = "table literal expects an even number of elements (key-value pairs)"
+		errors = append(errors, tableErr)
+		return tableErr, errors
+	}
+
+	for i := 0; i < len(tableElements); i += 2 {
+		key, ok := tableElements[i].(Keyword)
+		if !ok {
+			tableErr.Message = "table key must be a :keyword"
+			errors = append(errors, tableErr)
+			return tableErr, errors
+		}
+
+		table[string(key)] = tableElements[i+1]
 	}
 
 	return table, errors
 }
 
-func parseBool(t string) bool {
+func parseBool(t string) Boolean {
 	if t == "#f" || t == "#F" {
 		return false
 	}
 	return true
 }
 
-func parseNumber(t string) any {
+func parseNumber(t string) Number {
 	if strings.ContainsAny(t, "ij") {
 		c, _ := strconv.ParseComplex(t, 128)
-		return c
+		return Complex(c)
 	}
 
 	if strings.ContainsAny(t, ".eE") {
-		f, _ := strconv.ParseFloat(t, 32)
-		return float64(f)
+		f, _ := strconv.ParseFloat(t, 64)
+		return Float(f)
 	}
 
 	i, _ := strconv.Atoi(t)
-	return i
+	return Int(i)
 }

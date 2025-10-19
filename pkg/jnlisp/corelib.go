@@ -24,145 +24,106 @@ var corePkg = Package{
 		"vector-ref":    SimpleNative(lispVectorRef),
 		"vector-length": SimpleNative(lispVectorLength),
 	},
-	Atoms: map[string]Atom{},
+	Sexps: map[string]Sexp{},
 }
 
 // STANDARD MATHS
 
-func lispAdd(args []Atom, _ TableAtom) (Atom, Error) {
-	var values []any
-	for _, arg := range args {
-		if num, ok := CastAtom[NumberAtom](arg); ok {
-			values = append(values, num.Value)
-		} else {
-			return nil, RuntimeError{Message: "+ expects numbers, got " + arg.Type()}
-		}
-	}
-
-	castArgs, err := toComplex(values, "-")
-	if err != nil {
+func lispAdd(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	nums := v.GetVariadicComplex128()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate("/"); err != nil {
 		return nil, err
 	}
 
 	var result complex128 = 0
-	for _, arg := range castArgs {
+	for _, arg := range nums {
 		result += arg
 	}
 
 	return simplifyNumber(result), nil
 }
 
-func lispSubtract(args []Atom, _ TableAtom) (Atom, Error) {
-	if len(args) == 0 {
-		return nil, RuntimeError{Message: "- expects at least 1 argument"}
-	}
-
-	var values []any
-	for _, arg := range args {
-		if num, ok := CastAtom[NumberAtom](arg); ok {
-			values = append(values, num.Value)
-		} else {
-			return nil, RuntimeError{Message: "- expects numbers, got " + arg.Type()}
-		}
-	}
-
-	castArgs, err := toComplex(values, "-")
-	if err != nil {
+func lispSubtract(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	nums := v.GetVariadicComplex128()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate("/"); err != nil {
 		return nil, err
 	}
 
-	if len(castArgs) == 1 {
-		return simplifyNumber(-castArgs[0]), nil
+	if len(nums) == 0 {
+		return nil, RuntimeError{Message: "- expects at least 1 argument"}
 	}
 
-	var result complex128 = castArgs[0]
-	for i := 1; i < len(castArgs); i++ {
-		result -= castArgs[i]
+	if len(nums) == 1 {
+		return simplifyNumber(-nums[0]), nil
+	}
+
+	var result complex128 = nums[0]
+	for i := 1; i < len(nums); i++ {
+		result -= nums[i]
 	}
 
 	return simplifyNumber(result), nil
 }
 
-func lispMultiply(args []Atom, _ TableAtom) (Atom, Error) {
-	var values []any
-	for _, arg := range args {
-		if num, ok := CastAtom[NumberAtom](arg); ok {
-			values = append(values, num.Value)
-		} else {
-			return nil, RuntimeError{Message: "* expects numbers, got " + arg.Type()}
-		}
-	}
-
-	castArgs, err := toComplex(values, "*")
-	if err != nil {
+func lispMultiply(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	nums := v.GetVariadicComplex128()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate("/"); err != nil {
 		return nil, err
 	}
 
 	var result complex128 = 1
-	for _, arg := range castArgs {
+	for _, arg := range nums {
 		result *= arg
 	}
 
 	return simplifyNumber(result), nil
 }
 
-func lispDivide(args []Atom, _ TableAtom) (Atom, Error) {
-	if len(args) == 0 {
-		return nil, RuntimeError{Message: "/ requires at least 1 argument"}
-	}
-
-	var values []any
-	for _, arg := range args {
-		if num, ok := CastAtom[NumberAtom](arg); ok {
-			values = append(values, num.Value)
-		} else {
-			return nil, RuntimeError{Message: "/ expects numbers, got " + arg.Type()}
-		}
-	}
-
-	castArgs, err := toComplex(values, "/")
-	if err != nil {
+func lispDivide(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	nums := v.GetVariadicComplex128()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate("/"); err != nil {
 		return nil, err
 	}
 
-	if len(castArgs) == 1 {
-		return simplifyNumber(1 / castArgs[0]), nil
+	if len(nums) == 0 {
+		return nil, RuntimeError{Message: "/ requires at least 1 argument"}
 	}
 
-	var result complex128 = castArgs[0]
-	for i := 1; i < len(castArgs); i++ {
-		result /= castArgs[i]
+	if len(nums) == 1 {
+		return simplifyNumber(1 / nums[0]), nil
+	}
+
+	var result complex128 = nums[0]
+	for i := 1; i < len(nums); i++ {
+		result /= nums[i]
 	}
 
 	return simplifyNumber(result), nil
 }
 
-func lispModulo(args []Atom, _ TableAtom) (Atom, Error) {
-	if len(args) != 2 {
-		return nil, RuntimeError{Message: "%% requires exactly 2 arguments"}
+func lispModulo(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	num1 := v.GetInt()
+	num2 := v.GetInt()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate("%%"); err != nil {
+		return nil, err
 	}
 
-	var values []any
-	for _, arg := range args {
-		if num, ok := CastAtom[NumberAtom](arg); ok {
-			values = append(values, num.Value)
-		} else {
-			return nil, RuntimeError{Message: "%% expects numbers, got " + arg.Type()}
-		}
-	}
-
-	arg1, ok1 := values[0].(int)
-	arg2, ok2 := values[1].(int)
-	if !ok1 || !ok2 {
-		return nil, RuntimeError{Message: "%% expects integer arguments"}
-	}
-
-	return NumberAtom{arg1 % arg2}, nil
+	return Int(num1 % num2), nil
 }
 
 // BASIC COMPARATORS
 
-func lispEqual(args []Atom, _ TableAtom) (Atom, Error) {
+func lispEqual(args []Sexp, kwargs Table) (Sexp, Error) {
 	if len(args) < 2 {
 		return nil, RuntimeError{
 			Message: "= expects at least 2 arguments, got " + strconv.Itoa(len(args)),
@@ -171,58 +132,47 @@ func lispEqual(args []Atom, _ TableAtom) (Atom, Error) {
 
 	first := args[0]
 	for i := 1; i < len(args); i++ {
-		if !atomsEqual(first, args[i]) {
-			return BooleanAtom{false}, nil
+		if !sexpsEqual(first, args[i]) {
+			return nil, nil
 		}
 	}
 
-	return BooleanAtom{true}, nil
+	return Boolean(true), nil
 }
 
-func lispGreaterThan(args []Atom, _ TableAtom) (Atom, Error) {
-	if len(args) != 2 {
-		return nil, RuntimeError{
-			Message: "> expects at least 2 arguments, got " + strconv.Itoa(len(args)),
-		}
-	}
-
-	var values []any
-	for _, arg := range args {
-		if num, ok := CastAtom[NumberAtom](arg); ok {
-			values = append(values, num.Value)
-		} else {
-			return nil, RuntimeError{Message: "> expects numbers, got " + arg.Type()}
-		}
-	}
-
-	castArgs, err := toRational(values, ">")
-	if err != nil {
+func lispGreaterThan(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	num1 := v.GetFloat64()
+	num2 := v.GetFloat64()
+	v.ExpectNoMoreArgs()
+	if err := v.Validate(">"); err != nil {
 		return nil, err
 	}
 
-	return BooleanAtom{castArgs[0] > castArgs[1]}, nil
+	return Boolean(num1 > num2), nil
 }
 
-func lispNot(args []Atom, _ TableAtom) (Atom, Error) {
+func lispNot(args []Sexp, _ Table) (Sexp, Error) {
 	if len(args) != 1 {
 		return nil, RuntimeError{Message: "not expects at least 1 argument"}
 	}
 
-	boolean, ok := args[0].(BooleanAtom)
+	boolean, ok := args[0].(Boolean)
 	if !ok {
 		return nil, RuntimeError{Message: "not expects a boolean"}
 	}
 
-	return BooleanAtom{!boolean.Value}, nil
+	return !boolean, nil
 }
 
 // VECTOR OPERATIONS
 
-func lispVectorRef(args []Atom, kwargs TableAtom) (Atom, Error) {
-	vec, v := ValidateArgs(args, kwargs).GetVector()
-	index, v := v.GetInt()
+func lispVectorRef(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	vec := v.GetVector()
+	index := v.GetInt()
 
-	v = v.ExpectNoMoreArgs()
+	v.ExpectNoMoreArgs()
 	if err := v.Validate("vector-ref"); err != nil {
 		return nil, err
 	}
@@ -236,25 +186,26 @@ func lispVectorRef(args []Atom, kwargs TableAtom) (Atom, Error) {
 	return vec[index], nil
 }
 
-func lispVectorLength(args []Atom, _ TableAtom) (Atom, Error) {
-	vec, v := ValidateArgs(args, TableAtom{}).GetVector()
-	v = v.ExpectNoMoreArgs()
+func lispVectorLength(args []Sexp, _ Table) (Sexp, Error) {
+	v := ValidateArgs(args, nil)
+	vec := v.GetVector()
+	v.ExpectNoMoreArgs()
 
 	if err := v.Validate("vector-length"); err != nil {
 		return nil, err
 	}
 
-	return NumberAtom{len(vec)}, nil
+	return Int(len(vec)), nil
 }
 
 // HELPERS
 
-func atomsEqual(a, b Atom) bool {
-	if numA, okA := CastAtom[NumberAtom](a); okA {
-		if numB, okB := CastAtom[NumberAtom](b); okB {
-			values := []any{numA.Value, numB.Value}
-			castArgs, _ := toComplex(values, "")
-			return castArgs[0] == castArgs[1]
+func sexpsEqual(a, b Sexp) bool {
+	if numA, okA := a.(Number); okA {
+		if numB, okB := b.(Number); okB {
+			complexA := numA.ToComplex128()
+			complexB := numB.ToComplex128()
+			return complexA == complexB
 		}
 		return false // they are different types
 	}
@@ -264,10 +215,14 @@ func atomsEqual(a, b Atom) bool {
 	}
 
 	switch va := a.(type) {
-	case BooleanAtom:
-		return va.Value == b.(BooleanAtom).Value
-	case StringAtom:
-		return va.Value == b.(StringAtom).Value
+	case Boolean:
+		return va == b.(Boolean)
+	case String:
+		return va == b.(String)
+	case Keyword:
+		return va == b.(Keyword)
+	case Symbol:
+		return va == b.(Symbol)
 	default:
 		return false
 	}
@@ -313,13 +268,13 @@ func toComplex(args []any, name string) ([]complex128, Error) {
 	return cast, nil
 }
 
-func simplifyNumber(c complex128) Atom {
+func simplifyNumber(c complex128) Sexp {
 	if imag(c) == 0 {
 		realPart := real(c)
 		if realPart == float64(int(realPart)) {
-			return NumberAtom{int(realPart)} // Return int if whole number
+			return Int(realPart) // Return int if whole number
 		}
-		return NumberAtom{realPart} // Return float64
+		return Float(realPart) // Return float64
 	}
-	return NumberAtom{c} // Return complex128
+	return Complex(c) // Return complex128
 }

@@ -7,14 +7,14 @@ import (
 
 // Argument validation helpers
 type ArgValidator struct {
-	args           []Atom
-	kwargs         TableAtom
+	args           []Sexp
+	kwargs         Table
 	argIndex       int
 	consumedKwargs map[string]bool
 	errors         []string
 }
 
-func ValidateArgs(args []Atom, kwargs TableAtom) *ArgValidator {
+func ValidateArgs(args []Sexp, kwargs Table) *ArgValidator {
 	return &ArgValidator{
 		args:           args,
 		kwargs:         kwargs,
@@ -22,154 +22,137 @@ func ValidateArgs(args []Atom, kwargs TableAtom) *ArgValidator {
 	}
 }
 
-func (av *ArgValidator) GetString() (string, *ArgValidator) {
+func (av *ArgValidator) GetString() string {
 	if av.argIndex >= len(av.args) {
 		av.errors = append(av.errors, missingArgErr(av.argIndex, "string"))
-		return "", av
+		return ""
 	}
 
-	if str, ok := CastAtom[StringAtom](av.args[av.argIndex]); ok {
+	if str, ok := av.args[av.argIndex].(String); ok {
 		av.argIndex++
-		return str.Value, av
+		return string(str)
 	}
 
 	av.errors = append(av.errors, argTypeErr(av.argIndex, "string", av.args[av.argIndex].Type()))
 	av.argIndex++
-	return "", av
+	return ""
 }
 
-func (av *ArgValidator) GetInt() (int, *ArgValidator) {
+func (av *ArgValidator) GetInt() int {
 	if av.argIndex >= len(av.args) {
 		av.errors = append(av.errors, missingArgErr(av.argIndex, "integer"))
-		return 0, av
+		return 0
 	}
 
-	if num, ok := CastAtom[NumberAtom](av.args[av.argIndex]); ok {
+	if num, ok := av.args[av.argIndex].(Number); ok {
 		av.argIndex++
-		if i, ok := num.Value.(int); ok {
-			return i, av
+		if i, ok := num.ToInt(); ok {
+			return i
 		}
 	}
 
 	av.errors = append(av.errors, argTypeErr(av.argIndex, "integer", av.args[av.argIndex].Type()))
 	av.argIndex++
-	return 0, av
+	return 0
 }
 
-func (av *ArgValidator) GetFloat64() (float64, *ArgValidator) {
+func (av *ArgValidator) GetFloat64() float64 {
 	if av.argIndex >= len(av.args) {
 		av.errors = append(av.errors, missingArgErr(av.argIndex, "number"))
-		return 0, av
+		return 0
 	}
 
-	if num, ok := CastAtom[NumberAtom](av.args[av.argIndex]); ok {
+	if num, ok := av.args[av.argIndex].(Number); ok {
 		av.argIndex++
-		if f, ok := num.Value.(float64); ok {
-			return f, av
-		}
-		if f, ok := num.Value.(float32); ok {
-			return float64(f), av
-		}
-		if i, ok := num.Value.(int); ok {
-			return float64(i), av
+		if f, ok := num.ToFloat64(); ok {
+			return f
 		}
 	}
 
 	av.errors = append(av.errors, argTypeErr(av.argIndex, "number", av.args[av.argIndex].Type()))
 	av.argIndex++
-	return 0, av
+	return 0
 }
 
-func (av *ArgValidator) GetFloat32() (float32, *ArgValidator) {
+func (av *ArgValidator) GetFloat32() float32 {
 	if av.argIndex >= len(av.args) {
 		av.errors = append(av.errors, missingArgErr(av.argIndex, "number"))
-		return 0, av
+		return 0
 	}
 
-	if num, ok := CastAtom[NumberAtom](av.args[av.argIndex]); ok {
+	if num, ok := av.args[av.argIndex].(Number); ok {
 		av.argIndex++
-		if f, ok := num.Value.(float64); ok {
-			return float32(f), av
-		}
-		if f, ok := num.Value.(float32); ok {
-			return f, av
-		}
-		if i, ok := num.Value.(int); ok {
-			return float32(i), av
+		if f, ok := num.ToFloat64(); ok {
+			return float32(f)
 		}
 	}
 
 	av.errors = append(av.errors, argTypeErr(av.argIndex, "number", av.args[av.argIndex].Type()))
 	av.argIndex++
-	return 0, av
+	return 0
 }
 
-func (av *ArgValidator) GetVector() (VectorAtom, *ArgValidator) {
+func (av *ArgValidator) GetVector() Vector {
 	if av.argIndex >= len(av.args) {
 		av.errors = append(av.errors, missingArgErr(av.argIndex, "vector"))
-		return VectorAtom{}, av
+		return nil
 	}
 
-	if vec, ok := CastAtom[VectorAtom](av.args[av.argIndex]); ok {
+	if vec, ok := av.args[av.argIndex].(Vector); ok {
 		av.argIndex++
-		return vec, av
+		return vec
 	}
 
 	av.errors = append(av.errors, argTypeErr(av.argIndex, "vector", av.args[av.argIndex].Type()))
 	av.argIndex++
-	return VectorAtom{}, av
+	return nil
 }
 
-func (av *ArgValidator) GetFunction() (Function, *ArgValidator) {
+func (av *ArgValidator) GetFunction() Function {
 	if av.argIndex >= len(av.args) {
 		av.errors = append(av.errors, missingArgErr(av.argIndex, "function"))
-		return nil, av
+		return nil
 	}
 
-	if proc, ok := CastAtom[Function](av.args[av.argIndex]); ok {
+	if proc, ok := av.args[av.argIndex].(Function); ok {
 		av.argIndex++
-		return proc, av
+		return proc
 	}
 
 	av.errors = append(av.errors, argTypeErr(av.argIndex, "function", av.args[av.argIndex].Type()))
 	av.argIndex++
-	return nil, av
+	return nil
 }
 
-func Get[T Atom](av *ArgValidator) (T, *ArgValidator) {
+func Get[T Sexp](av *ArgValidator) T {
 	var zero T
 
 	if av.argIndex >= len(av.args) {
 		av.errors = append(av.errors, missingArgErr(av.argIndex, zero.Type()))
-		return zero, av
+		return zero
 	}
 
-	if result, ok := CastAtom[T](av.args[av.argIndex]); ok {
+	if result, ok := av.args[av.argIndex].(T); ok {
 		av.argIndex++
-		return result, av
+		return result
 	}
 
 	av.errors = append(av.errors, argTypeErr(av.argIndex, zero.Type(), av.args[av.argIndex].Type()))
 	av.argIndex++
-	return zero, av
+	return zero
 }
 
 // VARIADIC ARGS
 
-func (av *ArgValidator) GetVariadicFloat32() ([]float32, *ArgValidator) {
+func (av *ArgValidator) GetVariadicFloat32() []float32 {
 	var floats []float32
 
 	// Process all remaining positional arguments
 	for av.argIndex < len(av.args) {
-		if num, ok := CastAtom[NumberAtom](av.args[av.argIndex]); ok {
-			switch v := num.Value.(type) {
-			case float64:
-				floats = append(floats, float32(v))
-			case float32:
-				floats = append(floats, v)
-			case int:
-				floats = append(floats, float32(v))
-			default:
+		if num, ok := av.args[av.argIndex].(Number); ok {
+			if f, ok := num.ToFloat64(); ok {
+				floats = append(floats, float32(f))
+			} else {
 				av.errors = append(av.errors, "arg "+strconv.Itoa(av.argIndex)+
 					" cannot convert to float64")
 				continue
@@ -182,30 +165,40 @@ func (av *ArgValidator) GetVariadicFloat32() ([]float32, *ArgValidator) {
 		av.argIndex++
 	}
 
-	return floats, av
+	return floats
 }
 
-func (av *ArgValidator) GetVariadicComplex128() ([]complex128, *ArgValidator) {
+func (av *ArgValidator) GetVariadicFloat64() []float64 {
+	var floats []float64
+
+	// Process all remaining positional arguments
+	for av.argIndex < len(av.args) {
+		if num, ok := av.args[av.argIndex].(Number); ok {
+			if f, ok := num.ToFloat64(); ok {
+				floats = append(floats, f)
+			} else {
+				av.errors = append(av.errors, "arg "+strconv.Itoa(av.argIndex)+
+					" cannot convert to float64")
+				continue
+			}
+		} else {
+			av.errors = append(av.errors, argTypeErr(av.argIndex, "number", av.args[av.argIndex].Type()))
+			av.argIndex++
+			continue
+		}
+		av.argIndex++
+	}
+
+	return floats
+}
+
+func (av *ArgValidator) GetVariadicComplex128() []complex128 {
 	var complexes []complex128
 
 	// Process all remaining positional arguments
 	for av.argIndex < len(av.args) {
-		if num, ok := CastAtom[NumberAtom](av.args[av.argIndex]); ok {
-			switch v := num.Value.(type) {
-			case float64:
-				complexes = append(complexes, complex(v, 0))
-			case float32:
-				complexes = append(complexes, complex(float64(v), 0))
-			case int:
-				complexes = append(complexes, complex(float64(v), 0))
-			case complex128:
-				complexes = append(complexes, v)
-			default:
-				av.errors = append(av.errors, "arg "+strconv.Itoa(av.argIndex)+
-					" cannot convert to float64")
-				av.argIndex++
-				continue
-			}
+		if num, ok := av.args[av.argIndex].(Number); ok {
+			complexes = append(complexes, num.ToComplex128())
 		} else {
 			av.errors = append(av.errors, argTypeErr(av.argIndex, "number", av.args[av.argIndex].Type()))
 			av.argIndex++
@@ -214,27 +207,27 @@ func (av *ArgValidator) GetVariadicComplex128() ([]complex128, *ArgValidator) {
 		av.argIndex++
 	}
 
-	return complexes, av
+	return complexes
 }
 
-func (av *ArgValidator) GetVariadicAtoms() ([]Atom, *ArgValidator) {
-	var atoms []Atom
+func (av *ArgValidator) GetVariadicSexps() []Sexp {
+	var sexps []Sexp
 
 	for av.argIndex < len(av.args) {
-		atoms = append(atoms, av.args[av.argIndex])
+		sexps = append(sexps, av.args[av.argIndex])
 		av.argIndex++
 	}
 
-	return atoms, av
+	return sexps
 }
 
-func GetVariadic[T Atom](av *ArgValidator) ([]T, *ArgValidator) {
+func GetVariadic[T Sexp](av *ArgValidator) []T {
 	var zero T
-	var atoms []T
+	var sexps []T
 
 	for av.argIndex < len(av.args) {
-		if arg, ok := CastAtom[T](av.args[av.argIndex]); ok {
-			atoms = append(atoms, arg)
+		if arg, ok := av.args[av.argIndex].(T); ok {
+			sexps = append(sexps, arg)
 		} else {
 			av.errors = append(av.errors, argTypeErr(
 				av.argIndex, zero.Type(), av.args[av.argIndex].Type()))
@@ -242,119 +235,107 @@ func GetVariadic[T Atom](av *ArgValidator) ([]T, *ArgValidator) {
 		av.argIndex++
 	}
 
-	return atoms, av
+	return sexps
 }
 
 // KEYWORD ARGS
 
-func (av *ArgValidator) GetKeywordInt(key string) (int, *ArgValidator) {
-	atom, exists := av.kwargs[key]
+func (av *ArgValidator) GetKeywordInt(key string) int {
+	sexp, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
-		return 0, av
+		return 0
 	}
 
 	av.consumedKwargs[key] = true
 
-	if num, ok := CastAtom[NumberAtom](atom); ok {
-		if i, ok := num.Value.(int); ok {
-			return i, av
+	if num, ok := sexp.(Number); ok {
+		if i, ok := num.ToInt(); ok {
+			return i
 		}
 	}
 
-	av.errors = append(av.errors, kwargTypeErr(key, "number", atom.Type()))
-	return 0, av
+	av.errors = append(av.errors, kwargTypeErr(key, "number", sexp.Type()))
+	return 0
 }
 
-func (av *ArgValidator) GetKeywordFloat32(key string) (float32, *ArgValidator) {
-	atom, exists := av.kwargs[key]
+func (av *ArgValidator) GetKeywordFloat32(key string) float32 {
+	sexp, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
-		return 0, av
+		return 0
 	}
 
 	av.consumedKwargs[key] = true
 
-	if num, ok := CastAtom[NumberAtom](atom); ok {
-		if i, ok := num.Value.(int); ok {
-			return float32(i), av
-		}
-		if f, ok := num.Value.(float64); ok {
-			return float32(f), av
-		}
-		if f, ok := num.Value.(float32); ok {
-			return f, av
+	if num, ok := sexp.(Number); ok {
+		if i, ok := num.ToFloat64(); ok {
+			return float32(i)
 		}
 	}
 
-	av.errors = append(av.errors, kwargTypeErr(key, "number", atom.Type()))
-	return 0, av
+	av.errors = append(av.errors, kwargTypeErr(key, "number", sexp.Type()))
+	return 0
 }
 
-func (av *ArgValidator) GetKeywordFloat64(key string) (float64, *ArgValidator) {
-	atom, exists := av.kwargs[key]
+func (av *ArgValidator) GetKeywordFloat64(key string) float64 {
+	sexp, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
-		return 0, av
+		return 0
 	}
 
 	av.consumedKwargs[key] = true
 
-	if num, ok := CastAtom[NumberAtom](atom); ok {
-		if i, ok := num.Value.(int); ok {
-			return float64(i), av
-		}
-		if f, ok := num.Value.(float64); ok {
-			return f, av
-		}
-		if f, ok := num.Value.(float32); ok {
-			return float64(f), av
+	if num, ok := sexp.(Number); ok {
+		if f, ok := num.ToFloat64(); ok {
+			return f
 		}
 	}
 
-	av.errors = append(av.errors, kwargTypeErr(key, "number", atom.Type()))
-	return 0, av
+	av.errors = append(av.errors, kwargTypeErr(key, "number", sexp.Type()))
+	return 0
 }
 
-func (av *ArgValidator) GetKeywordVector(key string) (VectorAtom, *ArgValidator) {
-	atom, exists := av.kwargs[key]
+func (av *ArgValidator) GetKeywordVector(key string) Vector {
+	sexp, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
-		return VectorAtom{}, av
+		return nil
 	}
 
 	av.consumedKwargs[key] = true
 
-	if vec, ok := CastAtom[VectorAtom](atom); ok {
-		return vec, av
+	if vec, ok := sexp.(Vector); ok {
+		return vec
 	}
 
-	av.errors = append(av.errors, kwargTypeErr(key, "vector", atom.Type()))
-	return VectorAtom{}, av
+	av.errors = append(av.errors, kwargTypeErr(key, "vector", sexp.Type()))
+	return nil
 }
 
-func GetKeyword[T Atom](av *ArgValidator, key string) (T, *ArgValidator) {
+func GetKeyword[T Sexp](av *ArgValidator, key string) T {
 	var zero T
 
-	atom, exists := av.kwargs[key]
+	sexp, exists := av.kwargs[key]
 	if !exists {
 		av.errors = append(av.errors, missingKwargErr(key))
-		return zero, av
+		return zero
 	}
 
 	av.consumedKwargs[key] = true
 
-	if a, ok := CastAtom[T](atom); ok {
-		return a, av
+	if a, ok := sexp.(T); ok {
+		return a
 	}
 
-	av.errors = append(av.errors, kwargTypeErr(key, zero.Type(), atom.Type()))
-	return zero, av
+	av.errors = append(av.errors, kwargTypeErr(key, zero.Type(), sexp.Type()))
+	return zero
 }
 
 // VALIDATION
 
-func (av *ArgValidator) ExpectNoMoreArgs() *ArgValidator {
+func (av *ArgValidator) ExpectNoMoreArgs() {
 	if av.argIndex < len(av.args) {
 		av.errors = append(av.errors, "unexpected extra arguments ("+
 			av.args[av.argIndex].String()+"): expected "+
@@ -366,7 +347,6 @@ func (av *ArgValidator) ExpectNoMoreArgs() *ArgValidator {
 			av.errors = append(av.errors, "unexpected keyword argument: "+key)
 		}
 	}
-	return av
 }
 
 func (av *ArgValidator) Validate(funcName string) Error {

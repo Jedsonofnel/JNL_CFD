@@ -6,24 +6,20 @@ import (
 
 const maxExpansionDepth = 1000
 
-func expand(raw any) (any, Error) {
-	return expandWithDepth(raw, 0)
-}
-
-func expandWithDepth(raw any, depth int) (any, Error) {
+func expand(sexp Sexp, depth int) (Sexp, Error) {
 	if depth > maxExpansionDepth {
-		return raw, ExpansionError{
+		return sexp, ExpansionError{
 			Message: "expansion depth exceeded at " + strconv.Itoa(depth),
 		}
 	}
 
-	switch r := raw.(type) {
-	case listRaw:
+	switch r := sexp.(type) {
+	case List:
 		if len(r) == 0 {
 			return r, nil
 		}
 
-		if sym, ok := r[0].(symbol); ok {
+		if sym, ok := r[0].(Symbol); ok {
 			// TODO: recursive macro expansion here
 
 			// built-in expansions
@@ -31,69 +27,68 @@ func expandWithDepth(raw any, depth int) (any, Error) {
 			case "define":
 				expanded, err := expandDefine(r[1:])
 				if err != nil {
-					return errorRaw{}, err
+					return nil, err
 				}
-				r = expanded.(listRaw) // fall through to child recursion
+				r = expanded.(List) // fall through to child recursion
 			case "lambda":
 				expanded, err := expandLambda(r[1:])
 				if err != nil {
-					return errorRaw{}, err
+					return nil, err
 				}
-				r = expanded.(listRaw)
+				r = expanded.(List)
 			case "let":
 				expanded, err := expandLet(r[1:])
 				if err != nil {
-					return errorRaw{}, err
+					return nil, err
 				}
-				return expandWithDepth(expanded, depth+1)
+				return expand(expanded, depth+1)
 			case "and":
 				expanded := expandAnd(r[1:])
-				return expandWithDepth(expanded, depth+1)
+				return expand(expanded, depth+1)
 			case "or":
 				expanded := expandOr(r[1:], depth)
-				return expandWithDepth(expanded, depth+1)
+				return expand(expanded, depth+1)
 			}
 		}
 
 		// not a macro - recurse into children
-		result := make(listRaw, len(r))
+		result := make(List, len(r))
 		for i, elem := range r {
 			// don't increment depth as this won't loop
-			expanded, err := expandWithDepth(elem, depth)
+			expanded, err := expand(elem, depth)
 			if err != nil {
 				return nil, err
 			}
 			result[i] = expanded
 		}
 		return result, nil
-	case vectorRaw:
-		result := make(vectorRaw, len(r))
+	case Vector:
+		result := make(Vector, len(r))
 		for i, elem := range r {
-			expanded, err := expandWithDepth(elem, depth)
+			expanded, err := expand(elem, depth)
 			if err != nil {
 				return nil, err
 			}
 			result[i] = expanded
 		}
 		return result, nil
-	case tableRaw:
-		result := make(tableRaw, len(r))
-		for i, elem := range r {
-			expanded, err := expandWithDepth(elem, depth)
+	case Table:
+		for kword, value := range r {
+			expanded, err := expand(value, depth)
 			if err != nil {
 				return nil, err
 			}
-			result[i] = expanded
+			r[kword] = expanded
 		}
-		return result, nil
+		return r, nil
 	default:
-		return raw, nil // most types don't need expansion
+		return sexp, nil // most types don't need expansion
 	}
 }
 
-// BUILT IN EXPANSIONS (will eventually be superseded by macros)
+// BUILT IN EXPANSIONS (could eventually be superseded by macros)
 
-func expandDefine(args listRaw) (any, Error) {
+func expandDefine(args List) (Sexp, Error) {
 	if len(args) < 2 {
 		return nil, ExpansionError{
 			Message: "define expects binding details and at least one body expression",
@@ -101,23 +96,23 @@ func expandDefine(args listRaw) (any, Error) {
 	}
 
 	// early termination if simple lexical binding
-	if sym, ok := args[0].(symbol); ok {
-		defineSym := listRaw{symbol("define"), sym}
+	if sym, ok := args[0].(Symbol); ok {
+		defineSym := List{Symbol("define"), sym}
 		defineSym = append(defineSym, args[1:]...)
 		return defineSym, nil
 	}
 
-	funcArgs, ok := args[0].(listRaw)
+	funcArgs, ok := args[0].(List)
 	if !ok || len(funcArgs) == 0 {
 		return nil, ExpansionError{
 			Message: "define expects a symbol or a list of symbols as first argument",
 		}
 	}
 
-	funcSymArgs := make(listRaw, len(funcArgs))
+	funcSymArgs := make(List, len(funcArgs))
 
 	for i := range funcArgs {
-		if sym, ok := funcArgs[i].(symbol); ok {
+		if sym, ok := funcArgs[i].(Symbol); ok {
 			funcSymArgs[i] = sym
 			continue
 		}
@@ -127,13 +122,13 @@ func expandDefine(args listRaw) (any, Error) {
 		}
 	}
 
-	lambda := listRaw{symbol("lambda"), funcSymArgs[1:]}
+	lambda := List{Symbol("lambda"), funcSymArgs[1:]}
 	lambda = append(lambda, args[1:]...)
-	defineProc := listRaw{symbol("define"), funcSymArgs[0], lambda}
+	defineProc := List{Symbol("define"), funcSymArgs[0], lambda}
 	return defineProc, nil
 }
 
-func expandLambda(args listRaw) (any, Error) {
+func expandLambda(args List) (Sexp, Error) {
 	if len(args) < 2 {
 		return nil, ExpansionError{
 			Message: "lambda expects at least 2 arguments",
@@ -142,42 +137,42 @@ func expandLambda(args listRaw) (any, Error) {
 
 	// early termination if just one body
 	if len(args) == 2 {
-		return listRaw{symbol("lambda"), args[0], args[1]}, nil
+		return List{Symbol("lambda"), args[0], args[1]}, nil
 	}
 
 	// expand multiple bodies to use begin
 	bodies := args[1:]
-	begin := listRaw{symbol("begin")}
+	begin := List{Symbol("begin")}
 	begin = append(begin, bodies...)
 
-	return listRaw{symbol("lambda"), args[0], begin}, nil
+	return List{Symbol("lambda"), args[0], begin}, nil
 }
 
-func expandLet(args listRaw) (any, Error) {
+func expandLet(args List) (Sexp, Error) {
 	if len(args) < 2 {
 		return nil, ExpansionError{
 			Message: "let expects bindings and at least one body expression",
 		}
 	}
 
-	bindings, ok := args[0].(listRaw)
+	bindings, ok := args[0].(List)
 	if !ok {
 		return nil, &ExpansionError{
 			Message: "let expects a list of bindings as arg 1",
 		}
 	}
 
-	names := make(listRaw, 0, len(bindings))
-	values := make(listRaw, 0, len(bindings))
+	names := make(List, 0, len(bindings))
+	values := make(List, 0, len(bindings))
 
 	for i := range bindings {
-		binding, ok := bindings[i].(listRaw)
+		binding, ok := bindings[i].(List)
 		errMsg := "let expects bindings to be (symbol value) pairs"
 		if !ok || len(binding) != 2 {
 			return nil, &ExpansionError{Message: errMsg}
 		}
 
-		name, ok := binding[0].(symbol)
+		name, ok := binding[0].(Symbol)
 		if !ok {
 			return nil, &ExpansionError{Message: errMsg}
 		}
@@ -186,47 +181,47 @@ func expandLet(args listRaw) (any, Error) {
 		values = append(values, binding[1])
 	}
 
-	lambda := listRaw{symbol("lambda"), names}
+	lambda := List{Symbol("lambda"), names}
 	lambda = append(lambda, args[1:]...)
 
-	call := listRaw{lambda}
+	call := List{lambda}
 	call = append(call, values...)
 
 	return call, nil
 }
 
-func expandAnd(args listRaw) any {
+func expandAnd(args List) Sexp {
 	if len(args) == 0 {
-		return true
+		return Boolean(true)
 	}
 
 	if len(args) == 1 {
 		return args[0]
 	}
 
-	rest := listRaw{symbol("and")}
+	rest := List{Symbol("and")}
 	rest = append(rest, args[1:]...)
 
 	// short circuit if it's false
-	return listRaw{symbol("if"), args[0], rest, false}
+	return List{Symbol("if"), args[0], rest, Boolean(false)}
 }
 
-func expandOr(args listRaw, depth int) any {
+func expandOr(args List, depth int) Sexp {
 	if len(args) == 0 {
-		return false
+		return Boolean(false)
 	}
 
 	if len(args) == 1 {
 		return args[0]
 	}
 
-	tmpSym := symbol("tmp#" + strconv.Itoa(depth))
-	rest := listRaw{symbol("or")}
+	tmpSym := Symbol("#tmp" + strconv.Itoa(depth))
+	rest := List{Symbol("or")}
 	rest = append(rest, args[1:]...)
 
-	return listRaw{
-		symbol("let"),
-		listRaw{listRaw{tmpSym, args[0]}},
-		listRaw{symbol("if"), tmpSym, tmpSym, rest},
+	return List{
+		Symbol("let"),
+		List{List{tmpSym, args[0]}},
+		List{Symbol("if"), tmpSym, tmpSym, rest},
 	}
 }

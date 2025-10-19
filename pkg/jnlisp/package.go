@@ -8,7 +8,7 @@ type Package struct {
 	Name     string
 	FS       fs.FS
 	Bindings map[string]NativeFunction
-	Atoms    map[string]Atom
+	Sexps    map[string]Sexp
 }
 
 func (ctx *Context) RegisterPackage(pkg Package) {
@@ -32,8 +32,8 @@ func (ctx *Context) ImportPackage(name, prefix string) Error {
 		ctx.loadedPkgs[name] = env
 	}
 
-	ctx.loadedPkgs[name].forEachBinding(func(name string, atom Atom) {
-		ctx.importEnv.bind(prefix+name, atom)
+	ctx.loadedPkgs[name].forEachBinding(func(name string, sexp Sexp) {
+		ctx.importEnv.bind(prefix+name, sexp)
 	})
 
 	return nil
@@ -46,8 +46,8 @@ func (ctx *Context) executePackage(pkg Package) (*env, Error) {
 	for name, fn := range pkg.Bindings {
 		pkgEnv.bind(name, &foreignFunction{name, fn})
 	}
-	for name, atom := range pkg.Atoms {
-		pkgEnv.bind(name, atom)
+	for name, sexp := range pkg.Sexps {
+		pkgEnv.bind(name, sexp)
 	}
 
 	fileContents, err := ctx.getFSSourceCode(pkg.FS)

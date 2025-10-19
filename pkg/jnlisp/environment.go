@@ -8,28 +8,28 @@ import (
 
 type binding struct {
 	name string
-	atom Atom
+	sexp Sexp
 }
 
 type env struct {
 	small [10]binding     // fast path for small closures
-	large map[string]Atom // Overflow
+	large map[string]Sexp // Overflow
 	outer *env
 	size  int // number of bindings in small
 }
 
 func newEnv(outer *env) *env {
 	return &env{
-		large: make(map[string]Atom),
+		large: make(map[string]Sexp),
 		outer: outer,
 	}
 }
 
-func (e *env) find(s string) (Atom, bool) {
+func (e *env) find(s string) (Sexp, bool) {
 	// check small array first
 	for i := range e.size {
 		if e.small[i].name == s {
-			return e.small[i].atom, true
+			return e.small[i].sexp, true
 		}
 	}
 
@@ -44,38 +44,38 @@ func (e *env) find(s string) (Atom, bool) {
 	return nil, false
 }
 
-func (e *env) bind(s string, atom Atom) {
+func (e *env) bind(s string, sexp Sexp) {
 	if e.size < 10 {
-		e.small[e.size] = binding{name: s, atom: atom}
+		e.small[e.size] = binding{name: s, sexp: sexp}
 		e.size++
 	} else {
-		e.large[s] = atom
+		e.large[s] = sexp
 	}
 }
 
-func (e *env) forEachBinding(cb func(string, Atom)) {
+func (e *env) forEachBinding(cb func(string, Sexp)) {
 	// do small
 	for i := range e.size {
 		b := e.small[i]
-		cb(b.name, b.atom)
+		cb(b.name, b.sexp)
 	}
 
 	// do large
-	for name, atom := range e.large {
-		cb(name, atom)
+	for name, sexp := range e.large {
+		cb(name, sexp)
 	}
 }
 
 // Function bindings
 
 type Function interface {
-	Atom
-	Call(args []Atom, kwargs TableAtom, depth int) (Atom, Error)
+	Sexp
+	Call(args []Sexp, kwargs Table, depth int) (Sexp, Error)
 }
 
 type fnParams struct {
-	positional []symbol
-	named      []symbol
+	positional []Symbol
+	named      []Symbol
 }
 
 type lispFunction struct {
@@ -91,7 +91,7 @@ func (f *lispFunction) String() string {
 	return "#<function:" + f.name + ">"
 }
 
-func (f *lispFunction) Call(args []Atom, kwargs TableAtom, depth int) (Atom, Error) {
+func (f *lispFunction) Call(args []Sexp, kwargs Table, depth int) (Sexp, Error) {
 	activationEnv := newEnv(f.closure)
 
 	if len(args) != len(f.params.positional) {
@@ -123,10 +123,10 @@ func (f *lispFunction) Call(args []Atom, kwargs TableAtom, depth int) (Atom, Err
 
 // Foreign bindings
 
-type NativeFunction func(args []Atom, kwargs TableAtom, depth int) (Atom, Error)
+type NativeFunction func(args []Sexp, kwargs Table, depth int) (Sexp, Error)
 
-func SimpleNative(fn func([]Atom, TableAtom) (Atom, Error)) NativeFunction {
-	return func(args []Atom, kwargs TableAtom, depth int) (Atom, Error) {
+func SimpleNative(fn func([]Sexp, Table) (Sexp, Error)) NativeFunction {
+	return func(args []Sexp, kwargs Table, depth int) (Sexp, Error) {
 		return fn(args, kwargs)
 	}
 }
@@ -141,6 +141,6 @@ func (f *foreignFunction) String() string {
 	return "#<function:" + f.name + ">"
 }
 
-func (f *foreignFunction) Call(args []Atom, kwargs TableAtom, depth int) (Atom, Error) {
+func (f *foreignFunction) Call(args []Sexp, kwargs Table, depth int) (Sexp, Error) {
 	return f.fn(args, kwargs, depth)
 }

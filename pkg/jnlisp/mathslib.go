@@ -16,31 +16,34 @@ var mathsPkg = Package{
 		"cos":  SimpleNative(lispCosine),
 		"sqrt": SimpleNative(lispSqrt),
 	},
-	Atoms: map[string]Atom{},
+	Sexps: map[string]Sexp{},
 }
 
-func lispSine(args []Atom, kwargs TableAtom) (Atom, Error) {
-	num, v := ValidateArgs(args, kwargs).GetFloat64()
+func lispSine(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	num := v.GetFloat64()
 	v.ExpectNoMoreArgs()
 	if err := v.Validate("sin"); err != nil {
 		return nil, err
 	}
 
-	return NumberAtom{math.Sin(num)}, nil
+	return Float(math.Sin(num)), nil
 }
 
-func lispCosine(args []Atom, kwargs TableAtom) (Atom, Error) {
-	num, v := ValidateArgs(args, kwargs).GetFloat64()
+func lispCosine(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	num := v.GetFloat64()
 	v.ExpectNoMoreArgs()
 	if err := v.Validate("cos"); err != nil {
 		return nil, err
 	}
 
-	return NumberAtom{math.Cos(num)}, nil
+	return Float(math.Cos(num)), nil
 }
 
-func lispSqrt(args []Atom, kwargs TableAtom) (Atom, Error) {
-	num, v := ValidateArgs(args, kwargs).GetFloat64()
+func lispSqrt(args []Sexp, kwargs Table) (Sexp, Error) {
+	v := ValidateArgs(args, kwargs)
+	num := v.GetFloat64()
 	v.ExpectNoMoreArgs()
 	if err := v.Validate("cos"); err != nil {
 		return nil, err
@@ -50,5 +53,5 @@ func lispSqrt(args []Atom, kwargs TableAtom) (Atom, Error) {
 		return nil, RuntimeError{Message: "sqrt expects a positive number"}
 	}
 
-	return NumberAtom{math.Sqrt(num)}, nil
+	return Float(math.Sqrt(num)), nil
 }

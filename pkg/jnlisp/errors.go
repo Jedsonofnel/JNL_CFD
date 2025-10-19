@@ -102,6 +102,9 @@ func (e SyntaxError) ToJSON() string {
 	return formatErrJSON("SyntaxError", e.Message, &e.Pos)
 }
 
+func (e SyntaxError) Type() string   { return "error" }
+func (e SyntaxError) String() string { return "ERROR: " + e.Message }
+
 func newSyntaxErrorFromToken(t token) SyntaxError {
 	var message string
 	switch t.typ {
