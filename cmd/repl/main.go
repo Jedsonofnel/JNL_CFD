@@ -113,6 +113,9 @@ func readline(prompt string) (string, interrupt) {
 				fmt.Print(prompt + line.String())
 			case 127, 8: // backspace
 				s := line.String()
+				if len(s) == 0 {
+					continue
+				}
 				line.Reset()
 				line.WriteString(s[:len(s)-1])
 				fmt.Print("\b \b") // visual erase for single column char
