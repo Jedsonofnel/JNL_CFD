@@ -83,7 +83,7 @@ type lispFunction struct {
 	params  fnParams
 	body    expr
 	closure *env
-	ctx     *Context
+	vm      *VM
 }
 
 func (f *lispFunction) Type() string { return "function" }
@@ -118,7 +118,7 @@ func (f *lispFunction) Call(args []Sexp, kwargs Table, depth int) (Sexp, Error) 
 		}
 	}
 
-	return f.ctx.eval(f.body, activationEnv, depth)
+	return f.vm.eval(f.body, activationEnv, depth)
 }
 
 // Foreign bindings

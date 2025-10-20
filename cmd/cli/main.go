@@ -6,16 +6,11 @@ import (
 
 	"github.com/Jedsonofnel/jnlcfd/pkg/jnlisp"
 )
-
-var ctx *jnlisp.Context
-
-func init() {
-	ctx = jnlisp.NewContext()
-}
-
 func main() {
+	vm := jnlisp.NewVM()
+	vm.Reset()
 	flag.Parse()
 	// filename := flag.Arg(0)
 
-	fmt.Printf("Hello")
+	fmt.Printf("hello")
 }

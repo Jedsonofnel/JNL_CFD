@@ -11,36 +11,36 @@ type Package struct {
 	Sexps    map[string]Sexp
 }
 
-func (ctx *Context) RegisterPackage(pkg Package) {
-	ctx.pkgRegistry[pkg.Name] = pkg
+func (vm *VM) RegisterPackage(pkg Package) {
+	vm.pkgRegistry[pkg.Name] = pkg
 }
 
-func (ctx *Context) ImportPackage(name, prefix string) Error {
+func (vm *VM) ImportPackage(name, prefix string) Error {
 	// check it's in the library registry
-	pkg, exists := ctx.pkgRegistry[name]
+	pkg, exists := vm.pkgRegistry[name]
 	if !exists {
 		// TODO: add filepath loading
 		return RuntimeError{Message: "library not found: " + name}
 	}
 
-	_, found := ctx.loadedPkgs[name]
+	_, found := vm.loadedPkgs[name]
 	if !found {
-		env, err := ctx.executePackage(pkg)
+		env, err := vm.executePackage(pkg)
 		if err != nil {
 			return RuntimeError{Message: "error executing package (" + name + "): " + err.Error()}
 		}
-		ctx.loadedPkgs[name] = env
+		vm.loadedPkgs[name] = env
 	}
 
-	ctx.loadedPkgs[name].forEachBinding(func(name string, sexp Sexp) {
-		ctx.importEnv.bind(prefix+name, sexp)
+	vm.loadedPkgs[name].forEachBinding(func(name string, sexp Sexp) {
+		vm.importEnv.bind(prefix+name, sexp)
 	})
 
 	return nil
 }
 
-func (ctx *Context) executePackage(pkg Package) (*env, Error) {
-	pkgEnv := newEnv(ctx.importEnv)
+func (vm *VM) executePackage(pkg Package) (*env, Error) {
+	pkgEnv := newEnv(vm.importEnv)
 
 	// bind packages procedures
 	for name, fn := range pkg.Bindings {
@@ -52,7 +52,7 @@ func (ctx *Context) executePackage(pkg Package) (*env, Error) {
 
 	return pkgEnv, nil
 
-	// fileContents, err := ctx.getFSSourceCode(pkg.FS)
+	// fileContents, err := vm.getFSSourceCode(pkg.FS)
 	// if err != nil {
 	// 	return nil, RuntimeError{
 	// 		Message: "Error reading package '" + pkg.Name + "' files: " + err.Error(),
@@ -61,7 +61,7 @@ func (ctx *Context) executePackage(pkg Package) (*env, Error) {
 
 	// for i := range fileContents {
 	// 	// document := parse(fileContents[i])
-	// 	// blocks = ctx.executeWithEnv(blocks, pkgEnv)
+	// 	// blocks = vm.executeWithEnv(blocks, pkgEnv)
 	// 	// err := newBlockErrors(blocks)
 	// 	// if err != nil {
 	// 	// 	return nil, RuntimeError{

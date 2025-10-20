@@ -19,13 +19,13 @@ func main() {
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
-	ctx := jnlisp.NewContext()
+	vm := jnlisp.NewVM()
 
 	fmt.Print("JNLisp REPL\r\n")
 	fmt.Print("Ctrl-d to quit, Ctrl-l to clear, Ctrl-c to cancel line\r\n")
 
 	for {
-		result, shouldExit := readCompleteForm(ctx)
+		result, shouldExit := readCompleteForm(vm)
 		if shouldExit {
 			break // so that defer runs
 		}
@@ -33,8 +33,8 @@ func main() {
 	}
 }
 
-func readCompleteForm(ctx *jnlisp.Context) (string, bool) {
-	prompt := ctx.ReplPrompt("")
+func readCompleteForm(vm *jnlisp.VM) (string, bool) {
+	prompt := vm.ReplPrompt("")
 
 	for {
 		line, interrupt := readline(prompt)
@@ -48,19 +48,19 @@ func readCompleteForm(ctx *jnlisp.Context) (string, bool) {
 		}
 
 		line += "\n"
-		blocks, missingDelims := ctx.Step(line)
+		blocks, missingDelims := vm.Step(line)
 
 		if blocks != nil { // input is complete
 			return blocks.String(), false
 		}
 
-		prompt = ctx.ReplPrompt(missingDelims)
+		prompt = vm.ReplPrompt(missingDelims)
 	}
 }
 
 // Fallback for when raw mode isn't available
 func simpleREPL() {
-	ctx := jnlisp.NewContext()
+	vm := jnlisp.NewVM()
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("JNLisp REPL (simple mode)")
@@ -69,7 +69,7 @@ func simpleREPL() {
 	for {
 		fmt.Print("> ")
 		line, _ := reader.ReadString('\n')
-		blocks, promptDisplay := ctx.Step(line)
+		blocks, promptDisplay := vm.Step(line)
 		fmt.Print(blocks.String())
 		fmt.Print(promptDisplay)
 	}

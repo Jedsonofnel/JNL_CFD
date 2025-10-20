@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type Context struct {
+type VM struct {
 	userEnv   *env
 	importEnv *env
 
@@ -17,11 +17,11 @@ type Context struct {
 	replLine int
 }
 
-func NewContext() *Context {
+func NewVM() *VM {
 	importEnv := newEnv(nil)
 	userEnv := newEnv(importEnv)
 
-	ctx := &Context{
+	vm := &VM{
 		importEnv:   importEnv,
 		userEnv:     userEnv,
 		pkgRegistry: make(map[string]Package),
@@ -30,34 +30,34 @@ func NewContext() *Context {
 		replLine:    0,
 	}
 
-	ctx.RegisterPackage(corePkg)
+	vm.RegisterPackage(corePkg)
 
-	err := ctx.ImportPackage("core", "")
+	err := vm.ImportPackage("core", "")
 	if err != nil {
 		panic("Error importing package core: " + err.Error())
 	}
-	return ctx
+	return vm
 }
 
-func (ctx *Context) Reset() {
-	ctx.importEnv = newEnv(nil)
-	ctx.userEnv = newEnv(ctx.importEnv)
-	ctx.replBuf.Reset()
-	ctx.replLine = 0
+func (vm *VM) Reset() {
+	vm.importEnv = newEnv(nil)
+	vm.userEnv = newEnv(vm.importEnv)
+	vm.replBuf.Reset()
+	vm.replLine = 0
 }
 
-func (ctx *Context) ReplPrompt(missingDelims string) string {
-	ctx.replLine++
-	prompt := "jnlisp:" + strconv.Itoa(ctx.replLine) + ":" + missingDelims + "> "
+func (vm *VM) ReplPrompt(missingDelims string) string {
+	vm.replLine++
+	prompt := "jnlisp:" + strconv.Itoa(vm.replLine) + ":" + missingDelims + "> "
 	return prompt
 }
 
 // EXECUTION
 // can be in a step() for a REPL or execute() for all in one go
 
-func (ctx *Context) Step(input string) (Document, string) {
-	ctx.replBuf.WriteString(input)
-	document := parse(ctx.replBuf.String())
+func (vm *VM) Step(input string) (Document, string) {
+	vm.replBuf.WriteString(input)
+	document := parse(vm.replBuf.String())
 
 	missingDelims := ""
 	lastBlock := document[len(document)-1]
@@ -73,11 +73,11 @@ func (ctx *Context) Step(input string) (Document, string) {
 		return nil, missingDelims
 	}
 
-	ctx.replBuf.Reset()
+	vm.replBuf.Reset()
 	return document, ""
 }
 
-func (ctx *Context) Execute(input string) []Block {
+func (vm *VM) Execute(input string) []Block {
 	document := parse(input)
 	// TODO: re-figure out eval
 	return document
@@ -132,7 +132,7 @@ func (ctx *Context) Execute(input string) []Block {
 // 	return codeBlocks
 // }
 
-func (ctx *Context) getFSSourceCode(fsys fs.FS) ([]string, Error) {
+func (vm *VM) getFSSourceCode(fsys fs.FS) ([]string, Error) {
 	var fileContents []string
 
 	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {

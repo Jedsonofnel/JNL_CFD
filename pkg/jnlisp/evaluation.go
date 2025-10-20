@@ -8,7 +8,7 @@ const MaxRecursionDepth = 1000
 
 // EVAL IMPLEMENTATION
 
-func (ctx *Context) eval(expr expr, env *env, depth int) (Sexp, Error) {
+func (vm *VM) eval(expr expr, env *env, depth int) (Sexp, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
@@ -24,7 +24,7 @@ func (ctx *Context) eval(expr expr, env *env, depth int) (Sexp, Error) {
 	case vectorExpr:
 		elements := make([]Sexp, len(e.elements))
 		for i, elem := range e.elements {
-			evaluated, err := ctx.eval(elem, env, depth+1)
+			evaluated, err := vm.eval(elem, env, depth+1)
 			if err != nil {
 				return nil, RuntimeError{Message: "vector element " + strconv.Itoa(i) + " > " + err.Error()}
 			}
@@ -32,23 +32,23 @@ func (ctx *Context) eval(expr expr, env *env, depth int) (Sexp, Error) {
 		}
 		return Vector(elements), nil
 	case tableExpr:
-		return ctx.evalTable(e, env, depth+1)
+		return vm.evalTable(e, env, depth+1)
 
 	// procedure calling
 	case callExpr:
-		return ctx.evalCall(e, env, depth+1)
+		return vm.evalCall(e, env, depth+1)
 	case defineExpr:
-		return ctx.evalDefine(e, env, depth+1)
+		return vm.evalDefine(e, env, depth+1)
 	case lambdaExpr:
-		return ctx.evalLambda(e, env, depth+1)
+		return vm.evalLambda(e, env, depth+1)
 	case ifExpr:
-		return ctx.evalIf(e, env, depth+1)
+		return vm.evalIf(e, env, depth+1)
 	case beginExpr:
-		return ctx.evalBegin(e, env, depth+1)
+		return vm.evalBegin(e, env, depth+1)
 	case setBangExpr:
-		return evalSetBang(e, ctx, depth+1)
+		return evalSetBang(e, vm, depth+1)
 	case importExpr:
-		return evalImport(e, ctx)
+		return evalImport(e, vm)
 	default:
 		return nil, RuntimeError{Message: "unknown expression type"}
 	}
@@ -56,14 +56,14 @@ func (ctx *Context) eval(expr expr, env *env, depth int) (Sexp, Error) {
 
 // Primitive evaluation
 
-func (ctx *Context) evalTable(table tableExpr, env *env, depth int) (Table, Error) {
+func (vm *VM) evalTable(table tableExpr, env *env, depth int) (Table, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
 
 	elements := make(map[string]Sexp, len(table.elements))
 	for k, v := range table.elements {
-		evaluated, err := ctx.eval(v, env, depth+1)
+		evaluated, err := vm.eval(v, env, depth+1)
 		if err != nil {
 			return nil, RuntimeError{Message: "table element :" + k + " > " + err.Error()}
 		}
@@ -74,12 +74,12 @@ func (ctx *Context) evalTable(table tableExpr, env *env, depth int) (Table, Erro
 
 // Procedure evaluation
 
-func (ctx *Context) evalCall(expr callExpr, env *env, depth int) (Sexp, Error) {
+func (vm *VM) evalCall(expr callExpr, env *env, depth int) (Sexp, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
 
-	fnSexp, err := ctx.eval(expr.fn, env, depth+1)
+	fnSexp, err := vm.eval(expr.fn, env, depth+1)
 	if err != nil {
 		return nil, err
 	}
@@ -93,14 +93,14 @@ func (ctx *Context) evalCall(expr callExpr, env *env, depth int) (Sexp, Error) {
 
 	args := make([]Sexp, len(expr.args))
 	for i, argExpr := range expr.args {
-		arg, err := ctx.eval(argExpr, env, depth+1)
+		arg, err := vm.eval(argExpr, env, depth+1)
 		if err != nil {
 			return nil, err
 		}
 		args[i] = arg
 	}
 
-	kwargs, err := ctx.evalTable(expr.kwargs, env, depth+1)
+	kwargs, err := vm.evalTable(expr.kwargs, env, depth+1)
 	if err != nil {
 		return nil, err
 	}
@@ -108,12 +108,12 @@ func (ctx *Context) evalCall(expr callExpr, env *env, depth int) (Sexp, Error) {
 	return fn.Call(args, kwargs, depth+1)
 }
 
-func (ctx *Context) evalIf(expr ifExpr, env *env, depth int) (Sexp, Error) {
+func (vm *VM) evalIf(expr ifExpr, env *env, depth int) (Sexp, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
 
-	testResult, err := ctx.eval(expr.predicate, env, depth+1)
+	testResult, err := vm.eval(expr.predicate, env, depth+1)
 	if err != nil {
 		return nil, err
 	}
@@ -124,18 +124,18 @@ func (ctx *Context) evalIf(expr ifExpr, env *env, depth int) (Sexp, Error) {
 	}
 
 	if bool(boolean) {
-		return ctx.eval(expr.consequent, env, depth+1)
+		return vm.eval(expr.consequent, env, depth+1)
 	} else {
-		return ctx.eval(expr.alternative, env, depth+1)
+		return vm.eval(expr.alternative, env, depth+1)
 	}
 }
 
-func (ctx *Context) evalDefine(expr defineExpr, env *env, depth int) (Sexp, Error) {
+func (vm *VM) evalDefine(expr defineExpr, env *env, depth int) (Sexp, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
 
-	value, err := ctx.eval(expr.binding, env, depth+1)
+	value, err := vm.eval(expr.binding, env, depth+1)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ func (ctx *Context) evalDefine(expr defineExpr, env *env, depth int) (Sexp, Erro
 	return value, nil
 }
 
-func (ctx *Context) evalLambda(expr lambdaExpr, env *env, depth int) (Function, Error) {
+func (vm *VM) evalLambda(expr lambdaExpr, env *env, depth int) (Function, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
@@ -163,13 +163,13 @@ func (ctx *Context) evalLambda(expr lambdaExpr, env *env, depth int) (Function, 
 		params:  fnParams{expr.args, expr.kwargs},
 		body:    expr.fn,
 		closure: env,
-		ctx:     ctx,
+		vm:     vm,
 	}
 
 	return fn, nil
 }
 
-func (ctx *Context) evalBegin(expr beginExpr, env *env, depth int) (Sexp, Error) {
+func (vm *VM) evalBegin(expr beginExpr, env *env, depth int) (Sexp, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
@@ -179,7 +179,7 @@ func (ctx *Context) evalBegin(expr beginExpr, env *env, depth int) (Sexp, Error)
 	var err Error
 	for i := range expr.exprs {
 		expr := expr.exprs[i]
-		result, err = ctx.eval(expr, env, depth+1)
+		result, err = vm.eval(expr, env, depth+1)
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +189,7 @@ func (ctx *Context) evalBegin(expr beginExpr, env *env, depth int) (Sexp, Error)
 }
 
 // TODO: complete this
-func evalSetBang(expr setBangExpr, ctx *Context, depth int) (Sexp, Error) {
+func evalSetBang(expr setBangExpr, vm *VM, depth int) (Sexp, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
@@ -197,6 +197,6 @@ func evalSetBang(expr setBangExpr, ctx *Context, depth int) (Sexp, Error) {
 	return nil, nil
 }
 
-func evalImport(expr importExpr, ctx *Context) (Sexp, Error) {
-	return Boolean(true), ctx.ImportPackage(expr.name, expr.prefix)
+func evalImport(expr importExpr, vm *VM) (Sexp, Error) {
+	return Boolean(true), vm.ImportPackage(expr.name, expr.prefix)
 }
