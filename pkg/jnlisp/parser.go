@@ -121,11 +121,11 @@ func parseCode(p *parser) Sexp {
 	case tokenNumber:
 		return parseNumber(tok.val)
 	case tokenString:
-		return String(tok.val)
+		return String(strings.Trim(tok.val, "\""))
 	case tokenSymbol:
 		return parseSymbol(tok.val)
 	case tokenKeyword:
-		return Keyword(tok.val)
+		return Keyword(strings.Trim(tok.val, ":"))
 	case tokenUnenclosedString,
 		tokenMalformedNumber:
 		return newSyntaxErrorFromToken(tok)
@@ -147,6 +147,9 @@ Loop:
 			p.backup()
 			list = append(list, SyntaxError{Message: "missing close list"})
 			return list
+		case tokenTablekey:
+			p.backup()
+			list = append(list, parseTable(p, tokenCloseParen))
 		default:
 			p.backup()
 			list = append(list, parseCode(p))
@@ -168,6 +171,9 @@ func parseVector(p *parser) Vector {
 			p.backup()
 			vector = append(vector, SyntaxError{Message: "missing close vector"})
 			return vector
+		case tokenTablekey:
+			p.backup()
+			vector = append(vector, parseTable(p, tokenCloseBracket))
 		default:
 			p.backup()
 			vector = append(vector, parseCode(p))
@@ -184,16 +190,20 @@ func parseTable(p *parser, delim tokenType) Sexp {
 		tok := p.next()
 		switch tok.typ {
 		case delim:
+			if delim != tokenCloseBrace {
+				p.backup() // if not a table literal don't consume
+			}
 			return table
 		case tokenDoubleNewline, tokenEOF, tokenOpenJParen:
 			p.backup()
 			return SyntaxError{Message: "missing close table brace"}
-		case tokenKeyword:
+		case tokenKeyword, tokenTablekey:
 			peek := p.peek().typ
 			if peek == delim || peek == tokenDoubleNewline || peek == tokenEOF {
 				return SyntaxError{Message: "table expects an even number of elements (key-value pairs)"}
 			}
-			table[tok.val] = parseCode(p)
+			key := strings.Trim(tok.val, ":")
+			table[key] = parseCode(p)
 		default:
 			return SyntaxError{Message: "bad table formatting"}
 		}

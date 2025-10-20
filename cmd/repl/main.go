@@ -107,6 +107,7 @@ func readline(prompt string) (string, interrupt) {
 				fmt.Print("\r\n")
 				return "", InterruptCancel
 			case '\x04': // <c-d> is EOF
+				fmt.Print("\r\n")
 				return "", InterruptEOF
 			case '\x0c': // <c-l> is clear
 				fmt.Print("\x1b[H\x1b[2J")

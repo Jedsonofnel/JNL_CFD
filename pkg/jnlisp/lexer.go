@@ -49,6 +49,7 @@ const (
 	tokenString
 	tokenSymbol
 	tokenKeyword
+	tokenTablekey
 
 	tokenUnenclosedString
 	tokenMalformedNumber
@@ -73,6 +74,7 @@ var tokenStrings = []string{
 	"tokenString",
 	"tokenSymbol",
 	"tokenKeyword",
+	"tokenTablekey",
 
 	"tokenUnenclosedString",
 	"tokenMalformedNumber",
@@ -448,8 +450,6 @@ func lexAtom(l *lexer) lexFn {
 }
 
 func lexString(l *lexer) lexFn {
-	l.ignore() // ignore the "
-
 	for {
 		switch r := l.next(); r {
 		case eof:
@@ -460,13 +460,11 @@ func lexString(l *lexer) lexFn {
 			l.emit(tokenUnenclosedString)
 			return l.pop()
 		case '"':
-			l.backup()
 			l.emit(tokenString)
-			l.next()
-			l.ignore()
 			return l.pop()
 		case '\\':
 			if l.next() == eof { // next consumes the escaped char
+				l.backup()
 				l.emit(tokenUnenclosedString)
 				return l.pop()
 			}
@@ -527,7 +525,12 @@ func lexSymbol(l *lexer) lexFn {
 		}
 	}
 
-	l.emit(tokenSymbol)
+	if strings.HasSuffix(l.input[l.start:l.pos], ":") {
+		l.emit(tokenTablekey)
+	} else {
+		l.emit(tokenSymbol)
+	}
+
 	return l.pop()
 }
 
@@ -544,8 +547,6 @@ func lexComment(l *lexer) lexFn {
 }
 
 func lexKeyword(l *lexer) lexFn {
-	l.ignore() // consume the :
-
 	for {
 		r := l.next()
 		if !isSymbolChar(r) {

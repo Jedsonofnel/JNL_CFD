@@ -22,7 +22,7 @@ func (s Symbol) Type() string   { return "symbol" }
 func (s Symbol) String() string { return string(s) }
 
 func (s String) Type() string   { return "string" }
-func (s String) String() string { return string(s) }
+func (s String) String() string { return "\"" + string(s) + "\"" }
 
 func (s Keyword) Type() string   { return "keyword" }
 func (s Keyword) String() string { return ":" + string(s) }
@@ -30,9 +30,9 @@ func (s Keyword) String() string { return ":" + string(s) }
 func (b Boolean) Type() string { return "boolean" }
 func (b Boolean) String() string {
 	if b {
-		return "#t"
+		return "true"
 	} else {
-		return "#f"
+		return "false"
 	}
 }
 
