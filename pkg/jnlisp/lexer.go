@@ -601,6 +601,7 @@ func dispatchToken(l *lexer) stateFn {
 	}
 }
 
+// TODO remove this - no such thing - just have "nil", "true" and "false"
 func lexLiteral(l *lexer) stateFn {
 	l.next() // consume '#'
 
@@ -736,7 +737,7 @@ func lexKeyword(l *lexer) stateFn {
 // helpers
 
 const digitChars = "0123456789"
-const specialChars = "()[]\"';#: \t\n\r"
+const specialChars = "()[]\"';# \t\n\r"
 
 func isSymbolChar(r rune) bool {
 	return r != eof && !strings.ContainsRune(specialChars, r)

@@ -184,8 +184,8 @@ func parseTable(tokens []token, idx *int) (Sexp, []Error) {
 		}
 	}
 
-	tableErr := SyntaxError{Pos: tokens[firstIndex].pos}
 	if len(tableElements)%2 != 0 {
+		tableErr := SyntaxError{Pos: tokens[firstIndex].pos}
 		tableErr.Message = "table literal expects an even number of elements (key-value pairs)"
 		errors = append(errors, tableErr)
 		return tableErr, errors
@@ -194,6 +194,8 @@ func parseTable(tokens []token, idx *int) (Sexp, []Error) {
 	for i := 0; i < len(tableElements); i += 2 {
 		key, ok := tableElements[i].(Keyword)
 		if !ok {
+			tableErr := SyntaxError{
+			}
 			tableErr.Message = "table key must be a :keyword"
 			errors = append(errors, tableErr)
 			return tableErr, errors
