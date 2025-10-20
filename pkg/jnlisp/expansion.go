@@ -72,7 +72,7 @@ func expand(sexp Sexp, depth int) (Sexp, Error) {
 			result[i] = expanded
 		}
 		return result, nil
-	case Table:
+	case Map:
 		for kword, value := range r {
 			expanded, err := expand(value, depth)
 			if err != nil {

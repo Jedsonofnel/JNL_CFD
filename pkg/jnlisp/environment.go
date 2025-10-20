@@ -70,7 +70,7 @@ func (e *env) forEachBinding(cb func(string, Sexp)) {
 
 type Function interface {
 	Sexp
-	Call(args []Sexp, kwargs Table, depth int) (Sexp, Error)
+	Call(args []Sexp, kwargs Map, depth int) (Sexp, Error)
 }
 
 type fnParams struct {
@@ -91,7 +91,7 @@ func (f *lispFunction) String() string {
 	return "#<function:" + f.name + ">"
 }
 
-func (f *lispFunction) Call(args []Sexp, kwargs Table, depth int) (Sexp, Error) {
+func (f *lispFunction) Call(args []Sexp, kwargs Map, depth int) (Sexp, Error) {
 	activationEnv := newEnv(f.closure)
 
 	if len(args) != len(f.params.positional) {
@@ -107,7 +107,7 @@ func (f *lispFunction) Call(args []Sexp, kwargs Table, depth int) (Sexp, Error) 
 		activationEnv.bind(string(param), args[i])
 	}
 
-	// bind named parameters from table
+	// bind named parameters from map
 	for _, namedParam := range f.params.named {
 		paramName := string(namedParam)
 		if value, exists := kwargs[paramName]; exists {
@@ -123,10 +123,10 @@ func (f *lispFunction) Call(args []Sexp, kwargs Table, depth int) (Sexp, Error) 
 
 // Foreign bindings
 
-type NativeFunction func(args []Sexp, kwargs Table, depth int) (Sexp, Error)
+type NativeFunction func(args []Sexp, kwargs Map, depth int) (Sexp, Error)
 
-func SimpleNative(fn func([]Sexp, Table) (Sexp, Error)) NativeFunction {
-	return func(args []Sexp, kwargs Table, depth int) (Sexp, Error) {
+func SimpleNative(fn func([]Sexp, Map) (Sexp, Error)) NativeFunction {
+	return func(args []Sexp, kwargs Map, depth int) (Sexp, Error) {
 		return fn(args, kwargs)
 	}
 }
@@ -141,6 +141,6 @@ func (f *foreignFunction) String() string {
 	return "#<function:" + f.name + ">"
 }
 
-func (f *foreignFunction) Call(args []Sexp, kwargs Table, depth int) (Sexp, Error) {
+func (f *foreignFunction) Call(args []Sexp, kwargs Map, depth int) (Sexp, Error) {
 	return f.fn(args, kwargs, depth)
 }

@@ -16,7 +16,7 @@ type Keyword string
 type Boolean bool
 type List []Sexp
 type Vector []Sexp
-type Table map[string]Sexp
+type Map map[string]Sexp
 
 func (s Symbol) Type() string   { return "symbol" }
 func (s Symbol) String() string { return string(s) }
@@ -54,8 +54,8 @@ func (v Vector) String() string {
 	return "[" + strings.Join(parts, " ") + "]"
 }
 
-func (t Table) Type() string { return "table" }
-func (t Table) String() string {
+func (t Map) Type() string { return "map" }
+func (t Map) String() string {
 	var parts []string
 	for k, v := range t {
 		parts = append(parts, ":"+k+" "+v.String())

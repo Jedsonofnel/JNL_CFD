@@ -13,8 +13,8 @@ func elaborate(sexp Sexp) (expr, Error) {
 		return elaborateCall(r)
 	case Vector:
 		return elaborateVector(r)
-	case Table:
-		return elaborateTable(r)
+	case Map:
+		return elaborateMap(r)
 	case Boolean, Number, String, Keyword:
 		return literalExpr{r}, nil
 	default:
@@ -66,27 +66,27 @@ func elaborateVector(vector Vector) (vectorExpr, Error) {
 	return vectorExpr{elements}, nil
 }
 
-func elaborateTable(table Table) (tableExpr, Error) {
+func elaborateMap(mapp Map) (mapExpr, Error) {
 	elements := make(map[string]expr)
-	for kword, value := range table {
+	for kword, value := range mapp {
 		expr, err := elaborate(value)
 		if err != nil {
-			return tableExpr{}, err
+			return mapExpr{}, err
 		}
 
 		elements[kword] = expr
 	}
 
-	return tableExpr{elements}, nil
+	return mapExpr{elements}, nil
 }
 
-func elaborateArgs(list List) (args []expr, kwargs tableExpr, err Error) {
+func elaborateArgs(list List) (args []expr, kwargs mapExpr, err Error) {
 	args = make([]expr, 0)
 
 	i := 0
 	for i < len(list) {
 		if _, ok := list[i].(Keyword); ok {
-			break // start parsing table
+			break // start parsing map
 		}
 
 		arg, err := elaborate(list[i])
@@ -98,13 +98,13 @@ func elaborateArgs(list List) (args []expr, kwargs tableExpr, err Error) {
 	}
 
 	// TODO remove this!
-	table := make(Table)
+	mapp := make(Map)
 	remainingArgs := make(List, len(list)-i)
 	copy(remainingArgs, list[i:])
 
 	if len(remainingArgs)%2 != 0 {
 		return args, kwargs, ElaborationError{
-			"table literal expects an even number of elements (key-value pairs)",
+			"map literal expects an even number of elements (key-value pairs)",
 		}
 	}
 
@@ -112,14 +112,14 @@ func elaborateArgs(list List) (args []expr, kwargs tableExpr, err Error) {
 		key, ok := remainingArgs[i].(Keyword)
 		if !ok {
 			return args, kwargs, ElaborationError{
-				"table key must be a :keyword",
+				"map key must be a :keyword",
 			}
 		}
 
-		table[string(key)] = remainingArgs[i+1]
+		mapp[string(key)] = remainingArgs[i+1]
 	}
 
-	kwargs, err = elaborateTable(table)
+	kwargs, err = elaborateMap(mapp)
 	if err != nil {
 		return args, kwargs, err
 	}
@@ -303,7 +303,7 @@ type expr interface {
 type callExpr struct {
 	fn     expr
 	args   []expr
-	kwargs tableExpr
+	kwargs mapExpr
 }
 
 func (ae callExpr) expr() {}
@@ -326,11 +326,11 @@ type vectorExpr struct {
 
 func (v vectorExpr) expr() {}
 
-type tableExpr struct {
+type mapExpr struct {
 	elements map[string]expr
 }
 
-func (t tableExpr) expr() {}
+func (t mapExpr) expr() {}
 
 type quotedExpr struct {
 	quoted Sexp

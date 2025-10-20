@@ -29,7 +29,7 @@ var corePkg = Package{
 
 // STANDARD MATHS
 
-func lispAdd(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispAdd(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	nums := v.GetVariadicComplex128()
 	v.ExpectNoMoreArgs()
@@ -45,7 +45,7 @@ func lispAdd(args []Sexp, kwargs Table) (Sexp, Error) {
 	return simplifyNumber(result), nil
 }
 
-func lispSubtract(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispSubtract(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	nums := v.GetVariadicComplex128()
 	v.ExpectNoMoreArgs()
@@ -69,7 +69,7 @@ func lispSubtract(args []Sexp, kwargs Table) (Sexp, Error) {
 	return simplifyNumber(result), nil
 }
 
-func lispMultiply(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispMultiply(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	nums := v.GetVariadicComplex128()
 	v.ExpectNoMoreArgs()
@@ -85,7 +85,7 @@ func lispMultiply(args []Sexp, kwargs Table) (Sexp, Error) {
 	return simplifyNumber(result), nil
 }
 
-func lispDivide(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispDivide(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	nums := v.GetVariadicComplex128()
 	v.ExpectNoMoreArgs()
@@ -109,7 +109,7 @@ func lispDivide(args []Sexp, kwargs Table) (Sexp, Error) {
 	return simplifyNumber(result), nil
 }
 
-func lispModulo(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispModulo(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	num1 := v.GetInt()
 	num2 := v.GetInt()
@@ -123,7 +123,7 @@ func lispModulo(args []Sexp, kwargs Table) (Sexp, Error) {
 
 // BASIC COMPARATORS
 
-func lispEqual(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispEqual(args []Sexp, kwargs Map) (Sexp, Error) {
 	if len(args) < 2 {
 		return nil, RuntimeError{
 			Message: "= expects at least 2 arguments, got " + strconv.Itoa(len(args)),
@@ -140,7 +140,7 @@ func lispEqual(args []Sexp, kwargs Table) (Sexp, Error) {
 	return Boolean(true), nil
 }
 
-func lispGreaterThan(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispGreaterThan(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	num1 := v.GetFloat64()
 	num2 := v.GetFloat64()
@@ -152,7 +152,7 @@ func lispGreaterThan(args []Sexp, kwargs Table) (Sexp, Error) {
 	return Boolean(num1 > num2), nil
 }
 
-func lispNot(args []Sexp, _ Table) (Sexp, Error) {
+func lispNot(args []Sexp, _ Map) (Sexp, Error) {
 	if len(args) != 1 {
 		return nil, RuntimeError{Message: "not expects at least 1 argument"}
 	}
@@ -167,7 +167,7 @@ func lispNot(args []Sexp, _ Table) (Sexp, Error) {
 
 // VECTOR OPERATIONS
 
-func lispVectorRef(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispVectorRef(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	vec := v.GetVector()
 	index := v.GetInt()
@@ -186,7 +186,7 @@ func lispVectorRef(args []Sexp, kwargs Table) (Sexp, Error) {
 	return vec[index], nil
 }
 
-func lispVectorLength(args []Sexp, _ Table) (Sexp, Error) {
+func lispVectorLength(args []Sexp, _ Map) (Sexp, Error) {
 	v := ValidateArgs(args, nil)
 	vec := v.GetVector()
 	v.ExpectNoMoreArgs()

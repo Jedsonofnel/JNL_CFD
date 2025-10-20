@@ -8,13 +8,13 @@ import (
 // Argument validation helpers
 type ArgValidator struct {
 	args           []Sexp
-	kwargs         Table
+	kwargs         Map
 	argIndex       int
 	consumedKwargs map[string]bool
 	errors         []string
 }
 
-func ValidateArgs(args []Sexp, kwargs Table) *ArgValidator {
+func ValidateArgs(args []Sexp, kwargs Map) *ArgValidator {
 	return &ArgValidator{
 		args:           args,
 		kwargs:         kwargs,

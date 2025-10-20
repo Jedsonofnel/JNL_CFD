@@ -19,7 +19,7 @@ var mathsPkg = Package{
 	Sexps: map[string]Sexp{},
 }
 
-func lispSine(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispSine(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	num := v.GetFloat64()
 	v.ExpectNoMoreArgs()
@@ -30,7 +30,7 @@ func lispSine(args []Sexp, kwargs Table) (Sexp, Error) {
 	return Float(math.Sin(num)), nil
 }
 
-func lispCosine(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispCosine(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	num := v.GetFloat64()
 	v.ExpectNoMoreArgs()
@@ -41,7 +41,7 @@ func lispCosine(args []Sexp, kwargs Table) (Sexp, Error) {
 	return Float(math.Cos(num)), nil
 }
 
-func lispSqrt(args []Sexp, kwargs Table) (Sexp, Error) {
+func lispSqrt(args []Sexp, kwargs Map) (Sexp, Error) {
 	v := ValidateArgs(args, kwargs)
 	num := v.GetFloat64()
 	v.ExpectNoMoreArgs()

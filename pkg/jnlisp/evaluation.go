@@ -31,8 +31,8 @@ func (vm *VM) eval(expr expr, env *env, depth int) (Sexp, Error) {
 			elements[i] = evaluated
 		}
 		return Vector(elements), nil
-	case tableExpr:
-		return vm.evalTable(e, env, depth+1)
+	case mapExpr:
+		return vm.evalMap(e, env, depth+1)
 
 	// procedure calling
 	case callExpr:
@@ -56,20 +56,20 @@ func (vm *VM) eval(expr expr, env *env, depth int) (Sexp, Error) {
 
 // Primitive evaluation
 
-func (vm *VM) evalTable(table tableExpr, env *env, depth int) (Table, Error) {
+func (vm *VM) evalMap(mapp mapExpr, env *env, depth int) (Map, Error) {
 	if depth > MaxRecursionDepth {
 		return nil, RuntimeError{Message: "recursion limit exceeded"}
 	}
 
-	elements := make(map[string]Sexp, len(table.elements))
-	for k, v := range table.elements {
+	elements := make(map[string]Sexp, len(mapp.elements))
+	for k, v := range mapp.elements {
 		evaluated, err := vm.eval(v, env, depth+1)
 		if err != nil {
-			return nil, RuntimeError{Message: "table element :" + k + " > " + err.Error()}
+			return nil, RuntimeError{Message: "map element :" + k + " > " + err.Error()}
 		}
 		elements[k] = evaluated
 	}
-	return Table(elements), nil
+	return Map(elements), nil
 }
 
 // Procedure evaluation
@@ -100,7 +100,7 @@ func (vm *VM) evalCall(expr callExpr, env *env, depth int) (Sexp, Error) {
 		args[i] = arg
 	}
 
-	kwargs, err := vm.evalTable(expr.kwargs, env, depth+1)
+	kwargs, err := vm.evalMap(expr.kwargs, env, depth+1)
 	if err != nil {
 		return nil, err
 	}

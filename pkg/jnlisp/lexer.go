@@ -49,7 +49,7 @@ const (
 	tokenString
 	tokenSymbol
 	tokenKeyword
-	tokenTablekey
+	tokenMapkey
 
 	tokenUnenclosedString
 	tokenMalformedNumber
@@ -74,7 +74,7 @@ var tokenStrings = []string{
 	"tokenString",
 	"tokenSymbol",
 	"tokenKeyword",
-	"tokenTablekey",
+	"tokenMapkey",
 
 	"tokenUnenclosedString",
 	"tokenMalformedNumber",
@@ -526,7 +526,7 @@ func lexSymbol(l *lexer) lexFn {
 	}
 
 	if strings.HasSuffix(l.input[l.start:l.pos], ":") {
-		l.emit(tokenTablekey)
+		l.emit(tokenMapkey)
 	} else {
 		l.emit(tokenSymbol)
 	}

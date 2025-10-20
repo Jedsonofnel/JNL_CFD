@@ -44,7 +44,7 @@ func findSyntaxErrors(sexp Sexp) []Error {
 		for _, child := range sexp {
 			errs = append(errs, findSyntaxErrors(child)...)
 		}
-	case Table:
+	case Map:
 		for _, child := range sexp {
 			errs = append(errs, findSyntaxErrors(child)...)
 		}
@@ -140,7 +140,7 @@ func parseCode(p *parser) Sexp {
 	case tokenOpenBracket:
 		return parseVector(p)
 	case tokenOpenBrace:
-		return parseTable(p, tokenCloseBrace)
+		return parseMap(p, tokenCloseBrace)
 	case tokenCloseParen, tokenCloseBracket, tokenCloseBrace:
 		return newUnexpectedClosingTokenError(tok)
 	case tokenNumber:
@@ -193,9 +193,9 @@ func parseList(p *parser) List {
 			p.backup()
 			list = append(list, missingDelim(")"))
 			return list
-		case tokenTablekey:
+		case tokenMapkey:
 			p.backup()
-			list = append(list, parseTable(p, tokenCloseParen))
+			list = append(list, parseMap(p, tokenCloseParen))
 		default:
 			p.backup()
 			list = append(list, parseCode(p))
@@ -219,9 +219,9 @@ func parseVector(p *parser) Vector {
 			p.backup()
 			vector = append(vector, missingDelim("]"))
 			return vector
-		case tokenTablekey:
+		case tokenMapkey:
 			p.backup()
-			vector = append(vector, parseTable(p, tokenCloseBracket))
+			vector = append(vector, parseMap(p, tokenCloseBracket))
 		default:
 			p.backup()
 			vector = append(vector, parseCode(p))
@@ -229,34 +229,34 @@ func parseVector(p *parser) Vector {
 	}
 }
 
-// parse table with an optional delimeter
-// (brace for table literal, paren for inline table)
-func parseTable(p *parser, delim tokenType) Sexp {
-	table := make(Table)
+// parse map with an optional delimeter
+// (brace for map literal, paren for inline map)
+func parseMap(p *parser, delim tokenType) Sexp {
+	mapp := make(Map)
 
 	for {
 		tok := p.next()
 		switch tok.typ {
 		case delim:
 			if delim != tokenCloseBrace {
-				p.backup() // if not a table literal don't consume
+				p.backup() // if not a map literal don't consume
 			}
-			return table
+			return mapp
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			return SyntaxError{Message: "missing close table brace"}
+			return SyntaxError{Message: "missing close map brace"}
 		case tokenEOF:
 			p.backup()
 			return missingDelim("}")
-		case tokenKeyword, tokenTablekey:
+		case tokenKeyword, tokenMapkey:
 			peek := p.peek().typ
 			if peek == delim || peek == tokenDoubleNewline || peek == tokenEOF {
-				return SyntaxError{Message: "table expects an even number of elements (key-value pairs)"}
+				return SyntaxError{Message: "map expects an even number of elements (key-value pairs)"}
 			}
 			key := strings.Trim(tok.val, ":")
-			table[key] = parseCode(p)
+			mapp[key] = parseCode(p)
 		default:
-			return SyntaxError{Message: "bad table formatting"}
+			return SyntaxError{Message: "bad map formatting"}
 		}
 	}
 }
