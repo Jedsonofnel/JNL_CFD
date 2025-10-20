@@ -108,16 +108,10 @@ func (e SyntaxError) String() string { return "ERROR: " + e.Message }
 func newSyntaxErrorFromToken(t token) SyntaxError {
 	var message string
 	switch t.typ {
-	case tokenMissingCloseList:
-		message = "missing closing list parenthesis"
-	case tokenMissingCloseVec:
-		message = "missing closing vector bracket"
-	case tokenMissingCloseString:
+	case tokenUnenclosedString:
 		message = "missing closing string double quotation mark"
 	case tokenMalformedNumber:
 		message = "malformed number: " + t.val
-	case tokenInvalidLiteral:
-		message = "invalid literal: " + t.val
 	default:
 		panic("Called newSyntaxError with non-error type: " + t.typ.String())
 	}

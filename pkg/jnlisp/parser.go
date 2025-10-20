@@ -5,213 +5,212 @@ import (
 	"strings"
 )
 
-func parse(src string, tokens []token) (blocks []Block) {
-	idx := 0
+// parser produces these
+type Block struct {
+	// Lexer/parser metadata
+	Type  BlockType
+	Start Pos
+	End   Pos
 
-	for idx < len(tokens) {
-		tok := tokens[idx]
+	src    string
+	tokens []token
 
-		if tok.typ == tokenEOF {
-			break
-		}
+	AST Sexp
 
-		if tok.typ == tokenProse && isWhitespaceOnly(tok.val) {
-			idx++
-			continue
-		}
+	// Syntax errors found in this block
+	Errors []Error
+}
 
-		b := Block{StartPos: tok.pos}
+type Document []Block
 
-		switch t := tok.typ; t {
+func (doc Document) String() string {
+	accumulator := strings.Builder{}
+	for i := range doc {
+		accumulator.WriteString(doc[i].AST.String())
+		accumulator.WriteString("\n\r")
+	}
+	return accumulator.String()
+}
+
+type BlockType int
+
+const (
+	CodeBlock BlockType = iota
+	ProseBlock
+)
+
+type parser struct {
+	lex *lexer
+	src string
+
+	current token
+	backed  bool
+}
+
+func (p *parser) next() token {
+	if p.backed {
+		p.backed = false
+		return p.current // return backed up value
+	}
+	p.current = p.lex.nextToken()
+	return p.current
+}
+
+func (p *parser) backup() {
+	if p.backed {
+		panic("parser: cannot backup twice")
+	}
+	p.backed = true
+}
+
+func (p *parser) peek() token {
+	tok := p.next()
+	p.backup()
+	return tok
+}
+
+func parse(src string) Document {
+	lexer := lex(src)
+	parser := &parser{
+		lex: lexer,
+		src: src,
+	}
+	var blocks []Block
+
+Loop:
+	for {
+		tok := parser.next()
+		b := Block{Start: tok.pos}
+
+		switch tok.typ {
+		case tokenEOF:
+			break Loop
+		case tokenDoubleNewline:
+			continue // skip for now
 		case tokenProse:
-			b.Type = "prose"
-			idx++
-		case tokenOpenList:
-			b.Type = "code"
-
-			expression, errors := parseCode(tokens, &idx)
-			b.rawAST = expression
-
-			// cast []SyntaxError into []Error
-			for _, err := range errors {
-				b.Errors = append(b.Errors, err)
-			}
+			b.Type = ProseBlock
+		case tokenOpenJParen, tokenOpenParen:
+			b.Type = CodeBlock
+			b.AST = parseList(parser)
+			// b.FindSyntaxErrors()
 		default:
-			panic("unexpected token type in parseDocument: " + t.String())
+			panic("unexpected token type in parse: " + tok.String())
 		}
 
-		// At this point idx points to the next token
-		// EndPos is the start of the next token (which could be EOF)
-		b.EndPos = tokens[idx].pos
-		b.Content = src[b.StartPos.Offset:b.EndPos.Offset]
+		b.End = parser.current.pos
+		b.src = src[b.Start.Offset:b.End.Offset]
+
 		blocks = append(blocks, b)
 	}
 
 	return blocks
 }
 
-func isWhitespaceOnly(s string) bool {
-	return strings.TrimSpace(s) == ""
-}
-
-// PARSING CODE
-
 // Creates a tree structure from tokens with no semantic analysis
-func parseCode(tokens []token, idx *int) (sexp Sexp, errors []Error) {
-	if *idx >= len(tokens) {
-		return sexp, errors
-	}
-
-	token := tokens[*idx]
-	*idx++
-
-	switch token.typ {
-	case tokenOpenList:
-		sexp, errors = parseList(tokens, idx)
-	case tokenOpenVec:
-		sexp, errors = parseVector(tokens, idx)
-	case tokenOpenTable:
-		sexp, errors = parseTable(tokens, idx)
-	case tokenCloseList, tokenCloseVec, tokenCloseTable: // lexer catches these - shouldn't fire
-		err := newUnexpectedClosingTokenError(token)
-		errors = append(errors, err)
-		sexp = err
+func parseCode(p *parser) Sexp {
+	tok := p.next()
+	switch tok.typ {
+	case tokenOpenParen:
+		return parseList(p)
+	case tokenOpenBracket:
+		return parseVector(p)
+	case tokenOpenBrace:
+		return parseTable(p, tokenCloseBrace)
+	case tokenCloseParen, tokenCloseBracket, tokenCloseBrace:
+		return newUnexpectedClosingTokenError(tok)
 	case tokenNumber:
-		sexp = parseNumber(token.val)
+		return parseNumber(tok.val)
 	case tokenString:
-		sexp = String(token.val)
-	case tokenBool:
-		sexp = parseBool(token.val)
+		return String(tok.val)
 	case tokenSymbol:
-		sexp = Symbol(token.val)
+		return parseSymbol(tok.val)
 	case tokenKeyword:
-		sexp = Symbol(token.val)
-	case tokenMissingCloseList,
-		tokenMissingCloseVec,
-		tokenMissingCloseTable,
-		tokenMissingCloseString,
-		tokenMalformedNumber,
-		tokenInvalidLiteral,
-		tokenUnexpectedCloseList,
-		tokenUnexpectedCloseVec,
-		tokenUnexpectedCloseTable:
-		err := newSyntaxErrorFromToken(token)
-		errors = append(errors, err)
-		sexp = err
+		return Keyword(tok.val)
+	case tokenUnenclosedString,
+		tokenMalformedNumber:
+		return newSyntaxErrorFromToken(tok)
 	default:
-		err := newUnexpectedTokenError(token)
-		errors = append(errors, err)
-		sexp = err
+		return newUnexpectedTokenError(tok)
 	}
-
-	return sexp, errors
 }
 
-func parseList(tokens []token, idx *int) (List, []Error) {
-	list := List{}
-	errors := []Error{}
+func parseList(p *parser) List {
+	var list List
 
-	for *idx < len(tokens) {
-		if tokens[*idx].typ == tokenCloseList {
-			*idx++
-			break
-		}
-
-		if tokens[*idx].typ == tokenMissingCloseList {
-			errors = append(errors, newSyntaxErrorFromToken(tokens[*idx]))
-			*idx++
-			break
-		}
-
-		childSexp, childErrors := parseCode(tokens, idx)
-		errors = append(errors, childErrors...)
-		if childSexp != nil {
-			list = append(list, childSexp)
+Loop:
+	for {
+		tok := p.next()
+		switch tok.typ {
+		case tokenCloseParen:
+			break Loop
+		case tokenDoubleNewline, tokenEOF, tokenOpenJParen:
+			p.backup()
+			list = append(list, SyntaxError{Message: "missing close list"})
+			return list
+		default:
+			p.backup()
+			list = append(list, parseCode(p))
 		}
 	}
 
-	return list, errors
+	return list
 }
 
-func parseVector(tokens []token, idx *int) (Vector, []Error) {
-	vec := Vector{}
-	errors := []Error{}
+func parseVector(p *parser) Vector {
+	vector := Vector{}
 
-	for *idx < len(tokens) {
-		if tokens[*idx].typ == tokenCloseVec {
-			*idx++
-			break
-		}
-
-		if tokens[*idx].typ == tokenMissingCloseVec {
-			errors = append(errors, newSyntaxErrorFromToken(tokens[*idx]))
-			*idx++
-			break
-		}
-
-		childSexp, childErrors := parseCode(tokens, idx)
-		errors = append(errors, childErrors...)
-		if childSexp != nil {
-			vec = append(vec, childSexp)
+	for {
+		tok := p.next()
+		switch tok.typ {
+		case tokenCloseBracket:
+			return vector
+		case tokenDoubleNewline, tokenEOF, tokenOpenJParen:
+			p.backup()
+			vector = append(vector, SyntaxError{Message: "missing close vector"})
+			return vector
+		default:
+			p.backup()
+			vector = append(vector, parseCode(p))
 		}
 	}
-
-	return vec, errors
 }
 
-func parseTable(tokens []token, idx *int) (Sexp, []Error) {
+// parse table with an optional delimeter
+// (brace for table literal, paren for inline table)
+func parseTable(p *parser, delim tokenType) Sexp {
 	table := make(Table)
-	errors := []Error{}
 
-	firstIndex := *idx
-	var tableElements []Sexp
-	for *idx < len(tokens) {
-		if tokens[*idx].typ == tokenCloseTable {
-			*idx++
-			break
-		}
-
-		if tokens[*idx].typ == tokenMissingCloseTable {
-			errors = append(errors, newSyntaxErrorFromToken(tokens[*idx]))
-			*idx++
-			break
-		}
-
-		childSexp, childErrors := parseCode(tokens, idx)
-		errors = append(errors, childErrors...)
-		if childSexp != nil {
-			tableElements = append(tableElements, childSexp)
-		}
-	}
-
-	if len(tableElements)%2 != 0 {
-		tableErr := SyntaxError{Pos: tokens[firstIndex].pos}
-		tableErr.Message = "table literal expects an even number of elements (key-value pairs)"
-		errors = append(errors, tableErr)
-		return tableErr, errors
-	}
-
-	for i := 0; i < len(tableElements); i += 2 {
-		key, ok := tableElements[i].(Keyword)
-		if !ok {
-			tableErr := SyntaxError{
+	for {
+		tok := p.next()
+		switch tok.typ {
+		case delim:
+			return table
+		case tokenDoubleNewline, tokenEOF, tokenOpenJParen:
+			p.backup()
+			return SyntaxError{Message: "missing close table brace"}
+		case tokenKeyword:
+			peek := p.peek().typ
+			if peek == delim || peek == tokenDoubleNewline || peek == tokenEOF {
+				return SyntaxError{Message: "table expects an even number of elements (key-value pairs)"}
 			}
-			tableErr.Message = "table key must be a :keyword"
-			errors = append(errors, tableErr)
-			return tableErr, errors
+			table[tok.val] = parseCode(p)
+		default:
+			return SyntaxError{Message: "bad table formatting"}
 		}
-
-		table[string(key)] = tableElements[i+1]
 	}
-
-	return table, errors
 }
 
-func parseBool(t string) Boolean {
-	if t == "#f" || t == "#F" {
-		return false
+func parseSymbol(t string) Sexp {
+	switch t {
+	case "true":
+		return Boolean(true)
+	case "false":
+		return Boolean(false)
+	case "nil":
+		return nil
+	default:
+		return Symbol(t)
 	}
-	return true
 }
 
 func parseNumber(t string) Number {

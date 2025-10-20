@@ -50,24 +50,23 @@ func (ctx *Context) executePackage(pkg Package) (*env, Error) {
 		pkgEnv.bind(name, sexp)
 	}
 
-	fileContents, err := ctx.getFSSourceCode(pkg.FS)
-	if err != nil {
-		return nil, RuntimeError{
-			Message: "Error reading package '" + pkg.Name + "' files: " + err.Error(),
-		}
-	}
-
-	for i := range fileContents {
-		tokens := tokenize(fileContents[i])
-		blocks := parse(fileContents[i], tokens)
-		blocks = ctx.executeWithEnv(blocks, pkgEnv)
-		err := newBlockErrors(blocks)
-		if err != nil {
-			return nil, RuntimeError{
-				Message: "Error executing package '" + pkg.Name + "': " + err.Error(),
-			}
-		}
-	}
-
 	return pkgEnv, nil
+
+	// fileContents, err := ctx.getFSSourceCode(pkg.FS)
+	// if err != nil {
+	// 	return nil, RuntimeError{
+	// 		Message: "Error reading package '" + pkg.Name + "' files: " + err.Error(),
+	// 	}
+	// }
+
+	// for i := range fileContents {
+	// 	// document := parse(fileContents[i])
+	// 	// blocks = ctx.executeWithEnv(blocks, pkgEnv)
+	// 	// err := newBlockErrors(blocks)
+	// 	// if err != nil {
+	// 	// 	return nil, RuntimeError{
+	// 	// 		Message: "Error executing package '" + pkg.Name + "': " + err.Error(),
+	// 	// 	}
+	// 	// }
+	// }
 }
