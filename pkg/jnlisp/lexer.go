@@ -356,7 +356,7 @@ func lexInsideList(l *lexer) lexFn {
 func lexInsideVec(l *lexer) lexFn {
 	for {
 		switch r := l.next(); r {
-		case ' ', '\t', '\r': // if whitespace then ignore
+		case ' ', '\t', '\r', '\f', '\v': // if whitespace then ignore
 			l.ignore()
 		case ')':
 			l.emit(tokenCloseParen)
@@ -375,7 +375,7 @@ func lexInsideVec(l *lexer) lexFn {
 func lexInsideTable(l *lexer) lexFn {
 	for {
 		switch r := l.next(); r {
-		case ' ', '\t', '\r': // if whitespace then ignore
+		case ' ', '\t', '\r', '\f', '\v': // if whitespace then ignore
 			l.ignore()
 		case ')':
 			l.emit(tokenCloseParen)
@@ -562,7 +562,7 @@ func lexKeyword(l *lexer) lexFn {
 // helpers
 
 const digitChars = "0123456789"
-const specialChars = "()[]{}\"';# \t\n\r"
+const specialChars = "()[]{}\"';# \t\n\r\f\v"
 
 func isSymbolChar(r rune) bool {
 	return r != eof && !strings.ContainsRune(specialChars, r)
@@ -578,7 +578,7 @@ func isDoubleNewline(l *lexer) bool {
 	// Skip whitespace (but not newlines)
 	for pos < len(l.input) {
 		r, width := utf8.DecodeRuneInString(l.input[pos:])
-		if strings.ContainsRune(" \t\r", r) {
+		if strings.ContainsRune(" \t\r\f\v", r) {
 			pos += width
 			continue
 		}
