@@ -27,7 +27,7 @@ func NewContext() *Context {
 		pkgRegistry: make(map[string]Package),
 		loadedPkgs:  make(map[string]*env),
 		replBuf:     strings.Builder{},
-		replLine:    1,
+		replLine:    0,
 	}
 
 	ctx.RegisterPackage(corePkg)
@@ -43,12 +43,12 @@ func (ctx *Context) Reset() {
 	ctx.importEnv = newEnv(nil)
 	ctx.userEnv = newEnv(ctx.importEnv)
 	ctx.replBuf.Reset()
-	ctx.replLine = 1
+	ctx.replLine = 0
 }
 
 func (ctx *Context) ReplPrompt(missingDelims string) string {
-	prompt := "jnlisp:" + strconv.Itoa(ctx.replLine) + ":" + missingDelims + "> "
 	ctx.replLine++
+	prompt := "jnlisp:" + strconv.Itoa(ctx.replLine) + ":" + missingDelims + "> "
 	return prompt
 }
 
@@ -56,9 +56,24 @@ func (ctx *Context) ReplPrompt(missingDelims string) string {
 // can be in a step() for a REPL or execute() for all in one go
 
 func (ctx *Context) Step(input string) (Document, string) {
-	document := parse(input)
-	ctx.replBuf.Reset()
+	ctx.replBuf.WriteString(input)
+	document := parse(ctx.replBuf.String())
 
+	missingDelims := ""
+	lastBlock := document[len(document)-1]
+	for _, err := range lastBlock.Errors {
+		if missing, ok := err.(missingDelim); ok {
+			missingDelims += missing.matching()
+		} else {
+			return document, "" // ie blocking error detected
+		}
+	}
+
+	if missingDelims != "" {
+		return nil, missingDelims
+	}
+
+	ctx.replBuf.Reset()
 	return document, ""
 }
 

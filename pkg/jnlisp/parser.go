@@ -27,9 +27,34 @@ func (doc Document) String() string {
 	accumulator := strings.Builder{}
 	for i := range doc {
 		accumulator.WriteString(doc[i].AST.String())
-		accumulator.WriteString("\n\r")
+		accumulator.WriteString("\n")
 	}
 	return accumulator.String()
+}
+
+func findSyntaxErrors(sexp Sexp) []Error {
+	var errs []Error
+
+	switch sexp := sexp.(type) {
+	case List:
+		for _, child := range sexp {
+			errs = append(errs, findSyntaxErrors(child)...)
+		}
+	case Vector:
+		for _, child := range sexp {
+			errs = append(errs, findSyntaxErrors(child)...)
+		}
+	case Table:
+		for _, child := range sexp {
+			errs = append(errs, findSyntaxErrors(child)...)
+		}
+	case SyntaxError:
+		errs = append(errs, sexp)
+	case missingDelim:
+		errs = append(errs, sexp)
+	}
+
+	return errs
 }
 
 type BlockType int
@@ -92,7 +117,7 @@ Loop:
 		case tokenOpenJParen, tokenOpenParen:
 			b.Type = CodeBlock
 			b.AST = parseList(parser)
-			// b.FindSyntaxErrors()
+			b.Errors = findSyntaxErrors(b.AST)
 		default:
 			panic("unexpected token type in parse: " + tok.String())
 		}
@@ -134,18 +159,39 @@ func parseCode(p *parser) Sexp {
 	}
 }
 
+type missingDelim string
+
+func (m missingDelim) Error() string  { return "Missing delimeter: " + string(m) }
+func (m missingDelim) String() string { return "MISSING DELIM: " }
+func (m missingDelim) Type() string   { return "error" }
+func (m missingDelim) matching() string {
+	switch m {
+	case ")":
+		return "("
+	case "}":
+		return "{"
+	case "]":
+		return "["
+	default:
+		return string(m)
+	}
+}
+
 func parseList(p *parser) List {
 	var list List
 
-Loop:
 	for {
 		tok := p.next()
 		switch tok.typ {
 		case tokenCloseParen:
-			break Loop
-		case tokenDoubleNewline, tokenEOF, tokenOpenJParen:
+			return list
+		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
 			list = append(list, SyntaxError{Message: "missing close list"})
+			return list
+		case tokenEOF:
+			p.backup()
+			list = append(list, missingDelim(")"))
 			return list
 		case tokenTablekey:
 			p.backup()
@@ -155,8 +201,6 @@ Loop:
 			list = append(list, parseCode(p))
 		}
 	}
-
-	return list
 }
 
 func parseVector(p *parser) Vector {
@@ -167,9 +211,13 @@ func parseVector(p *parser) Vector {
 		switch tok.typ {
 		case tokenCloseBracket:
 			return vector
-		case tokenDoubleNewline, tokenEOF, tokenOpenJParen:
+		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
 			vector = append(vector, SyntaxError{Message: "missing close vector"})
+			return vector
+		case tokenEOF:
+			p.backup()
+			vector = append(vector, missingDelim("]"))
 			return vector
 		case tokenTablekey:
 			p.backup()
@@ -194,9 +242,12 @@ func parseTable(p *parser, delim tokenType) Sexp {
 				p.backup() // if not a table literal don't consume
 			}
 			return table
-		case tokenDoubleNewline, tokenEOF, tokenOpenJParen:
+		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
 			return SyntaxError{Message: "missing close table brace"}
+		case tokenEOF:
+			p.backup()
+			return missingDelim("}")
 		case tokenKeyword, tokenTablekey:
 			peek := p.peek().typ
 			if peek == delim || peek == tokenDoubleNewline || peek == tokenEOF {

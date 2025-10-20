@@ -6,61 +6,6 @@ import (
 
 type Error interface {
 	error
-	Msg() string
-}
-
-// IMPLEMENTATIONS
-// TODO: consider adding a "Suggestion" field
-
-// Combines multiple errors from different code blocks
-type BlockErrors struct {
-	Errors  []BlockError
-	Message string
-}
-
-func (e BlockErrors) Error() string {
-	return "Block errors:\n" + e.Message
-}
-
-func (e BlockErrors) Msg() string { return e.Message }
-
-func newBlockErrors(blocks []Block) Error {
-	var errors []BlockError
-	message := ""
-
-	for i := range blocks {
-		errs := blocks[i].Errors
-		if len(errs) == 0 {
-			continue
-		}
-
-		for j := range errs {
-			err := newBlockError(errs[j], i)
-			errors = append(errors, err)
-			message += "\t" + err.Error()
-		}
-	}
-
-	if len(errors) == 0 {
-		return nil
-	}
-
-	return BlockErrors{errors, message}
-}
-
-type BlockError struct {
-	Err        Error
-	BlockIndex int
-}
-
-func (e BlockError) Error() string {
-	return "Error in block " + strconv.Itoa(e.BlockIndex+1) + ": " + e.Err.Error()
-}
-
-func (e BlockError) Msg() string { return e.Err.Error() }
-
-func newBlockError(err Error, idx int) BlockError {
-	return BlockError{err, idx}
 }
 
 // created during filesystem lookups
@@ -80,11 +25,7 @@ func (e FileSystemError) Error() string {
 	return "File system error: " + e.Message
 }
 
-func (e FileSystemError) Msg() string { return e.Message }
-
-// SYNTAX ERROR
-
-// Created during first parsing
+// Created by the parser - implements Sexp
 type SyntaxError struct {
 	Pos     Pos
 	Message string
@@ -92,10 +33,6 @@ type SyntaxError struct {
 
 func (e SyntaxError) Error() string {
 	return "Syntax error at " + e.Pos.String() + ": " + e.Message
-}
-
-func (e SyntaxError) Msg() string {
-	return e.Message
 }
 
 func (e SyntaxError) ToJSON() string {
@@ -133,8 +70,6 @@ func newUnexpectedTokenError(t token) SyntaxError {
 	}
 }
 
-// EXPANSION ERROR
-
 // Created during expansion
 type ExpansionError struct {
 	Message string
@@ -156,10 +91,6 @@ type ElaborationError struct {
 
 func (e ElaborationError) Error() string {
 	return "Elaboration error: " + e.Message
-}
-
-func (e ElaborationError) Msg() string {
-	return e.Message
 }
 
 // RUNTIME ERROR
