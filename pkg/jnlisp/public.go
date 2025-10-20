@@ -59,6 +59,11 @@ func (vm *VM) Step(input string) (Document, string) {
 	vm.replBuf.WriteString(input)
 	document := parse(vm.replBuf.String())
 
+	if len(document) == 0 {
+		vm.replBuf.Reset()
+		return nil, ""
+	}
+
 	missingDelims := ""
 	lastBlock := document[len(document)-1]
 	for _, err := range lastBlock.Errors {

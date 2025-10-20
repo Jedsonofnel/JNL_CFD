@@ -259,7 +259,7 @@ func lexStart(l *lexer) lexFn {
 		case '(': // if open paren backup and start REPL
 			l.backup()
 			return lexREPL
-		case ';': // ignore comments
+		case '#': // ignore comments
 			l.push(lexStart)
 			return lexComment
 		case ' ', '\n', '\t', '\r':
