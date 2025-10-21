@@ -107,9 +107,11 @@ func parse(src string) Document {
 
 Loop:
 	for {
-		tok := parser.next()
-		b := Block{Start: tok.pos}
+		b := Block{}
 		parser.block = &b
+		tok := parser.next()
+
+		b.Start = tok.pos
 
 		switch tok.typ {
 		case tokenEOF:
