@@ -70,6 +70,8 @@ type parser struct {
 
 	current token
 	backed  bool
+
+	block *Block // current block being parsed
 }
 
 func (p *parser) next() token {
@@ -78,6 +80,7 @@ func (p *parser) next() token {
 		return p.current // return backed up value
 	}
 	p.current = p.lex.nextToken()
+	p.block.tokens = append(p.block.tokens, p.current) // auto-save
 	return p.current
 }
 
@@ -106,6 +109,7 @@ Loop:
 	for {
 		tok := parser.next()
 		b := Block{Start: tok.pos}
+		parser.block = &b
 
 		switch tok.typ {
 		case tokenEOF:
