@@ -8,6 +8,23 @@ type Error interface {
 	error
 }
 
+type ErrorCode int
+
+// Error codes for all types of errors
+const (
+	// syntax errors
+	ErrMissingDelimiter ErrorCode = iota
+	ErrUnexpectedDelimiter
+	ErrUnexpectedToken
+	ErrMalformedNumber
+	ErrUnenclosedString
+	ErrDuplicateMapKeys
+	ErrExpectedKeyValue // when a keyword isn't followed by a value
+	ErrExpectedKeyword  // when it's not a keyword in a map
+
+	expansion_errors // sentinal value
+)
+
 // created during filesystem lookups
 type FileSystemError struct {
 	path    string
@@ -27,46 +44,83 @@ func (e FileSystemError) Error() string {
 
 // Created by the parser - implements Sexp
 type SyntaxError struct {
-	Pos     Pos
+	Code    ErrorCode
+	token   token
 	Message string
 }
 
 func (e SyntaxError) Error() string {
-	return "Syntax error at " + e.Pos.String() + ": " + e.Message
+	return "Syntax error at " + e.token.pos.String() + ": " + e.Message
 }
 
 func (e SyntaxError) ToJSON() string {
-	return formatErrJSON("SyntaxError", e.Message, &e.Pos)
+	return formatErrJSON("SyntaxError", e.Message, &e.token.pos)
 }
 
 func (e SyntaxError) Type() string   { return "error" }
 func (e SyntaxError) String() string { return "ERROR: " + e.Message }
 
-func newSyntaxErrorFromToken(t token) SyntaxError {
-	var message string
-	switch t.typ {
-	case tokenUnenclosedString:
-		message = "missing closing string double quotation mark"
-	case tokenMalformedNumber:
-		message = "malformed number: " + t.val
-	default:
-		panic("Called newSyntaxError with non-error type: " + t.typ.String())
-	}
-
-	return SyntaxError{t.pos, message}
-}
-
-func newUnexpectedClosingTokenError(t token) SyntaxError {
+func newErrMissingDelimiter(t token, delim string) SyntaxError {
 	return SyntaxError{
-		Pos:     t.pos,
-		Message: "unexpected '" + t.val + "'",
+		Code:    ErrMissingDelimiter,
+		token:   t,
+		Message: "missing delimiter: '" + delim + "'",
 	}
 }
 
-func newUnexpectedTokenError(t token) SyntaxError {
+func newErrUnexpectedDelimiter(t token) SyntaxError {
 	return SyntaxError{
-		Pos:     t.pos,
-		Message: "unexpected token '" + t.String() + "', value: " + t.val,
+		Code:    ErrUnexpectedDelimiter,
+		token:   t,
+		Message: "unexpected delimeter: '" + t.val + "'",
+	}
+}
+
+func newErrUnexpectedToken(t token) SyntaxError {
+	return SyntaxError{
+		Code:    ErrUnexpectedToken,
+		token:   t,
+		Message: "unexpected token: '" + t.val + "'",
+	}
+}
+
+func newErrMalformedNumber(t token) SyntaxError {
+	return SyntaxError{
+		Code:    ErrMalformedNumber,
+		token:   t,
+		Message: "malformed number: '" + t.val + "'",
+	}
+}
+
+func newErrUnenclosedString(t token) SyntaxError {
+	return SyntaxError{
+		Code:    ErrUnenclosedString,
+		token:   t,
+		Message: "unenclosed string: '" + t.val + "'",
+	}
+}
+
+func newErrDuplicateMapKeys(t token) SyntaxError {
+	return SyntaxError{
+		Code:    ErrDuplicateMapKeys,
+		token:   t,
+		Message: "duplicate map key: '" + t.val + "'",
+	}
+}
+
+func newErrExpectedKeyValue(t token, key string) SyntaxError {
+	return SyntaxError{
+		Code:    ErrExpectedKeyValue,
+		token:   t,
+		Message: "expected value for key: '" + key + "'",
+	}
+}
+
+func newErrExpectedKeyword(t token) SyntaxError {
+	return SyntaxError{
+		Code:    ErrExpectedKeyword,
+		token:   t,
+		Message: "expected keyword in map, got: '" + t.val + "'",
 	}
 }
 

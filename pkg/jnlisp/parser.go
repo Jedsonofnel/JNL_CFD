@@ -142,7 +142,7 @@ func parseCode(p *parser) Sexp {
 	case tokenOpenBrace:
 		return parseMap(p, tokenCloseBrace)
 	case tokenCloseParen, tokenCloseBracket, tokenCloseBrace:
-		return newUnexpectedClosingTokenError(tok)
+		return newErrUnexpectedDelimiter(tok)
 	case tokenNumber:
 		return parseNumber(tok.val)
 	case tokenString:
@@ -151,11 +151,12 @@ func parseCode(p *parser) Sexp {
 		return parseSymbol(tok.val)
 	case tokenKeyword:
 		return Keyword(strings.Trim(tok.val, ":"))
-	case tokenUnenclosedString,
-		tokenMalformedNumber:
-		return newSyntaxErrorFromToken(tok)
+	case tokenUnenclosedString:
+		return newErrUnenclosedString(tok)
+	case tokenMalformedNumber:
+		return newErrMalformedNumber(tok)
 	default:
-		return newUnexpectedTokenError(tok)
+		return newErrUnexpectedToken(tok)
 	}
 }
 
@@ -187,7 +188,7 @@ func parseList(p *parser) List {
 			return list
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			list = append(list, SyntaxError{Message: "missing close list"})
+			list = append(list, newErrMissingDelimiter(tok, ")"))
 			return list
 		case tokenEOF:
 			p.backup()
@@ -213,7 +214,7 @@ func parseVector(p *parser) Vector {
 			return vector
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			vector = append(vector, SyntaxError{Message: "missing close vector"})
+			vector = append(vector, newErrMissingDelimiter(tok, "]"))
 			return vector
 		case tokenEOF:
 			p.backup()
@@ -230,10 +231,12 @@ func parseVector(p *parser) Vector {
 }
 
 // parse map with an optional delimeter
-// (brace for map literal, paren for inline map)
+// (brace for map literal, paren/bracket for inline map with mapkey: value syntax)
 func parseMap(p *parser, delim tokenType) Sexp {
 	mapp := make(Map)
+	var elements List
 
+Loop:
 	for {
 		tok := p.next()
 		switch tok.typ {
@@ -241,24 +244,43 @@ func parseMap(p *parser, delim tokenType) Sexp {
 			if delim != tokenCloseBrace {
 				p.backup() // if not a map literal don't consume
 			}
-			return mapp
+			break Loop
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			return SyntaxError{Message: "missing close map brace"}
+			elements = append(elements, newErrMissingDelimiter(tok, "}"))
 		case tokenEOF:
 			p.backup()
-			return missingDelim("}")
+			return append(elements, missingDelim("}"))
 		case tokenKeyword, tokenMapkey:
-			peek := p.peek().typ
-			if peek == delim || peek == tokenDoubleNewline || peek == tokenEOF {
-				return SyntaxError{Message: "map expects an even number of elements (key-value pairs)"}
-			}
 			key := strings.Trim(tok.val, ":")
-			mapp[key] = parseCode(p)
+			if _, exists := mapp[key]; exists {
+				elements = append(elements, newErrDuplicateMapKeys(tok))
+			}
+			next := p.peek()
+			switch next.typ {
+			case tokenCloseBrace:
+				p.next() // consume the delimiter
+				return append(elements, newErrExpectedKeyValue(next, key))
+			case tokenDoubleNewline, tokenEOF, delim:
+				return append(elements, newErrExpectedKeyValue(next, key))
+			}
+			value := parseCode(p)
+			mapp[key] = value
+			elements = append(elements, Keyword(key))
+			elements = append(elements, value)
 		default:
-			return SyntaxError{Message: "bad map formatting"}
+			elements = append(elements, newErrExpectedKeyword(tok))
 		}
 	}
+
+	// if there's an error - return the list
+	for i := range elements {
+		if _, ok := elements[i].(Error); ok {
+			return elements
+		}
+	}
+
+	return mapp
 }
 
 func parseSymbol(t string) Sexp {
