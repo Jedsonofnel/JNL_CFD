@@ -66,7 +66,8 @@ type SyntaxError struct {
 }
 
 func (e SyntaxError) Error() string {
-	return e.Code.String() + " at line " + e.token.pos.String() + ": " + e.Message
+	pos := e.block.Src.Filename + ":" + e.token.pos.String()
+	return e.Code.String() + " at " + pos + ": " + e.Message
 }
 
 func (e SyntaxError) PrettyError() string {
@@ -255,21 +256,21 @@ func escapeJSON(s string) string {
 
 // Returns the line of source code containing the given token position
 func getLineContaining(block *Block, token token) string {
-	relativeOffset := token.pos.Offset - block.Start.Offset
-	if relativeOffset < 0 || relativeOffset > len(block.src) {
+	src := block.Src
+	relativeOffset := token.pos.Offset - src.Start.Offset
+	if relativeOffset < 0 || relativeOffset > len(src.Text) {
 		return ""
 	}
 
-	src := block.src
 	lineStart := relativeOffset
-	for lineStart > 0 && src[lineStart-1] != '\n' {
+	for lineStart > 0 && src.Text[lineStart-1] != '\n' {
 		lineStart--
 	}
 	lineEnd := relativeOffset
-	for lineEnd < len(src) && src[lineEnd] != '\n' {
+	for lineEnd < len(src.Text) && src.Text[lineEnd] != '\n' {
 		lineEnd++
 	}
-	return src[lineStart:lineEnd]
+	return src.Text[lineStart:lineEnd]
 }
 
 func prettyFormatError(block *Block, token token, msg string) string {
@@ -282,10 +283,12 @@ func prettyFormatError(block *Block, token token, msg string) string {
 	accumulator.WriteString(getLineContaining(block, token) + "\n")
 	accumulator.WriteString(strings.Repeat(" ", len(lineNum)+1) + "| ")
 
+	src := block.Src
+
 	// caret underline
-	relativeOffset := token.pos.Offset - block.Start.Offset
+	relativeOffset := token.pos.Offset - src.Start.Offset
 	lineStart := relativeOffset
-	for lineStart > 0 && block.src[lineStart-1] != '\n' {
+	for lineStart > 0 && src.Text[lineStart-1] != '\n' {
 		lineStart--
 	}
 	caretStart := relativeOffset - lineStart

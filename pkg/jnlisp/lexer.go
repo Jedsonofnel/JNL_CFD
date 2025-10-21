@@ -92,7 +92,7 @@ const (
 )
 
 func (t token) String() string {
-	return t.typ.String() + "\n\r"
+	return t.typ.String() + "@" + t.pos.String()
 }
 
 type lexer struct {
@@ -113,17 +113,17 @@ type lexer struct {
 	startCol  int // current token's starting column
 }
 
-func lex(input string) *lexer {
+func lex(src Source) *lexer {
 	l := &lexer{
-		input:  input,
+		input:  src.Text,
 		state:  lexStart,            // the starting state
 		tokens: make(chan token, 2), // two tokens sufficient - ring buffer
 		stack:  []lexFn{},
 
-		line:      1, // start at line 1
-		lineStart: 0, // line starts at beginning
+		line:      src.Start.Line, // start at line 1
+		lineStart: 0,              // line starts at beginning
 
-		startLine: 1,
+		startLine: src.Start.Line,
 		startCol:  1,
 	}
 	return l

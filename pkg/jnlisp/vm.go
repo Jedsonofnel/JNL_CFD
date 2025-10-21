@@ -57,7 +57,11 @@ func (vm *VM) ReplPrompt(missingDelims string) string {
 
 func (vm *VM) Step(input string) (Document, string) {
 	vm.replBuf.WriteString(input)
-	document := parse(vm.replBuf.String())
+	document := parse(Source{
+		Text:     vm.replBuf.String(),
+		Filename: "repl",
+		Start:    Pos{Line: vm.replLine, Column: 1, Offset: 0},
+	})
 
 	if len(document) == 0 {
 		vm.replBuf.Reset()
@@ -83,8 +87,8 @@ func (vm *VM) Step(input string) (Document, string) {
 	return document, ""
 }
 
-func (vm *VM) Execute(input string) []Block {
-	document := parse(input)
+func (vm *VM) Execute(src Source) []Block {
+	document := parse(src)
 	// TODO: re-figure out eval
 	return document
 }

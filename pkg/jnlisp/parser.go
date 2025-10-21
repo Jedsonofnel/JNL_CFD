@@ -5,14 +5,19 @@ import (
 	"strings"
 )
 
+// parser acts on these
+type Source struct {
+	Text     string
+	Filename string
+	Start    Pos
+	End      Pos
+}
+
 // parser produces these
 type Block struct {
 	// Lexer/parser metadata
-	Type  BlockType
-	Start Pos
-	End   Pos
-
-	src    string
+	Type   BlockType
+	Src    Source
 	tokens []token
 
 	AST Sexp
@@ -111,11 +116,11 @@ func (p *parser) peek() token {
 	return tok
 }
 
-func parse(src string) Document {
+func parse(src Source) Document {
 	lexer := lex(src)
 	parser := &parser{
 		lex: lexer,
-		src: src,
+		src: src.Text,
 	}
 	var blocks []Block
 
@@ -125,7 +130,8 @@ Loop:
 		parser.block = &b
 		tok := parser.next()
 
-		b.Start = tok.pos
+		b.Src.Start = tok.pos
+		b.Src.Filename = src.Filename
 
 		switch tok.typ {
 		case tokenEOF:
@@ -144,8 +150,8 @@ Loop:
 
 		endPos := parser.current.pos
 		endPos.Offset += len(parser.current.val) // add the width of the token
-		b.End = endPos
-		b.src = src[b.Start.Offset:b.End.Offset]
+		b.Src.End = endPos
+		b.Src.Text = src.Text[b.Src.Start.Offset:endPos.Offset]
 
 		blocks = append(blocks, b)
 	}
