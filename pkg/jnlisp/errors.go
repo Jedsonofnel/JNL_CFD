@@ -274,9 +274,13 @@ func getLineContaining(block *Block, token token) string {
 
 func prettyFormatError(block *Block, token token, msg string) string {
 	accumulator := strings.Builder{}
-	accumulator.WriteString("|\n| ")
-	accumulator.WriteString(getLineContaining(block, token))
-	accumulator.WriteString("\n| ")
+
+	// line numbers
+	lineNum := strconv.Itoa(token.pos.Line)
+	accumulator.WriteString(strings.Repeat(" ", len(lineNum)+1) + "|\n")
+	accumulator.WriteString(lineNum + " | ")
+	accumulator.WriteString(getLineContaining(block, token) + "\n")
+	accumulator.WriteString(strings.Repeat(" ", len(lineNum)+1) + "| ")
 
 	// caret underline
 	relativeOffset := token.pos.Offset - block.Start.Offset
@@ -287,7 +291,7 @@ func prettyFormatError(block *Block, token token, msg string) string {
 	caretStart := relativeOffset - lineStart
 	if caretStart-1 > len(msg) {
 		accumulator.WriteString(strings.Repeat(" ", caretStart-len(msg)-1))
-		accumulator.WriteString(msg)
+		accumulator.WriteString(msg + " ")
 	} else {
 		accumulator.WriteString(strings.Repeat(" ", caretStart))
 	}
