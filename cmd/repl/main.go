@@ -21,15 +21,15 @@ func main() {
 
 	vm := jnlisp.NewVM()
 
-	fmt.Print("JNLisp REPL\r\n")
-	fmt.Print("Ctrl-d to quit, Ctrl-l to clear, Ctrl-c to cancel line\r\n")
+	writeline("JNLisp REPL")
+	writeline("Ctrl-d to quit, Ctrl-l to clear, Ctrl-c to cancel line")
 
 	for {
 		result, shouldExit := readCompleteForm(vm)
 		if shouldExit {
 			break // so that defer runs
 		}
-		fmt.Print(result + "\r")
+		writeline(result)
 	}
 }
 
@@ -105,6 +105,9 @@ func readline(prompt string) (string, interrupt) {
 			switch c {
 			case '\x03': // <c-c> is cancel
 				fmt.Print("\r\n")
+				if line.Len() == 0 {
+					return "", InterruptEOF
+				}
 				return "", InterruptCancel
 			case '\x04': // <c-d> is EOF
 				fmt.Print("\r\n")
@@ -156,4 +159,16 @@ func readline(prompt string) (string, interrupt) {
 
 		fmt.Print(string(buf[:size]))
 	}
+}
+
+func writeline(s string) {
+	// normalise newlines
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\n", "\r\n")
+
+	if !strings.HasSuffix(s, "\r\n") {
+		s += "\r\n"
+	}
+
+	fmt.Print(s)
 }

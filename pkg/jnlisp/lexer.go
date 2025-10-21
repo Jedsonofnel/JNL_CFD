@@ -519,6 +519,11 @@ func lexNumber(l *lexer) lexFn {
 func lexSymbol(l *lexer) lexFn {
 	for {
 		r := l.next()
+		if r == ':' { // if colon make it a mapkey
+			l.emit(tokenMapkey)
+			return l.pop()
+		}
+
 		if !isSymbolChar(r) {
 			l.backup() // put the delimeter back
 			break

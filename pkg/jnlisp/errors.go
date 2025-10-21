@@ -2,18 +2,29 @@ package jnlisp
 
 import (
 	"strconv"
+	"strings"
 )
 
 type Error interface {
 	error
+	PrettyError() string
 }
 
 type ErrorCode int
 
+func (e ErrorCode) String() string {
+	a := strconv.Itoa(int(e))
+	for len(a) <= 3 { // make the digit 3 chars wide
+		a = "0" + a
+	}
+	return "E" + a
+}
+
 // Error codes for all types of errors
 const (
-	// syntax errors
-	ErrMissingDelimiter ErrorCode = iota
+	syntax_errors ErrorCode = iota // sentinel value
+
+	ErrMissingDelimiter
 	ErrUnexpectedDelimiter
 	ErrUnexpectedToken
 	ErrMalformedNumber
@@ -22,7 +33,7 @@ const (
 	ErrExpectedKeyValue // when a keyword isn't followed by a value
 	ErrExpectedKeyword  // when it's not a keyword in a map
 
-	expansion_errors // sentinal value
+	expansion_errors // sentinel value
 )
 
 // created during filesystem lookups
@@ -42,15 +53,53 @@ func (e FileSystemError) Error() string {
 	return "File system error: " + e.Message
 }
 
+func (e FileSystemError) PrettyError() string {
+	return "File system error: " + e.Message
+}
+
 // Created by the parser - implements Sexp
 type SyntaxError struct {
 	Code    ErrorCode
-	token   token
 	Message string
+	token   token
+	block   *Block // debating this
 }
 
 func (e SyntaxError) Error() string {
-	return "Syntax error at " + e.token.pos.String() + ": " + e.Message
+	return e.Code.String() + " at line " + e.token.pos.String() + ": " + e.Message
+}
+
+func (e SyntaxError) PrettyError() string {
+	accumulator := strings.Builder{}
+	accumulator.WriteString(e.Error() + "\n|\n| ")
+
+	line := getLineContaining(e.block, e.token)
+	accumulator.WriteString(line + "\n| ")
+
+	// caret underline
+	relativeOffset := e.token.pos.Offset - e.block.Start.Offset
+	lineStart := relativeOffset
+	for lineStart > 0 && e.block.src[lineStart-1] != '\n' {
+		lineStart--
+	}
+	caretStart := relativeOffset - lineStart
+	if caretStart-1 > len(e.Message) {
+		accumulator.WriteString(strings.Repeat(" ", caretStart-len(e.Message)-1))
+		accumulator.WriteString(e.Message)
+	} else {
+		accumulator.WriteString(strings.Repeat(" ", caretStart))
+	}
+
+	caretLength := len(e.token.val)
+	if e.token.typ == tokenDoubleNewline {
+		caretLength = 1
+	}
+	accumulator.WriteString(strings.Repeat("^", caretLength) + " ")
+
+	if caretStart-1 <= len(e.Message) {
+		accumulator.WriteString(e.Message)
+	}
+	return accumulator.String()
 }
 
 func (e SyntaxError) ToJSON() string {
@@ -60,67 +109,75 @@ func (e SyntaxError) ToJSON() string {
 func (e SyntaxError) Type() string   { return "error" }
 func (e SyntaxError) String() string { return "ERROR: " + e.Message }
 
-func newErrMissingDelimiter(t token, delim string) SyntaxError {
+func (p *parser) newErrMissingDelimiter(t token, delim string) SyntaxError {
 	return SyntaxError{
 		Code:    ErrMissingDelimiter,
-		token:   t,
 		Message: "missing delimiter: '" + delim + "'",
+		token:   t,
+		block:   p.block,
 	}
 }
 
-func newErrUnexpectedDelimiter(t token) SyntaxError {
+func (p *parser) newErrUnexpectedDelimiter(t token) SyntaxError {
 	return SyntaxError{
 		Code:    ErrUnexpectedDelimiter,
-		token:   t,
 		Message: "unexpected delimeter: '" + t.val + "'",
+		token:   t,
+		block:   p.block,
 	}
 }
 
-func newErrUnexpectedToken(t token) SyntaxError {
+func (p *parser) newErrUnexpectedToken(t token) SyntaxError {
 	return SyntaxError{
 		Code:    ErrUnexpectedToken,
-		token:   t,
 		Message: "unexpected token: '" + t.val + "'",
+		token:   t,
+		block:   p.block,
 	}
 }
 
-func newErrMalformedNumber(t token) SyntaxError {
+func (p *parser) newErrMalformedNumber(t token) SyntaxError {
 	return SyntaxError{
 		Code:    ErrMalformedNumber,
-		token:   t,
 		Message: "malformed number: '" + t.val + "'",
+		token:   t,
+		block:   p.block,
 	}
 }
 
-func newErrUnenclosedString(t token) SyntaxError {
+func (p *parser) newErrUnenclosedString(t token) SyntaxError {
 	return SyntaxError{
 		Code:    ErrUnenclosedString,
-		token:   t,
 		Message: "unenclosed string: '" + t.val + "'",
+		token:   t,
+		block:   p.block,
 	}
 }
 
-func newErrDuplicateMapKeys(t token) SyntaxError {
+func (p *parser) newErrDuplicateMapKeys(t token) SyntaxError {
 	return SyntaxError{
 		Code:    ErrDuplicateMapKeys,
-		token:   t,
 		Message: "duplicate map key: '" + t.val + "'",
+		token:   t,
+		block:   p.block,
 	}
 }
 
-func newErrExpectedKeyValue(t token, key string) SyntaxError {
+func (p *parser) newErrExpectedKeyValue(t token, key string) SyntaxError {
 	return SyntaxError{
 		Code:    ErrExpectedKeyValue,
-		token:   t,
 		Message: "expected value for key: '" + key + "'",
+		token:   t,
+		block:   p.block,
 	}
 }
 
-func newErrExpectedKeyword(t token) SyntaxError {
+func (p *parser) newErrExpectedKeyword(t token) SyntaxError {
 	return SyntaxError{
 		Code:    ErrExpectedKeyword,
-		token:   t,
 		Message: "expected keyword in map, got: '" + t.val + "'",
+		token:   t,
+		block:   p.block,
 	}
 }
 
@@ -133,8 +190,8 @@ func (e ExpansionError) Error() string {
 	return "Expansion error: " + e.Message
 }
 
-func (e ExpansionError) Msg() string {
-	return e.Message
+func (e ExpansionError) PrettyError() string {
+	return "Expansion error: " + e.Message
 }
 
 // ELABORATION ERROR
@@ -144,6 +201,10 @@ type ElaborationError struct {
 }
 
 func (e ElaborationError) Error() string {
+	return "Elaboration error: " + e.Message
+}
+
+func (e ElaborationError) PrettyError() string {
 	return "Elaboration error: " + e.Message
 }
 
@@ -158,8 +219,8 @@ func (e RuntimeError) Error() string {
 	return "Runtime error: " + e.Message
 }
 
-func (e RuntimeError) Msg() string {
-	return e.Message
+func (e RuntimeError) PrettyError() string {
+	return "Runtime error: " + e.Message
 }
 
 func ArgCountErr(funcName string, expected, got int) RuntimeError {
@@ -214,4 +275,24 @@ func escapeJSON(s string) string {
 		}
 	}
 	return result
+}
+
+// Returns the line of source code containing the given token position
+func getLineContaining(block *Block, token token) string {
+	relativeOffset := token.pos.Offset - block.Start.Offset
+	if relativeOffset < 0 || relativeOffset > len(block.src) {
+		return ""
+	}
+
+	src := block.src
+	lineStart := relativeOffset
+	for lineStart > 0 && src[lineStart-1] != '\n' {
+		lineStart--
+	}
+	lineEnd := relativeOffset
+	for lineEnd < len(src) && src[lineEnd] != '\n' {
+		lineEnd++
+	}
+	return src[lineStart:lineEnd]
+
 }

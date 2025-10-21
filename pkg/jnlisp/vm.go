@@ -70,6 +70,7 @@ func (vm *VM) Step(input string) (Document, string) {
 		if missing, ok := err.(missingDelim); ok {
 			missingDelims += missing.matching()
 		} else {
+			vm.replBuf.Reset()
 			return document, "" // ie blocking error detected
 		}
 	}

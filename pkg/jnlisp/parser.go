@@ -21,13 +21,27 @@ type Block struct {
 	Errors []Error
 }
 
+func (b Block) String() string {
+	accumulator := strings.Builder{}
+
+	if b.Type == CodeBlock {
+		accumulator.WriteString(b.AST.String() + "\n")
+	}
+
+	for _, err := range b.Errors {
+		accumulator.WriteString(err.PrettyError() + "\n")
+	}
+
+	return accumulator.String()
+}
+
 type Document []Block
 
 func (doc Document) String() string {
 	accumulator := strings.Builder{}
 	for i := range doc {
-		accumulator.WriteString(doc[i].AST.String())
-		accumulator.WriteString("\n")
+		block := doc[i]
+		accumulator.WriteString(block.String())
 	}
 	return accumulator.String()
 }
@@ -148,7 +162,7 @@ func parseCode(p *parser) Sexp {
 	case tokenOpenBrace:
 		return parseMap(p, tokenCloseBrace)
 	case tokenCloseParen, tokenCloseBracket, tokenCloseBrace:
-		return newErrUnexpectedDelimiter(tok)
+		return p.newErrUnexpectedDelimiter(tok)
 	case tokenNumber:
 		return parseNumber(tok.val)
 	case tokenString:
@@ -158,19 +172,20 @@ func parseCode(p *parser) Sexp {
 	case tokenKeyword:
 		return Keyword(strings.Trim(tok.val, ":"))
 	case tokenUnenclosedString:
-		return newErrUnenclosedString(tok)
+		return p.newErrUnenclosedString(tok)
 	case tokenMalformedNumber:
-		return newErrMalformedNumber(tok)
+		return p.newErrMalformedNumber(tok)
 	default:
-		return newErrUnexpectedToken(tok)
+		return p.newErrUnexpectedToken(tok)
 	}
 }
 
 type missingDelim string
 
-func (m missingDelim) Error() string  { return "Missing delimeter: " + string(m) }
-func (m missingDelim) String() string { return "MISSING DELIM: " }
-func (m missingDelim) Type() string   { return "error" }
+func (m missingDelim) Error() string       { return "Missing delimeter: " + string(m) }
+func (m missingDelim) PrettyError() string { return "Missing delimeter: " + string(m) }
+func (m missingDelim) String() string      { return "MISSING DELIM: " }
+func (m missingDelim) Type() string        { return "error" }
 func (m missingDelim) matching() string {
 	switch m {
 	case ")":
@@ -194,7 +209,7 @@ func parseList(p *parser) List {
 			return list
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			list = append(list, newErrMissingDelimiter(tok, ")"))
+			list = append(list, p.newErrMissingDelimiter(tok, ")"))
 			return list
 		case tokenEOF:
 			p.backup()
@@ -220,7 +235,7 @@ func parseVector(p *parser) Vector {
 			return vector
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			vector = append(vector, newErrMissingDelimiter(tok, "]"))
+			vector = append(vector, p.newErrMissingDelimiter(tok, "]"))
 			return vector
 		case tokenEOF:
 			p.backup()
@@ -253,29 +268,30 @@ Loop:
 			break Loop
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			elements = append(elements, newErrMissingDelimiter(tok, "}"))
+			elements = append(elements, p.newErrMissingDelimiter(tok, "}"))
 		case tokenEOF:
 			p.backup()
 			return append(elements, missingDelim("}"))
 		case tokenKeyword, tokenMapkey:
 			key := strings.Trim(tok.val, ":")
 			if _, exists := mapp[key]; exists {
-				elements = append(elements, newErrDuplicateMapKeys(tok))
+				elements = append(elements, p.newErrDuplicateMapKeys(tok))
 			}
-			next := p.peek()
-			switch next.typ {
+			switch p.peek().typ {
 			case tokenCloseBrace:
 				p.next() // consume the delimiter
-				return append(elements, newErrExpectedKeyValue(next, key))
+				return append(elements, p.newErrExpectedKeyValue(tok, key))
+			case tokenMapkey:
+				elements = append(elements, p.newErrExpectedKeyValue(tok, key))
 			case tokenDoubleNewline, tokenEOF, delim:
-				return append(elements, newErrExpectedKeyValue(next, key))
+				return append(elements, p.newErrExpectedKeyValue(tok, key))
 			}
 			value := parseCode(p)
 			mapp[key] = value
 			elements = append(elements, Keyword(key))
 			elements = append(elements, value)
 		default:
-			elements = append(elements, newErrExpectedKeyword(tok))
+			elements = append(elements, p.newErrExpectedKeyword(tok))
 		}
 	}
 
