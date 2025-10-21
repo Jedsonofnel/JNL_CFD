@@ -29,7 +29,7 @@ func (b Block) String() string {
 	}
 
 	for _, err := range b.Errors {
-		accumulator.WriteString(err.PrettyError() + "\n")
+		accumulator.WriteString(err.PrettyError())
 	}
 
 	return accumulator.String()
@@ -142,7 +142,9 @@ Loop:
 			panic("unexpected token type in parse: " + tok.String())
 		}
 
-		b.End = parser.current.pos
+		endPos := parser.current.pos
+		endPos.Offset += len(parser.current.val) // add the width of the token
+		b.End = endPos
 		b.src = src[b.Start.Offset:b.End.Offset]
 
 		blocks = append(blocks, b)

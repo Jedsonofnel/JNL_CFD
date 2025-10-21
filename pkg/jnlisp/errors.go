@@ -71,34 +71,10 @@ func (e SyntaxError) Error() string {
 
 func (e SyntaxError) PrettyError() string {
 	accumulator := strings.Builder{}
-	accumulator.WriteString(e.Error() + "\n|\n| ")
-
-	line := getLineContaining(e.block, e.token)
-	accumulator.WriteString(line + "\n| ")
-
-	// caret underline
-	relativeOffset := e.token.pos.Offset - e.block.Start.Offset
-	lineStart := relativeOffset
-	for lineStart > 0 && e.block.src[lineStart-1] != '\n' {
-		lineStart--
-	}
-	caretStart := relativeOffset - lineStart
-	if caretStart-1 > len(e.Message) {
-		accumulator.WriteString(strings.Repeat(" ", caretStart-len(e.Message)-1))
-		accumulator.WriteString(e.Message)
-	} else {
-		accumulator.WriteString(strings.Repeat(" ", caretStart))
-	}
-
-	caretLength := len(e.token.val)
-	if e.token.typ == tokenDoubleNewline {
-		caretLength = 1
-	}
-	accumulator.WriteString(strings.Repeat("^", caretLength) + " ")
-
-	if caretStart-1 <= len(e.Message) {
-		accumulator.WriteString(e.Message)
-	}
+	accumulator.WriteString(e.Error())
+	accumulator.WriteString("\n")
+	accumulator.WriteString(prettyFormatError(e.block, e.token, e.Message))
+	accumulator.WriteString("\n")
 	return accumulator.String()
 }
 
@@ -294,5 +270,37 @@ func getLineContaining(block *Block, token token) string {
 		lineEnd++
 	}
 	return src[lineStart:lineEnd]
+}
 
+func prettyFormatError(block *Block, token token, msg string) string {
+	accumulator := strings.Builder{}
+	accumulator.WriteString("|\n| ")
+	accumulator.WriteString(getLineContaining(block, token))
+	accumulator.WriteString("\n| ")
+
+	// caret underline
+	relativeOffset := token.pos.Offset - block.Start.Offset
+	lineStart := relativeOffset
+	for lineStart > 0 && block.src[lineStart-1] != '\n' {
+		lineStart--
+	}
+	caretStart := relativeOffset - lineStart
+	if caretStart-1 > len(msg) {
+		accumulator.WriteString(strings.Repeat(" ", caretStart-len(msg)-1))
+		accumulator.WriteString(msg)
+	} else {
+		accumulator.WriteString(strings.Repeat(" ", caretStart))
+	}
+
+	caretLength := len(token.val)
+	if token.typ == tokenDoubleNewline {
+		caretLength = 1
+	}
+	accumulator.WriteString(strings.Repeat("^", caretLength) + " ")
+
+	if caretStart-1 <= len(msg) {
+		accumulator.WriteString(msg)
+	}
+
+	return accumulator.String()
 }
