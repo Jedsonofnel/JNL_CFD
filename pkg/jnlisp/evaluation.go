@@ -4,6 +4,25 @@ import (
 	"strconv"
 )
 
+type fiber struct {
+	frames   []frame
+	maxDepth int
+	vm       *VM
+}
+
+type frame struct {
+	sexp Sexp
+	idx  int
+	op   opType
+}
+
+type opType int
+
+const (
+	opEval opType = iota
+	opExpand
+)
+
 const MaxRecursionDepth = 1000
 
 // EVAL IMPLEMENTATION
@@ -163,7 +182,7 @@ func (vm *VM) evalLambda(expr lambdaExpr, env *env, depth int) (Function, Error)
 		params:  fnParams{expr.args, expr.kwargs},
 		body:    expr.fn,
 		closure: env,
-		vm:     vm,
+		vm:      vm,
 	}
 
 	return fn, nil

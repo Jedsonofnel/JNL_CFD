@@ -6,8 +6,13 @@ import (
 )
 
 type Sexp interface {
+	evaluatable
 	String() string
 	Type() string
+}
+
+type evaluatable interface {
+	evaluatable()
 }
 
 type Symbol string
@@ -20,14 +25,18 @@ type Map map[string]Sexp
 
 func (s Symbol) Type() string   { return "symbol" }
 func (s Symbol) String() string { return string(s) }
+func (s Symbol) evaluatable()   {}
 
 func (s String) Type() string   { return "string" }
 func (s String) String() string { return "\"" + string(s) + "\"" }
+func (s String) evaluatable()   {}
 
-func (s Keyword) Type() string   { return "keyword" }
-func (s Keyword) String() string { return ":" + string(s) }
+func (k Keyword) Type() string   { return "keyword" }
+func (k Keyword) String() string { return ":" + string(k) }
+func (k Keyword) evaluatable()   {}
 
 func (b Boolean) Type() string { return "boolean" }
+func (b Boolean) evaluatable() {}
 func (b Boolean) String() string {
 	if b {
 		return "true"
@@ -37,6 +46,7 @@ func (b Boolean) String() string {
 }
 
 func (l List) Type() string { return "list" }
+func (l List) evaluatable() {}
 func (l List) String() string {
 	var parts []string
 	for _, elem := range l {
@@ -46,6 +56,7 @@ func (l List) String() string {
 }
 
 func (v Vector) Type() string { return "vector" }
+func (v Vector) evaluatable() {}
 func (v Vector) String() string {
 	var parts []string
 	for _, elem := range v {
@@ -54,10 +65,11 @@ func (v Vector) String() string {
 	return "[" + strings.Join(parts, " ") + "]"
 }
 
-func (t Map) Type() string { return "map" }
-func (t Map) String() string {
+func (m Map) Type() string { return "map" }
+func (m Map) evaluatable() {}
+func (m Map) String() string {
 	var parts []string
-	for k, v := range t {
+	for k, v := range m {
 		parts = append(parts, ":"+k+" "+v.String())
 	}
 	return "{" + strings.Join(parts, " ") + "}"
@@ -79,12 +91,15 @@ type Complex complex128
 // All implement Sexp
 func (i Int) Type() string   { return "number (int)" }
 func (i Int) String() string { return strconv.Itoa(int(i)) }
+func (i Int) evaluatable()   {}
 
 func (f Float) Type() string   { return "number (float)" }
 func (f Float) String() string { return strconv.FormatFloat(float64(f), 'g', -1, 64) }
+func (f Float) evaluatable()   {}
 
 func (c Complex) Type() string   { return "number (complex)" }
 func (c Complex) String() string { return strconv.FormatComplex(complex128(c), 'g', -1, 128) }
+func (c Complex) evaluatable()   {}
 
 // And implement Number
 func (i Int) ToFloat64() (float64, bool) { return float64(i), true }
