@@ -1,46 +1,52 @@
 package jnlisp
 
 func elaborate(sexp Sexp) (expr, Error) {
-	switch r := sexp.(type) {
+	switch s := sexp.(type) {
 	case Symbol:
-		return symbolExpr{string(r)}, nil
+		return symbolExpr{string(s)}, nil
 	case List:
-		if len(r) == 0 {
+		if s.Length() == 0 {
 			return nil, ElaborationError{
 				Message: "cannot evaluate empty list ()",
 			}
 		}
-		return elaborateCall(r)
+		return elaborateCall(s)
 	case Vector:
-		return elaborateVector(r)
+		return elaborateVector(s)
 	case Map:
-		return elaborateMap(r)
-	case Boolean, Number, String, Keyword:
-		return literalExpr{r}, nil
+		return elaborateMap(s)
+	case Boolean:
+		return s, nil
+	case Number:
+		return s, nil
+	case String:
+		return s, nil
+	case Keyword:
+		return s, nil
 	default:
 		panic("UNEXPECTED ELABORATION TYPE")
 	}
 }
 
 func elaborateCall(list List) (expr, Error) {
-	if head, ok := list[0].(Symbol); ok {
+	if head, ok := list.First().(Symbol); ok {
 		switch head {
 		case "define":
-			return elaborateDefine(list[1:])
+			return elaborateDefine(list.Elements[1:])
 		case "lambda":
-			return elaborateLambda(list[1:])
+			return elaborateLambda(list.Elements[1:])
 		case "if":
-			return elaborateIf(list[1:])
+			return elaborateIf(list.Elements[1:])
 		case "begin":
-			return elaborateBegin(list[1:])
+			return elaborateBegin(list.Elements[1:])
 		case "set!":
-			return elaborateSetBang(list[1:])
+			return elaborateSetBang(list.Elements[1:])
 		case "import":
-			return elaborateImport(list[1:])
+			return elaborateImport(list.Elements[1:])
 		}
 	}
 
-	headExpr, err := elaborate(list[0])
+	headExpr, err := elaborate(list.First())
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +61,7 @@ func elaborateCall(list List) (expr, Error) {
 
 func elaborateVector(vector Vector) (vectorExpr, Error) {
 	elements := make([]expr, 0)
-	for i := range vector {
+	for i := range vector.Elements {
 		elem, err := elaborate(vector[i])
 		if err != nil {
 			return vectorExpr{}, err

@@ -34,6 +34,18 @@ const (
 	ErrExpectedKeyword  // when it's not a keyword in a map
 
 	expansion_errors // sentinel value
+
+	ErrMacroArity
+	ErrMacroArgType
+	ErrMacroInvalidForm
+
+	eval_errors // sentinel value
+
+	ErrRecursionLimitReached
+	ErrFiberCancelled
+	ErrArity
+	ErrDivisionByZero
+	ErrIndexOutOfRange
 )
 
 // created during filesystem lookups
@@ -83,8 +95,10 @@ func (e SyntaxError) ToJSON() string {
 	return formatErrJSON("SyntaxError", e.Message, &e.token.pos)
 }
 
+// such that it implements Sexp
 func (e SyntaxError) Type() string   { return "error" }
 func (e SyntaxError) String() string { return "ERROR: " + e.Message }
+func (e SyntaxError) evaluatable()   {}
 
 func (p *parser) newErrMissingDelimiter(t token, delim string) SyntaxError {
 	return SyntaxError{
@@ -160,7 +174,9 @@ func (p *parser) newErrExpectedKeyword(t token) SyntaxError {
 
 // Created during expansion
 type ExpansionError struct {
+	Code    ErrorCode
 	Message string
+	stack   []frame
 }
 
 func (e ExpansionError) Error() string {
@@ -169,6 +185,30 @@ func (e ExpansionError) Error() string {
 
 func (e ExpansionError) PrettyError() string {
 	return "Expansion error: " + e.Message
+}
+
+func (f *fiber) newErrMacroArity(macro string, wanted, got int) ExpansionError {
+	return ExpansionError{
+		Code:    ErrMacroArity,
+		Message: macro + " wants " + strconv.Itoa(wanted) + " arguments but got " + strconv.Itoa(got),
+		stack:   f.copyStack(),
+	}
+}
+
+func (f *fiber) newErrMacroArityMinimum(macro string, minimum, got int) ExpansionError {
+	return ExpansionError{
+		Code:    ErrMacroArity,
+		Message: macro + " wants minimum " + strconv.Itoa(minimum) + " arguments but got " + strconv.Itoa(got),
+		stack:   f.copyStack(),
+	}
+}
+
+func (f *fiber) newErrMacroArgType(macro, wanted string, pos int) ExpansionError {
+	return ExpansionError{
+		Code:    ErrMacroArgType,
+		Message: macro + " wants type " + wanted + " at argument position " + strconv.Itoa(pos),
+		stack:   f.copyStack(),
+	}
 }
 
 // ELABORATION ERROR
@@ -185,7 +225,39 @@ func (e ElaborationError) PrettyError() string {
 	return "Elaboration error: " + e.Message
 }
 
-// RUNTIME ERROR
+// Created by the evaluator
+type EvalError struct {
+	Code    ErrorCode
+	Message string
+	stack   []frame
+}
+
+func (e EvalError) Error() string       { return e.Message }
+func (e EvalError) PrettyError() string { return e.Message }
+
+func (f *fiber) newErrRecursionLimitReached() EvalError {
+	return EvalError{
+		Code:    ErrRecursionLimitReached,
+		Message: "recursion limit reached: " + strconv.Itoa(f.maxDepth),
+		stack:   f.copyStack(),
+	}
+}
+
+func (f *fiber) newErrArityMin(name string, wanted, got int) EvalError {
+	return EvalError{
+		Code:    ErrArity,
+		Message: name + " expects at least " + strconv.Itoa(wanted) + " arguments, got " + strconv.Itoa(got),
+		stack:   f.copyStack(),
+	}
+}
+
+func (f *fiber) newErrArityMax(name string, wanted, got int) EvalError {
+	return EvalError{
+		Code:    ErrArity,
+		Message: name + " expects at most " + strconv.Itoa(wanted) + " arguments, got " + strconv.Itoa(got),
+		stack:   f.copyStack(),
+	}
+}
 
 // Created by the evaluator
 type RuntimeError struct {

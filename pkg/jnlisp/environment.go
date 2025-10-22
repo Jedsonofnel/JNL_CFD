@@ -1,39 +1,19 @@
 package jnlisp
 
-import (
-	"strconv"
-)
-
-// ENV
-
-type binding struct {
-	name string
-	sexp Sexp
-}
-
 type env struct {
-	small [10]binding     // fast path for small closures
-	large map[string]Sexp // Overflow
-	outer *env
-	size  int // number of bindings in small
+	bindings map[string]Sexp // Overflow
+	outer    *env
 }
 
 func newEnv(outer *env) *env {
 	return &env{
-		large: make(map[string]Sexp),
-		outer: outer,
+		bindings: make(map[string]Sexp),
+		outer:    outer,
 	}
 }
 
 func (e *env) find(s string) (Sexp, bool) {
-	// check small array first
-	for i := range e.size {
-		if e.small[i].name == s {
-			return e.small[i].sexp, true
-		}
-	}
-
-	if val, exists := e.large[s]; exists {
+	if val, exists := e.bindings[s]; exists {
 		return val, true
 	}
 
@@ -45,102 +25,123 @@ func (e *env) find(s string) (Sexp, bool) {
 }
 
 func (e *env) bind(s string, sexp Sexp) {
-	if e.size < 10 {
-		e.small[e.size] = binding{name: s, sexp: sexp}
-		e.size++
-	} else {
-		e.large[s] = sexp
-	}
+	e.bindings[s] = sexp
 }
 
 func (e *env) forEachBinding(cb func(string, Sexp)) {
-	// do small
-	for i := range e.size {
-		b := e.small[i]
-		cb(b.name, b.sexp)
-	}
-
-	// do large
-	for name, sexp := range e.large {
+	for name, sexp := range e.bindings {
 		cb(name, sexp)
 	}
 }
 
-// Function bindings
-
-type Function interface {
+type Callable interface {
 	Sexp
-	Call(args []Sexp, kwargs Map, depth int) (Sexp, Error)
+	Call(args []Sexp, fiber *fiber) (Sexp, Error)
 }
 
-type fnParams struct {
-	positional []Symbol
-	named      []Symbol
+type Closure struct {
+	name   string
+	arity  arity
+	body   Sexp
+	lexenv *env
 }
 
-type lispFunction struct {
-	name    string
-	params  fnParams
-	body    expr
-	closure *env
-	vm      *VM
+func (c Closure) Type() string { return "closure" }
+func (c Closure) String() string {
+	return "#<closure:" + c.name + " " + c.arity.String() + ">"
 }
 
-func (f *lispFunction) Type() string { return "function" }
-func (f *lispFunction) String() string {
-	return "#<function:" + f.name + ">"
-}
+func (c Closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
+	var kwargs Map
+	positionalArgs := args
 
-func (f *lispFunction) Call(args []Sexp, kwargs Map, depth int) (Sexp, Error) {
-	activationEnv := newEnv(f.closure)
-
-	if len(args) != len(f.params.positional) {
-		return nil, RuntimeError{
-			Message: f.name + " expects " +
-				strconv.Itoa(len(f.params.positional)) +
-				" positional args, got " + strconv.Itoa(len(args)),
+	if len(args) > 0 {
+		if m, ok := args[len(args)-1].(Map); ok && len(c.arity.keywords) > 0 {
+			kwargs = m
+			positionalArgs = args[:len(args)-1]
 		}
 	}
 
+	argCount := len(positionalArgs)
+	if argCount < c.arity.minArgs {
+		return nil, f.newErrArityMin(c.name, c.arity.minArgs, argCount)
+	}
+	if c.arity.maxArgs != -1 && argCount > c.arity.maxArgs {
+		return nil, f.newErrArityMax(c.name, c.arity.maxArgs, argCount)
+	}
+
+	activationEnv := newEnv(c.lexenv)
+
 	// bind positional parameters
-	for i, param := range f.params.positional {
-		activationEnv.bind(string(param), args[i])
+	for i, param := range c.arity.positional {
+		activationEnv.bind(param, positionalArgs[i])
+	}
+
+	if c.arity.variadic != "" {
+		variadicArgs := positionalArgs[len(c.arity.positional):]
+		activationEnv.bind(c.arity.variadic, List{Elements: variadicArgs})
 	}
 
 	// bind named parameters from map
-	for _, namedParam := range f.params.named {
-		paramName := string(namedParam)
-		if value, exists := kwargs[paramName]; exists {
-			activationEnv.bind(string(namedParam), value)
-		} else {
-			// TODO consider defaults later
-			activationEnv.bind(string(namedParam), nil)
-		}
+	for _, kw := range c.arity.keywords {
+		value := kwargs.Get(kw)
+		activationEnv.bind(kw, value)
 	}
 
-	return f.vm.eval(f.body, activationEnv, depth)
+	return f.eval(c.body, activationEnv)
 }
 
 // Foreign bindings
 
-type NativeFunction func(args []Sexp, kwargs Map, depth int) (Sexp, Error)
+type Native struct {
+	name string
+	fn   func(args []Sexp, f *fiber) (Sexp, Error)
+}
 
-func SimpleNative(fn func([]Sexp, Map) (Sexp, Error)) NativeFunction {
-	return func(args []Sexp, kwargs Map, depth int) (Sexp, Error) {
-		return fn(args, kwargs)
+func (n Native) Type() string { return "native-function" }
+func (n Native) String() string {
+	return "#<native-function:" + n.name + ">"
+}
+
+func (n Native) Call(args []Sexp, f *fiber) (Sexp, Error) {
+	return n.fn(args, f)
+}
+
+func NewNative(name string, fn func([]Sexp, *fiber) (Sexp, Error)) Native {
+	return Native{name, fn}
+}
+
+func SimpleNative(name string, fn func([]Sexp) (Sexp, Error)) Native {
+	return Native{
+		name: name,
+		fn: func(args []Sexp, _ *fiber) (Sexp, Error) {
+			return fn(args)
+		},
 	}
 }
 
-type foreignFunction struct {
-	name string
-	fn   NativeFunction
+type arity struct {
+	positional []string
+	variadic   string
+	keywords   []string
+	minArgs    int
+	maxArgs    int
 }
 
-func (f *foreignFunction) Type() string { return "function" }
-func (f *foreignFunction) String() string {
-	return "#<function:" + f.name + ">"
-}
-
-func (f *foreignFunction) Call(args []Sexp, kwargs Map, depth int) (Sexp, Error) {
-	return f.fn(args, kwargs, depth)
+func (a arity) String() string {
+	s := "["
+	for _, p := range a.positional {
+		s += string(p) + " "
+	}
+	if a.variadic != "" {
+		s += "&var " + string(a.variadic) + " "
+	}
+	if len(a.keywords) > 0 {
+		s += "&keys {"
+		for _, k := range a.keywords {
+			s += ":" + string(k) + " "
+		}
+		s += "}"
+	}
+	return s + "]"
 }

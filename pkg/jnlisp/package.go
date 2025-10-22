@@ -7,8 +7,7 @@ import (
 type Package struct {
 	Name     string
 	FS       fs.FS
-	Bindings map[string]NativeFunction
-	Sexps    map[string]Sexp
+	Bindings map[string]Sexp
 }
 
 func (vm *VM) RegisterPackage(pkg Package) {
@@ -42,11 +41,7 @@ func (vm *VM) ImportPackage(name, prefix string) Error {
 func (vm *VM) executePackage(pkg Package) (*env, Error) {
 	pkgEnv := newEnv(vm.importEnv)
 
-	// bind packages procedures
-	for name, fn := range pkg.Bindings {
-		pkgEnv.bind(name, &foreignFunction{name, fn})
-	}
-	for name, sexp := range pkg.Sexps {
+	for name, sexp := range pkg.Bindings {
 		pkgEnv.bind(name, sexp)
 	}
 

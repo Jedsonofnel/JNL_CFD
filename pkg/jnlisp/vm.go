@@ -30,12 +30,13 @@ func NewVM() *VM {
 		replLine:    0,
 	}
 
-	vm.RegisterPackage(corePkg)
+	// vm.RegisterPackage(corePkg)
 
-	err := vm.ImportPackage("core", "")
-	if err != nil {
-		panic("Error importing package core: " + err.Error())
-	}
+	// err := vm.ImportPackage("core", "")
+	// if err != nil {
+	// 	panic("Error importing package core: " + err.Error())
+	// }
+
 	return vm
 }
 
@@ -84,6 +85,7 @@ func (vm *VM) Step(input string) (Document, string) {
 	}
 
 	vm.replBuf.Reset()
+
 	return document, ""
 }
 

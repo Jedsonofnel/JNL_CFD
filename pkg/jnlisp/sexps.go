@@ -6,37 +6,26 @@ import (
 )
 
 type Sexp interface {
-	evaluatable
 	String() string
 	Type() string
 }
 
-type evaluatable interface {
-	evaluatable()
-}
-
+// atoms
 type Symbol string
 type String string
 type Keyword string
 type Boolean bool
-type List []Sexp
-type Vector []Sexp
-type Map map[string]Sexp
 
 func (s Symbol) Type() string   { return "symbol" }
 func (s Symbol) String() string { return string(s) }
-func (s Symbol) evaluatable()   {}
 
 func (s String) Type() string   { return "string" }
 func (s String) String() string { return "\"" + string(s) + "\"" }
-func (s String) evaluatable()   {}
 
 func (k Keyword) Type() string   { return "keyword" }
 func (k Keyword) String() string { return ":" + string(k) }
-func (k Keyword) evaluatable()   {}
 
 func (b Boolean) Type() string { return "boolean" }
-func (b Boolean) evaluatable() {}
 func (b Boolean) String() string {
 	if b {
 		return "true"
@@ -45,34 +34,201 @@ func (b Boolean) String() string {
 	}
 }
 
+// compound types
+
+// linked style behaviour
+type Seq interface {
+	First() Sexp
+	Rest() Seq
+	Cons(Sexp) Seq
+	Empty() bool
+}
+
+// normal index lookup style behaviour (go's slices)
+type Indexed interface {
+	Nth(int) (Sexp, bool)
+	Length() int
+	Append(Sexp) Indexed
+}
+
+// hash map behaviour
+type Lookup interface {
+	Get(key string) Sexp
+	Has(key string) bool
+	Assoc(key string, value Sexp) Lookup
+}
+
+// default lisp style list - implements Seq but also indexed
+// for convenience
+type List struct {
+	Elements   []Sexp
+	meta       metaMap
+	Start, End Pos
+}
+
 func (l List) Type() string { return "list" }
-func (l List) evaluatable() {}
 func (l List) String() string {
 	var parts []string
-	for _, elem := range l {
+	for _, elem := range l.Elements {
 		parts = append(parts, elem.String())
 	}
 	return "(" + strings.Join(parts, " ") + ")"
 }
 
+func (l List) First() Sexp {
+	if bool(l.Empty()) {
+		return nil
+	}
+	return l.Elements[0]
+}
+
+func (l List) Rest() Seq {
+	if len(l.Elements) <= 1 {
+		return List{meta: l.meta}
+	}
+	return List{
+		Elements: l.Elements[1:],
+		meta:     l.meta,
+	}
+}
+
+func (l List) Cons(s Sexp) Seq {
+	return List{
+		Elements: append([]Sexp{s}, l.Elements...),
+		meta:     l.meta,
+	}
+}
+
+func (l List) Empty() bool {
+	if len(l.Elements) == 0 {
+		return true
+	}
+	return false
+}
+
+func (l List) Nth(i int) (Sexp, bool) {
+	if i < 0 && -i <= len(l.Elements) { // negative index checking
+		return l.Elements[i], true
+	}
+
+	if i < len(l.Elements) {
+		return l.Elements[i], true
+	}
+
+	return nil, false
+}
+
+func (l List) Length() int {
+	return len(l.Elements)
+}
+
+func (l List) Append(s Sexp) Indexed {
+	return List{
+		Elements: append(l.Elements, s),
+		meta:     l.meta,
+	}
+}
+
+// a list that isn't an expression.  Only implements indexed
+type Vector struct {
+	Elements   []Sexp
+	meta       metaMap
+	Start, End Pos
+}
+
 func (v Vector) Type() string { return "vector" }
-func (v Vector) evaluatable() {}
 func (v Vector) String() string {
 	var parts []string
-	for _, elem := range v {
+	for _, elem := range v.Elements {
 		parts = append(parts, elem.String())
 	}
 	return "[" + strings.Join(parts, " ") + "]"
 }
 
+func (v Vector) Nth(i int) (Sexp, bool) {
+	if i < 0 && -i <= len(v.Elements) { // negative index checking
+		return v.Elements[i], false
+	}
+
+	if i < len(v.Elements) {
+		return v.Elements[i], false
+	}
+
+	return nil, false
+}
+
+func (v Vector) Length() int {
+	return len(v.Elements)
+}
+
+func (v Vector) Append(s Sexp) Indexed {
+	return Vector{
+		Elements: append(v.Elements, s),
+		meta:     v.meta,
+	}
+}
+
+// a lookup table, implements Lookup
+type Map struct {
+	Elements   map[string]Sexp
+	meta       metaMap
+	Start, End Pos
+}
+
 func (m Map) Type() string { return "map" }
-func (m Map) evaluatable() {}
 func (m Map) String() string {
+	var parts []string
+	for k, v := range m.Elements {
+		parts = append(parts, ":"+k+" "+v.String())
+	}
+	return "{" + strings.Join(parts, " ") + "}"
+}
+
+func (m Map) Get(s string) Sexp {
+	return m.Elements[s]
+}
+
+func (m Map) Has(s string) bool {
+	_, exists := m.Elements[s]
+	return exists
+}
+
+func (m Map) Assoc(key string, value Sexp) Lookup {
+	clone := copyMap(m.Elements)
+	clone[key] = value
+	return Map{
+		Elements: clone,
+		meta:     m.meta,
+	}
+}
+
+// map specifically for metadata to get around recursive struct definition limitations
+// also implements lookup
+type metaMap map[string]Sexp
+
+func (m metaMap) Type() string { return "map" }
+func (m metaMap) evaluatable() {}
+func (m metaMap) String() string {
 	var parts []string
 	for k, v := range m {
 		parts = append(parts, ":"+k+" "+v.String())
 	}
 	return "{" + strings.Join(parts, " ") + "}"
+}
+
+func (m metaMap) Get(s string) Sexp {
+	return m[s]
+}
+
+func (m metaMap) Has(s string) bool {
+	_, exists := m[s]
+	return exists
+}
+
+func (m metaMap) Assoc(key string, value Sexp) Lookup {
+	clone := copyMap(m)
+	clone[key] = value
+	return metaMap(clone)
 }
 
 // Numbers are hard
@@ -83,7 +239,17 @@ type Number interface {
 	ToComplex128() complex128
 }
 
+// helper for lookup types
+func copyMap(src map[string]Sexp) map[string]Sexp {
+	clone := make(map[string]Sexp, len(src))
+	for key, value := range src {
+		clone[key] = value
+	}
+	return clone
+}
+
 // Concrete number types
+// all implement Sexp and Number
 type Int int
 type Float float64
 type Complex complex128
@@ -91,15 +257,12 @@ type Complex complex128
 // All implement Sexp
 func (i Int) Type() string   { return "number (int)" }
 func (i Int) String() string { return strconv.Itoa(int(i)) }
-func (i Int) evaluatable()   {}
 
 func (f Float) Type() string   { return "number (float)" }
 func (f Float) String() string { return strconv.FormatFloat(float64(f), 'g', -1, 64) }
-func (f Float) evaluatable()   {}
 
 func (c Complex) Type() string   { return "number (complex)" }
 func (c Complex) String() string { return strconv.FormatComplex(complex128(c), 'g', -1, 128) }
-func (c Complex) evaluatable()   {}
 
 // And implement Number
 func (i Int) ToFloat64() (float64, bool) { return float64(i), true }

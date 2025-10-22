@@ -167,25 +167,6 @@ func lispNot(args []Sexp, _ Map) (Sexp, Error) {
 
 // VECTOR OPERATIONS
 
-func lispVectorRef(args []Sexp, kwargs Map) (Sexp, Error) {
-	v := ValidateArgs(args, kwargs)
-	vec := v.GetVector()
-	index := v.GetInt()
-
-	v.ExpectNoMoreArgs()
-	if err := v.Validate("vector-ref"); err != nil {
-		return nil, err
-	}
-
-	if index < 0 || index >= len(vec) {
-		return nil, RuntimeError{
-			Message: "index out of bounds for vector",
-		}
-	}
-
-	return vec[index], nil
-}
-
 func lispVectorLength(args []Sexp, _ Map) (Sexp, Error) {
 	v := ValidateArgs(args, nil)
 	vec := v.GetVector()

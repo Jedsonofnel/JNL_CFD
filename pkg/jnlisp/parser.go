@@ -56,15 +56,15 @@ func findSyntaxErrors(sexp Sexp) []Error {
 
 	switch sexp := sexp.(type) {
 	case List:
-		for _, child := range sexp {
+		for _, child := range sexp.Elements {
 			errs = append(errs, findSyntaxErrors(child)...)
 		}
 	case Vector:
-		for _, child := range sexp {
+		for _, child := range sexp.Elements {
 			errs = append(errs, findSyntaxErrors(child)...)
 		}
 	case Map:
-		for _, child := range sexp {
+		for _, child := range sexp.Elements {
 			errs = append(errs, findSyntaxErrors(child)...)
 		}
 	case SyntaxError:
@@ -194,6 +194,7 @@ func (m missingDelim) Error() string       { return "Missing delimeter: " + stri
 func (m missingDelim) PrettyError() string { return "Missing delimeter: " + string(m) }
 func (m missingDelim) String() string      { return "MISSING DELIM: " }
 func (m missingDelim) Type() string        { return "error" }
+func (m missingDelim) evaluatable()        {}
 func (m missingDelim) matching() string {
 	switch m {
 	case ")":
@@ -209,61 +210,72 @@ func (m missingDelim) matching() string {
 
 func parseList(p *parser) List {
 	var list List
+	var elems []Sexp
 
+Loop:
 	for {
 		tok := p.next()
 		switch tok.typ {
 		case tokenCloseParen:
-			return list
+			break Loop
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			list = append(list, p.newErrMissingDelimiter(tok, ")"))
-			return list
+			elems = append(elems, p.newErrMissingDelimiter(tok, ")"))
+			break Loop
 		case tokenEOF:
 			p.backup()
-			list = append(list, missingDelim(")"))
-			return list
+			elems = append(elems, missingDelim(")"))
+			break Loop
 		case tokenMapkey:
 			p.backup()
-			list = append(list, parseMap(p, tokenCloseParen))
+			elems = append(elems, parseMap(p, tokenCloseParen))
 		default:
 			p.backup()
-			list = append(list, parseCode(p))
+			elems = append(elems, parseCode(p))
 		}
 	}
+
+	list.Elements = elems
+	return list
 }
 
 func parseVector(p *parser) Vector {
-	vector := Vector{}
+	var vector Vector
+	var elems []Sexp
 
+Loop:
 	for {
 		tok := p.next()
 		switch tok.typ {
 		case tokenCloseBracket:
-			return vector
+			break Loop
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			vector = append(vector, p.newErrMissingDelimiter(tok, "]"))
-			return vector
+			elems = append(elems, p.newErrMissingDelimiter(tok, "]"))
+			break Loop
 		case tokenEOF:
 			p.backup()
-			vector = append(vector, missingDelim("]"))
-			return vector
+			elems = append(elems, missingDelim("]"))
+			break Loop
 		case tokenMapkey:
 			p.backup()
-			vector = append(vector, parseMap(p, tokenCloseBracket))
+			elems = append(elems, parseMap(p, tokenCloseBracket))
 		default:
 			p.backup()
-			vector = append(vector, parseCode(p))
+			elems = append(elems, parseCode(p))
 		}
 	}
+
+	vector.Elements = elems
+	return vector
 }
 
 // parse map with an optional delimeter
 // (brace for map literal, paren/bracket for inline map with mapkey: value syntax)
 func parseMap(p *parser, delim tokenType) Sexp {
-	mapp := make(Map)
-	var elements List
+	var mapp Map
+	mapp.Elements = make(map[string]Sexp)
+	var elems []Sexp
 
 Loop:
 	for {
@@ -276,37 +288,41 @@ Loop:
 			break Loop
 		case tokenDoubleNewline, tokenOpenJParen:
 			p.backup()
-			elements = append(elements, p.newErrMissingDelimiter(tok, "}"))
+			elems = append(elems, p.newErrMissingDelimiter(tok, "}"))
+			break Loop
 		case tokenEOF:
 			p.backup()
-			return append(elements, missingDelim("}"))
+			elems = append(elems, missingDelim("}"))
+			break Loop
 		case tokenKeyword, tokenMapkey:
 			key := strings.Trim(tok.val, ":")
-			if _, exists := mapp[key]; exists {
-				elements = append(elements, p.newErrDuplicateMapKeys(tok))
+			if _, exists := mapp.Elements[key]; exists {
+				elems = append(elems, p.newErrDuplicateMapKeys(tok))
 			}
 			switch p.peek().typ {
 			case tokenCloseBrace:
 				p.next() // consume the delimiter
-				return append(elements, p.newErrExpectedKeyValue(tok, key))
+				elems = append(elems, p.newErrExpectedKeyValue(tok, key))
+				break Loop
 			case tokenMapkey:
-				elements = append(elements, p.newErrExpectedKeyValue(tok, key))
+				elems = append(elems, p.newErrExpectedKeyValue(tok, key))
 			case tokenDoubleNewline, tokenEOF, delim:
-				return append(elements, p.newErrExpectedKeyValue(tok, key))
+				elems = append(elems, p.newErrExpectedKeyValue(tok, key))
+				break Loop
 			}
 			value := parseCode(p)
-			mapp[key] = value
-			elements = append(elements, Keyword(key))
-			elements = append(elements, value)
+			mapp.Elements[key] = value
+			elems = append(elems, Keyword(key))
+			elems = append(elems, value)
 		default:
-			elements = append(elements, p.newErrExpectedKeyword(tok))
+			elems = append(elems, p.newErrExpectedKeyword(tok))
 		}
 	}
 
 	// if there's an error - return the list
-	for i := range elements {
-		if _, ok := elements[i].(Error); ok {
-			return elements
+	for i := range elems {
+		if _, ok := elems[i].(Error); ok {
+			return List{Elements: elems}
 		}
 	}
 
