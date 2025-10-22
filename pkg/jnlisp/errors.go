@@ -99,7 +99,6 @@ func (e SyntaxError) ToJSON() string {
 // such that it implements Sexp
 func (e SyntaxError) Type() string   { return "error" }
 func (e SyntaxError) String() string { return "ERROR: " + e.Message }
-func (e SyntaxError) evaluatable()   {}
 
 func (p *parser) newErrMissingDelimiter(t token, delim string) SyntaxError {
 	return SyntaxError{
@@ -390,6 +389,8 @@ func prettyFormatError(block *Block, token token, msg string) string {
 	if caretStart-1 <= len(msg) {
 		accumulator.WriteString(msg)
 	}
+
+	accumulator.WriteString("\n" + strings.Repeat(" ", len(lineNum)+1) + "|")
 
 	return accumulator.String()
 }

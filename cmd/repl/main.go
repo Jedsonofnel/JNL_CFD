@@ -48,10 +48,10 @@ func readCompleteForm(vm *jnlisp.VM) (string, bool) {
 		}
 
 		line += "\n"
-		blocks, missingDelims := vm.Step(line)
+		result, missingDelims := vm.Step(line)
 
-		if blocks != nil { // input is complete
-			return blocks.String(), false
+		if result != "" { // input is complete
+			return result, false
 		}
 
 		prompt = vm.ReplPrompt(missingDelims)
@@ -69,8 +69,8 @@ func simpleREPL() {
 	for {
 		fmt.Print("> ")
 		line, _ := reader.ReadString('\n')
-		blocks, promptDisplay := vm.Step(line)
-		fmt.Print(blocks.String())
+		result, promptDisplay := vm.Step(line)
+		fmt.Print(result)
 		fmt.Print(promptDisplay)
 	}
 }

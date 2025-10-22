@@ -23,6 +23,7 @@ func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
 
 		// not a macro - expand children
 		for i, child := range s.Elements {
+			f.pushExpand(s, i)
 			expanded, err := f.expand(child, env)
 			if err != nil {
 				return nil, err
@@ -80,7 +81,7 @@ func (f *fiber) callMacro(list List, env *env) (Sexp, Error, bool) {
 
 // expand (defn sym [args...] body...) to (def sym (fn [args...] body...))
 func expandDefn(list List, f *fiber) (Sexp, Error) {
-	if list.Length() <= 4 {
+	if list.Length() < 4 {
 		return nil, f.newErrMacroArityMinimum("defn", 3, list.Length()-1)
 	}
 
@@ -110,7 +111,7 @@ func expandDefn(list List, f *fiber) (Sexp, Error) {
 
 // expand (let [s1 b1 s2 b2] body...) to ((fn [s1 s2] body...) b1 b2)
 func expandLet(list List, f *fiber) (Sexp, Error) {
-	if list.Length() <= 3 {
+	if list.Length() < 3 {
 		return nil, f.newErrMacroArity("let", 3, list.Length()-1)
 	}
 

@@ -32,14 +32,18 @@ func (b Block) String() string {
 	if b.Type == CodeBlock {
 		accumulator.WriteString(b.AST.String() + "\n")
 	}
+	accumulator.WriteString(b.SyntaxErrors())
+	return accumulator.String()
+}
 
+func (b Block) SyntaxErrors() string {
+	accumulator := strings.Builder{}
 	for _, err := range b.Errors {
 		if _, ok := err.(missingDelim); ok { // don't display these
 			continue
 		}
 		accumulator.WriteString(err.PrettyError())
 	}
-
 	return accumulator.String()
 }
 

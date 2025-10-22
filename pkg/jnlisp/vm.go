@@ -13,8 +13,9 @@ type VM struct {
 	pkgRegistry map[string]Package
 	loadedPkgs  map[string]*env
 
-	replBuf  strings.Builder
-	replLine int
+	replLine  int
+	replBuf   strings.Builder
+	replStart Pos
 }
 
 func NewVM() *VM {
@@ -26,8 +27,9 @@ func NewVM() *VM {
 		userEnv:     userEnv,
 		pkgRegistry: make(map[string]Package),
 		loadedPkgs:  make(map[string]*env),
-		replBuf:     strings.Builder{},
 		replLine:    0,
+		replBuf:     strings.Builder{},
+		replStart:   Pos{1, 1, 0},
 	}
 
 	// vm.RegisterPackage(corePkg)
@@ -43,8 +45,9 @@ func NewVM() *VM {
 func (vm *VM) Reset() {
 	vm.importEnv = newEnv(nil)
 	vm.userEnv = newEnv(vm.importEnv)
-	vm.replBuf.Reset()
 	vm.replLine = 0
+	vm.replBuf = strings.Builder{}
+	vm.replStart = Pos{1, 1, 0}
 }
 
 func (vm *VM) ReplPrompt(missingDelims string) string {
@@ -56,17 +59,17 @@ func (vm *VM) ReplPrompt(missingDelims string) string {
 // EXECUTION
 // can be in a step() for a REPL or execute() for all in one go
 
-func (vm *VM) Step(input string) (Document, string) {
+func (vm *VM) Step(input string) (string, string) {
 	vm.replBuf.WriteString(input)
 	document := parse(Source{
 		Text:     vm.replBuf.String(),
 		Filename: "repl",
-		Start:    Pos{Line: vm.replLine, Column: 1, Offset: 0},
+		Start:    vm.replStart,
 	})
 
 	if len(document) == 0 {
 		vm.replBuf.Reset()
-		return nil, ""
+		return "", ""
 	}
 
 	missingDelims := ""
@@ -76,17 +79,32 @@ func (vm *VM) Step(input string) (Document, string) {
 			missingDelims += missing.matching()
 		} else {
 			vm.replBuf.Reset()
-			return document, "" // ie blocking error detected
+			vm.replStart = Pos{vm.replLine + 1, 1, 0}
+			return lastBlock.SyntaxErrors(), "" // ie blocking error detected
 		}
 	}
 
 	if missingDelims != "" {
-		return nil, missingDelims
+		return "", missingDelims
 	}
 
 	vm.replBuf.Reset()
+	vm.replStart = Pos{vm.replLine + 1, 1, 0}
 
-	return document, ""
+	if lastBlock.Type != CodeBlock {
+		return "<prose block>", ""
+	}
+
+	fiber := &fiber{
+		maxDepth: 1000,
+		vm:       vm,
+	}
+	result, err := fiber.eval(lastBlock.AST, vm.userEnv)
+	if err != nil {
+		return err.PrettyError(), ""
+	}
+
+	return result.String(), ""
 }
 
 func (vm *VM) Execute(src Source) []Block {
