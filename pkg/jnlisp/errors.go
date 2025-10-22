@@ -28,6 +28,7 @@ const (
 	ErrUnexpectedDelimiter
 	ErrUnexpectedToken
 	ErrMalformedNumber
+	ErrMalformedKeyword // when a keyword is a single colon
 	ErrUnenclosedString
 	ErrDuplicateMapKeys
 	ErrExpectedKeyValue // when a keyword isn't followed by a value
@@ -131,6 +132,15 @@ func (p *parser) newErrMalformedNumber(t token) SyntaxError {
 	return SyntaxError{
 		Code:    ErrMalformedNumber,
 		Message: "malformed number: '" + t.val + "'",
+		token:   t,
+		block:   p.block,
+	}
+}
+
+func (p *parser) newErrMalformedKeyword(t token) SyntaxError {
+	return SyntaxError{
+		Code:    ErrMalformedKeyword,
+		Message: "keyword must have a body, got '" + t.val + "'",
 		token:   t,
 		block:   p.block,
 	}

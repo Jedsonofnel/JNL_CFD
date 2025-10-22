@@ -34,6 +34,9 @@ func (b Block) String() string {
 	}
 
 	for _, err := range b.Errors {
+		if _, ok := err.(missingDelim); ok { // don't display these
+			continue
+		}
 		accumulator.WriteString(err.PrettyError())
 	}
 
@@ -311,9 +314,14 @@ Loop:
 				break Loop
 			}
 			value := parseCode(p)
-			mapp.Elements[key] = value
-			elems = append(elems, Keyword(key))
-			elems = append(elems, value)
+			if len(key) == 0 {
+				elems = append(elems, p.newErrMalformedKeyword(tok))
+				elems = append(elems, value)
+			} else {
+				elems = append(elems, Keyword(key))
+				elems = append(elems, value)
+				mapp.Elements[key] = value
+			}
 		default:
 			elems = append(elems, p.newErrExpectedKeyword(tok))
 		}
