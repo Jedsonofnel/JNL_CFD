@@ -335,7 +335,10 @@ Loop:
 				mapp.Elements[key] = value
 			}
 		default:
-			elems = append(elems, p.newErrExpectedKeyword(tok))
+			// don't add duplicate expected keywords
+			if err, existing := elems[len(elems)-1].(SyntaxError); !existing || err.Code != ErrExpectedKeyword {
+				elems = append(elems, p.newErrExpectedKeyword(tok))
+			}
 		}
 	}
 
