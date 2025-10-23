@@ -97,11 +97,8 @@ func (l List) Empty() bool {
 }
 
 func (l List) Nth(i int) (Sexp, bool) {
-	if i < 0 && -i <= len(l.Elements) { // negative index checking
-		return l.Elements[i], true
-	}
-
-	if i < len(l.Elements) {
+	numElems := len(l.Elements)
+	if i > 0 && i < numElems {
 		return l.Elements[i], true
 	}
 

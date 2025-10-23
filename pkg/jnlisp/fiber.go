@@ -22,41 +22,25 @@ type frame struct {
 type opType int
 
 const (
-	opEval opType = iota
-	opExpand
+	opExpand opType = iota
+	opElaborate
+	opEval
 )
 
-func (f *fiber) pushEval(sexp Sexp, idx int) {
+func (f *fiber) push(sexp Sexp, idx int, op opType) {
 	f.stack = append(f.stack, frame{
 		sexp: sexp,
 		idx:  idx,
-		op:   opEval,
+		op:   op,
 	})
 }
 
-func (f *fiber) pushEvalMapValue(value Sexp, key string) {
+func (f *fiber) pushMapValue(value Sexp, key string, op opType) {
 	f.stack = append(f.stack, frame{
 		sexp:   value,
 		idx:    -1,
 		mapKey: key,
-		op:     opEval,
-	})
-}
-
-func (f *fiber) pushExpand(sexp Sexp, idx int) {
-	f.stack = append(f.stack, frame{
-		sexp: sexp,
-		idx:  idx,
-		op:   opExpand,
-	})
-}
-
-func (f *fiber) pushExpandMapValue(value Sexp, key string) {
-	f.stack = append(f.stack, frame{
-		sexp:   value,
-		idx:    -1,
-		mapKey: key,
-		op:     opEval,
+		op:     op,
 	})
 }
 

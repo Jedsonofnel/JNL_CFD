@@ -17,13 +17,13 @@ func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
 			if err != nil {
 				return nil, err
 			}
-			f.pushExpand(s, 0)
+			f.push(s, 0, opExpand)
 			return f.expand(expanded, env)
 		}
 
 		// not a macro - expand children
 		for i, child := range s.Elements {
-			f.pushExpand(s, i)
+			f.push(s, i, opExpand)
 			expanded, err := f.expand(child, env)
 			if err != nil {
 				return nil, err
@@ -33,7 +33,7 @@ func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
 		return s, nil
 	case Vector:
 		for i, child := range s.Elements {
-			f.pushExpand(child, i)
+			f.push(child, i, opExpand)
 			expanded, err := f.expand(child, env)
 			if err != nil {
 				return nil, err
@@ -43,7 +43,7 @@ func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
 		return s, nil
 	case Map:
 		for key, value := range s.Elements {
-			f.pushExpandMapValue(value, key) // THIS IS WRONG - need to have a separate field for mapkey
+			f.pushMapValue(value, key, opExpand)
 			expanded, err := f.expand(value, env)
 			if err != nil {
 				return nil, err

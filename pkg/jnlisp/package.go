@@ -19,13 +19,13 @@ func (rt *Runtime) loadPackage(name, prefix string, location *env) Error {
 	pkg, exists := rt.packages[name]
 	if !exists {
 		// TODO: add filepath loading
-		return RuntimeError{Message: "library not found: " + name}
+		return EvalError{Message: "library not found: " + name}
 	}
 
 	if pkg.env == nil {
 		err := rt.executePackage(pkg)
 		if err != nil {
-			return RuntimeError{Message: "error executing package (" + name + "): " + err.Error()}
+			return EvalError{Message: "error executing package (" + name + "): " + err.Error()}
 		}
 	}
 

@@ -81,11 +81,8 @@ func (doc Document) Empty() bool {
 }
 
 func (doc Document) Nth(i int) (Sexp, bool) {
-	if i < 0 && -i <= len(doc) { // negative index checking
-		return doc[i], true
-	}
-
-	if i < len(doc) {
+	numBlocks := len(doc)
+	if i > 0 && i < numBlocks {
 		return doc[i], true
 	}
 

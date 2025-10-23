@@ -40,6 +40,11 @@ const (
 	ErrMacroArgType
 	ErrMacroInvalidForm
 
+	elaboration_errors // sentinel value
+
+	ErrElaborationSyntax
+	ErrElaborationArity // errors with arity literal
+
 	eval_errors // sentinel value
 
 	ErrRecursionLimitReached
@@ -235,15 +240,43 @@ func (f *fiber) newErrMacroArgType(macro, wanted string, pos int) ExpansionError
 // ELABORATION ERROR
 
 type ElaborationError struct {
+	Code    ErrorCode
 	Message string
+	stack   []frame
+	block   *Block
 }
 
 func (e ElaborationError) Error() string {
-	return "Elaboration error: " + e.Message
+	pos := e.block.Src.Filename
+	return e.Code.String() + " at " + pos + ": " + e.Message
 }
 
 func (e ElaborationError) PrettyError() string {
-	return "Elaboration error: " + e.Message
+	lines := getErrorLinesFromStack(e.stack, e.block)
+	accumulator := strings.Builder{}
+	accumulator.WriteString(e.Error())
+	accumulator.WriteString("\n")
+	accumulator.WriteString(lines.displayWithMessage(e.Message))
+	accumulator.WriteString("\n")
+	return accumulator.String()
+}
+
+func (f *fiber) newErrElaborationSyntax(msg string) ElaborationError {
+	return ElaborationError{
+		Code:    ErrElaborationSyntax,
+		Message: msg,
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
+func (f *fiber) newErrElaborationAritySyntax(msg string) ElaborationError {
+	return ElaborationError{
+		Code:    ErrElaborationArity,
+		Message: msg,
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
 }
 
 // Created by the evaluator
@@ -251,16 +284,40 @@ type EvalError struct {
 	Code    ErrorCode
 	Message string
 	stack   []frame
+	block   *Block
 }
 
-func (e EvalError) Error() string       { return e.Message }
-func (e EvalError) PrettyError() string { return e.Message }
+func (e EvalError) Error() string {
+	pos := e.block.Src.Filename
+	return e.Code.String() + " at " + pos + ": " + e.Message
+}
+
+func (e EvalError) PrettyError() string {
+	lines := getErrorLinesFromStack(e.stack, e.block)
+	accumulator := strings.Builder{}
+	accumulator.WriteString(e.Error())
+	accumulator.WriteString("\n")
+	accumulator.WriteString(lines.displayWithMessage(e.Message))
+	accumulator.WriteString("\n")
+	return accumulator.String()
+}
 
 func (f *fiber) newErrRecursionLimitReached() EvalError {
 	return EvalError{
 		Code:    ErrRecursionLimitReached,
 		Message: "recursion limit reached: " + strconv.Itoa(f.maxDepth),
 		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
+func (f *fiber) newErrArity(name string, arity Arity, got []Sexp) EvalError {
+	vecGot := Vector{Elements: got}
+	return EvalError{
+		Code:    ErrArity,
+		Message: "def expects " + arity.String() + ", got " + vecGot.String(),
+		stack:   f.copyStack(),
+		block:   f.block,
 	}
 }
 
@@ -269,6 +326,7 @@ func (f *fiber) newErrArityMin(name string, wanted, got int) EvalError {
 		Code:    ErrArity,
 		Message: name + " expects at least " + strconv.Itoa(wanted) + " arguments, got " + strconv.Itoa(got),
 		stack:   f.copyStack(),
+		block:   f.block,
 	}
 }
 
@@ -277,39 +335,7 @@ func (f *fiber) newErrArityMax(name string, wanted, got int) EvalError {
 		Code:    ErrArity,
 		Message: name + " expects at most " + strconv.Itoa(wanted) + " arguments, got " + strconv.Itoa(got),
 		stack:   f.copyStack(),
-	}
-}
-
-// Created by the evaluator
-type RuntimeError struct {
-	Message string
-}
-
-func (e RuntimeError) Error() string {
-	return "Runtime error: " + e.Message
-}
-
-func (e RuntimeError) PrettyError() string {
-	return "Runtime error: " + e.Message
-}
-
-func ArgCountErr(funcName string, expected, got int) RuntimeError {
-	return RuntimeError{
-		Message: funcName + " expects " + strconv.Itoa(expected) +
-			" arguments, got " + strconv.Itoa(got),
-	}
-}
-
-func MinArgCountErr(funcName string, min, got int) RuntimeError {
-	return RuntimeError{
-		Message: funcName + " expects at least " + strconv.Itoa(min) +
-			" arguments, got " + strconv.Itoa(got),
-	}
-}
-
-func TypeErr(funcName, expected, got string) RuntimeError {
-	return RuntimeError{
-		Message: funcName + " expects " + expected + ", got " + got,
+		block:   f.block,
 	}
 }
 
