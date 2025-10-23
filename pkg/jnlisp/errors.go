@@ -186,14 +186,17 @@ type ExpansionError struct {
 	Code    ErrorCode
 	Message string
 	stack   []frame
+	src     *Source
 }
 
 func (e ExpansionError) Error() string {
-	return "Expansion error: " + e.Message
+	pos := e.src.Filename
+	return e.Code.String() + " at " + pos + ": " + e.Message
 }
 
 func (e ExpansionError) PrettyError() string {
-	return "Expansion error: " + e.Message
+	pos := e.src.Filename
+	return e.Code.String() + " at " + pos + ": " + e.Message
 }
 
 func (f *fiber) newErrMacroArity(macro string, wanted, got int) ExpansionError {
@@ -201,6 +204,7 @@ func (f *fiber) newErrMacroArity(macro string, wanted, got int) ExpansionError {
 		Code:    ErrMacroArity,
 		Message: macro + " wants " + strconv.Itoa(wanted) + " arguments but got " + strconv.Itoa(got),
 		stack:   f.copyStack(),
+		src:     &f.block.Src,
 	}
 }
 
@@ -209,6 +213,7 @@ func (f *fiber) newErrMacroArityMinimum(macro string, minimum, got int) Expansio
 		Code:    ErrMacroArity,
 		Message: macro + " wants minimum " + strconv.Itoa(minimum) + " arguments but got " + strconv.Itoa(got),
 		stack:   f.copyStack(),
+		src:     &f.block.Src,
 	}
 }
 
@@ -217,6 +222,7 @@ func (f *fiber) newErrMacroArgType(macro, wanted string, pos int) ExpansionError
 		Code:    ErrMacroArgType,
 		Message: macro + " wants type " + wanted + " at argument position " + strconv.Itoa(pos),
 		stack:   f.copyStack(),
+		src:     &f.block.Src,
 	}
 }
 

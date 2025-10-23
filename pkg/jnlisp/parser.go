@@ -201,7 +201,6 @@ func (m missingDelim) Error() string       { return "Missing delimeter: " + stri
 func (m missingDelim) PrettyError() string { return "Missing delimeter: " + string(m) }
 func (m missingDelim) String() string      { return "MISSING DELIM: " }
 func (m missingDelim) Type() string        { return "error" }
-func (m missingDelim) evaluatable()        {}
 func (m missingDelim) matching() string {
 	switch m {
 	case ")":
@@ -216,12 +215,13 @@ func (m missingDelim) matching() string {
 }
 
 func parseList(p *parser) List {
-	var list List
+	list := List{Start: p.current.pos}
 	var elems []Sexp
+	var tok token
 
 Loop:
 	for {
-		tok := p.next()
+		tok = p.next()
 		switch tok.typ {
 		case tokenCloseParen:
 			break Loop
@@ -243,16 +243,18 @@ Loop:
 	}
 
 	list.Elements = elems
+	list.End = tok.pos
 	return list
 }
 
 func parseVector(p *parser) Vector {
-	var vector Vector
+	vector := Vector{Start: p.current.pos}
 	var elems []Sexp
+	var tok token
 
 Loop:
 	for {
-		tok := p.next()
+		tok = p.next()
 		switch tok.typ {
 		case tokenCloseBracket:
 			break Loop
@@ -274,19 +276,25 @@ Loop:
 	}
 
 	vector.Elements = elems
+	vector.End = tok.pos
 	return vector
 }
 
 // parse map with an optional delimeter
 // (brace for map literal, paren/bracket for inline map with mapkey: value syntax)
 func parseMap(p *parser, delim tokenType) Sexp {
-	var mapp Map
-	mapp.Elements = make(map[string]Sexp)
+	mapp := Map{
+		Elements: make(map[string]Sexp),
+		Start:    p.current.pos,
+	}
+	list := List{Start: p.current.pos}
+
 	var elems []Sexp
+	var tok token
 
 Loop:
 	for {
-		tok := p.next()
+		tok = p.next()
 		switch tok.typ {
 		case delim:
 			if delim != tokenCloseBrace {
@@ -334,10 +342,13 @@ Loop:
 	// if there's an error - return the list
 	for i := range elems {
 		if _, ok := elems[i].(Error); ok {
-			return List{Elements: elems}
+			list.Elements = elems
+			list.End = tok.pos
+			return list
 		}
 	}
 
+	mapp.End = tok.pos
 	return mapp
 }
 

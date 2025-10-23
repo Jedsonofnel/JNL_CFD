@@ -44,6 +44,7 @@ type Closure struct {
 	arity  arity
 	body   Sexp
 	lexenv *env
+	block  *Block
 }
 
 func (c Closure) Type() string { return "closure" }
@@ -88,6 +89,7 @@ func (c Closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
 		activationEnv.bind(kw, value)
 	}
 
+	f.block = c.block
 	return f.eval(c.body, activationEnv)
 }
 

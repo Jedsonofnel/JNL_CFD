@@ -98,7 +98,9 @@ func (vm *VM) Step(input string) (string, string) {
 	fiber := &fiber{
 		maxDepth: 1000,
 		vm:       vm,
+		block:    &lastBlock,
 	}
+
 	result, err := fiber.eval(lastBlock.AST, vm.userEnv)
 	if err != nil {
 		return err.PrettyError(), ""

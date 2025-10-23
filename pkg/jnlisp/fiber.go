@@ -10,6 +10,7 @@ type fiber struct {
 	maxDepth    int
 	vm          *VM
 	gensymCount int // for generating unique symbols
+	block       *Block
 }
 
 type frame struct {
