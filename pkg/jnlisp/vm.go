@@ -2,26 +2,22 @@ package jnlisp
 
 import (
 	"io/fs"
-	"strings"
 )
 
-type VM struct {
-	userEnv   *env
-	importEnv *env
-
-	pkgRegistry map[string]Package
-	loadedPkgs  map[string]*env
+type Runtime struct {
+	coreEnv  *env
+	replEnv  *env
+	packages map[string]*Package
 }
 
-func NewVM() *VM {
-	importEnv := newEnv(nil)
-	userEnv := newEnv(importEnv)
+func NewRuntime() *Runtime {
+	coreEnv := newEnv(nil)
+	replEnv := newEnv(coreEnv)
 
-	vm := &VM{
-		importEnv:   importEnv,
-		userEnv:     userEnv,
-		pkgRegistry: make(map[string]Package),
-		loadedPkgs:  make(map[string]*env),
+	rt := &Runtime{
+		coreEnv:  coreEnv,
+		replEnv:  replEnv,
+		packages: make(map[string]*Package),
 	}
 
 	// vm.RegisterPackage(corePkg)
@@ -31,18 +27,16 @@ func NewVM() *VM {
 	// 	panic("Error importing package core: " + err.Error())
 	// }
 
-	return vm
+	return rt
 }
 
-func (vm *VM) Reset() {
-	vm.importEnv = newEnv(nil)
-	vm.userEnv = newEnv(vm.importEnv)
+func (rt *Runtime) RegisterPackage(pkg *Package) {
+	rt.packages[pkg.Name] = pkg
 }
 
-func (vm *VM) Execute(src Source) []Block {
-	document := parse(src)
-	// TODO: re-figure out eval
-	return document
+// TODO: main entrypoint publicly for running files
+func (rt *Runtime) Eval(_ fs.FS, _ string) []Block {
+	return nil
 }
 
 // func (ctx *Context) bindIt(blocks []Block) {
@@ -94,29 +88,29 @@ func (vm *VM) Execute(src Source) []Block {
 // 	return codeBlocks
 // }
 
-func (vm *VM) getFSSourceCode(fsys fs.FS) ([]string, Error) {
-	var fileContents []string
-
-	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return newFSError(path, "walk", err)
-		}
-
-		if d.IsDir() || !strings.HasSuffix(path, ".jnl") {
-			return nil
-		}
-
-		content, err := fs.ReadFile(fsys, path)
-		if err != nil {
-			return newFSError(path, "read", err)
-		}
-		fileContents = append(fileContents, string(content))
-		return nil
-	})
-
-	if err != nil {
-		return nil, err.(FileSystemError)
-	}
-
-	return fileContents, nil
-}
+// func (vm *VM) getFSSourceCode(fsys fs.FS) ([]string, Error) {
+// 	var fileContents []string
+//
+// 	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+// 		if err != nil {
+// 			return newFSError(path, "walk", err)
+// 		}
+//
+// 		if d.IsDir() || !strings.HasSuffix(path, ".jnl") {
+// 			return nil
+// 		}
+//
+// 		content, err := fs.ReadFile(fsys, path)
+// 		if err != nil {
+// 			return newFSError(path, "read", err)
+// 		}
+// 		fileContents = append(fileContents, string(content))
+// 		return nil
+// 	})
+//
+// 	if err != nil {
+// 		return nil, err.(FileSystemError)
+// 	}
+//
+// 	return fileContents, nil
+// }

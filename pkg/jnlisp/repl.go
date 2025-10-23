@@ -6,7 +6,7 @@ import (
 )
 
 type REPL struct {
-	vm  *VM
+	rt  *Runtime
 	env *env
 
 	document Document
@@ -18,10 +18,10 @@ type REPL struct {
 	missingDelims string
 }
 
-func NewREPL(vm *VM) *REPL {
+func NewREPL(rt *Runtime) *REPL {
 	return &REPL{
-		vm:  vm,
-		env: newEnv(vm.userEnv),
+		rt:  rt,
+		env: newEnv(rt.replEnv),
 
 		document: []Block{},
 

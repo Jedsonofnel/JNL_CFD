@@ -12,8 +12,8 @@ import (
 )
 
 func main() {
-	vm := jnlisp.NewVM()
-	repl := jnlisp.NewREPL(vm)
+	rt := jnlisp.NewRuntime()
+	repl := jnlisp.NewREPL(rt)
 
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {

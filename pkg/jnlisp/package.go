@@ -8,44 +8,42 @@ type Package struct {
 	Name     string
 	FS       fs.FS
 	Bindings map[string]Sexp
+
+	env      *env
+	location string
+	src      []Document
 }
 
-func (vm *VM) RegisterPackage(pkg Package) {
-	vm.pkgRegistry[pkg.Name] = pkg
-}
-
-func (vm *VM) ImportPackage(name, prefix string) Error {
+func (rt *Runtime) loadPackage(name, prefix string, location *env) Error {
 	// check it's in the library registry
-	pkg, exists := vm.pkgRegistry[name]
+	pkg, exists := rt.packages[name]
 	if !exists {
 		// TODO: add filepath loading
 		return RuntimeError{Message: "library not found: " + name}
 	}
 
-	_, found := vm.loadedPkgs[name]
-	if !found {
-		env, err := vm.executePackage(pkg)
+	if pkg.env == nil {
+		err := rt.executePackage(pkg)
 		if err != nil {
 			return RuntimeError{Message: "error executing package (" + name + "): " + err.Error()}
 		}
-		vm.loadedPkgs[name] = env
 	}
 
-	vm.loadedPkgs[name].forEachBinding(func(name string, sexp Sexp) {
-		vm.importEnv.bind(prefix+name, sexp)
-	})
+	for name, value := range pkg.env.bindings {
+		location.bind(prefix+name, value)
+	}
 
 	return nil
 }
 
-func (vm *VM) executePackage(pkg Package) (*env, Error) {
-	pkgEnv := newEnv(vm.importEnv)
+func (rt *Runtime) executePackage(pkg *Package) Error {
+	pkg.env = newEnv(rt.coreEnv)
 
 	for name, sexp := range pkg.Bindings {
-		pkgEnv.bind(name, sexp)
+		pkg.env.bind(name, sexp)
 	}
 
-	return pkgEnv, nil
+	return nil
 
 	// fileContents, err := vm.getFSSourceCode(pkg.FS)
 	// if err != nil {

@@ -28,12 +28,6 @@ func (e *env) bind(s string, sexp Sexp) {
 	e.bindings[s] = sexp
 }
 
-func (e *env) forEachBinding(cb func(string, Sexp)) {
-	for name, sexp := range e.bindings {
-		cb(name, sexp)
-	}
-}
-
 type Callable interface {
 	Sexp
 	Call(args []Sexp, fiber *fiber) (Sexp, Error)
