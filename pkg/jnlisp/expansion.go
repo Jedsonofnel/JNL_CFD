@@ -17,7 +17,7 @@ func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
 			if err != nil {
 				return nil, err
 			}
-			f.pushExpand(s, -1)
+			f.pushExpand(s, 0)
 			return f.expand(expanded, env)
 		}
 

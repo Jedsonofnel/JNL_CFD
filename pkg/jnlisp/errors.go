@@ -84,10 +84,11 @@ func (e SyntaxError) Error() string {
 }
 
 func (e SyntaxError) PrettyError() string {
+	lines := getSyntaxErrorLine(e.token, e.block)
 	accumulator := strings.Builder{}
 	accumulator.WriteString(e.Error())
 	accumulator.WriteString("\n")
-	accumulator.WriteString(prettyFormatError(e.block, e.token, e.Message))
+	accumulator.WriteString(lines.displayWithMessage(e.Message))
 	accumulator.WriteString("\n")
 	return accumulator.String()
 }
@@ -186,17 +187,22 @@ type ExpansionError struct {
 	Code    ErrorCode
 	Message string
 	stack   []frame
-	src     *Source
+	block   *Block
 }
 
 func (e ExpansionError) Error() string {
-	pos := e.src.Filename
+	pos := e.block.Src.Filename
 	return e.Code.String() + " at " + pos + ": " + e.Message
 }
 
 func (e ExpansionError) PrettyError() string {
-	pos := e.src.Filename
-	return e.Code.String() + " at " + pos + ": " + e.Message
+	lineErrs := getErrorLinesFromStack(e.stack, e.block)
+	accumulator := strings.Builder{}
+	accumulator.WriteString(e.Error())
+	accumulator.WriteString("\n")
+	accumulator.WriteString(lineErrs.displayWithMessage(e.Message))
+	accumulator.WriteString("\n")
+	return accumulator.String()
 }
 
 func (f *fiber) newErrMacroArity(macro string, wanted, got int) ExpansionError {
@@ -204,7 +210,7 @@ func (f *fiber) newErrMacroArity(macro string, wanted, got int) ExpansionError {
 		Code:    ErrMacroArity,
 		Message: macro + " wants " + strconv.Itoa(wanted) + " arguments but got " + strconv.Itoa(got),
 		stack:   f.copyStack(),
-		src:     &f.block.Src,
+		block:   f.block,
 	}
 }
 
@@ -213,7 +219,7 @@ func (f *fiber) newErrMacroArityMinimum(macro string, minimum, got int) Expansio
 		Code:    ErrMacroArity,
 		Message: macro + " wants minimum " + strconv.Itoa(minimum) + " arguments but got " + strconv.Itoa(got),
 		stack:   f.copyStack(),
-		src:     &f.block.Src,
+		block:   f.block,
 	}
 }
 
@@ -222,7 +228,7 @@ func (f *fiber) newErrMacroArgType(macro, wanted string, pos int) ExpansionError
 		Code:    ErrMacroArgType,
 		Message: macro + " wants type " + wanted + " at argument position " + strconv.Itoa(pos),
 		stack:   f.copyStack(),
-		src:     &f.block.Src,
+		block:   f.block,
 	}
 }
 
@@ -341,12 +347,177 @@ func escapeJSON(s string) string {
 	return result
 }
 
-// Returns the line of source code containing the given token position
-func getLineContaining(block *Block, token token) string {
+type errLine struct {
+	line     string // the full string of the line without newlines
+	lineNum  int    // the line number of each line
+	carStart int    // the string index at which the caret underline should start
+	carEnd   int    // the string index at which the caret underline should end
+}
+
+type errLines []errLine
+
+// creates a string with the errLines underlined and a message somewhere
+func (e errLines) displayWithMessage(msg string) string {
+	if len(e) == 0 {
+		return ""
+	}
+
+	accumulator := strings.Builder{}
+	last := e[len(e)-1] // always print the last one
+	lastNum := strconv.Itoa(last.lineNum)
+
+	// TODO make this display multilines reasonably well
+	firstNonWhitespace := 0
+
+WhitespaceSearch:
+	for i := range len(last.line) {
+		switch last.line[i] {
+		case ' ', '\t', '\v', '\f', '\r':
+			continue WhitespaceSearch
+		default:
+			firstNonWhitespace = 0
+			break WhitespaceSearch
+		}
+	}
+
+	accumulator.WriteString(strings.Repeat(" ", len(lastNum)) + " |\n")
+	accumulator.WriteString(lastNum + " | ")
+	accumulator.WriteString(last.line + "\n")
+	accumulator.WriteString(strings.Repeat(" ", len(lastNum)) + " | ")
+
+	carStart := firstNonWhitespace
+	if last.carStart > 0 && last.carEnd > 0 {
+		carStart = last.carStart
+	}
+
+	if carStart >= len(msg)+1 {
+		accumulator.WriteString(strings.Repeat(" ", carStart-len(msg)-1) + " ")
+		accumulator.WriteString(msg)
+	} else {
+		accumulator.WriteString(strings.Repeat(" ", carStart))
+	}
+
+	accumulator.WriteString(strings.Repeat("^", last.carEnd-carStart))
+
+	if carStart < len(msg)+1 {
+		accumulator.WriteString(" " + msg)
+	}
+
+	accumulator.WriteString("\n")
+	accumulator.WriteString(strings.Repeat(" ", len(lastNum)) + " | ")
+	return accumulator.String()
+}
+
+// from stack data find the lines with errors
+func getErrorLinesFromStack(stack []frame, block *Block) errLines {
+	var idx int
+	var start, end Pos
+
+SexpDescent:
+	for i := len(stack) - 1; i >= 0; i-- {
+		idx = stack[i].idx // update
+		switch sexp := stack[i].sexp.(type) {
+		case List:
+			if sexp.Start.Line != 0 && sexp.End.Line != 0 {
+				start, end = sexp.Start, sexp.End
+				break SexpDescent
+			}
+		case Vector:
+			if sexp.Start.Line != 0 && sexp.End.Line != 0 {
+				start, end = sexp.Start, sexp.End
+				break SexpDescent
+			}
+		case Map:
+			if sexp.Start.Line != 0 && sexp.End.Line != 0 {
+				start, end = sexp.Start, sexp.End
+				break SexpDescent
+			}
+		}
+	}
+
 	src := block.Src
+	relativeOffset := start.Offset - src.Start.Offset
+	if relativeOffset < 0 || relativeOffset > len(src.Text) {
+		println("RELATIVE OFFSET BAD")
+		return []errLine{}
+	}
+
+	// get first line
+	lineStart := relativeOffset
+	for lineStart > 0 && src.Text[lineStart-1] != '\n' {
+		lineStart--
+	}
+
+	// use the block tokens to figure out position of indexed child
+	var childStartTokenIdx int
+	for i := range block.tokens {
+		if block.tokens[i].pos.Offset == start.Offset {
+			childStartTokenIdx = i + 1
+			break
+		}
+	}
+
+	// chunk through tokens until the nth child start/end has been found
+	depth := 0
+	traversed := -1
+	childEndTokenIdx := childStartTokenIdx
+	for i := range block.tokens[childStartTokenIdx+1:] {
+		switch block.tokens[i].typ {
+		case tokenOpenParen, tokenOpenBracket, tokenOpenBrace:
+			depth++
+		case tokenCloseParen, tokenCloseBracket, tokenCloseBrace:
+			depth--
+		}
+
+		switch depth {
+		case 0:
+			traversed++
+		case -1:
+			panic("error traversing through children in line error fetching")
+		}
+
+		// ie have we consumed the zero-indexed nth child yet
+		if traversed >= idx {
+			childEndTokenIdx = i
+			break
+		}
+	}
+
+	// error child start offset and end offset
+	childStart := block.tokens[childStartTokenIdx].pos.Offset - src.Start.Offset
+	childEnd := block.tokens[childEndTokenIdx].pos.Offset + // offset to start of token
+		len(block.tokens[childEndTokenIdx].val) - // + length of token
+		src.Start.Offset
+
+	var lines errLines
+	for i := relativeOffset; i < len(src.Text); i++ {
+		if src.Text[i] == '\n' || i == len(src.Text)-1 {
+			newLine := errLine{
+				line:     src.Text[lineStart : i+1],
+				lineNum:  start.Line + len(lines),
+				carStart: childStart - lineStart,
+				carEnd:   childEnd - lineStart,
+			}
+
+			lineStart = i + 1 // reset lineStart skipping the newline
+			lines = append(lines, newLine)
+
+			if i >= end.Offset { // ie don't keep looping if at the end of sexp offset
+				break
+			}
+		}
+	}
+
+	return lines
+}
+
+func getSyntaxErrorLine(token token, block *Block) errLines {
+	var lines errLines
+	src := block.Src
+
 	relativeOffset := token.pos.Offset - src.Start.Offset
 	if relativeOffset < 0 || relativeOffset > len(src.Text) {
-		return ""
+		return lines
 	}
 
 	lineStart := relativeOffset
@@ -357,46 +528,11 @@ func getLineContaining(block *Block, token token) string {
 	for lineEnd < len(src.Text) && src.Text[lineEnd] != '\n' {
 		lineEnd++
 	}
-	return src.Text[lineStart:lineEnd]
-}
 
-func prettyFormatError(block *Block, token token, msg string) string {
-	accumulator := strings.Builder{}
-
-	// line numbers
-	lineNum := strconv.Itoa(token.pos.Line)
-	accumulator.WriteString(strings.Repeat(" ", len(lineNum)+1) + "|\n")
-	accumulator.WriteString(lineNum + " | ")
-	accumulator.WriteString(getLineContaining(block, token) + "\n")
-	accumulator.WriteString(strings.Repeat(" ", len(lineNum)+1) + "| ")
-
-	src := block.Src
-
-	// caret underline
-	relativeOffset := token.pos.Offset - src.Start.Offset
-	lineStart := relativeOffset
-	for lineStart > 0 && src.Text[lineStart-1] != '\n' {
-		lineStart--
-	}
-	caretStart := relativeOffset - lineStart
-	if caretStart-1 > len(msg) {
-		accumulator.WriteString(strings.Repeat(" ", caretStart-len(msg)-1))
-		accumulator.WriteString(msg + " ")
-	} else {
-		accumulator.WriteString(strings.Repeat(" ", caretStart))
-	}
-
-	caretLength := len(token.val)
-	if token.typ == tokenDoubleNewline {
-		caretLength = 1
-	}
-	accumulator.WriteString(strings.Repeat("^", caretLength) + " ")
-
-	if caretStart-1 <= len(msg) {
-		accumulator.WriteString(msg)
-	}
-
-	accumulator.WriteString("\n" + strings.Repeat(" ", len(lineNum)+1) + "|")
-
-	return accumulator.String()
+	return append(lines, errLine{
+		line:     src.Text[lineStart:lineEnd],
+		lineNum:  token.pos.Line,
+		carStart: relativeOffset - lineStart,
+		carEnd:   relativeOffset - lineStart + len(token.val),
+	})
 }
