@@ -40,22 +40,19 @@ func (b Boolean) String() string {
 type Seq interface {
 	First() Sexp
 	Rest() Seq
-	Cons(Sexp) Seq
 	Empty() bool
 }
 
-// normal index lookup style behaviour (go's slices)
+// random access
 type Indexed interface {
+	Seq
 	Nth(int) (Sexp, bool)
 	Length() int
-	Append(Sexp) Indexed
 }
 
 // hash map behaviour
 type Lookup interface {
 	Get(key string) Sexp
-	Has(key string) bool
-	Assoc(key string, value Sexp) Lookup
 }
 
 // default lisp style list - implements Seq but also indexed
@@ -88,13 +85,6 @@ func (l List) Rest() Seq {
 	}
 	return List{
 		Elements: l.Elements[1:],
-		meta:     l.meta,
-	}
-}
-
-func (l List) Cons(s Sexp) Seq {
-	return List{
-		Elements: append([]Sexp{s}, l.Elements...),
 		meta:     l.meta,
 	}
 }
@@ -145,6 +135,30 @@ func (v Vector) String() string {
 	return "[" + strings.Join(parts, " ") + "]"
 }
 
+func (v Vector) First() Sexp {
+	if len(v.Elements) == 0 {
+		return nil
+	}
+	return v.Elements[0]
+}
+
+func (v Vector) Rest() Seq {
+	if len(v.Elements) < 2 {
+		return Vector{meta: v.meta}
+	}
+	return Vector{
+		Elements: v.Elements[1:],
+		meta:     v.meta,
+	}
+}
+
+func (v Vector) Empty() bool {
+	if len(v.Elements) == 0 {
+		return true
+	}
+	return false
+}
+
 func (v Vector) Nth(i int) (Sexp, bool) {
 	if i < 0 && -i <= len(v.Elements) { // negative index checking
 		return v.Elements[i], false
@@ -188,12 +202,7 @@ func (m Map) Get(s string) Sexp {
 	return m.Elements[s]
 }
 
-func (m Map) Has(s string) bool {
-	_, exists := m.Elements[s]
-	return exists
-}
-
-func (m Map) Assoc(key string, value Sexp) Lookup {
+func (m Map) assoc(key string, value Sexp) Lookup {
 	clone := copyMap(m.Elements)
 	clone[key] = value
 	return Map{
@@ -220,12 +229,7 @@ func (m metaMap) Get(s string) Sexp {
 	return m[s]
 }
 
-func (m metaMap) Has(s string) bool {
-	_, exists := m[s]
-	return exists
-}
-
-func (m metaMap) Assoc(key string, value Sexp) Lookup {
+func (m metaMap) assoc(key string, value Sexp) Lookup {
 	clone := copyMap(m)
 	clone[key] = value
 	return metaMap(clone)

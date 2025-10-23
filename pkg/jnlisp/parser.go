@@ -16,9 +16,9 @@ type Source struct {
 // parser produces these
 type Block struct {
 	// Lexer/parser metadata
-	Type   BlockType
-	Src    Source
-	tokens []token
+	BlockType BlockType
+	Src       Source
+	tokens    []token
 
 	AST Sexp
 
@@ -26,10 +26,11 @@ type Block struct {
 	Errors []Error
 }
 
+func (b Block) Type() string { return "<jnlisp-block>" }
 func (b Block) String() string {
 	accumulator := strings.Builder{}
 
-	if b.Type == CodeBlock {
+	if b.BlockType == CodeBlock {
 		accumulator.WriteString(b.AST.String() + "\n")
 	}
 	accumulator.WriteString(b.SyntaxErrors())
@@ -47,6 +48,7 @@ func (b Block) SyntaxErrors() string {
 	return accumulator.String()
 }
 
+// implements Indexed
 type Document []Block
 
 func (doc Document) String() string {
@@ -56,6 +58,42 @@ func (doc Document) String() string {
 		accumulator.WriteString(block.String())
 	}
 	return accumulator.String()
+}
+
+func (doc Document) First() Sexp {
+	if len(doc) == 0 {
+		return nil
+	}
+	return doc[0]
+}
+
+func (doc Document) Rest() Seq {
+	if len(doc) < 2 {
+		return make(Document, 0)
+	}
+	newDoc := make(Document, len(doc)-1)
+	copy(newDoc, doc[1:])
+	return newDoc
+}
+
+func (doc Document) Empty() bool {
+	return len(doc) == 0
+}
+
+func (doc Document) Nth(i int) (Sexp, bool) {
+	if i < 0 && -i <= len(doc) { // negative index checking
+		return doc[i], true
+	}
+
+	if i < len(doc) {
+		return doc[i], true
+	}
+
+	return nil, false
+}
+
+func (doc Document) Length() int {
+	return len(doc)
 }
 
 func findSyntaxErrors(sexp Sexp) []Error {
@@ -146,9 +184,9 @@ Loop:
 		case tokenDoubleNewline:
 			continue // skip for now
 		case tokenProse:
-			b.Type = ProseBlock
+			b.BlockType = ProseBlock
 		case tokenOpenJParen, tokenOpenParen:
-			b.Type = CodeBlock
+			b.BlockType = CodeBlock
 			b.AST = parseList(parser)
 			b.Errors = findSyntaxErrors(b.AST)
 		default:

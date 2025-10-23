@@ -8,7 +8,6 @@ import (
 type fiber struct {
 	stack       []frame
 	maxDepth    int
-	vm          *VM
 	gensymCount int // for generating unique symbols
 	block       *Block
 }

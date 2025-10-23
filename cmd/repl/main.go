@@ -12,66 +12,50 @@ import (
 )
 
 func main() {
+	vm := jnlisp.NewVM()
+	repl := jnlisp.NewREPL(vm)
+
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		simpleREPL()
+		simpleREPL(repl)
 		return
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
-	vm := jnlisp.NewVM()
-
 	writeline("JNLisp REPL")
 	writeline("Ctrl-d to quit, Ctrl-l to clear, Ctrl-c to cancel line")
 
+REPL:
 	for {
-		result, shouldExit := readCompleteForm(vm)
-		if shouldExit {
-			break // so that defer runs
-		}
-		writeline(result)
-	}
-}
+		line, interrupt := readline(repl.Prompt())
 
-func readCompleteForm(vm *jnlisp.VM) (string, bool) {
-	prompt := vm.ReplPrompt("")
-
-	for {
-		line, interrupt := readline(prompt)
-
-		if interrupt == InterruptCancel {
-			continue // cancelled - restart with new prompt
-		}
-
-		if interrupt == InterruptEOF {
-			return "", true
+		switch interrupt {
+		case InterruptCancel:
+			continue REPL
+		case InterruptEOF:
+			break REPL
 		}
 
 		line += "\n"
-		result, missingDelims := vm.Step(line)
-
-		if result != "" { // input is complete
-			return result, false
+		result := repl.Feed(line)
+		if result != "" {
+			writeline(result)
 		}
-
-		prompt = vm.ReplPrompt(missingDelims)
 	}
 }
 
 // Fallback for when raw mode isn't available
-func simpleREPL() {
-	vm := jnlisp.NewVM()
+func simpleREPL(repl *jnlisp.REPL) {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("JNLisp REPL (simple mode)")
 	fmt.Println("Ctrl-C to quit")
 
 	for {
-		fmt.Print("> ")
+		fmt.Print(repl.Prompt())
 		line, _ := reader.ReadString('\n')
-		result, promptDisplay := vm.Step(line)
-		fmt.Print(result)
-		fmt.Print(promptDisplay)
+		result := repl.Feed(line)
+		fmt.Println(result)
 	}
 }
 

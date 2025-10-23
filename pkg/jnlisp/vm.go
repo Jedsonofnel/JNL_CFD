@@ -2,7 +2,6 @@ package jnlisp
 
 import (
 	"io/fs"
-	"strconv"
 	"strings"
 )
 
@@ -12,10 +11,6 @@ type VM struct {
 
 	pkgRegistry map[string]Package
 	loadedPkgs  map[string]*env
-
-	replLine  int
-	replBuf   strings.Builder
-	replStart Pos
 }
 
 func NewVM() *VM {
@@ -27,9 +22,6 @@ func NewVM() *VM {
 		userEnv:     userEnv,
 		pkgRegistry: make(map[string]Package),
 		loadedPkgs:  make(map[string]*env),
-		replLine:    0,
-		replBuf:     strings.Builder{},
-		replStart:   Pos{1, 1, 0},
 	}
 
 	// vm.RegisterPackage(corePkg)
@@ -45,68 +37,6 @@ func NewVM() *VM {
 func (vm *VM) Reset() {
 	vm.importEnv = newEnv(nil)
 	vm.userEnv = newEnv(vm.importEnv)
-	vm.replLine = 0
-	vm.replBuf = strings.Builder{}
-	vm.replStart = Pos{1, 1, 0}
-}
-
-func (vm *VM) ReplPrompt(missingDelims string) string {
-	vm.replLine++
-	prompt := "jnlisp:" + strconv.Itoa(vm.replLine) + ":" + missingDelims + "> "
-	return prompt
-}
-
-// EXECUTION
-// can be in a step() for a REPL or execute() for all in one go
-
-func (vm *VM) Step(input string) (string, string) {
-	vm.replBuf.WriteString(input)
-	document := parse(Source{
-		Text:     vm.replBuf.String(),
-		Filename: "repl",
-		Start:    vm.replStart,
-	})
-
-	if len(document) == 0 {
-		vm.replBuf.Reset()
-		return "", ""
-	}
-
-	missingDelims := ""
-	lastBlock := document[len(document)-1]
-	for _, err := range lastBlock.Errors {
-		if missing, ok := err.(missingDelim); ok {
-			missingDelims += missing.matching()
-		} else {
-			vm.replBuf.Reset()
-			vm.replStart = Pos{vm.replLine + 1, 1, 0}
-			return lastBlock.SyntaxErrors(), "" // ie blocking error detected
-		}
-	}
-
-	if missingDelims != "" {
-		return "", missingDelims
-	}
-
-	vm.replBuf.Reset()
-	vm.replStart = Pos{vm.replLine + 1, 1, 0}
-
-	if lastBlock.Type != CodeBlock {
-		return "<prose block>", ""
-	}
-
-	fiber := &fiber{
-		maxDepth: 1000,
-		vm:       vm,
-		block:    &lastBlock,
-	}
-
-	result, err := fiber.eval(lastBlock.AST, vm.userEnv)
-	if err != nil {
-		return err.PrettyError(), ""
-	}
-
-	return result.String(), ""
 }
 
 func (vm *VM) Execute(src Source) []Block {
