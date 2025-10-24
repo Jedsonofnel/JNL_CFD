@@ -399,6 +399,15 @@ func (f *fiber) newErrNonCallableCalled(called string) EvalError {
 	}
 }
 
+func (f *fiber) newErrDivisionByZero() EvalError {
+	return EvalError{
+		Code:    ErrDivisionByZero,
+		Message: "cannot divide by zero",
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
 func (f *fiber) newErrEmptyList() EvalError {
 	return EvalError{
 		Code:    ErrEmptyList,
