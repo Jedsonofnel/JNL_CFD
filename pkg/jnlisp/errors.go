@@ -337,7 +337,7 @@ func (f *fiber) newErrPosArgType(name, wanted, got string, pos int) EvalError {
 func (f *fiber) newErrIndexOutOfRange(index, length int) EvalError {
 	return EvalError{
 		Code:    ErrIndexOutOfRange,
-		Message: "index of '" + strconv.Itoa(index) + "' is out of range [0:" + strconv.Itoa(length) + "]",
+		Message: "index requested '" + strconv.Itoa(index) + "' is out of range [0:" + strconv.Itoa(length) + "]",
 		stack:   f.copyStack(),
 		block:   f.block,
 	}
@@ -518,7 +518,7 @@ SexpDescent:
 	depth := 0
 	traversed := -1
 	childEndTokenIdx := childStartTokenIdx
-	for i := range block.tokens[childStartTokenIdx+1:] {
+	for i := childStartTokenIdx; i < len(block.tokens); i++ {
 		switch block.tokens[i].typ {
 		case tokenOpenParen, tokenOpenBracket, tokenOpenBrace:
 			depth++
