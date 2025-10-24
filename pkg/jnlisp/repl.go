@@ -36,6 +36,8 @@ func NewREPL(rt *Runtime) *REPL {
 func (r *REPL) Feed(input string) string {
 	r.buf.WriteString(input)
 
+	// println(strings.ReplaceAll(r.buf.String(), "\n", "\\n"))
+
 	newBlocks := parse(Source{
 		Filename: "repl",
 		Text:     r.buf.String(),
@@ -47,10 +49,11 @@ func (r *REPL) Feed(input string) string {
 		return ""
 	}
 
+	missingDelims := ""
 	block := newBlocks[len(newBlocks)-1] // should only ever have length
 	for _, err := range block.Errors {
 		if missing, ok := err.(missingDelim); ok {
-			r.missingDelims += missing.matching()
+			missingDelims += missing.matching()
 		} else {
 			r.buf.Reset()
 			r.start = Pos{r.line + 1, 1, 0}
@@ -58,7 +61,8 @@ func (r *REPL) Feed(input string) string {
 		}
 	}
 
-	if r.missingDelims != "" {
+	if missingDelims != "" {
+		r.missingDelims = missingDelims
 		return ""
 	}
 

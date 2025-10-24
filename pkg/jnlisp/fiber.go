@@ -42,6 +42,10 @@ func (f *fiber) pop() {
 	f.stack = f.stack[:len(f.stack)-1]
 }
 
+func (f *fiber) setCurrentFrameIdx(idx int) {
+	f.stack[len(f.stack)-1].idx = idx
+}
+
 func (f *fiber) recursionLimitReached() bool {
 	if len(f.stack) > f.maxDepth {
 		return true

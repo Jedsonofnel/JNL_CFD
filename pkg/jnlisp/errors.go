@@ -535,6 +535,11 @@ SexpDescent:
 				start, end = sexp.start, sexp.end
 				break SexpDescent
 			}
+		case closure:
+			if sexp.src.start.Line != 0 && sexp.src.end.Line != 0 {
+				start, end = sexp.src.start, sexp.src.end
+				break SexpDescent
+			}
 		}
 		idx = stack[i].idx // update
 	}

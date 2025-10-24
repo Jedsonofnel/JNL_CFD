@@ -40,9 +40,11 @@ type Callable interface {
 type closure struct {
 	name   string
 	arity  Arity
-	body   Sexp
+	body   []Sexp
+	last   Sexp
 	lexenv *env
 	block  *Block
+	src    List // the original fn Sexp that created it
 }
 
 func (c closure) Type() string { return "function" }
@@ -87,7 +89,17 @@ func (c closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
 	}
 
 	f.block = c.block
-	return f.eval(c.body, 0, activationEnv)
+	f.push(c, 0, opEval) // push to stack so error can find it's position
+	for i, expr := range c.body {
+		_, err := f.eval(expr, i+2, activationEnv)
+		if err != nil {
+			return Nil{}, err
+		}
+	}
+	f.pop()
+
+	f.push(c, 2+len(c.body), opEval)
+	return f.eval(c.last, len(c.body), activationEnv)
 }
 
 // Foreign bindings

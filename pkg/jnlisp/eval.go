@@ -5,18 +5,18 @@ func (f *fiber) eval(sexp Sexp, idx int, env *env) (Sexp, Error) {
 	defer f.pop() // remove last frame from stack on return
 
 	if f.recursionLimitReached() {
-		return nil, f.newErrRecursionLimitReached()
+		return Nil{}, f.newErrRecursionLimitReached()
 	}
 
 	sexp, err := f.expand(sexp, 0, env)
 	if err != nil {
-		return nil, err
+		return Nil{}, err
 	}
 
 	// ELABORATION
 	sexp, err = f.elaborate(sexp, 0)
 	if err != nil {
-		return nil, err
+		return Nil{}, err
 	}
 
 	// TCO LOOP
@@ -26,23 +26,76 @@ TCO:
 		case Symbol:
 			binding, exists := env.find(string(x))
 			if !exists {
-				return nil, f.newErrSymbolNotBound(string(x))
+				return Nil{}, f.newErrSymbolNotBound(string(x))
 			}
 			return binding, nil
 
 		case defExpr:
 			binding, err := f.eval(x.binding, 2, env)
 			if err != nil {
-				return nil, err
+				return Nil{}, err
 			}
+
+			if closure, ok := binding.(closure); ok {
+				closure.name = x.name
+				binding = closure
+			}
+
 			env.bind(x.name, binding)
 			return binding, nil
+
+		case fnExpr:
+			closure := closure{
+				arity:  x.arity,
+				body:   x.body,
+				last:   x.last,
+				lexenv: env,
+				block:  f.block,
+			}
+			return closure, nil
+
+		case ifExpr:
+			pred, err := f.eval(x.predicate, 1, env)
+			if err != nil {
+				return Nil{}, err
+			}
+
+			switch pred := pred.(type) {
+			case Nil:
+				sexp = x.alternative
+				continue TCO
+			case Boolean:
+				if bool(pred) {
+					sexp = x.conseq
+					continue TCO
+				} else { // false
+					sexp = x.alternative
+					continue TCO
+				}
+			default:
+				sexp = x.conseq
+				continue TCO
+			}
+
+		case doExpr:
+			env = newEnv(env) // start a new closure
+			for i, exp := range x.body {
+				_, err := f.eval(exp, i+1, env)
+				if err != nil {
+					return Nil{}, err
+				}
+			}
+			sexp = x.last
+			continue TCO
+
+		case quoteExpr:
+			return x.sexp, nil
 
 		case List: // buckle up
 			for i, elem := range x.Elements {
 				evaledElem, err := f.eval(elem, i, env)
 				if err != nil {
-					return nil, err
+					return Nil{}, err
 				}
 				x.Elements[i] = evaledElem
 			}
@@ -60,7 +113,7 @@ TCO:
 				}
 
 				if !proc.arity.Matches(args) {
-					return nil, f.newErrArity(proc.name, proc.arity, args)
+					return Nil{}, f.newErrArity(proc.name, proc.arity, args)
 				}
 
 				activationEnv := newEnv(proc.lexenv)
@@ -83,14 +136,26 @@ TCO:
 						activationEnv.bind(kw.Name, kw.Default)
 					}
 				}
-				sexp = proc.body
-				env = proc.lexenv
+
 				f.block = proc.block
+				env = activationEnv
+
+				f.push(proc, 0, opEval) // push to stack so error can find it's position
+				for i, expr := range proc.body {
+					_, err := f.eval(expr, i+2, env)
+					if err != nil {
+						return Nil{}, err
+					}
+				}
+				f.pop()
+
+				f.push(proc, 2+len(proc.body), opEval)
+				sexp = proc.last
 				continue TCO
 			case Callable:
 				return proc.Call(x.Elements[1:], f)
 			default:
-				return nil, f.newErrNonCallableCalled(proc.Type())
+				return Nil{}, f.newErrNonCallableCalled(proc.Type())
 			}
 
 		default: // literals evaluate to themselves

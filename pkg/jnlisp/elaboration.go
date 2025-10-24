@@ -92,16 +92,22 @@ func elaborateDef(list List, f *fiber) (defExpr, Error) {
 
 type fnExpr struct {
 	arity Arity
-	body  Sexp
+	body  []Sexp
+	last  Sexp
+	src   Sexp
 }
 
 func (f fnExpr) Type() string { return "fn-expression" }
 func (f fnExpr) String() string {
+	exps := make([]string, 0, len(f.body))
+	for _, exp := range f.body {
+		exps = append(exps, exp.String())
+	}
 	acc := strings.Builder{}
 	acc.WriteString("(fn ")
 	acc.WriteString(f.arity.String())
 	acc.WriteString(" ")
-	acc.WriteString(f.body.String())
+	acc.WriteString(strings.Join(exps, " "))
 	acc.WriteString(")")
 	return acc.String()
 }
@@ -115,20 +121,16 @@ func elaborateFn(list List, f *fiber) (fnExpr, Error) {
 
 	arity, err := elaborateArity(list.Elements[1], f)
 	if err != nil {
-		return fnExpr{}, nil
+		return fnExpr{}, err
 	}
 
+	body := list.Elements[2:]
 	if len(list.Elements[2:]) == 0 {
-		return fnExpr{arity, Nil{}}, nil
+		return fnExpr{arity, []Sexp{}, Nil{}, list}, nil
 	}
 
-	if len(list.Elements[2:]) == 1 {
-		return fnExpr{arity, list.Elements[2]}, nil
-	}
-
-	// multiple body forms - wrap in a doExpr
-	body := doExpr{list.Elements[2:]}
-	return fnExpr{arity, body}, nil
+	lenBody := len(body)
+	return fnExpr{arity, body[:lenBody-1], body[lenBody-1], list}, nil
 }
 
 type ifExpr struct {
@@ -176,30 +178,34 @@ func elaborateIf(list List, f *fiber) (ifExpr, Error) {
 }
 
 type doExpr struct {
-	exps []Sexp
+	body []Sexp
+	last Sexp
 }
 
 func (d doExpr) Type() string { return "do-expression" }
 func (d doExpr) String() string {
-	exps := make([]string, 0, len(d.exps))
-	for _, exp := range d.exps {
+	exps := make([]string, 0, len(d.body))
+	for _, exp := range d.body {
 		exps = append(exps, exp.String())
 	}
 	acc := strings.Builder{}
 	acc.WriteString("(do ")
 	acc.WriteString(strings.Join(exps, " "))
+	acc.WriteString(" ")
+	acc.WriteString(d.last.String())
 	acc.WriteString(")")
 	return acc.String()
 }
 
 func elaborateDo(list List) (doExpr, Error) {
 	if len(list.Elements) == 0 {
-		return doExpr{exps: []Sexp{Nil{}}}, nil
+		return doExpr{[]Sexp{}, Nil{}}, nil
 	}
 
-	exps := make([]Sexp, 0, len(list.Elements)-1)
-	exps = append(exps, list.Elements[1:]...)
-	return doExpr{exps}, nil
+	numExps := len(list.Elements)
+	exps := make([]Sexp, 0, numExps-2)
+	exps = append(exps, list.Elements[1:numExps-1]...)
+	return doExpr{exps, list.Elements[numExps-1]}, nil
 }
 
 type quoteExpr struct {
@@ -243,6 +249,7 @@ PositionalLoop:
 					return Arity{}, f.newErrElaborationAritySyntax("variadic must have a body after the ellipsis")
 				}
 				arity.Variadic = sym[3:]
+				i++
 				break PositionalLoop
 			}
 			arity.Positional = append(arity.Positional, string(p))
@@ -269,7 +276,7 @@ PositionalLoop:
 
 	// check if anything else
 	i++
-	if len(params)-1 > i {
+	if len(params) >= i {
 		return Arity{}, f.newErrElaborationAritySyntax("arity expects to end after named args")
 	}
 
