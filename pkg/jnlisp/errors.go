@@ -334,6 +334,15 @@ func (f *fiber) newErrPosArgType(name, wanted, got string, pos int) EvalError {
 	}
 }
 
+func (f *fiber) newErrIndexOutOfRange(index, length int) EvalError {
+	return EvalError{
+		Code:    ErrIndexOutOfRange,
+		Message: "index of '" + strconv.Itoa(index) + "' is out of range [0:" + strconv.Itoa(length) + "]",
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
 func (f *fiber) newErrSymbolNotBound(name string) EvalError {
 	return EvalError{
 		Code:    ErrSymbolNotBound,

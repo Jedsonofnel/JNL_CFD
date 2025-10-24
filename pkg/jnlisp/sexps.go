@@ -26,6 +26,22 @@ func (s String) String() string { return "\"" + string(s) + "\"" }
 func (k Keyword) Type() string   { return "keyword" }
 func (k Keyword) String() string { return ":" + string(k) }
 
+// can call a keyword with a map
+var keywordArity = Arity{Positional: []string{"lookup"}}
+
+func (k Keyword) Call(args []Sexp, f *fiber) (Sexp, Error) {
+	if !keywordArity.Matches(args) {
+		return Nil{}, f.newErrArity("keyword", keywordArity, args)
+	}
+
+	mapp, ok := args[0].(Lookup)
+	if !ok {
+		return Nil{}, f.newErrPosArgType("keyword", "lookup", args[0].Type(), 1)
+	}
+
+	return mapp.Get(string(k)), nil
+}
+
 func (b Boolean) Type() string { return "boolean" }
 func (b Boolean) String() string {
 	if b {
@@ -166,12 +182,8 @@ func (v Vector) Empty() bool {
 }
 
 func (v Vector) Nth(i int) (Sexp, bool) {
-	if i < 0 && -i <= len(v.Elements) { // negative index checking
-		return v.Elements[i], false
-	}
-
 	if i < len(v.Elements) {
-		return v.Elements[i], false
+		return v.Elements[i], true
 	}
 
 	return nil, false
@@ -185,6 +197,27 @@ func (v Vector) Append(s Sexp) Indexed {
 	return Vector{
 		Elements: append(v.Elements, s),
 	}
+}
+
+var vectorArity = Arity{
+	Positional: []string{"index"},
+}
+
+func (v Vector) Call(args []Sexp, f *fiber) (Sexp, Error) {
+	if !vectorArity.Matches(args) {
+		return Nil{}, f.newErrArity("vector", vectorArity, args)
+	}
+
+	idx, ok := args[0].(Int)
+	if !ok {
+		return Nil{}, f.newErrPosArgType("vector", "integer", args[0].Type(), 1)
+	}
+
+	if value, ok := v.Nth(int(idx)); ok {
+		return value, nil
+	}
+
+	return Nil{}, f.newErrIndexOutOfRange(int(idx), v.Length())
 }
 
 // a lookup table, implements Lookup
