@@ -48,7 +48,7 @@ type closure struct {
 
 func (c closure) Type() string { return "function" }
 func (c closure) String() string {
-	return "#<fn:" + c.name + " " + c.arity.String() + ">"
+	return FormatNonReadable("fn", c.name, c.arity.String())
 }
 
 func (c closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
@@ -113,7 +113,7 @@ type Native struct {
 
 func (n Native) Type() string { return "function" }
 func (n Native) String() string {
-	return "#<fn:" + n.name + " " + n.arity.String() + ">"
+	return FormatNonReadable("fn", n.name, n.arity.String())
 }
 
 func (n Native) Call(args []Sexp, f *fiber) (Sexp, Error) {
@@ -136,7 +136,7 @@ type MultiArityNative struct {
 
 func (n MultiArityNative) Type() string { return "function" }
 func (n MultiArityNative) String() string {
-	return "#<fn:" + n.name + " " + n.arities.String() + ">"
+	return FormatNonReadable("fn", n.name, n.arities.String())
 }
 
 func (n MultiArityNative) Call(args []Sexp, f *fiber) (Sexp, Error) {
