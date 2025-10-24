@@ -206,13 +206,14 @@ func (e ExpansionError) Error() string {
 }
 
 func (e ExpansionError) PrettyError() string {
-	lineErrs := getErrorLinesFromStack(e.stack, e.block)
-	accumulator := strings.Builder{}
-	accumulator.WriteString(e.Error())
-	accumulator.WriteString("\n")
-	accumulator.WriteString(lineErrs.displayWithMessage(e.Message))
-	accumulator.WriteString("\n")
-	return accumulator.String()
+	snippet := getErrorSnippet(e.stack, e.block)
+	b := strings.Builder{}
+	b.WriteString(e.Error())
+	b.WriteString("\n")
+	b.WriteString(snippet.displayWithMessage(e.Message))
+	b.WriteString("\n")
+	b.WriteString(displayStack(e.stack))
+	return b.String()
 }
 
 func (f *fiber) newErrMacroArity(macro string, wanted, got int) ExpansionError {
@@ -257,13 +258,14 @@ func (e ElaborationError) Error() string {
 }
 
 func (e ElaborationError) PrettyError() string {
-	lines := getErrorLinesFromStack(e.stack, e.block)
-	accumulator := strings.Builder{}
-	accumulator.WriteString(e.Error())
-	accumulator.WriteString("\n")
-	accumulator.WriteString(lines.displayWithMessage(e.Message))
-	accumulator.WriteString("\n")
-	return accumulator.String()
+	snippet := getErrorSnippet(e.stack, e.block)
+	b := strings.Builder{}
+	b.WriteString(e.Error())
+	b.WriteString("\n")
+	b.WriteString(snippet.displayWithMessage(e.Message))
+	b.WriteString("\n")
+	b.WriteString(displayStack(e.stack))
+	return b.String()
 }
 
 func (f *fiber) newErrElaborationSyntax(msg string) ElaborationError {
@@ -298,13 +300,14 @@ func (e EvalError) Error() string {
 }
 
 func (e EvalError) PrettyError() string {
-	lines := getErrorLinesFromStack(e.stack, e.block)
-	accumulator := strings.Builder{}
-	accumulator.WriteString(e.Error())
-	accumulator.WriteString("\n")
-	accumulator.WriteString(lines.displayWithMessage(e.Message))
-	accumulator.WriteString("\n")
-	return accumulator.String()
+	snippet := getErrorSnippet(e.stack, e.block)
+	b := strings.Builder{}
+	b.WriteString(e.Error())
+	b.WriteString("\n")
+	b.WriteString(snippet.displayWithMessage(e.Message))
+	b.WriteString("\n")
+	b.WriteString(displayStack(e.stack))
+	return b.String()
 }
 
 func (f *fiber) newErrRecursionLimitReached() EvalError {
@@ -339,7 +342,7 @@ func (f *fiber) newErrMultiArity(name string, arities MultiArity, got []Sexp) Ev
 func (f *fiber) newErrPosArgType(name, wanted, got string, pos int) EvalError {
 	return EvalError{
 		Code:    ErrArgType,
-		Message: "'" + name + "' expects " + wanted + ", as arg at position " + strconv.Itoa(pos) + ", got " + got,
+		Message: "'" + name + "' expects " + wanted + " as arg at position " + strconv.Itoa(pos) + ", got " + got,
 		stack:   f.copyStack(),
 		block:   f.block,
 	}
@@ -451,109 +454,99 @@ func escapeJSON(s string) string {
 	return result
 }
 
-type errLine struct {
-	line     string // the full string of the line without newlines
-	lineNum  int    // the line number of each line
-	carStart int    // the string index at which the caret underline should start
-	carEnd   int    // the string index at which the caret underline should end
+type errorSnippet struct {
+	text       string
+	lineNum    int
+	caretStart int
+	caretEnd   int
 }
 
-type errLines []errLine
+func (e errorSnippet) displayWithMessage(msg string) string {
+	var b strings.Builder
 
-// creates a string with the errLines underlined and a message somewhere
-func (e errLines) displayWithMessage(msg string) string {
-	if len(e) == 0 {
-		return ""
-	}
+	lineNumStr := strconv.Itoa(e.lineNum)
+	padding := strings.Repeat(" ", len(lineNumStr))
 
-	accumulator := strings.Builder{}
-	last := e[len(e)-1] // always print the last one
-	lastNum := strconv.Itoa(last.lineNum)
+	// header
+	b.WriteString(padding + " |\n")
 
-	// TODO make this display multilines reasonably well
-	firstNonWhitespace := 0
+	// source line
+	b.WriteString(lineNumStr + " | " + e.text + "\n")
 
-WhitespaceSearch:
-	for i := range len(last.line) {
-		switch last.line[i] {
-		case ' ', '\t', '\v', '\f', '\r':
-			continue WhitespaceSearch
-		default:
-			firstNonWhitespace = 0
-			break WhitespaceSearch
-		}
-	}
+	// caret line
+	b.WriteString(padding + " | ")
 
-	accumulator.WriteString(strings.Repeat(" ", len(lastNum)) + " |\n")
-	accumulator.WriteString(lastNum + " | ")
-	accumulator.WriteString(last.line + "\n")
-	accumulator.WriteString(strings.Repeat(" ", len(lastNum)) + " | ")
-
-	carStart := firstNonWhitespace
-	if last.carStart > 0 && last.carEnd > 0 {
-		carStart = last.carStart
-	}
-
-	if carStart >= len(msg)+1 {
-		accumulator.WriteString(strings.Repeat(" ", carStart-len(msg)-1) + " ")
-		accumulator.WriteString(msg)
+	if e.caretStart >= len(msg)+1 {
+		b.WriteString(strings.Repeat(" ", e.caretStart-len(msg)-1) + " ")
+		b.WriteString(msg)
 	} else {
-		accumulator.WriteString(strings.Repeat(" ", carStart))
+		b.WriteString(strings.Repeat(" ", e.caretStart))
 	}
 
-	accumulator.WriteString(strings.Repeat("^", last.carEnd-carStart))
+	b.WriteString(strings.Repeat("^", e.caretEnd-e.caretStart))
 
-	if carStart < len(msg)+1 {
-		accumulator.WriteString(" " + msg)
+	if e.caretStart < len(msg)+1 {
+		b.WriteString(" " + msg)
 	}
 
-	accumulator.WriteString("\n")
-	accumulator.WriteString(strings.Repeat(" ", len(lastNum)) + " | ")
-	return accumulator.String()
+	b.WriteString("\n")
+	b.WriteString(padding + " |")
+	return b.String()
 }
 
 // from stack data find the lines with errors
-func getErrorLinesFromStack(stack []frame, block *Block) errLines {
+func getErrorSnippet(stack []frame, block *Block) errorSnippet {
 	var idx int
 	var start, end Pos
 
-SexpDescent:
 	for i := len(stack) - 1; i >= 0; i-- {
 		switch sexp := stack[i].sexp.(type) {
 		case List:
 			if sexp.start.Line != 0 && sexp.end.Line != 0 {
 				start, end = sexp.start, sexp.end
-				break SexpDescent
+				goto Found
 			}
 		case Vector:
 			if sexp.start.Line != 0 && sexp.end.Line != 0 {
 				start, end = sexp.start, sexp.end
-				break SexpDescent
+				goto Found
 			}
 		case Map:
 			if sexp.start.Line != 0 && sexp.end.Line != 0 {
 				start, end = sexp.start, sexp.end
-				break SexpDescent
-			}
-		case closure:
-			if sexp.src.start.Line != 0 && sexp.src.end.Line != 0 {
-				start, end = sexp.src.start, sexp.src.end
-				break SexpDescent
+				goto Found
 			}
 		}
-		idx = stack[i].idx // update
+		idx = stack[i].idx // update idx of child
 	}
 
+Found:
 	src := block.Src
-	relativeOffset := start.Offset - src.Start.Offset
-	if relativeOffset < 0 || relativeOffset > len(src.Text) {
-		panic("RELATIVE OFFSET IN PRETTY PRINT BAD")
+	parentStart := start.Offset - src.Start.Offset
+	parentEnd := end.Offset - src.Start.Offset
+
+	if parentStart < 0 || parentStart > len(src.Text) {
+		panic("Error parent position is out of bounds of registered block, see jnlisp/errors.go:getErrSnippet()")
 	}
 
-	// get first line
-	lineStart := relativeOffset
+	// walk back to start of the line
+	lineStart := parentStart
 	for lineStart > 0 && src.Text[lineStart-1] != '\n' {
 		lineStart--
+	}
+
+	// walk to the last newline containing the error
+	lineEnd := parentStart
+	for lineEnd < len(src.Text) && !(lineEnd >= parentEnd && src.Text[lineEnd] == '\n') {
+		lineEnd++
+	}
+
+	isMultiLine := start.Line != end.Line
+
+	// Extract text and replace newlines with visible glyph
+	displayText := src.Text[lineStart:lineEnd]
+	if isMultiLine {
+		displayText = strings.ReplaceAll(displayText, "\n", "↵   ")
 	}
 
 	// use the block tokens to figure out position of parent list/vec/map
@@ -565,12 +558,40 @@ SexpDescent:
 		}
 	}
 
-	// chunk through tokens until the nth child start/end has been found
+	childStart, childEnd := findChildBounds(block, parentStartTokenIdx, idx)
+
+	caretStart := childStart - src.Start.Offset - lineStart
+	caretEnd := childEnd - src.Start.Offset - lineStart
+
+	if isMultiLine {
+		beforeStart := src.Text[lineStart : lineStart+caretStart]
+		newlinesBeforeStart := strings.Count(beforeStart, "\n")
+		caretStart -= newlinesBeforeStart * (1 - 4) // \n removed, enter char (4 wide) added (net 4)
+
+		beforeEnd := src.Text[lineStart : lineStart+caretEnd]
+		newlinesBeforeEnd := strings.Count(beforeEnd, "\n")
+		caretEnd -= newlinesBeforeEnd * (1 - 4)
+	}
+
+	// double check
+	caretStart = max(0, min(caretStart, len(displayText)))
+	caretEnd = max(caretStart+1, min(caretEnd, len(displayText)))
+
+	return errorSnippet{
+		text:       displayText,
+		lineNum:    start.Line,
+		caretStart: caretStart,
+		caretEnd:   caretEnd,
+	}
+}
+
+// chunk through tokens until the nth child start/end has been found
+func findChildBounds(block *Block, parentStart, childIdx int) (int, int) {
 	depth := 0
-	numToTraverse := idx
+	numToTraverse := childIdx
 	var childStartTokenIdx, childEndTokenIdx = -1, -1 // -1 for now
 
-	for i := parentStartTokenIdx; i < len(block.tokens); i++ {
+	for i := parentStart; i < len(block.tokens); i++ {
 		if numToTraverse == 0 && depth == 0 { // ie got to start of child
 			childStartTokenIdx = i
 		}
@@ -597,40 +618,21 @@ SexpDescent:
 	}
 
 	// error child start offset and end offset
-	childStart := block.tokens[childStartTokenIdx].pos.Offset - src.Start.Offset
+	childStart := block.tokens[childStartTokenIdx].pos.Offset -
+		block.Src.Start.Offset
 	childEnd := block.tokens[childEndTokenIdx].pos.Offset + // offset to start of token
 		len(block.tokens[childEndTokenIdx].val) - // + length of token
-		src.Start.Offset
+		block.Src.Start.Offset
 
-	var lines errLines
-	for i := relativeOffset; i < len(src.Text); i++ {
-		if src.Text[i] == '\n' || i == len(src.Text)-1 {
-			newLine := errLine{
-				line:     src.Text[lineStart : i+1],
-				lineNum:  start.Line + len(lines),
-				carStart: childStart - lineStart,
-				carEnd:   childEnd - lineStart,
-			}
-
-			lineStart = i + 1 // reset lineStart skipping the newline
-			lines = append(lines, newLine)
-
-			if i >= end.Offset { // ie don't keep looping if at the end of sexp offset
-				break
-			}
-		}
-	}
-
-	return lines
+	return childStart, childEnd
 }
 
-func getSyntaxErrorLine(token token, block *Block) errLines {
-	var lines errLines
+func getSyntaxErrorLine(token token, block *Block) errorSnippet {
 	src := block.Src
 
 	relativeOffset := token.pos.Offset - src.Start.Offset
 	if relativeOffset < 0 || relativeOffset > len(src.Text) {
-		return lines
+		panic("relative offset calculated poorly, see getSyntaxErrorLine in errors.go")
 	}
 
 	lineStart := relativeOffset
@@ -642,10 +644,10 @@ func getSyntaxErrorLine(token token, block *Block) errLines {
 		lineEnd++
 	}
 
-	return append(lines, errLine{
-		line:     src.Text[lineStart:lineEnd],
-		lineNum:  token.pos.Line,
-		carStart: relativeOffset - lineStart,
-		carEnd:   relativeOffset - lineStart + len(token.val),
-	})
+	return errorSnippet{
+		text:       src.Text[lineStart:lineEnd],
+		lineNum:    token.pos.Line,
+		caretStart: relativeOffset - lineStart,
+		caretEnd:   relativeOffset - lineStart + len(token.val),
+	}
 }

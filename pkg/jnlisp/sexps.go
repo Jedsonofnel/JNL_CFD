@@ -31,7 +31,10 @@ var keywordArity = Arity{Positional: []string{"lookup"}}
 
 func (k Keyword) Call(args []Sexp, f *fiber) (Sexp, Error) {
 	av := ValidateArgs(args, keywordArity, f, "keyword")
-	mapp := GetArg[Lookup](av)
+	mapp := GetInterfaceArg[Lookup](av, "lookup")
+	if err := av.Validate(); err != nil {
+		return Nil{}, err
+	}
 	return mapp.Get(string(k)), nil
 }
 

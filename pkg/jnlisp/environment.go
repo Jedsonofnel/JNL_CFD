@@ -44,7 +44,6 @@ type closure struct {
 	last   Sexp
 	lexenv *env
 	block  *Block
-	src    List // the original fn Sexp that created it
 }
 
 func (c closure) Type() string { return "function" }

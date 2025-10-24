@@ -140,16 +140,14 @@ TCO:
 				f.block = proc.block
 				env = activationEnv
 
-				f.push(proc, 0, opEval) // push to stack so error can find it's position
 				for i, expr := range proc.body {
 					_, err := f.eval(expr, i+2, env)
 					if err != nil {
 						return Nil{}, err
 					}
 				}
-				f.pop()
 
-				f.push(proc, 2+len(proc.body), opEval)
+				f.updateCurrentFrame(proc.last, 0)
 				sexp = proc.last
 				continue TCO
 			case Callable:

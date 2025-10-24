@@ -58,7 +58,14 @@ func (av *ArgValidator) Validate() Error {
 	return nil
 }
 
+// wrapper for concrete Sexp types
 func GetArg[T Sexp](av *ArgValidator) T {
+	var zero T
+	return GetInterfaceArg[T](av, zero.Type())
+}
+
+// for when T is an interface type so you can't call Sexp methods to get Type() for instance
+func GetInterfaceArg[T Sexp](av *ArgValidator, typeName string) T {
 	var zero T
 	if av.error != nil {
 		return zero
@@ -71,24 +78,28 @@ func GetArg[T Sexp](av *ArgValidator) T {
 		return sexp
 	}
 
-	av.error = av.fiber.newErrPosArgType(av.name, zero.Type(), arg.Type(), av.idx)
+	av.error = av.fiber.newErrPosArgType(av.name, typeName, arg.Type(), av.idx+1)
 	return zero
 }
 
 func GetVariadic[T Sexp](av *ArgValidator) []T {
+	var zero T
+	return GetInterfaceVariadic[T](av, zero.Type())
+}
+
+func GetInterfaceVariadic[T Sexp](av *ArgValidator, typeName string) []T {
 	zero := make([]T, 0, len(av.args)-av.idx)
 	if av.error != nil {
 		return zero
 	}
-	
+
 	av.idx++
 
 	for i := av.idx; i < len(av.args); i++ {
 		if sexp, ok := av.args[i].(T); ok {
 			zero = append(zero, sexp)
 		} else {
-			var temp T
-			av.error = av.fiber.newErrVariadicArgType(av.name, temp.Type(), av.args[i].Type(), i)
+			av.error = av.fiber.newErrVariadicArgType(av.name, typeName, av.args[i].Type(), i)
 			return zero
 		}
 	}
@@ -98,6 +109,11 @@ func GetVariadic[T Sexp](av *ArgValidator) []T {
 
 func GetKwarg[T Sexp](av *ArgValidator, key string) T {
 	var zero T
+	return GetInterfaceKwarg[T](av, key, zero.Type())
+}
+
+func GetInterfaceKwarg[T Sexp](av *ArgValidator, key, typeName string) T {
+	var zero T
 	if av.error != nil {
 		return zero
 	}
@@ -106,7 +122,7 @@ func GetKwarg[T Sexp](av *ArgValidator, key string) T {
 		if value, ok := provided.(T); ok {
 			return value
 		} else {
-			av.error = av.fiber.newErrKwargType(av.name, key, zero.Type(), provided.Type())
+			av.error = av.fiber.newErrKwargType(av.name, key, typeName, provided.Type())
 			return zero
 		}
 	}

@@ -2,6 +2,7 @@ package jnlisp
 
 import (
 	"strconv"
+	"strings"
 )
 
 // per eval thread context
@@ -16,6 +17,18 @@ type frame struct {
 	sexp Sexp
 	idx  int
 	op   opType
+}
+
+func (f frame) Type() string { return "jnlisp-frame" }
+func (f frame) String() string {
+	b := strings.Builder{}
+	b.WriteString("> at: ")
+	b.WriteString(f.op.String())
+	b.WriteString(" ")
+	b.WriteString(strconv.Itoa(f.idx))
+	b.WriteString(": ")
+	b.WriteString(f.sexp.String())
+	return b.String()
 }
 
 type opType int
@@ -42,8 +55,10 @@ func (f *fiber) pop() {
 	f.stack = f.stack[:len(f.stack)-1]
 }
 
-func (f *fiber) setCurrentFrameIdx(idx int) {
-	f.stack[len(f.stack)-1].idx = idx
+func (f *fiber) updateCurrentFrame(sexp Sexp, idx int) {
+	lastFrame := &f.stack[len(f.stack)-1]
+	lastFrame.sexp = sexp
+	lastFrame.idx = idx
 }
 
 func (f *fiber) recursionLimitReached() bool {
@@ -62,4 +77,17 @@ func (f *fiber) copyStack() []frame {
 	clone := make([]frame, len(f.stack))
 	copy(clone, f.stack)
 	return clone
+}
+
+func displayStack(stack []frame) string {
+	b := strings.Builder{}
+	b.WriteString("call stack: \n")
+
+	frames := make([]string, 0, len(stack))
+	for _, frame := range stack {
+		frames = append([]string{frame.String()}, frames...)
+	}
+
+	b.WriteString(strings.Join(frames, "\n"))
+	return b.String()
 }

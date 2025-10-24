@@ -94,7 +94,6 @@ type fnExpr struct {
 	arity Arity
 	body  []Sexp
 	last  Sexp
-	src   Sexp
 }
 
 func (f fnExpr) Type() string { return "fn-expression" }
@@ -126,11 +125,11 @@ func elaborateFn(list List, f *fiber) (fnExpr, Error) {
 
 	body := list.Elements[2:]
 	if len(list.Elements[2:]) == 0 {
-		return fnExpr{arity, []Sexp{}, Nil{}, list}, nil
+		return fnExpr{arity, []Sexp{}, Nil{}}, nil
 	}
 
 	lenBody := len(body)
-	return fnExpr{arity, body[:lenBody-1], body[lenBody-1], list}, nil
+	return fnExpr{arity, body[:lenBody-1], body[lenBody-1]}, nil
 }
 
 type ifExpr struct {

@@ -15,7 +15,7 @@ var add = Native{
 	arity: DefaultArity(),
 	fn: func(args []Sexp, f *fiber) (Sexp, Error) {
 		av := ValidateArgs(args, DefaultArity(), f, "+")
-		numbers := GetVariadic[Number](av)
+		numbers := GetInterfaceVariadic[Number](av, "number")
 		if err := av.Validate(); err != nil {
 			return Nil{}, err
 		}
@@ -56,7 +56,7 @@ var multiply = Native{
 	arity: DefaultArity(),
 	fn: func(args []Sexp, f *fiber) (Sexp, Error) {
 		av := ValidateArgs(args, DefaultArity(), f, "*")
-		numbers := GetVariadic[Number](av)
+		numbers := GetInterfaceVariadic[Number](av, "number")
 		if err := av.Validate(); err != nil {
 			return Nil{}, err
 		}
@@ -99,8 +99,8 @@ var subtract = Native{
 	fn: func(args []Sexp, f *fiber) (Sexp, Error) {
 		av := ValidateArgs(args, subtractArity, f, "-")
 
-		a := GetArg[Number](av)
-		numbers := GetVariadic[Number](av)
+		a := GetInterfaceArg[Number](av, "number")
+		numbers := GetInterfaceVariadic[Number](av, "number")
 		if err := av.Validate(); err != nil {
 			return Nil{}, err
 		}
@@ -153,8 +153,8 @@ var divide = Native{
 	fn: func(args []Sexp, f *fiber) (Sexp, Error) {
 		av := ValidateArgs(args, divideArity, f, "/")
 
-		a := GetArg[Number](av)
-		denoms := GetVariadic[Number](av)
+		a := GetInterfaceArg[Number](av, "number")
+		denoms := GetInterfaceVariadic[Number](av, "number")
 		if err := av.Validate(); err != nil {
 			return Nil{}, err
 		}
