@@ -76,11 +76,12 @@ func GetArg[T Sexp](av *ArgValidator) T {
 }
 
 func GetVariadic[T Sexp](av *ArgValidator) []T {
-	zero := make([]T, 0, len(av.args)-av.idx-1)
-
+	zero := make([]T, 0, len(av.args)-av.idx)
 	if av.error != nil {
 		return zero
 	}
+	
+	av.idx++
 
 	for i := av.idx; i < len(av.args); i++ {
 		if sexp, ok := av.args[i].(T); ok {

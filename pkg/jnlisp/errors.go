@@ -510,7 +510,6 @@ func getErrorLinesFromStack(stack []frame, block *Block) errLines {
 
 SexpDescent:
 	for i := len(stack) - 1; i >= 0; i-- {
-		idx = stack[i].idx // update
 		switch sexp := stack[i].sexp.(type) {
 		case List:
 			if sexp.start.Line != 0 && sexp.end.Line != 0 {
@@ -528,13 +527,13 @@ SexpDescent:
 				break SexpDescent
 			}
 		}
+		idx = stack[i].idx // update
 	}
 
 	src := block.Src
 	relativeOffset := start.Offset - src.Start.Offset
 	if relativeOffset < 0 || relativeOffset > len(src.Text) {
-		println("RELATIVE OFFSET BAD")
-		return []errLine{}
+		panic("RELATIVE OFFSET IN PRETTY PRINT BAD")
 	}
 
 	// get first line
@@ -543,20 +542,25 @@ SexpDescent:
 		lineStart--
 	}
 
-	// use the block tokens to figure out position of indexed child
-	var childStartTokenIdx int
+	// use the block tokens to figure out position of parent list/vec/map
+	var parentStartTokenIdx int
 	for i := range block.tokens {
 		if block.tokens[i].pos.Offset == start.Offset {
-			childStartTokenIdx = i + 1
+			parentStartTokenIdx = i + 1 // increment by one to get first child
 			break
 		}
 	}
 
 	// chunk through tokens until the nth child start/end has been found
 	depth := 0
-	traversed := -1
-	childEndTokenIdx := childStartTokenIdx
-	for i := childStartTokenIdx; i < len(block.tokens); i++ {
+	numToTraverse := idx
+	var childStartTokenIdx, childEndTokenIdx = -1, -1 // -1 for now
+
+	for i := parentStartTokenIdx; i < len(block.tokens); i++ {
+		if numToTraverse == 0 && depth == 0 { // ie got to start of child
+			childStartTokenIdx = i
+		}
+
 		switch block.tokens[i].typ {
 		case tokenOpenParen, tokenOpenBracket, tokenOpenBrace:
 			depth++
@@ -566,13 +570,13 @@ SexpDescent:
 
 		switch depth {
 		case 0:
-			traversed++
+			numToTraverse--
 		case -1:
 			panic("error traversing through children in line error fetching")
 		}
 
-		// ie have we consumed the zero-indexed nth child yet
-		if traversed >= idx {
+		// ie we have consumed the idxth child
+		if depth == 0 && childStartTokenIdx != -1 {
 			childEndTokenIdx = i
 			break
 		}

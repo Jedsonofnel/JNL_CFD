@@ -321,8 +321,11 @@ func (i Int) String() string { return strconv.Itoa(int(i)) }
 func (f Float) Type() string   { return "float64" }
 func (f Float) String() string { return strconv.FormatFloat(float64(f), 'g', -1, 64) }
 
-func (c Complex) Type() string   { return "complex128" }
-func (c Complex) String() string { return strconv.FormatComplex(complex128(c), 'g', -1, 128) }
+func (c Complex) Type() string { return "complex128" }
+func (c Complex) String() string {
+	format := strconv.FormatComplex(complex128(c), 'g', -1, 128)
+	return strings.Trim(format, "()")
+}
 
 // And implement Number
 func (i Int) ToFloat64() (float64, bool) { return float64(i), true }
@@ -346,6 +349,23 @@ func (c Complex) ToInt() (int, bool) {
 	return 0, false
 }
 func (c Complex) ToComplex128() complex128 { return complex128(c) }
+
+func PromoteNumbersTo(numbers ...Number) string {
+	hasFloat := false
+	for _, n := range numbers {
+		switch n.(type) {
+		case Complex:
+			return "complex128"
+		case Float:
+			hasFloat = true
+		}
+	}
+
+	if hasFloat {
+		return "float64"
+	}
+	return "int"
+}
 
 // helper for uniformly formatting non-readable Sexp types
 func FormatNonReadable(category, name string, details ...string) string {

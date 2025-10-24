@@ -96,7 +96,7 @@ type CallableFunc func(args []Sexp, f *fiber) (Sexp, Error)
 
 type Native struct {
 	name  string
-	arity *Arity // entirely for display, therefore nil-able
+	arity Arity // entirely for display, therefore nil-able
 	fn    CallableFunc
 }
 
@@ -114,7 +114,7 @@ func NewNative(name string, arity Arity, fn func([]Sexp, *fiber) (Sexp, Error)) 
 		panic("cannot create Native with a name of the empty string")
 	}
 
-	return Native{name: name, arity: &arity, fn: fn}
+	return Native{name: name, arity: arity, fn: fn}
 }
 
 type MultiArityNative struct {
@@ -235,6 +235,10 @@ func (a Arity) Matches(args []Sexp) bool {
 	}
 
 	return true
+}
+
+func DefaultArity() Arity {
+	return Arity{Variadic: "any"}
 }
 
 // for multi arity matching

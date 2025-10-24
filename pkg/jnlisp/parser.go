@@ -406,7 +406,11 @@ func parseSymbol(t string) Sexp {
 
 func parseNumber(t string) Number {
 	if strings.ContainsAny(t, "ij") {
-		c, _ := strconv.ParseComplex(t, 128)
+		t = strings.Replace(t, "j", "i", 1)
+		c, err := strconv.ParseComplex(t, 128)
+		if err != nil {
+			panic("Error parsing complex number: " + err.Error())
+		}
 		return Complex(c)
 	}
 
