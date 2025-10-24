@@ -40,7 +40,7 @@ func init() {
 type FieldDefinitionAtom struct{ Value FieldDefinition }
 
 func (fd FieldDefinitionAtom) Type() string {
-	return "cfd/fvm.FieldDefinition"
+	return "field-definition"
 }
 
 func (fd FieldDefinitionAtom) String() string {

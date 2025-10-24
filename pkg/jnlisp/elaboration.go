@@ -78,7 +78,7 @@ func (k KwargDef) String() string {
 	return ":" + k.Name + " " + k.Default.String()
 }
 
-func (a Arity) Type() string { return "<arity>" }
+func (a Arity) Type() string { return "arity" }
 func (a Arity) String() string {
 	if a.original != nil {
 		return a.original.String()
@@ -152,8 +152,8 @@ type defExpr struct {
 	binding Sexp
 }
 
-func (d defExpr) Type() string   { return "list" }
-func (d defExpr) String() string { return "<def-expression:" + d.name + ">" }
+func (d defExpr) Type() string   { return "def-expression" }
+func (d defExpr) String() string { return "(def " + d.name + " " + d.binding.String() + ")" }
 
 var defArity = Arity{
 	Positional: []string{"name", "binding"},

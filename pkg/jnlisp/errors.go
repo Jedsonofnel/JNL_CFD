@@ -108,7 +108,7 @@ func (e SyntaxError) ToJSON() string {
 
 // such that it implements Sexp
 func (e SyntaxError) Type() string   { return "error" }
-func (e SyntaxError) String() string { return "ERROR: " + e.Message }
+func (e SyntaxError) String() string { return "#<error:" + e.Message + ">" }
 
 func (p *parser) newErrMissingDelimiter(t token, delim string) SyntaxError {
 	return SyntaxError{

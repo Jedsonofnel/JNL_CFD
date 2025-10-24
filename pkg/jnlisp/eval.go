@@ -101,7 +101,7 @@ TCO:
 				return nil, f.newErrNonCallableCalled(proc.Type())
 			}
 
-		default:
+		default: // literals evaluate to themselves
 			return x, nil
 		}
 	}

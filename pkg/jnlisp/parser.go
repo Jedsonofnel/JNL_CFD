@@ -26,7 +26,7 @@ type Block struct {
 	Errors []Error
 }
 
-func (b Block) Type() string { return "<jnlisp-block>" }
+func (b Block) Type() string { return "jnlisp-block" }
 func (b Block) String() string {
 	accumulator := strings.Builder{}
 
@@ -234,7 +234,7 @@ type missingDelim string
 
 func (m missingDelim) Error() string       { return "Missing delimeter: " + string(m) }
 func (m missingDelim) PrettyError() string { return "Missing delimeter: " + string(m) }
-func (m missingDelim) String() string      { return "MISSING DELIM: " }
+func (m missingDelim) String() string      { return "#<missing-delim:" + string(m) +">" }
 func (m missingDelim) Type() string        { return "error" }
 func (m missingDelim) matching() string {
 	switch m {

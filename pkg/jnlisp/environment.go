@@ -41,9 +41,9 @@ type closure struct {
 	block  *Block
 }
 
-func (c closure) Type() string { return "closure" }
+func (c closure) Type() string { return "function" }
 func (c closure) String() string {
-	return "#<closure:" + c.name + " " + c.arity.String() + ">"
+	return "#<fn:" + c.name + " " + c.arity.String() + ">"
 }
 
 func (c closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
@@ -96,7 +96,7 @@ type Native struct {
 
 func (n Native) Type() string { return "native-function" }
 func (n Native) String() string {
-	return "#<native-function:" + n.name + ">"
+	return "#<fn:" + n.name + ">"
 }
 
 func (n Native) Call(args []Sexp, f *fiber) (Sexp, Error) {

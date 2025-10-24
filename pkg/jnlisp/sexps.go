@@ -1,6 +1,7 @@
 package jnlisp
 
 import (
+	"maps"
 	"strconv"
 	"strings"
 )
@@ -9,6 +10,12 @@ type Sexp interface {
 	String() string
 	Type() string
 }
+
+// the bane of my existence
+type Nil struct{}
+
+func (n Nil) Type() string   { return "nil" }
+func (n Nil) String() string { return "nil" }
 
 // atoms
 type Symbol string
@@ -209,9 +216,12 @@ func (m Map) Call(args []Sexp, f *fiber) (Sexp, Error) {
 	}
 
 	if key, ok := args[0].(Keyword); ok {
-		return m.Elements[string(key)], nil
+		if result, exists := m.Elements[string(key)]; exists {
+			return result, nil
+		}
+		return Nil{}, nil
 	}
-	return nil, f.newErrPosArgType("map", "keyword", args[0].Type(), 1)
+	return Nil{}, f.newErrPosArgType("map", "keyword", args[0].Type(), 1)
 }
 
 func (m Map) assoc(key string, value Sexp) Lookup {
@@ -258,9 +268,7 @@ type Number interface {
 // helper for lookup types
 func copyMap(src map[string]Sexp) map[string]Sexp {
 	clone := make(map[string]Sexp, len(src))
-	for key, value := range src {
-		clone[key] = value
-	}
+	maps.Copy(clone, src)
 	return clone
 }
 
@@ -271,13 +279,13 @@ type Float float64
 type Complex complex128
 
 // All implement Sexp
-func (i Int) Type() string   { return "number (int)" }
+func (i Int) Type() string   { return "int" }
 func (i Int) String() string { return strconv.Itoa(int(i)) }
 
-func (f Float) Type() string   { return "number (float)" }
+func (f Float) Type() string   { return "float64" }
 func (f Float) String() string { return strconv.FormatFloat(float64(f), 'g', -1, 64) }
 
-func (c Complex) Type() string   { return "number (complex)" }
+func (c Complex) Type() string   { return "complex128" }
 func (c Complex) String() string { return strconv.FormatComplex(complex128(c), 'g', -1, 128) }
 
 // And implement Number
