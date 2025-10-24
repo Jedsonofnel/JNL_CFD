@@ -33,54 +33,53 @@ type Callable interface {
 	Call(args []Sexp, fiber *fiber) (Sexp, Error)
 }
 
-type Closure struct {
+type closure struct {
 	name   string
-	arity  arity
+	arity  Arity
 	body   Sexp
 	lexenv *env
 	block  *Block
 }
 
-func (c Closure) Type() string { return "closure" }
-func (c Closure) String() string {
+func (c closure) Type() string { return "closure" }
+func (c closure) String() string {
 	return "#<closure:" + c.name + " " + c.arity.String() + ">"
 }
 
-func (c Closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
+func (c closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
 	var kwargs Map
 	positionalArgs := args
 
 	if len(args) > 0 {
-		if m, ok := args[len(args)-1].(Map); ok && len(c.arity.keywords) > 0 {
+		if m, ok := args[len(args)-1].(Map); ok && len(c.arity.Kwargs) > 0 {
 			kwargs = m
 			positionalArgs = args[:len(args)-1]
 		}
 	}
 
-	argCount := len(positionalArgs)
-	if argCount < c.arity.minArgs {
-		return nil, f.newErrArityMin(c.name, c.arity.minArgs, argCount)
-	}
-	if c.arity.maxArgs != -1 && argCount > c.arity.maxArgs {
-		return nil, f.newErrArityMax(c.name, c.arity.maxArgs, argCount)
+	if !c.arity.Matches(args) {
+		return nil, f.newErrArity(c.name, c.arity, args)
 	}
 
 	activationEnv := newEnv(c.lexenv)
 
 	// bind positional parameters
-	for i, param := range c.arity.positional {
+	for i, param := range c.arity.Positional {
 		activationEnv.bind(param, positionalArgs[i])
 	}
 
-	if c.arity.variadic != "" {
-		variadicArgs := positionalArgs[len(c.arity.positional):]
-		activationEnv.bind(c.arity.variadic, List{Elements: variadicArgs})
+	if c.arity.Variadic != "" {
+		variadicArgs := positionalArgs[len(c.arity.Variadic):]
+		activationEnv.bind(c.arity.Variadic, List{Elements: variadicArgs})
 	}
 
 	// bind named parameters from map
-	for _, kw := range c.arity.keywords {
-		value := kwargs.Get(kw)
-		activationEnv.bind(kw, value)
+	for _, kw := range c.arity.Kwargs {
+		if value := kwargs.Get(kw.Name); value != nil {
+			activationEnv.bind(kw.Name, value)
+		} else {
+			activationEnv.bind(kw.Name, kw.Default)
+		}
 	}
 
 	f.block = c.block
@@ -90,8 +89,9 @@ func (c Closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
 // Foreign bindings
 
 type Native struct {
-	name string
-	fn   func(args []Sexp, f *fiber) (Sexp, Error)
+	name  string
+	arity *Arity // nil means don't check
+	fn    func(args []Sexp, f *fiber) (Sexp, Error)
 }
 
 func (n Native) Type() string { return "native-function" }
@@ -100,11 +100,14 @@ func (n Native) String() string {
 }
 
 func (n Native) Call(args []Sexp, f *fiber) (Sexp, Error) {
+	if n.arity != nil && !n.arity.Matches(args) {
+		return nil, f.newErrArity(n.name, *n.arity, args)
+	}
 	return n.fn(args, f)
 }
 
 func NewNative(name string, fn func([]Sexp, *fiber) (Sexp, Error)) Native {
-	return Native{name, fn}
+	return Native{name: name, fn: fn}
 }
 
 func SimpleNative(name string, fn func([]Sexp) (Sexp, Error)) Native {
@@ -114,30 +117,4 @@ func SimpleNative(name string, fn func([]Sexp) (Sexp, Error)) Native {
 			return fn(args)
 		},
 	}
-}
-
-type arity struct {
-	positional []string
-	variadic   string
-	keywords   []string
-	minArgs    int
-	maxArgs    int
-}
-
-func (a arity) String() string {
-	s := "["
-	for _, p := range a.positional {
-		s += string(p) + " "
-	}
-	if a.variadic != "" {
-		s += "&var " + string(a.variadic) + " "
-	}
-	if len(a.keywords) > 0 {
-		s += "&keys {"
-		for _, k := range a.keywords {
-			s += ":" + string(k) + " "
-		}
-		s += "}"
-	}
-	return s + "]"
 }

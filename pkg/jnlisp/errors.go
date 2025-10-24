@@ -50,8 +50,12 @@ const (
 	ErrRecursionLimitReached
 	ErrFiberCancelled
 	ErrArity
-	ErrDivisionByZero
+	ErrArgType
 	ErrIndexOutOfRange
+	ErrSymbolNotBound
+	ErrNonCallableCalled
+	ErrDivisionByZero
+	ErrEmptyList
 )
 
 // created during filesystem lookups
@@ -315,25 +319,43 @@ func (f *fiber) newErrArity(name string, arity Arity, got []Sexp) EvalError {
 	vecGot := Vector{Elements: got}
 	return EvalError{
 		Code:    ErrArity,
-		Message: "def expects " + arity.String() + ", got " + vecGot.String(),
+		Message: "'" + name + "' expects " + arity.String() + ", got " + vecGot.String(),
 		stack:   f.copyStack(),
 		block:   f.block,
 	}
 }
 
-func (f *fiber) newErrArityMin(name string, wanted, got int) EvalError {
+func (f *fiber) newErrPosArgType(name, wanted, got string, pos int) EvalError {
 	return EvalError{
-		Code:    ErrArity,
-		Message: name + " expects at least " + strconv.Itoa(wanted) + " arguments, got " + strconv.Itoa(got),
+		Code:    ErrArgType,
+		Message: "'" + name + "' expects " + wanted + ", as arg at position " + strconv.Itoa(pos) + ", got " + got,
 		stack:   f.copyStack(),
 		block:   f.block,
 	}
 }
 
-func (f *fiber) newErrArityMax(name string, wanted, got int) EvalError {
+func (f *fiber) newErrSymbolNotBound(name string) EvalError {
 	return EvalError{
-		Code:    ErrArity,
-		Message: name + " expects at most " + strconv.Itoa(wanted) + " arguments, got " + strconv.Itoa(got),
+		Code:    ErrSymbolNotBound,
+		Message: "could not find symbol '" + name + "' in current environment",
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
+func (f *fiber) newErrNonCallableCalled(called string) EvalError {
+	return EvalError{
+		Code:    ErrNonCallableCalled,
+		Message: "cannot call non-callable type '" + called + "'",
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
+func (f *fiber) newErrEmptyList() EvalError {
+	return EvalError{
+		Code:    ErrEmptyList,
+		Message: "cannot evaluate an empty list",
 		stack:   f.copyStack(),
 		block:   f.block,
 	}

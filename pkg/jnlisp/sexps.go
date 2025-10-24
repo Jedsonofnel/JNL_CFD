@@ -199,6 +199,21 @@ func (m Map) Get(s string) Sexp {
 	return m.Elements[s]
 }
 
+var mapArity = Arity{
+	Positional: []string{"key"},
+}
+
+func (m Map) Call(args []Sexp, f *fiber) (Sexp, Error) {
+	if !mapArity.Matches(args) {
+		return nil, f.newErrArity("map", mapArity, args)
+	}
+
+	if key, ok := args[0].(Keyword); ok {
+		return m.Elements[string(key)], nil
+	}
+	return nil, f.newErrPosArgType("map", "keyword", args[0].Type(), 1)
+}
+
 func (m Map) assoc(key string, value Sexp) Lookup {
 	clone := copyMap(m.Elements)
 	clone[key] = value
