@@ -51,6 +51,7 @@ const (
 	ErrFiberCancelled
 	ErrArity
 	ErrArgType
+	ErrUnexpectedKwarg
 	ErrIndexOutOfRange
 	ErrSymbolNotBound
 	ErrNonCallableCalled
@@ -329,6 +330,33 @@ func (f *fiber) newErrPosArgType(name, wanted, got string, pos int) EvalError {
 	return EvalError{
 		Code:    ErrArgType,
 		Message: "'" + name + "' expects " + wanted + ", as arg at position " + strconv.Itoa(pos) + ", got " + got,
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
+func (f *fiber) newErrVariadicArgType(name, wanted, got string, pos int) EvalError {
+	return EvalError{
+		Code:    ErrArgType,
+		Message: "'" + name + "' expects " + wanted + ", as variadic arg type, got " + got + " at position " + strconv.Itoa(pos),
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
+func (f *fiber) newErrKwargType(name, key, wanted, got string) EvalError {
+	return EvalError{
+		Code:    ErrArgType,
+		Message: "'" + name + "' expects " + wanted + ", as type for key '" + key + "', got " + got,
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
+func (f *fiber) newErrUnexpectedKwarg(name, kwarg string) EvalError {
+	return EvalError{
+		Code:    ErrUnexpectedKwarg,
+		Message: "'" + name + "' received unexpected kwarg '" + kwarg + "'",
 		stack:   f.copyStack(),
 		block:   f.block,
 	}

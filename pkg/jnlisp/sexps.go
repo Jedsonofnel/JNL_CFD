@@ -30,15 +30,8 @@ func (k Keyword) String() string { return ":" + string(k) }
 var keywordArity = Arity{Positional: []string{"lookup"}}
 
 func (k Keyword) Call(args []Sexp, f *fiber) (Sexp, Error) {
-	if !keywordArity.Matches(args) {
-		return Nil{}, f.newErrArity("keyword", keywordArity, args)
-	}
-
-	mapp, ok := args[0].(Lookup)
-	if !ok {
-		return Nil{}, f.newErrPosArgType("keyword", "lookup", args[0].Type(), 1)
-	}
-
+	av := ValidateArgs(args, keywordArity, f, "keyword")
+	mapp := GetArg[Lookup](av)
 	return mapp.Get(string(k)), nil
 }
 
@@ -204,14 +197,8 @@ var vectorArity = Arity{
 }
 
 func (v Vector) Call(args []Sexp, f *fiber) (Sexp, Error) {
-	if !vectorArity.Matches(args) {
-		return Nil{}, f.newErrArity("vector", vectorArity, args)
-	}
-
-	idx, ok := args[0].(Int)
-	if !ok {
-		return Nil{}, f.newErrPosArgType("vector", "integer", args[0].Type(), 1)
-	}
+	av := ValidateArgs(args, vectorArity, f, "vector")
+	idx := GetArg[Int](av)
 
 	if value, ok := v.Nth(int(idx)); ok {
 		return value, nil
@@ -280,17 +267,17 @@ var mapArity = Arity{
 }
 
 func (m Map) Call(args []Sexp, f *fiber) (Sexp, Error) {
-	if !mapArity.Matches(args) {
-		return Nil{}, f.newErrArity("map", mapArity, args)
+	av := ValidateArgs(args, mapArity, f, "map")
+	key := GetArg[Keyword](av)
+	if err := av.Validate(); err != nil {
+		return Nil{}, err
 	}
 
-	if key, ok := args[0].(Keyword); ok {
-		if result, exists := m.Elements[string(key)]; exists {
-			return result, nil
-		}
-		return Nil{}, nil
+	if result, exists := m.Elements[string(key)]; exists {
+		return result, nil
 	}
-	return Nil{}, f.newErrPosArgType("map", "keyword", args[0].Type(), 1)
+
+	return Nil{}, nil
 }
 
 func (m Map) assoc(key string, value Sexp) Lookup {
