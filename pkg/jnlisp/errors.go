@@ -326,6 +326,16 @@ func (f *fiber) newErrArity(name string, arity Arity, got []Sexp) EvalError {
 	}
 }
 
+func (f *fiber) newErrMultiArity(name string, arities MultiArity, got []Sexp) EvalError {
+	vecGot := Vector{Elements: got}
+	return EvalError{
+		Code:    ErrArity,
+		Message: "'" + name + "' expects " + arities.String() + ", got " + vecGot.String(),
+		stack:   f.copyStack(),
+		block:   f.block,
+	}
+}
+
 func (f *fiber) newErrPosArgType(name, wanted, got string, pos int) EvalError {
 	return EvalError{
 		Code:    ErrArgType,

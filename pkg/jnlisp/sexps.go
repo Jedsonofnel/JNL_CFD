@@ -346,3 +346,31 @@ func (c Complex) ToInt() (int, bool) {
 	return 0, false
 }
 func (c Complex) ToComplex128() complex128 { return complex128(c) }
+
+// helper for uniformly formatting non-readable Sexp types
+func FormatNonReadable(category, name string, details ...string) string {
+	acc := strings.Builder{}
+	acc.WriteString("#<")
+
+	switch {
+	case name == "" && len(details) == 0:
+		acc.WriteString(category)
+	case name == "":
+		acc.WriteString(category)
+		acc.WriteString(":")
+		acc.WriteString(strings.Join(details, " "))
+	case len(details) == 0:
+		acc.WriteString(category)
+		acc.WriteString(":")
+		acc.WriteString(name)
+	default:
+		acc.WriteString(category)
+		acc.WriteString(":")
+		acc.WriteString(name)
+		acc.WriteString(" ")
+		acc.WriteString(strings.Join(details, " "))
+	}
+
+	acc.WriteString(">")
+	return acc.String()
+}

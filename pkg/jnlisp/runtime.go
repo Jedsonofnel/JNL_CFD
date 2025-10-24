@@ -20,12 +20,10 @@ func NewRuntime() *Runtime {
 		packages: make(map[string]*Package),
 	}
 
-	// vm.RegisterPackage(corePkg)
-
-	// err := vm.ImportPackage("core", "")
-	// if err != nil {
-	// 	panic("Error importing package core: " + err.Error())
-	// }
+	rt.RegisterPackage(corePkg)
+	if err := rt.loadPackage("core", "", coreEnv); err != nil {
+		panic("Error importing package core: " + err.Error())
+	}
 
 	return rt
 }
