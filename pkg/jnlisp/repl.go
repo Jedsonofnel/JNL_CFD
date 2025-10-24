@@ -36,8 +36,6 @@ func NewREPL(rt *Runtime) *REPL {
 func (r *REPL) Feed(input string) string {
 	r.buf.WriteString(input)
 
-	// println(strings.ReplaceAll(r.buf.String(), "\n", "\\n"))
-
 	newBlocks := parse(Source{
 		Filename: "repl",
 		Text:     r.buf.String(),
@@ -81,8 +79,11 @@ func (r *REPL) Feed(input string) string {
 
 	result, err := fiber.eval(block.AST, 0, r.env)
 	if err != nil {
+		r.env.bind("err", displayErrorBinding(err))
 		return err.PrettyError()
 	}
+
+	r.env.bind("it", result)
 
 	r.document = append(r.document, block)
 	return result.String()
@@ -92,4 +93,14 @@ func (r *REPL) Prompt() string {
 	r.line++
 	prompt := "jnlisp:" + strconv.Itoa(r.line) + ":" + r.missingDelims + "> "
 	return prompt
+}
+
+func displayErrorBinding(e Error) Native {
+	return Native{
+		name: "err",
+		arity: Arity{}, // doesn't take any arguments
+		fn: func(_ []Sexp, _ *fiber) (Sexp, Error) {
+			return e, nil
+		},
+	}
 }

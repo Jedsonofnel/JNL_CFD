@@ -7,6 +7,7 @@ import (
 
 type Error interface {
 	error
+	Sexp
 	PrettyError() string
 }
 
@@ -88,6 +89,9 @@ type SyntaxError struct {
 	block   *Block // debating this
 }
 
+func (e SyntaxError) Type() string   { return "error" }
+func (e SyntaxError) String() string { return "#<error:" + e.Message + ">" }
+
 func (e SyntaxError) Error() string {
 	pos := e.block.Src.Filename + ":" + e.token.pos.String()
 	return e.Code.String() + " at " + pos + ": " + e.Message
@@ -106,10 +110,6 @@ func (e SyntaxError) PrettyError() string {
 func (e SyntaxError) ToJSON() string {
 	return formatErrJSON("SyntaxError", e.Message, &e.token.pos)
 }
-
-// such that it implements Sexp
-func (e SyntaxError) Type() string   { return "error" }
-func (e SyntaxError) String() string { return "#<error:" + e.Message + ">" }
 
 func (p *parser) newErrMissingDelimiter(t token, delim string) SyntaxError {
 	return SyntaxError{
@@ -200,6 +200,9 @@ type ExpansionError struct {
 	block   *Block
 }
 
+func (e ExpansionError) Type() string   { return "error" }
+func (e ExpansionError) String() string { return e.PrettyError() }
+
 func (e ExpansionError) Error() string {
 	pos := e.block.Src.Filename
 	return e.Code.String() + " at " + pos + ": " + e.Message
@@ -252,6 +255,9 @@ type ElaborationError struct {
 	block   *Block
 }
 
+func (e ElaborationError) Type() string   { return "error" }
+func (e ElaborationError) String() string { return e.PrettyError() }
+
 func (e ElaborationError) Error() string {
 	pos := e.block.Src.Filename
 	return e.Code.String() + " at " + pos + ": " + e.Message
@@ -293,6 +299,9 @@ type EvalError struct {
 	stack   []frame
 	block   *Block
 }
+
+func (e EvalError) Type() string   { return "error" }
+func (e EvalError) String() string { return e.PrettyError() }
 
 func (e EvalError) Error() string {
 	pos := e.block.Src.Filename

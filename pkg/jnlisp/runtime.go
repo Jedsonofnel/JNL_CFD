@@ -37,19 +37,6 @@ func (rt *Runtime) Eval(_ fs.FS, _ string) []Block {
 	return nil
 }
 
-// func (ctx *Context) bindIt(blocks []Block) {
-// 	if len(blocks) == 0 {
-// 		return
-// 	}
-//
-// 	last := blocks[len(blocks)-1]
-// 	if len(last.Errors) > 0 || last.Result == nil {
-// 		return
-// 	}
-//
-// 	ctx.userEnv.bind("it", last.Result)
-// }
-
 // allows for specific environment for usage with package importing
 // func (ctx *Context) executeWithEnv(blocks []Block, env *env) []Block {
 // 	var codeBlocks []Block
