@@ -466,18 +466,18 @@ SexpDescent:
 		idx = stack[i].idx // update
 		switch sexp := stack[i].sexp.(type) {
 		case List:
-			if sexp.Start.Line != 0 && sexp.End.Line != 0 {
-				start, end = sexp.Start, sexp.End
+			if sexp.start.Line != 0 && sexp.end.Line != 0 {
+				start, end = sexp.start, sexp.end
 				break SexpDescent
 			}
 		case Vector:
-			if sexp.Start.Line != 0 && sexp.End.Line != 0 {
-				start, end = sexp.Start, sexp.End
+			if sexp.start.Line != 0 && sexp.end.Line != 0 {
+				start, end = sexp.start, sexp.end
 				break SexpDescent
 			}
 		case Map:
-			if sexp.Start.Line != 0 && sexp.End.Line != 0 {
-				start, end = sexp.Start, sexp.End
+			if sexp.start.Line != 0 && sexp.end.Line != 0 {
+				start, end = sexp.start, sexp.end
 				break SexpDescent
 			}
 		}

@@ -51,6 +51,7 @@ func (b Block) SyntaxErrors() string {
 // implements Indexed
 type Document []Block
 
+func (doc Document) Type() string { return "jnlisp-document" }
 func (doc Document) String() string {
 	accumulator := strings.Builder{}
 	for i := range doc {
@@ -62,14 +63,14 @@ func (doc Document) String() string {
 
 func (doc Document) First() Sexp {
 	if len(doc) == 0 {
-		return nil
+		return Nil{}
 	}
 	return doc[0]
 }
 
 func (doc Document) Rest() Seq {
-	if len(doc) < 2 {
-		return make(Document, 0)
+	if doc.Empty() {
+		return Nil{}
 	}
 	newDoc := make(Document, len(doc)-1)
 	copy(newDoc, doc[1:])
@@ -234,7 +235,7 @@ type missingDelim string
 
 func (m missingDelim) Error() string       { return "Missing delimeter: " + string(m) }
 func (m missingDelim) PrettyError() string { return "Missing delimeter: " + string(m) }
-func (m missingDelim) String() string      { return "#<missing-delim:" + string(m) +">" }
+func (m missingDelim) String() string      { return "#<missing-delim:" + string(m) + ">" }
 func (m missingDelim) Type() string        { return "error" }
 func (m missingDelim) matching() string {
 	switch m {
@@ -250,7 +251,7 @@ func (m missingDelim) matching() string {
 }
 
 func parseList(p *parser) List {
-	list := List{Start: p.current.pos}
+	list := List{start: p.current.pos}
 	var elems []Sexp
 	var tok token
 
@@ -278,12 +279,12 @@ Loop:
 	}
 
 	list.Elements = elems
-	list.End = tok.pos
+	list.end = tok.pos
 	return list
 }
 
 func parseVector(p *parser) Vector {
-	vector := Vector{Start: p.current.pos}
+	vector := Vector{start: p.current.pos}
 	var elems []Sexp
 	var tok token
 
@@ -311,7 +312,7 @@ Loop:
 	}
 
 	vector.Elements = elems
-	vector.End = tok.pos
+	vector.end = tok.pos
 	return vector
 }
 
@@ -320,9 +321,9 @@ Loop:
 func parseMap(p *parser, delim tokenType) Sexp {
 	mapp := Map{
 		Elements: make(map[string]Sexp),
-		Start:    p.current.pos,
+		start:    p.current.pos,
 	}
-	list := List{Start: p.current.pos}
+	list := List{start: p.current.pos}
 
 	var elems []Sexp
 	var tok token
@@ -367,7 +368,7 @@ Loop:
 			} else {
 				elems = append(elems, Keyword(key))
 				elems = append(elems, value)
-				mapp.Elements[key] = value
+				mapp.append(key, value)
 			}
 		default:
 			// don't add duplicate expected keywords
@@ -381,12 +382,12 @@ Loop:
 	for i := range elems {
 		if _, ok := elems[i].(Error); ok {
 			list.Elements = elems
-			list.End = tok.pos
+			list.end = tok.pos
 			return list
 		}
 	}
 
-	mapp.End = tok.pos
+	mapp.end = tok.pos
 	return mapp
 }
 

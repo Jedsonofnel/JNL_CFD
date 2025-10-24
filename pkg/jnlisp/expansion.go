@@ -1,10 +1,12 @@
 package jnlisp
 
-func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
+func (f *fiber) expand(sexp Sexp, idx int, env *env) (Sexp, Error) {
+	f.push(sexp, idx, opExpand)
+	defer f.pop() // remove frame from stack after this
+
 	if f.recursionLimitReached() {
 		return nil, f.newErrRecursionLimitReached()
 	}
-	defer f.pop() // remove frame from stack after this
 
 	switch s := sexp.(type) {
 	case List:
@@ -17,14 +19,12 @@ func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
 			if err != nil {
 				return nil, err
 			}
-			f.push(s, 0, opExpand)
-			return f.expand(expanded, env)
+			return f.expand(expanded, 0, env)
 		}
 
 		// not a macro - expand children
 		for i, child := range s.Elements {
-			f.push(s, i, opExpand)
-			expanded, err := f.expand(child, env)
+			expanded, err := f.expand(child, i, env)
 			if err != nil {
 				return nil, err
 			}
@@ -33,8 +33,7 @@ func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
 		return s, nil
 	case Vector:
 		for i, child := range s.Elements {
-			f.push(child, i, opExpand)
-			expanded, err := f.expand(child, env)
+			expanded, err := f.expand(child, i, env)
 			if err != nil {
 				return nil, err
 			}
@@ -42,9 +41,9 @@ func (f *fiber) expand(sexp Sexp, env *env) (Sexp, Error) {
 		}
 		return s, nil
 	case Map:
-		for key, value := range s.Elements {
-			f.pushMapValue(value, key, opExpand)
-			expanded, err := f.expand(value, env)
+		for i, key := range s.order {
+			value := s.Get(key)
+			expanded, err := f.expand(value, i*2, env) // TODO fix this
 			if err != nil {
 				return nil, err
 			}
@@ -103,7 +102,6 @@ func expandDefn(list List, f *fiber) (Sexp, Error) {
 	fn := List{Elements: fnElems}
 	def := List{
 		Elements: []Sexp{Symbol("def"), name, fn},
-		meta:     list.meta,
 	}
 
 	return def, nil

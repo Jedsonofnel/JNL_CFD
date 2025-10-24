@@ -1,25 +1,20 @@
 package jnlisp
 
-func (f *fiber) eval(sexp Sexp, env *env) (Sexp, Error) {
+func (f *fiber) eval(sexp Sexp, idx int, env *env) (Sexp, Error) {
+	f.push(sexp, idx, opEval)
 	defer f.pop() // remove last frame from stack on return
-
-	if len(f.stack) == 0 { // called top level without pushing to stack
-		f.push(sexp, 0, opEval)
-	}
 
 	if f.recursionLimitReached() {
 		return nil, f.newErrRecursionLimitReached()
 	}
 
-	f.push(sexp, 0, opExpand)
-	sexp, err := f.expand(sexp, env)
+	sexp, err := f.expand(sexp, 0, env)
 	if err != nil {
 		return nil, err
 	}
 
 	// ELABORATION
-	f.push(sexp, 0, opElaborate)
-	sexp, err = f.elaborate(sexp)
+	sexp, err = f.elaborate(sexp, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -36,8 +31,7 @@ TCO:
 			return binding, nil
 
 		case defExpr:
-			f.push(x, 2, opEval)
-			binding, err := f.eval(x.binding, env)
+			binding, err := f.eval(x.binding, 2, env)
 			if err != nil {
 				return nil, err
 			}
@@ -46,8 +40,7 @@ TCO:
 
 		case List: // buckle up
 			for i, elem := range x.Elements {
-				f.push(x, i, opEval)
-				evaledElem, err := f.eval(elem, env)
+				evaledElem, err := f.eval(elem, i, env)
 				if err != nil {
 					return nil, err
 				}
@@ -95,7 +88,6 @@ TCO:
 				f.block = proc.block
 				continue TCO
 			case Callable:
-				f.push(x, 0, opEval)
 				return proc.Call(x.Elements[1:], f)
 			default:
 				return nil, f.newErrNonCallableCalled(proc.Type())

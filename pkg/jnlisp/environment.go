@@ -83,7 +83,7 @@ func (c closure) Call(args []Sexp, f *fiber) (Sexp, Error) {
 	}
 
 	f.block = c.block
-	return f.eval(c.body, activationEnv)
+	return f.eval(c.body, 0, activationEnv)
 }
 
 // Foreign bindings

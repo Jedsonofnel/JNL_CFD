@@ -67,7 +67,7 @@ func (r *REPL) Feed(input string) string {
 	r.start = Pos{r.line + 1, 1, 0}
 
 	if block.BlockType != CodeBlock {
-		return "<prose>"
+		return "prose"
 	}
 
 	fiber := &fiber{
@@ -75,7 +75,7 @@ func (r *REPL) Feed(input string) string {
 		block:    &block,
 	}
 
-	result, err := fiber.eval(block.AST, r.env)
+	result, err := fiber.eval(block.AST, 0, r.env)
 	if err != nil {
 		return err.PrettyError()
 	}

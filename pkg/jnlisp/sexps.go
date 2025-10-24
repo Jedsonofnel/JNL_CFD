@@ -11,12 +11,6 @@ type Sexp interface {
 	Type() string
 }
 
-// the bane of my existence
-type Nil struct{}
-
-func (n Nil) Type() string   { return "nil" }
-func (n Nil) String() string { return "nil" }
-
 // atoms
 type Symbol string
 type String string
@@ -45,6 +39,7 @@ func (b Boolean) String() string {
 
 // linked style behaviour
 type Seq interface {
+	Sexp
 	First() Sexp
 	Rest() Seq
 	Empty() bool
@@ -59,15 +54,25 @@ type Indexed interface {
 
 // hash map behaviour
 type Lookup interface {
+	Sexp
 	Get(key string) Sexp
 }
+
+// the bane of my existence.  Distinct from the empty list
+type Nil struct{}
+
+func (n Nil) Type() string   { return "nil" }
+func (n Nil) String() string { return "nil" }
+
+func (n Nil) First() Sexp { return Nil{} }
+func (n Nil) Rest() Seq   { return Nil{} }
+func (n Nil) Empty() bool { return true }
 
 // default lisp style list - implements Seq but also indexed
 // for convenience
 type List struct {
 	Elements   []Sexp
-	meta       metaMap
-	Start, End Pos
+	start, end Pos
 }
 
 func (l List) Type() string { return "list" }
@@ -80,27 +85,25 @@ func (l List) String() string {
 }
 
 func (l List) First() Sexp {
-	if bool(l.Empty()) {
-		return nil
+	if l.Empty() {
+		return Nil{}
 	}
 	return l.Elements[0]
 }
 
 func (l List) Rest() Seq {
-	if len(l.Elements) <= 1 {
-		return List{meta: l.meta}
+	numElems := len(l.Elements)
+	if numElems == 0 {
+		return Nil{}
 	}
+
 	return List{
 		Elements: l.Elements[1:],
-		meta:     l.meta,
 	}
 }
 
 func (l List) Empty() bool {
-	if len(l.Elements) == 0 {
-		return true
-	}
-	return false
+	return len(l.Elements) == 0
 }
 
 func (l List) Nth(i int) (Sexp, bool) {
@@ -119,15 +122,13 @@ func (l List) Length() int {
 func (l List) Append(s Sexp) Indexed {
 	return List{
 		Elements: append(l.Elements, s),
-		meta:     l.meta,
 	}
 }
 
 // a list that isn't an expression.  Only implements indexed
 type Vector struct {
 	Elements   []Sexp
-	meta       metaMap
-	Start, End Pos
+	start, end Pos
 }
 
 func (v Vector) Type() string { return "vector" }
@@ -141,18 +142,19 @@ func (v Vector) String() string {
 
 func (v Vector) First() Sexp {
 	if len(v.Elements) == 0 {
-		return nil
+		return Nil{}
 	}
 	return v.Elements[0]
 }
 
 func (v Vector) Rest() Seq {
-	if len(v.Elements) < 2 {
-		return Vector{meta: v.meta}
+	numElems := len(v.Elements)
+	if numElems == 0 {
+		return Nil{}
 	}
+
 	return Vector{
 		Elements: v.Elements[1:],
-		meta:     v.meta,
 	}
 }
 
@@ -182,15 +184,14 @@ func (v Vector) Length() int {
 func (v Vector) Append(s Sexp) Indexed {
 	return Vector{
 		Elements: append(v.Elements, s),
-		meta:     v.meta,
 	}
 }
 
 // a lookup table, implements Lookup
 type Map struct {
 	Elements   map[string]Sexp
-	meta       metaMap
-	Start, End Pos
+	order      []string
+	start, end Pos
 }
 
 func (m Map) Type() string { return "map" }
@@ -202,8 +203,43 @@ func (m Map) String() string {
 	return "{" + strings.Join(parts, " ") + "}"
 }
 
+// Lookup implementation
 func (m Map) Get(s string) Sexp {
 	return m.Elements[s]
+}
+
+// Seq implementation
+func (m Map) First() Sexp {
+	if len(m.order) == 0 {
+		return Nil{}
+	}
+	key := m.order[0]
+	return Vector{
+		Elements: []Sexp{Keyword(key), m.Elements[key]},
+	}
+}
+
+func (m Map) Rest() Seq {
+	if len(m.Elements) == 0 {
+		return Nil{}
+	}
+
+	newOrder := make([]string, len(m.order)-1)
+	copy(newOrder, m.order[1:])
+
+	newElems := make(map[string]Sexp, len(newOrder))
+	for _, key := range newOrder {
+		newElems[key] = m.Elements[key]
+	}
+
+	return Map{
+		Elements: newElems,
+		order:    newOrder,
+	}
+}
+
+func (m Map) Empty() bool {
+	return len(m.Elements) == 0
 }
 
 var mapArity = Arity{
@@ -212,7 +248,7 @@ var mapArity = Arity{
 
 func (m Map) Call(args []Sexp, f *fiber) (Sexp, Error) {
 	if !mapArity.Matches(args) {
-		return nil, f.newErrArity("map", mapArity, args)
+		return Nil{}, f.newErrArity("map", mapArity, args)
 	}
 
 	if key, ok := args[0].(Keyword); ok {
@@ -225,36 +261,23 @@ func (m Map) Call(args []Sexp, f *fiber) (Sexp, Error) {
 }
 
 func (m Map) assoc(key string, value Sexp) Lookup {
-	clone := copyMap(m.Elements)
-	clone[key] = value
+	cloneElems := make(map[string]Sexp, len(m.Elements))
+	maps.Copy(cloneElems, m.Elements)
+	cloneElems[key] = value
+
+	cloneOrder := make([]string, 0, len(m.order)+1)
+	copy(cloneOrder, m.order)
+
 	return Map{
-		Elements: clone,
-		meta:     m.meta,
+		Elements: cloneElems,
+		order:    cloneOrder,
 	}
 }
 
-// map specifically for metadata to get around recursive struct definition limitations
-// also implements lookup
-type metaMap map[string]Sexp
-
-func (m metaMap) Type() string { return "map" }
-func (m metaMap) evaluatable() {}
-func (m metaMap) String() string {
-	var parts []string
-	for k, v := range m {
-		parts = append(parts, ":"+k+" "+v.String())
-	}
-	return "{" + strings.Join(parts, " ") + "}"
-}
-
-func (m metaMap) Get(s string) Sexp {
-	return m[s]
-}
-
-func (m metaMap) assoc(key string, value Sexp) Lookup {
-	clone := copyMap(m)
-	clone[key] = value
-	return metaMap(clone)
+// mutable append type for internal bits
+func (m *Map) append(key string, value Sexp) {
+	m.order = append(m.order, key)
+	m.Elements[key] = value
 }
 
 // Numbers are hard
@@ -263,13 +286,6 @@ type Number interface {
 	ToFloat64() (float64, bool)
 	ToInt() (int, bool)
 	ToComplex128() complex128
-}
-
-// helper for lookup types
-func copyMap(src map[string]Sexp) map[string]Sexp {
-	clone := make(map[string]Sexp, len(src))
-	maps.Copy(clone, src)
-	return clone
 }
 
 // Concrete number types

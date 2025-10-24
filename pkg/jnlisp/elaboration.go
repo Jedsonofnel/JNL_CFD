@@ -4,7 +4,8 @@ import (
 	"strings"
 )
 
-func (f *fiber) elaborate(sexp Sexp) (Sexp, Error) {
+func (f *fiber) elaborate(sexp Sexp, idx int) (Sexp, Error) {
+	f.push(sexp, idx, opElaborate)
 	defer f.pop()
 
 	switch s := sexp.(type) {
@@ -12,12 +13,10 @@ func (f *fiber) elaborate(sexp Sexp) (Sexp, Error) {
 		if s.Length() == 0 {
 			return nil, f.newErrElaborationSyntax("cannot evaluate the empty list")
 		}
-		f.push(s, 0, opElaborate)
 		return elaborateCall(s, f)
 	case Vector:
 		for i, elem := range s.Elements {
-			f.push(elem, i, opElaborate)
-			elaborated, err := f.elaborate(elem)
+			elaborated, err := f.elaborate(elem, i)
 			if err != nil {
 				return nil, err
 			}
@@ -25,9 +24,9 @@ func (f *fiber) elaborate(sexp Sexp) (Sexp, Error) {
 		}
 		return s, nil
 	case Map:
-		for key, value := range s.Elements {
-			f.pushMapValue(value, key, opElaborate)
-			elaborated, err := f.elaborate(value)
+		for i, key := range s.order {
+			value := s.Get(key)
+			elaborated, err := f.elaborate(value, i*2)
 			if err != nil {
 				return nil, err
 			}
@@ -47,11 +46,8 @@ func elaborateCall(list List, f *fiber) (Sexp, Error) {
 		}
 	}
 
-	defer f.pop()
-
 	for i, elem := range list.Elements {
-		f.push(elem, i, opElaborate)
-		elaborated, err := f.elaborate(elem)
+		elaborated, err := f.elaborate(elem, i)
 		if err != nil {
 			return nil, err
 		}
@@ -166,8 +162,6 @@ func elaborateDef(list List, f *fiber) (defExpr, Error) {
 
 	name, ok := list.Elements[1].(Symbol)
 	if !ok {
-		defer f.pop()
-		f.push(list.First(), 1, opElaborate)
 		return defExpr{}, f.newErrElaborationSyntax("def expects a symbol as it's first argument")
 	}
 

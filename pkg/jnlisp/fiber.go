@@ -13,10 +13,9 @@ type fiber struct {
 }
 
 type frame struct {
-	sexp   Sexp
-	idx    int
-	mapKey string
-	op     opType
+	sexp Sexp
+	idx  int
+	op   opType
 }
 
 type opType int
@@ -27,20 +26,15 @@ const (
 	opEval
 )
 
+var opTypeDisplay = []string{"expand", "elaborate", "eval"}
+
+func (o opType) String() string { return opTypeDisplay[o] }
+
 func (f *fiber) push(sexp Sexp, idx int, op opType) {
 	f.stack = append(f.stack, frame{
 		sexp: sexp,
 		idx:  idx,
 		op:   op,
-	})
-}
-
-func (f *fiber) pushMapValue(value Sexp, key string, op opType) {
-	f.stack = append(f.stack, frame{
-		sexp:   value,
-		idx:    -1,
-		mapKey: key,
-		op:     op,
 	})
 }
 
