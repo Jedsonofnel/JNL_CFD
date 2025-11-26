@@ -1,6 +1,6 @@
 package linalg
 
-func Dot2D(ax, ay, bx, by float32) float32 {
+func Dot2D(ax, ay, bx, by float64) float64 {
 	return ax*bx + ay*by
 }
 

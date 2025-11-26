@@ -6,7 +6,7 @@ import (
 )
 
 type CSR struct {
-	values    []float32
+	values    []float64
 	columns   []int
 	rowStarts []int
 }
@@ -48,7 +48,7 @@ func NewCSRMatrixFromConnectivity(faceStarts, neighbourIndices []int) *CSR {
 
 	rowStarts[nCells] = valuesAccountedFor // add the terminator
 	return &CSR{
-		values:    make([]float32, valuesAccountedFor),
+		values:    make([]float64, valuesAccountedFor),
 		columns:   columns,
 		rowStarts: rowStarts,
 	}
@@ -68,7 +68,7 @@ func (csr *CSR) Cols() int {
 
 // ELEMENT ACCESS
 
-func (csr *CSR) Get(i, j int) float32 {
+func (csr *CSR) Get(i, j int) float64 {
 	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
@@ -80,7 +80,7 @@ func (csr *CSR) Get(i, j int) float32 {
 	panic(fmt.Sprintf("Value at (%d, %d) is not present in this CSR matrix", i, j))
 }
 
-func (csr *CSR) GetDiagonal(i int) float32 {
+func (csr *CSR) GetDiagonal(i int) float64 {
 	rowStart := csr.rowStarts[i]
 	return csr.values[rowStart]
 }
@@ -105,7 +105,7 @@ func (csr *CSR) IsZero(i, j int) bool {
 
 // ELEMENT MANIPULATION
 
-func (csr *CSR) Set(i, j int, value float32) {
+func (csr *CSR) Set(i, j int, value float64) {
 	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
@@ -118,12 +118,12 @@ func (csr *CSR) Set(i, j int, value float32) {
 	panic(fmt.Sprintf("Value at (%d, %d) is not present in this CSR matrix", i, j))
 }
 
-func (csr *CSR) SetDiagonal(i int, value float32) {
+func (csr *CSR) SetDiagonal(i int, value float64) {
 	rowStart := csr.rowStarts[i]
 	csr.values[rowStart] = value
 }
 
-func (csr *CSR) Add(i, j int, value float32) {
+func (csr *CSR) Add(i, j int, value float64) {
 	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
@@ -136,12 +136,12 @@ func (csr *CSR) Add(i, j int, value float32) {
 	panic(fmt.Sprintf("Value at (%d, %d) is not present in this CSR matrix", i, j))
 }
 
-func (csr *CSR) AddDiagonal(i int, value float32) {
+func (csr *CSR) AddDiagonal(i int, value float64) {
 	rowStart := csr.rowStarts[i]
 	csr.values[rowStart] += value
 }
 
-func (csr *CSR) Subtract(i, j int, value float32) {
+func (csr *CSR) Subtract(i, j int, value float64) {
 	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
@@ -156,10 +156,10 @@ func (csr *CSR) Subtract(i, j int, value float32) {
 
 // BULK OPERATIONS
 
-func (csr *CSR) MatVec(x, y []float32) []float32 {
+func (csr *CSR) MatVec(x, y []float64) []float64 {
 	for i := range csr.Rows() {
 		y[i] = 0
-		csr.ForEachInRow(i, func(j int, val float32) {
+		csr.ForEachInRow(i, func(j int, val float64) {
 			y[i] += val * x[j]
 		})
 	}
@@ -167,13 +167,13 @@ func (csr *CSR) MatVec(x, y []float32) []float32 {
 	return y
 }
 
-func (csr *CSR) MatTVec(x, y []float32) []float32 {
+func (csr *CSR) MatTVec(x, y []float64) []float64 {
 	for i := range csr.Rows() {
 		y[i] = 0
 	}
 
 	for j := range csr.Cols() {
-		csr.ForEachInRow(j, func(i int, val float32) {
+		csr.ForEachInRow(j, func(i int, val float64) {
 			y[i] += val * x[j]
 		})
 	}
@@ -201,7 +201,7 @@ func (csr *CSR) Wipe() {
 	}
 }
 
-func (csr *CSR) ForEachInRow(i int, fn func(j int, value float32)) {
+func (csr *CSR) ForEachInRow(i int, fn func(j int, value float64)) {
 	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {

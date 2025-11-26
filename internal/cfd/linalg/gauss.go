@@ -2,18 +2,18 @@ package linalg
 
 type GaussSeidel struct {
 	maxIterations int
-	tolerance     float32
+	tolerance     float64
 }
 
-func (gs *GaussSeidel) Solve(sys *System, x []float32) []float32 {
+func (gs *GaussSeidel) Solve(sys *System, x []float64) []float64 {
 	matrix := sys.A
 	rhs := sys.B
 
 	for iter := 0; iter < gs.maxIterations; iter++ {
 		// Update solution
 		for i := range x {
-			var sum float32 = 0.0
-			matrix.ForEachInRow(i, func(col int, val float32) {
+			var sum float64 = 0.0
+			matrix.ForEachInRow(i, func(col int, val float64) {
 				if col != i {
 					sum += val * x[col]
 				}
@@ -22,10 +22,10 @@ func (gs *GaussSeidel) Solve(sys *System, x []float32) []float32 {
 		}
 
 		// Calculate true residual ||Ax - b||
-		var residual float32 = 0.0
+		var residual float64 = 0.0
 		for i := range x {
-			var axRow float32 = 0.0
-			matrix.ForEachInRow(i, func(col int, val float32) {
+			var axRow float64 = 0.0
+			matrix.ForEachInRow(i, func(col int, val float64) {
 				axRow += val * x[col]
 			})
 			diff := axRow - rhs[i]
@@ -42,10 +42,10 @@ func (gs *GaussSeidel) Solve(sys *System, x []float32) []float32 {
 
 type GaussSeidelDefinition struct {
 	maxIterations int
-	tolerance     float32
+	tolerance     float64
 }
 
-func NewGaussSeidel(maxIterations int, tolerance float32) SolverDefinition {
+func NewGaussSeidel(maxIterations int, tolerance float64) SolverDefinition {
 	return &GaussSeidelDefinition{
 		maxIterations: maxIterations,
 		tolerance:     tolerance,

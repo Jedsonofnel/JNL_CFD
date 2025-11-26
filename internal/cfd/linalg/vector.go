@@ -1,10 +1,10 @@
 package linalg
 
 import (
-	"github.com/chewxy/math32"
+	"math"
 )
 
-type Vector []float32
+type Vector []float64
 
 func (v Vector) Wipe() {
 	for i := range v {
@@ -12,10 +12,10 @@ func (v Vector) Wipe() {
 	}
 }
 
-type Vec2 struct{ X, Y float32 }
+type Vec2 struct{ X, Y float64 }
 
-func (v Vec2) Magnitude() float32 {
-	return math32.Sqrt(v.X*v.X + v.Y*v.Y)
+func (v Vec2) Magnitude() float64 {
+	return math.Sqrt(v.X*v.X + v.Y*v.Y)
 }
 
 func (v Vec2) Normalize() Vec2 {
@@ -23,7 +23,7 @@ func (v Vec2) Normalize() Vec2 {
 	return Vec2{v.X / mag, v.Y / mag}
 }
 
-func (v Vec2) Dot(other Vec2) float32 {
+func (v Vec2) Dot(other Vec2) float64 {
 	return v.X*other.X + v.Y*other.Y
 }
 

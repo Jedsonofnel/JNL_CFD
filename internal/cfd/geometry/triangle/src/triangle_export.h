@@ -1,0 +1,6 @@
+#ifndef TRIANGLE_EXPORT_H
+#define TRIANGLE_EXPORT_H
+
+#define TRIANGLE_EXPORT
+
+#endif
