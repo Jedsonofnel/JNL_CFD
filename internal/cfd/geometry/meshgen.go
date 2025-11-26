@@ -4,7 +4,6 @@ import (
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry/triangle"
 )
 
-
 type PSLG struct {
 	Points   []Vec2
 	Segments []Segment
@@ -17,6 +16,6 @@ type PSLG struct {
 //
 
 func MeshDomain(domain *Domain) (*Mesh, error) {
+	_, _ = triangle.Triangulate(triangle.Input{}, "some-options")
 	return nil, nil
 }
-

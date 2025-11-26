@@ -2,14 +2,19 @@ package geometry
 
 import (
 	"errors"
+	"slices"
 )
 
 //
 // Domain definition for meshing
 //
 
+const rootShapeLayer = -1
+
 type Domain struct {
 	shapes        []Shape
+	layers        []int // layer index for each shape
+	parents       []int // parent shape index (-1 if no parent)
 	nextRegionID  int
 	nextMarker    int
 	regionNames   map[int]string
@@ -20,6 +25,8 @@ type Domain struct {
 type Shape interface {
 	Bounds() (minX, minY, maxX, maxY float64)
 	Intersects(other Shape) bool
+	Contains(point Vec2) bool
+	Area() float64
 	ToPSLG(pointOffset int) (points []Vec2, segments []Segment, region *Region)
 }
 
@@ -37,6 +44,8 @@ type Region struct {
 func NewDomain() *Domain {
 	return &Domain{
 		shapes:        make([]Shape, 0),
+		layers:        make([]int, 0),
+		parents:       make([]int, 0),
 		nextRegionID:  1,
 		nextMarker:    1,
 		regionNames:   make(map[int]string),
@@ -45,13 +54,36 @@ func NewDomain() *Domain {
 }
 
 func (d *Domain) AddShape(shape Shape, regionName, boundaryName string) error {
-	for _, existing := range d.shapes {
-		if shape.Intersects(existing) {
-			return errors.New("shape intersection error")
+	invalid := slices.ContainsFunc(d.shapes, func(existing Shape) bool {
+		if shape.Intersects(existing) && !isValidContainment(shape, existing) {
+			return true
+		}
+		return false
+	})
+
+	if invalid {
+		return errors.New("shape intersection error")
+	}
+
+	// Insert in sorted order by area (descending)
+	area := shape.Area()
+	insertIdx := len(d.shapes)
+	for i, s := range d.shapes {
+		if area > s.Area() {
+			insertIdx = i
+			break
 		}
 	}
 
-	d.shapes = append(d.shapes, shape)
+	// Insert at position
+	d.shapes = append(d.shapes[:insertIdx],
+		append([]Shape{shape}, d.shapes[insertIdx:]...)...)
+
+	d.layers = append(d.layers[:insertIdx],
+		append([]int{0}, d.layers[insertIdx:]...)...)
+	d.parents = append(d.parents[:insertIdx],
+		append([]int{-1}, d.parents[insertIdx:]...)...)
+
 	d.regionNames[d.nextRegionID] = regionName
 	d.boundaryNames[d.nextMarker] = boundaryName
 
@@ -59,6 +91,63 @@ func (d *Domain) AddShape(shape Shape, regionName, boundaryName string) error {
 	d.nextMarker++
 
 	return nil
+}
+
+// isValidContainment checks if one shape fully contains the other
+func isValidContainment(a, b Shape) bool {
+	ax0, ay0, ax1, ay1 := a.Bounds()
+	bx0, by0, bx1, by1 := b.Bounds()
+
+	// Does a contain b?
+	aContainsB := ax0 <= bx0 && ay0 <= by0 && ax1 >= bx1 && ay1 >= by1
+	// Does b contain a?
+	bContainsA := bx0 <= ax0 && by0 <= ay0 && bx1 >= ax1 && by1 >= ay1
+
+	return aContainsB || bContainsA
+}
+
+// ComputeLayers calculates the containment hierarchy after all shapes are added
+func (d *Domain) ComputeLayers() {
+	n := len(d.shapes)
+
+	for i := range d.layers {
+		d.layers[i] = 0
+		d.parents[i] = rootShapeLayer
+	}
+
+	for i := 1; i < n; i++ {
+		minX, minY, maxX, maxY := d.shapes[i].Bounds()
+		centerX := (minX + maxX) / 2
+		centerY := (minY + maxY) / 2
+		center := Vec2{centerX, centerY}
+
+		// Look for parent among earlier (larger) shapes
+		for j := 0; j < i; j++ {
+			if d.shapes[j].Contains(center) {
+				d.parents[i] = j
+				d.layers[i] = d.layers[j] + 1
+				break
+			}
+		}
+	}
+}
+
+func (d *Domain) GetLayer(idx int) int {
+	if idx < 0 || idx >= len(d.layers) {
+		return -1
+	}
+	return d.layers[idx]
+}
+
+func (d *Domain) GetParent(idx int) int {
+	if idx < 0 || idx >= len(d.parents) {
+		return -1
+	}
+	return d.parents[idx]
+}
+
+func (d *Domain) Shapes() []Shape {
+	return d.shapes
 }
 
 func (d *Domain) Bounds() (minX, minY, maxX, maxY float64) {
@@ -111,6 +200,15 @@ type Rectangle struct {
 	boundaryMarker int
 }
 
+func NewRectangle(x, y, w, h float64) *Rectangle {
+	return &Rectangle{
+		X: x,
+		Y: y,
+		W: w,
+		H: h,
+	}
+}
+
 func (r *Rectangle) Bounds() (minX, minY, maxX, maxY float64) {
 	return r.X, r.Y, r.X + r.W, r.Y + r.H
 }
@@ -120,7 +218,16 @@ func (r *Rectangle) Intersects(other Shape) bool {
 	ox0, oy0, ox1, oy1 := other.Bounds()
 
 	// AABB intersection test
-	return !(x1 < ox0 || x0 > ox1 || y1 < oy0 || y0 > oy1)
+	return !(x1 <= ox0 || x0 >= ox1 || y1 <= oy0 || y0 >= oy1)
+}
+
+func (r *Rectangle) Contains(point Vec2) bool {
+	return point.X >= r.X && point.X <= r.X+r.W &&
+		point.Y >= r.Y && point.Y <= r.Y+r.H
+}
+
+func (r *Rectangle) Area() float64 {
+	return r.W * r.H
 }
 
 func (r *Rectangle) ToPSLG(pointOffset int) ([]Vec2, []Segment, *Region) {
