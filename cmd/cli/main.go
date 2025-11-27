@@ -113,6 +113,16 @@ func setupPCBCase(mesh *geometry.Mesh) *fvm.Context {
 		"chip4": qVolumetric,
 	}, 0.0) // default to no heat generation
 
+	pcbThickness := 0.002                      // 2mm
+	surfaceAreaPerVolume := 2.0 / pcbThickness // top + bottom surfaces
+
+	h := 10.0     // W/m²K convection coefficient
+	Tamb := 300.0 // K
+
+	// Volumetric convection coefficient: A*h
+	ctx.AddConstantField("Ah", surfaceAreaPerVolume*h)
+	ctx.AddConstantField("T_amb", Tamb)
+
 	return ctx
 }
 
@@ -125,6 +135,17 @@ func solveHeatEquation(mesh *geometry.Mesh, ctx *fvm.Context) []float64 {
 
 	mask := fvm.RegionsFromNames(ctx, "chip1", "chip2", "chip3", "chip4")
 	fvm.LinearSourceOperator(eq, ctx, "T", fvm.FieldExpr(ctx, "Q"), nil, mask)
+
+	AhExpr := fvm.FieldExpr(ctx, "Ah")
+	TambExpr := fvm.FieldExpr(ctx, "T_amb")
+
+	// Su = Ah * Tamb (explicit source)
+	SuExpr := fvm.MulExpr(AhExpr, TambExpr)
+	// Sp = -Ah (implicit, negative for stability)
+	SpExpr := fvm.MulExpr(fvm.ConstExpr(-1.0), AhExpr)
+
+	fvm.LinearSourceOperator(eq, ctx, "T", SuExpr, SpExpr, nil)
+
 	fvm.ConvectionBC(eq, ctx, "outer", 10.0, 300.0)
 
 	// Solve
