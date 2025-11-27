@@ -5,11 +5,15 @@ type Jacobi struct {
 	tolerance     float64
 }
 
-func (j *Jacobi) Solve(sys *System, x []float64) []float64 {
-	matrix := sys.A
-	rhs := sys.B
+func NewJacobi(maxIterations int, tolerance float64) *Jacobi {
+	return &Jacobi{
+		maxIterations: maxIterations,
+		tolerance:     tolerance,
+	}
+}
 
-	n := len(rhs)
+func (j *Jacobi) Solve(A *CSR, b, x []float64) error {
+	n := len(b)
 	xNew := make([]float64, n) // this is always going to be rubbish
 
 	for iter := 0; iter < j.maxIterations; iter++ {
@@ -18,34 +22,15 @@ func (j *Jacobi) Solve(sys *System, x []float64) []float64 {
 
 			for k := range n {
 				if i != k {
-					sum += matrix.Get(i, k) * x[k]
+					sum += A.Get(i, k) * x[k]
 				}
 			}
-			xNew[i] = (rhs[i] - sum) / matrix.Get(i, i)
+			xNew[i] = (b[i] - sum) / A.Get(i, i)
 		}
 
 		// Copy xNew to x
 		copy(x, xNew)
 	}
 
-	return x
-}
-
-type JacobiDefinition struct {
-	maxIterations int
-	tolerance     float64
-}
-
-func NewJacobi(maxIterations int, tolerance float64) SolverDefinition {
-	return &JacobiDefinition{
-		maxIterations: maxIterations,
-		tolerance:     tolerance,
-	}
-}
-
-func (jd *JacobiDefinition) Resolve(n int) Solver {
-	return &Jacobi{
-		maxIterations: jd.maxIterations,
-		tolerance:     jd.tolerance,
-	}
+	return nil
 }

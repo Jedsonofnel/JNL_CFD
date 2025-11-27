@@ -2,7 +2,7 @@ package linalg
 
 // JACOBI PRECONDITIONED
 
-type jacobiCG struct {
+type JacobiCG struct {
 	maxIterations int
 	tolerance     float64
 	residual      []float64
@@ -11,18 +11,27 @@ type jacobiCG struct {
 	jacobi        []float64
 }
 
-func (cg *jacobiCG) Solve(sys *System, x []float64) []float64 {
-	matrix := sys.A
-	rhs := sys.B
+func NewJacobiCG(n, maxIterations int, tolerance float64) *JacobiCG {
+	return &JacobiCG{
+		maxIterations: maxIterations,
+		tolerance:     tolerance,
+		residual:      make([]float64, n),
+		direction:     make([]float64, n),
+		matd:          make([]float64, n),
+		jacobi:        make([]float64, n),
+	}
+}
+
+func (cg *JacobiCG) Solve(A *CSR, b, x []float64) error {
 	r := cg.residual
 	d := cg.direction
 	z := cg.jacobi
 	Ad := cg.matd
 
-	Ax := matrix.MatVec(x, r)
+	Ax := A.MatVec(x, r)
 	for i, val := range Ax {
-		r[i] = rhs[i] - val
-		d[i] = 1 / matrix.GetDiagonal(i) * r[i]
+		r[i] = b[i] - val
+		d[i] = 1 / A.GetDiagonal(i) * r[i]
 	}
 
 	var rDotr float64 = 0
@@ -34,7 +43,7 @@ func (cg *jacobiCG) Solve(sys *System, x []float64) []float64 {
 
 	threshold := cg.tolerance * cg.tolerance * rDotr
 	for iter := 0; iter < cg.maxIterations && rDotr > threshold; iter++ {
-		Ad = matrix.MatVec(d, Ad)
+		Ad = A.MatVec(d, Ad)
 
 		var dDotAd float64 = 0
 		for i, val := range d {
@@ -48,9 +57,9 @@ func (cg *jacobiCG) Solve(sys *System, x []float64) []float64 {
 		}
 
 		if iter%recomputeAxInterval == 0 {
-			Ax = matrix.MatVec(x, r)
+			Ax = A.MatVec(x, r)
 			for i, val := range Ax {
-				r[i] = rhs[i] - val
+				r[i] = b[i] - val
 			}
 		} else {
 			for i, val := range r {
@@ -59,7 +68,7 @@ func (cg *jacobiCG) Solve(sys *System, x []float64) []float64 {
 		}
 
 		for i, val := range r {
-			z[i] = val / matrix.GetDiagonal(i)
+			z[i] = val / A.GetDiagonal(i)
 		}
 
 		rDotrOld := rDotr
@@ -75,35 +84,12 @@ func (cg *jacobiCG) Solve(sys *System, x []float64) []float64 {
 		}
 	}
 
-	return x
-}
-
-type jacobiCGDefinition struct {
-	maxIterations int
-	tolerance     float64
-}
-
-func NewJacobiCG(maxIterations int, tolerance float64) SolverDefinition {
-	return &jacobiCGDefinition{
-		maxIterations: maxIterations,
-		tolerance:     tolerance,
-	}
-}
-
-func (cg *jacobiCGDefinition) Resolve(n int) Solver {
-	return &jacobiCG{
-		maxIterations: cg.maxIterations,
-		tolerance:     cg.tolerance,
-		residual:      make([]float64, n),
-		direction:     make([]float64, n),
-		matd:          make([]float64, n),
-		jacobi:        make([]float64, n),
-	}
+	return nil
 }
 
 // NO PRECONDITIONER
 
-type simpleCG struct {
+type SimpleCG struct {
 	maxIterations int
 	tolerance     float64
 	residual      []float64
@@ -111,16 +97,24 @@ type simpleCG struct {
 	matd          []float64
 }
 
-func (cg *simpleCG) Solve(sys *System, x []float64) []float64 {
-	matrix := sys.A
-	rhs := sys.B
+func NewSimpleCG(n, maxIterations int, tolerance float64) *SimpleCG {
+	return &SimpleCG{
+		maxIterations: maxIterations,
+		tolerance:     tolerance,
+		residual:      make([]float64, n),
+		direction:     make([]float64, n),
+		matd:          make([]float64, n),
+	}
+}
+
+func (cg *SimpleCG) Solve(A *CSR, b, x []float64) error {
 	r := cg.residual
 	d := cg.direction
 	Ad := cg.matd
 
-	Ax := matrix.MatVec(x, r)
+	Ax := A.MatVec(x, r)
 	for i, val := range Ax {
-		r[i] = rhs[i] - val
+		r[i] = b[i] - val
 		d[i] = r[i]
 	}
 
@@ -133,7 +127,7 @@ func (cg *simpleCG) Solve(sys *System, x []float64) []float64 {
 
 	threshold := cg.tolerance * cg.tolerance * rDotr
 	for iter := 0; iter < cg.maxIterations && rDotr > threshold; iter++ {
-		Ad = matrix.MatVec(d, Ad)
+		Ad = A.MatVec(d, Ad)
 
 		var dDotAd float64 = 0
 		for i, val := range d {
@@ -147,9 +141,9 @@ func (cg *simpleCG) Solve(sys *System, x []float64) []float64 {
 		}
 
 		if iter%recomputeAxInterval == 0 {
-			Ax = matrix.MatVec(x, r)
+			Ax = A.MatVec(x, r)
 			for i, val := range Ax {
-				r[i] = rhs[i] - val
+				r[i] = b[i] - val
 			}
 		} else {
 			for i, val := range r {
@@ -170,27 +164,5 @@ func (cg *simpleCG) Solve(sys *System, x []float64) []float64 {
 		}
 	}
 
-	return x
-}
-
-type simpleCGDefinition struct {
-	maxIterations int
-	tolerance     float64
-}
-
-func NewSimpleCG(maxIterations int, tolerance float64) SolverDefinition {
-	return &simpleCGDefinition{
-		maxIterations: maxIterations,
-		tolerance:     tolerance,
-	}
-}
-
-func (cg *simpleCGDefinition) Resolve(n int) Solver {
-	return &simpleCG{
-		maxIterations: cg.maxIterations,
-		tolerance:     cg.tolerance,
-		residual:      make([]float64, n),
-		direction:     make([]float64, n),
-		matd:          make([]float64, n),
-	}
+	return nil
 }

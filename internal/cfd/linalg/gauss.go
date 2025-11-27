@@ -5,30 +5,34 @@ type GaussSeidel struct {
 	tolerance     float64
 }
 
-func (gs *GaussSeidel) Solve(sys *System, x []float64) []float64 {
-	matrix := sys.A
-	rhs := sys.B
+func NewGaussSeidel(maxIterations int, tolerance float64) *GaussSeidel {
+	return &GaussSeidel{
+		maxIterations: maxIterations,
+		tolerance:     tolerance,
+	}
+}
 
+func (gs *GaussSeidel) Solve(A *CSR, b, x []float64) error {
 	for iter := 0; iter < gs.maxIterations; iter++ {
 		// Update solution
 		for i := range x {
 			var sum float64 = 0.0
-			matrix.ForEachInRow(i, func(col int, val float64) {
+			A.ForEachInRow(i, func(col int, val float64) {
 				if col != i {
 					sum += val * x[col]
 				}
 			})
-			x[i] = (rhs[i] - sum) / matrix.GetDiagonal(i)
+			x[i] = (b[i] - sum) / A.GetDiagonal(i)
 		}
 
 		// Calculate true residual ||Ax - b||
 		var residual float64 = 0.0
 		for i := range x {
 			var axRow float64 = 0.0
-			matrix.ForEachInRow(i, func(col int, val float64) {
+			A.ForEachInRow(i, func(col int, val float64) {
 				axRow += val * x[col]
 			})
-			diff := axRow - rhs[i]
+			diff := axRow - b[i]
 			residual += diff * diff
 		}
 
@@ -37,24 +41,5 @@ func (gs *GaussSeidel) Solve(sys *System, x []float64) []float64 {
 		}
 	}
 
-	return x
-}
-
-type GaussSeidelDefinition struct {
-	maxIterations int
-	tolerance     float64
-}
-
-func NewGaussSeidel(maxIterations int, tolerance float64) SolverDefinition {
-	return &GaussSeidelDefinition{
-		maxIterations: maxIterations,
-		tolerance:     tolerance,
-	}
-}
-
-func (gsd *GaussSeidelDefinition) Resolve(n int) Solver {
-	return &GaussSeidel{
-		maxIterations: gsd.maxIterations,
-		tolerance:     gsd.tolerance,
-	}
+	return nil
 }

@@ -1,101 +1,67 @@
 package linalg
 
 import (
-	"fmt"
-	"sort"
+	"strconv"
 )
 
 type CSR struct {
-	values    []float64
-	columns   []int
-	rowStarts []int
+	Values    []float64
+	Columns   []int
+	RowStarts []int
 }
 
-func NewCSRMatrixFromConnectivity(faceStarts, neighbourIndices []int) *CSR {
-	nCells := len(faceStarts) - 1
-	rowStarts := make([]int, nCells+1)
-
-	totalValidNeighbours := 0
-	for i := range nCells {
-		startIdx, endIdx := faceStarts[i], faceStarts[i+1]
-		for j := startIdx; j < endIdx; j++ {
-			if neighbourIndices[j] >= 0 {
-				totalValidNeighbours++
-			}
-		}
-	}
-	columns := make([]int, nCells+totalValidNeighbours) // total number of elements
-
-	valuesAccountedFor := 0
-	for i := 0; i < len(faceStarts)-1; i++ {
-		rowStarts[i] = valuesAccountedFor
-		startIdx, endIdx := faceStarts[i], faceStarts[i+1]
-
-		// Collect valid neighbours (excluding boundaries and diagonal)
-		offDiagonalColumns := make([]int, 0, endIdx-startIdx)
-		for j := startIdx; j < endIdx; j++ {
-			if neighbourIndices[j] >= 0 && neighbourIndices[j] != i {
-				offDiagonalColumns = append(offDiagonalColumns, neighbourIndices[j])
-			}
-		}
-
-		sort.Ints(offDiagonalColumns) // sort the columns for faster fetching later
-
-		columns[valuesAccountedFor] = i
-		copy(columns[valuesAccountedFor+1:valuesAccountedFor+1+len(offDiagonalColumns)], offDiagonalColumns)
-		valuesAccountedFor += 1 + len(offDiagonalColumns)
-	}
-
-	rowStarts[nCells] = valuesAccountedFor // add the terminator
+func NewCSRFromArrays(values []float64, columns, rowStarts []int) *CSR {
 	return &CSR{
-		values:    make([]float64, valuesAccountedFor),
-		columns:   columns,
-		rowStarts: rowStarts,
+		Values:    values,
+		Columns:   columns,
+		RowStarts: rowStarts,
 	}
 }
 
 // DIMENSIONS
 
 func (csr *CSR) Rows() int {
-	return len(csr.rowStarts) - 1
+	return len(csr.RowStarts) - 1
 }
 
 // assuming it's a square matrix for my application - could find "max col"
 // to make it more general
 func (csr *CSR) Cols() int {
-	return len(csr.rowStarts) - 1
+	return len(csr.RowStarts) - 1
 }
 
 // ELEMENT ACCESS
 
 func (csr *CSR) Get(i, j int) float64 {
-	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
+	startIdx, endIdx := csr.RowStarts[i], csr.RowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
-		if csr.columns[colIdx] == j {
-			return csr.values[colIdx]
+		if csr.Columns[colIdx] == j {
+			return csr.Values[colIdx]
 		}
 	}
 
-	panic(fmt.Sprintf("Value at (%d, %d) is not present in this CSR matrix", i, j))
+	iStr := strconv.Itoa(i)
+	jStr := strconv.Itoa(j)
+	panic("Value at (" + iStr + ", " + jStr + ") is not present in this CSR matrix")
 }
 
 func (csr *CSR) GetDiagonal(i int) float64 {
-	rowStart := csr.rowStarts[i]
-	return csr.values[rowStart]
+	rowStart := csr.RowStarts[i]
+	return csr.Values[rowStart]
 }
 
 // MATRIX PROPERTIES
 
 func (csr *CSR) NonZeros() int {
-	return len(csr.values)
+	return len(csr.Values)
 }
 
 func (csr *CSR) IsZero(i, j int) bool {
-	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
+	startIdx, endIdx := csr.RowStarts[i], csr.RowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
-		if csr.columns[colIdx] == j {
+		if csr.Columns[colIdx] == j {
 			return false
 		}
 	}
@@ -106,52 +72,58 @@ func (csr *CSR) IsZero(i, j int) bool {
 // ELEMENT MANIPULATION
 
 func (csr *CSR) Set(i, j int, value float64) {
-	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
+	startIdx, endIdx := csr.RowStarts[i], csr.RowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
-		if csr.columns[colIdx] == j {
-			csr.values[colIdx] = value
+		if csr.Columns[colIdx] == j {
+			csr.Values[colIdx] = value
 			return
 		}
 	}
 
-	panic(fmt.Sprintf("Value at (%d, %d) is not present in this CSR matrix", i, j))
+	iStr := strconv.Itoa(i)
+	jStr := strconv.Itoa(j)
+	panic("Value at (" + iStr + ", " + jStr + ") is not present in this CSR matrix")
 }
 
 func (csr *CSR) SetDiagonal(i int, value float64) {
-	rowStart := csr.rowStarts[i]
-	csr.values[rowStart] = value
+	rowStart := csr.RowStarts[i]
+	csr.Values[rowStart] = value
 }
 
 func (csr *CSR) Add(i, j int, value float64) {
-	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
+	startIdx, endIdx := csr.RowStarts[i], csr.RowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
-		if csr.columns[colIdx] == j {
-			csr.values[colIdx] += value
+		if csr.Columns[colIdx] == j {
+			csr.Values[colIdx] += value
 			return
 		}
 	}
 
-	panic(fmt.Sprintf("Value at (%d, %d) is not present in this CSR matrix", i, j))
+	iStr := strconv.Itoa(i)
+	jStr := strconv.Itoa(j)
+	panic("Value at (" + iStr + ", " + jStr + ") is not present in this CSR matrix")
 }
 
 func (csr *CSR) AddDiagonal(i int, value float64) {
-	rowStart := csr.rowStarts[i]
-	csr.values[rowStart] += value
+	rowStart := csr.RowStarts[i]
+	csr.Values[rowStart] += value
 }
 
 func (csr *CSR) Subtract(i, j int, value float64) {
-	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
+	startIdx, endIdx := csr.RowStarts[i], csr.RowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
-		if csr.columns[colIdx] == j {
-			csr.values[colIdx] -= value
+		if csr.Columns[colIdx] == j {
+			csr.Values[colIdx] -= value
 			return
 		}
 	}
 
-	panic(fmt.Sprintf("Value at (%d, %d) is not present in this CSR matrix", i, j))
+	iStr := strconv.Itoa(i)
+	jStr := strconv.Itoa(j)
+	panic("Value at (" + iStr + ", " + jStr + ") is not present in this CSR matrix")
 }
 
 // BULK OPERATIONS
@@ -187,24 +159,24 @@ func (csr *CSR) CopyFrom(other *CSR) {
 
 	// Copy row by row
 	for i := 0; i < csr.Rows(); i++ {
-		startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
+		startIdx, endIdx := csr.RowStarts[i], csr.RowStarts[i+1]
 		for colIdx := startIdx; colIdx < endIdx; colIdx++ {
-			j := csr.columns[colIdx]
-			csr.values[colIdx] = other.Get(i, j)
+			j := csr.Columns[colIdx]
+			csr.Values[colIdx] = other.Get(i, j)
 		}
 	}
 }
 
 func (csr *CSR) Wipe() {
-	for i := range csr.values {
-		csr.values[i] = 0.0
+	for i := range csr.Values {
+		csr.Values[i] = 0.0
 	}
 }
 
 func (csr *CSR) ForEachInRow(i int, fn func(j int, value float64)) {
-	startIdx, endIdx := csr.rowStarts[i], csr.rowStarts[i+1]
+	startIdx, endIdx := csr.RowStarts[i], csr.RowStarts[i+1]
 
 	for colIdx := startIdx; colIdx < endIdx; colIdx++ {
-		fn(csr.columns[colIdx], csr.values[colIdx])
+		fn(csr.Columns[colIdx], csr.Values[colIdx])
 	}
 }
