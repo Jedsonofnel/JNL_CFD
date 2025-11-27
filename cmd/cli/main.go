@@ -11,41 +11,40 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-func main() {
-	fmt.Println(`
+var header string = `
        _       __________________ 
       (_)___  / / ____/ ____/ __ \
      / / __ \/ / /   / /_  / / / /
     / / / / / / /___/ __/ / /_/ / 
  __/ /_/ /_/_/\____/_/   /_____/  
-/___/                             `)
+/___/                             `
 
-	fmt.Println("\ndisplaying mesh...")
+func main() {
+	fmt.Println(header)
+    fmt.Println("\ndisplaying mesh...")
 
-	domain := geometry.NewDomain()
-	outer := geometry.NewRectangle(0, 0, 100, 100)
-	bottomLeft := geometry.NewRectangle(2.5, 2.5, 45, 45)
-	topLeft := geometry.NewRectangle(2.5, 52.5, 45, 45)
-	bottomRight := geometry.NewRectangle(52.5, 2.5, 45, 45)
-	topRight := geometry.NewRectangle(52.5, 52.5, 45, 45)
+    var db geometry.DomainBuilder
+    db.AddPolygon(geometry.MakeRectangle(0, 0, 100, 100, "pcb", "outer"))
+    
+    domain, err := db.Build()
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	if err := domain.AddShape(outer, "pcb", "outer"); err != nil {
-		log.Fatal(err)
-	}
-	if err := domain.AddShape(bottomLeft, "chip", "inner"); err != nil {
-		log.Fatal(err)
-	}
-	if err := domain.AddShape(topLeft, "chip", "inner"); err != nil {
-		log.Fatal(err)
-	}
-	if err := domain.AddShape(bottomRight, "chip", "inner"); err != nil {
-		log.Fatal(err)
-	}
-	if err := domain.AddShape(topRight, "chip", "inner"); err != nil {
-		log.Fatal(err)
-	}
+    // Debug: check if region center is set correctly
+    fmt.Printf("Region center: %+v\n", domain.Polygons[0].Center())
+    
+    // Use more reasonable triangle size
+    mesh, err := geometry.MeshDomain(domain, "pq30a500")
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	viewer := nativedisp.NewViewer(domain, 800, 600)
+    // Debug: print mesh stats
+    fmt.Printf("Mesh: %d vertices, %d connections\n", 
+        len(mesh.Vertices), len(mesh.Connections))
+
+	viewer := nativedisp.NewMeshViewer(mesh, 800, 600)
 
 	ebiten.SetWindowSize(640, 480)
 	ebiten.SetWindowTitle("jnlCFD viewer")
