@@ -4,7 +4,6 @@ package nativedisp
 
 import (
 	"image/color"
-	"math"
 
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -82,8 +81,8 @@ func NewSolutionViewer(mesh *geometry.Mesh, fieldValues []float64,
 		edgeColor:   color.RGBA{50, 50, 50, 100},
 		minValue:    minVal,
 		maxValue:    maxVal,
-		colormap:    makeJetColormap(minVal, maxVal),
-		whiteImage: whiteImage,
+		colormap:    Jet,
+		whiteImage:  whiteImage,
 	}
 
 	v.buildTriangleCache()
@@ -187,39 +186,5 @@ func (v *SolutionViewer) worldToScreen(p geometry.Vec2) geometry.Vec2 {
 	return geometry.Vec2{
 		X: p.X*v.scale + v.offsetX,
 		Y: float64(v.height) - (p.Y*v.scale + v.offsetY),
-	}
-}
-
-func makeJetColormap(minVal, maxVal float64) func(float64) color.Color {
-	return func(value float64) color.Color {
-		t := (value - minVal) / (maxVal - minVal)
-		t = math.Max(0, math.Min(1, t))
-
-		var r, g, b float64
-
-		if t < 0.25 {
-			r = 0
-			g = 4 * t
-			b = 1
-		} else if t < 0.5 {
-			r = 0
-			g = 1
-			b = 1 - 4*(t-0.25)
-		} else if t < 0.75 {
-			r = 4 * (t - 0.5)
-			g = 1
-			b = 0
-		} else {
-			r = 1
-			g = 1 - 4*(t-0.75)
-			b = 0
-		}
-
-		return color.RGBA{
-			uint8(r * 255),
-			uint8(g * 255),
-			uint8(b * 255),
-			255,
-		}
 	}
 }

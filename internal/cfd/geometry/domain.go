@@ -83,7 +83,7 @@ func (db *DomainBuilder) Build() (*Domain, error) {
 	}
 
 	for i := range domain.Polygons {
-		domain.Polygons[i].regionID = domain.getOrCreateRegionID(domain.Polygons[i].Region)
+		domain.Polygons[i].RegionID = domain.getOrCreateRegionID(domain.Polygons[i].Region)
 		domain.Polygons[i].computeGeometry()
 		for _, boundary := range domain.Polygons[i].Boundaries {
 			if boundary != "" {

@@ -11,30 +11,27 @@ to jnl.cfd.geometry
 
 ## Display functions
 
-Shows a domain in a native window. Returns viewer handle.
-Window size defaults to 800x600.
+# JNLisp CFD Native Display Package
+
+Shows a domain in the viewer window.
 j(defn show-domain
-  ([domain] (show-domain domain 800 600))
-  ([domain width height]
-    (.show-domain domain width height)))
+  ([domain] (.show-domain domain 800 600))
+  ([domain width height] (.show-domain domain width height)))
 
-Shows a mesh in a native window. Returns viewer handle.
-Window size defaults to 800x600.
+Shows a mesh in the viewer window.
 j(defn show-mesh
-  ([mesh] (show-mesh mesh 800 600))
-  ([mesh width height]
-    (.show-mesh mesh width height)))
+  ([mesh] (.show-mesh mesh 800 600))
+  ([mesh width height] (.show-mesh mesh width height)))
 
-Closes the viewer window gracefully.
-j(defn close-viewer []
-  (.viewer-close))
+Clears the viewer to blank screen.
+j(defn clear-viewer []
+  (.clear-viewer))
 
-
-## Convenience
-
-View whatever geometry object you have.
-j(defn view [obj]
-  (cond
-    (domain? obj) (show-domain obj)
-    (mesh? obj) (show-mesh obj)
-    :else (throw (ex-info "Cannot view object of type " (type obj)))))
+View any geometry object.
+j(defn view 
+  ([obj] (view obj 800 600))
+  ([obj width height]
+    (cond
+      (domain? obj) (show-domain obj width height)
+      (mesh? obj) (show-mesh obj width height)
+      :else (throw (ex-info "Cannot view object")))))

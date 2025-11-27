@@ -57,7 +57,16 @@ func run() error {
 }
 
 func startREPL() error {
-	repl := cli.NewREPL(runtime)
+	repl := cli.NewREPL(runtime, "jnlCFD REPL")
+	repl.SetNamespace("jnlcfd")
+
+	var err error
+	err = repl.LoadAndRefer(geometry.NS, "")
+	err = repl.LoadAndRefer(nativedisp.NS, "")
+	if err != nil {
+		return jnl.FormatError(err)
+	}
+
 	if err := repl.RawTerminal(); err != nil {
 		return repl.SimpleTerminal()
 	}

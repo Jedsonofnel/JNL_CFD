@@ -2,7 +2,7 @@ module github.com/Jedsonofnel/jnlcfd
 
 go 1.24.7
 
-replace jedn.dev/jnlisp => github.com/Jedsonofnel/jnlisp v0.1.0
+replace jedn.dev/jnlisp => github.com/Jedsonofnel/jnlisp v0.1.4
 
 require (
 	github.com/cbroglie/mustache v1.4.0

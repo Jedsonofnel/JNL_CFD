@@ -13,7 +13,7 @@ type Polygon struct {
 	IsHole     bool
 
 	// private fields
-	regionID     int
+	RegionID     int
 	regionCenter Vec2
 	bounds       [4]float64
 	boundsCache  bool
@@ -175,7 +175,7 @@ func (p *Polygon) toPSLG(pointOffset int, boundaryMarkers map[string]int) ([]Vec
 
 	region := &Region{
 		Point:   p.regionCenter,
-		ID:      p.regionID,
+		ID:      p.RegionID,
 		MaxArea: -1,
 	}
 

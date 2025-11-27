@@ -65,9 +65,9 @@ func NewMeshViewer(mesh *geometry.Mesh, width, height int) *MeshViewer {
 		offsetY:          offsetY,
 		showEdges:        true,
 		showBoundaryOnly: false,
-		edgeColor:        color.RGBA{50, 50, 50, 255},
-		regionColors:     makeRegionColorFunc(mesh),
-		whiteImage: whiteImage,
+		edgeColor:        EdgeDark,
+		regionColors:     GetRegionColor,
+		whiteImage:       whiteImage,
 	}
 
 	v.buildTriangleCache()
@@ -79,7 +79,7 @@ func (v *MeshViewer) Update() error {
 }
 
 func (v *MeshViewer) Draw(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{240, 240, 240, 255})
+	screen.Fill(Background)
 
 	if len(v.triangleVertices) > 0 {
 		screen.DrawTriangles(v.triangleVertices, v.triangleIndices,
@@ -191,7 +191,7 @@ func (v *MeshViewer) drawBoundaryEdges(screen *ebiten.Image) {
 
 		lineColor := v.edgeColor
 		if conn.Marker != 0 {
-			lineColor = markerColor(int(conn.Marker))
+			lineColor = GetBoundaryColor(int(conn.Marker))
 		}
 
 		vector.StrokeLine(screen,
@@ -205,27 +205,5 @@ func (v *MeshViewer) worldToScreen(p geometry.Vec2) geometry.Vec2 {
 	return geometry.Vec2{
 		X: p.X*v.scale + v.offsetX,
 		Y: float64(v.height) - (p.Y*v.scale + v.offsetY),
-	}
-}
-
-func makeRegionColorFunc(mesh *geometry.Mesh) func(int) color.Color {
-	colors := map[int]color.Color{
-		0: color.RGBA{200, 200, 200, 255},
-		1: color.RGBA{100, 150, 255, 255},
-		2: color.RGBA{255, 100, 100, 255},
-		3: color.RGBA{100, 255, 100, 255},
-		4: color.RGBA{255, 200, 100, 255},
-	}
-
-	return func(region int) color.Color {
-		if c, ok := colors[region]; ok {
-			return c
-		}
-		return color.RGBA{
-			uint8((region * 67) % 256),
-			uint8((region * 113) % 256),
-			uint8((region * 191) % 256),
-			255,
-		}
 	}
 }

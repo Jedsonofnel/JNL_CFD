@@ -4,10 +4,12 @@ package nativedisp
 
 import (
 	_ "embed"
+	"image/color"
 	"sync"
 
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	jnl "jedn.dev/jnlisp"
 )
 
@@ -17,130 +19,153 @@ var NS *jnl.Namespace
 var nsSrc string
 
 //
-// Viewer manager - runs ebiten in goroutine with command channel
+// Unified viewer that can display different content types
 //
 
-type viewerCommand struct {
-	viewer ebiten.Game
-	done   chan struct{}
+type ViewerContent interface {
+	Draw(screen *ebiten.Image)
+	Layout(outsideWidth, outsideHeight int) (int, int)
 }
 
+type UnifiedViewer struct {
+	content     ViewerContent
+	mu          sync.RWMutex
+	width       int
+	height      int
+	shouldClose bool
+}
+
+func NewUnifiedViewer(width, height int) *UnifiedViewer {
+	return &UnifiedViewer{
+		width:  width,
+		height: height,
+	}
+}
+
+func (v *UnifiedViewer) SetContent(content ViewerContent) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.content = content
+	v.shouldClose = false // reset close flag when showing new
+}
+
+func (v *UnifiedViewer) Update() error {
+	// Handle window close button - just clear content instead of closing
+	if ebiten.IsWindowBeingClosed() {
+		v.mu.Lock()
+		v.content = nil
+		v.shouldClose = false
+		v.mu.Unlock()
+	}
+
+	// ESC key also clears content
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		v.mu.Lock()
+		v.content = nil
+		v.mu.Unlock()
+	}
+
+	return nil
+}
+
+func (v *UnifiedViewer) Draw(screen *ebiten.Image) {
+	v.mu.RLock()
+	content := v.content
+	v.mu.RUnlock()
+
+	if content != nil {
+		content.Draw(screen)
+	} else {
+		// Blank screen when no content
+		screen.Fill(color.RGBA{240, 240, 240, 255})
+	}
+}
+
+func (v *UnifiedViewer) Layout(outsideWidth, outsideHeight int) (int, int) {
+	v.mu.RLock()
+	content := v.content
+	v.mu.RUnlock()
+
+	if content != nil {
+		return content.Layout(outsideWidth, outsideHeight)
+	}
+	return v.width, v.height
+}
+
+//
+// Viewer manager - runs single persistent window
+//
+
 type viewerManager struct {
-	commandChan chan viewerCommand
-	closeChan   chan struct{}
-	running     bool
-	mu          sync.Mutex
+	viewer  *UnifiedViewer
+	started bool
+	mu      sync.Mutex
 }
 
 var globalManager *viewerManager
-var managerMu sync.Mutex
+var managerOnce sync.Once
 
-func getOrCreateManager() *viewerManager {
-	managerMu.Lock()
-	defer managerMu.Unlock()
-
-	if globalManager == nil {
+func getManager() *viewerManager {
+	managerOnce.Do(func() {
 		globalManager = &viewerManager{
-			commandChan: make(chan viewerCommand, 1),
-			closeChan:   make(chan struct{}),
+			viewer: NewUnifiedViewer(800, 600),
 		}
-	}
+	})
 	return globalManager
 }
 
-func (vm *viewerManager) start() {
+func (vm *viewerManager) ensureStarted() {
 	vm.mu.Lock()
-	if vm.running {
-		vm.mu.Unlock()
-		return
-	}
-	vm.running = true
-	vm.mu.Unlock()
+	defer vm.mu.Unlock()
 
-	go vm.runLoop()
-}
+	if !vm.started {
+		vm.started = true
+		go func() {
+			ebiten.SetWindowTitle("JNLisp CFD Viewer")
+			ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+			ebiten.SetWindowClosingHandled(true) // Intercept close button
 
-func (vm *viewerManager) runLoop() {
-	var currentViewer ebiten.Game
-	var gameRunning bool
-	var gameErrChan chan error
-
-	for {
-		select {
-		case cmd := <-vm.commandChan:
-			// If game is running, let it finish first
-			if gameRunning {
-				<-gameErrChan
-				gameRunning = false
+			if err := ebiten.RunGame(vm.viewer); err != nil {
+				// Window was closed by user, reset started flag
+				vm.mu.Lock()
+				vm.started = false
+				vm.mu.Unlock()
 			}
-
-			currentViewer = cmd.viewer
-			gameErrChan = make(chan error, 1)
-			gameRunning = true
-
-			// Start new game in goroutine
-			go func(g ebiten.Game, errChan chan error) {
-				errChan <- ebiten.RunGame(g)
-			}(currentViewer, gameErrChan)
-
-			close(cmd.done)
-
-		case <-vm.closeChan:
-			vm.mu.Lock()
-			vm.running = false
-			vm.mu.Unlock()
-			return
-		}
+		}()
 	}
 }
 
-func (vm *viewerManager) showViewer(viewer ebiten.Game) {
-	vm.start()
-
-	done := make(chan struct{})
-	select {
-	case vm.commandChan <- viewerCommand{viewer: viewer, done: done}:
-		<-done
-	default:
-		// Channel full, skip
-	}
-}
-
-func (vm *viewerManager) close() {
-	vm.mu.Lock()
-	if !vm.running {
-		vm.mu.Unlock()
-		return
-	}
-	vm.mu.Unlock()
-
-	select {
-	case vm.closeChan <- struct{}{}:
-	default:
-	}
+func (vm *viewerManager) showContent(content ViewerContent) {
+	vm.ensureStarted()
+	vm.viewer.SetContent(content)
 }
 
 //
-// JNLisp bindings
+// Adapt existing viewers to ViewerContent interface
 //
 
-func init() {
-	NS = jnl.NewNamespace("jnl.cfd.nativedisp", nsSrc)
+type domainViewerAdapter struct {
+	*DomainViewer
+}
 
-	// Domain viewer
-	jnl.CreatePredicate[*DomainViewer](NS, "domain-viewer")
-	NS.BindNativeFn(".show-domain",
-		jnl.PosArity("domain", "width", "height"),
-		showDomain)
+func (d *domainViewerAdapter) Draw(screen *ebiten.Image) {
+	d.DomainViewer.Draw(screen)
+}
 
-	// Mesh viewer
-	jnl.CreatePredicate[*MeshViewer](NS, "mesh-viewer")
-	NS.BindNativeFn(".show-mesh",
-		jnl.PosArity("mesh", "width", "height"),
-		showMesh)
+func (d *domainViewerAdapter) Layout(w, h int) (int, int) {
+	return d.DomainViewer.Layout(w, h)
+}
 
-	// Viewer control
-	NS.BindNativeFn(".viewer-close", jnl.ZeroArity(), closeViewer)
+type meshViewerAdapter struct {
+	*MeshViewer
+}
+
+func (m *meshViewerAdapter) Draw(screen *ebiten.Image) {
+	m.MeshViewer.Draw(screen)
+}
+
+func (m *meshViewerAdapter) Layout(w, h int) (int, int) {
+	return m.MeshViewer.Layout(w, h)
 }
 
 // Sexp implementations
@@ -161,41 +186,76 @@ func (mv *MeshViewer) Type() string {
 	return "mesh-viewer"
 }
 
+//
+// jnlisp bindings
+//
+
+func init() {
+	NS = jnl.NewNamespace("jnl.cfd.nativedisp", nsSrc)
+
+	// Viewer functions
+	NS.BindNativeFn(".show-domain",
+		jnl.PosVarArity("domain", "width", "height"),
+		showDomain)
+	NS.BindNativeFn(".show-mesh",
+		jnl.PosVarArity("mesh", "width", "height"),
+		showMesh)
+	NS.BindNativeFn(".clear-viewer", jnl.ZeroArity(), clearViewer)
+}
+
+// Native functions
+
 func showDomain(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	domain := jnl.GetArg[*geometry.Domain](ctx)
-	width := jnl.GetArg[jnl.Int](ctx)
-	height := jnl.GetArg[jnl.Int](ctx)
+	widthArgs := jnl.GetVariadic[jnl.Int](ctx)
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
 
-	viewer := NewDomainViewer(domain, int(width), int(height))
-	mgr := getOrCreateManager()
-	mgr.showViewer(viewer)
+	width, height := 800, 600
+	if len(widthArgs) >= 2 {
+		width = int(widthArgs[0])
+		height = int(widthArgs[1])
+	}
 
-	return viewer, nil
+	dv := NewDomainViewer(domain, width, height)
+	adapter := &domainViewerAdapter{dv}
+
+	mgr := getManager()
+	mgr.showContent(adapter)
+
+	return jnl.Nil{}, nil
 }
 
 func showMesh(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	mesh := jnl.GetArg[*geometry.Mesh](ctx)
-	width := jnl.GetArg[jnl.Int](ctx)
-	height := jnl.GetArg[jnl.Int](ctx)
+	sizeArgs := jnl.GetVariadic[jnl.Int](ctx)
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
 
-	viewer := NewMeshViewer(mesh, int(width), int(height))
-	mgr := getOrCreateManager()
-	mgr.showViewer(viewer)
+	width, height := 800, 600
+	if len(sizeArgs) >= 2 {
+		width = int(sizeArgs[0])
+		height = int(sizeArgs[1])
+	}
 
-	return viewer, nil
+	mv := NewMeshViewer(mesh, width, height)
+	adapter := &meshViewerAdapter{mv}
+
+	mgr := getManager()
+	mgr.showContent(adapter)
+
+	return jnl.Nil{}, nil
 }
 
-func closeViewer(ctx *jnl.CallContext) (jnl.Sexp, error) {
+func clearViewer(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	mgr := getOrCreateManager()
-	mgr.close()
+
+	mgr := getManager()
+	mgr.viewer.SetContent(nil)
+
 	return jnl.Nil{}, nil
 }

@@ -20,6 +20,7 @@ func init() {
 
 	meshArity := jnl.PosArity("mesh")
 	jnl.CreatePredicate[*Mesh](NS, "mesh")
+	NS.BindNativeFn(".make-mesh", jnl.PosArity("domain", "opt-string"), makeMesh)
 	NS.BindNativeFn(".mesh-ncells", meshArity, meshNumCells)
 	NS.BindNativeFn(".mesh-nverts", meshArity, meshNumVertices)
 	NS.BindNativeFn(".mesh-region-names", meshArity, meshRegionNames)
@@ -80,6 +81,19 @@ func (p *Polygon) String() string {
 
 func (p *Polygon) Type() string {
 	return "polygon"
+}
+
+func makeMesh(ctx *jnl.CallContext) (jnl.Sexp, error) {
+	domain := jnl.GetArg[*Domain](ctx)
+	options := jnl.GetArg[jnl.String](ctx)
+	if err := ctx.Validate(); err != nil {
+		return nil, err
+	}
+	mesh, err := MeshDomain(domain, options.String())
+	if err != nil {
+		return nil, err
+	}
+	return mesh, nil
 }
 
 func meshNumCells(ctx *jnl.CallContext) (jnl.Sexp, error) {
@@ -293,3 +307,4 @@ func polygonContains(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	contains := polygon.Contains(Vec2{X: float64(x), Y: float64(y)})
 	return jnl.Boolean(contains), nil
 }
+
