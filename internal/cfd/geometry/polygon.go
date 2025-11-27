@@ -10,6 +10,7 @@ type Polygon struct {
 	Points     []Vec2
 	Boundaries []string
 	Region     string
+	IsHole     bool
 
 	// private fields
 	regionID     int
@@ -158,7 +159,7 @@ func (p *Polygon) computeGeometry() {
 }
 
 // ToPSLG converts to PSLG format for Triangle.c
-func (p *Polygon) ToPSLG(pointOffset int, boundaryMarkers map[string]int) ([]Vec2, []Segment, *Region) {
+func (p *Polygon) toPSLG(pointOffset int, boundaryMarkers map[string]int) ([]Vec2, []Segment, *Region) {
 	segments := make([]Segment, len(p.Points))
 	for i := 0; i < len(p.Points); i++ {
 		marker := 0

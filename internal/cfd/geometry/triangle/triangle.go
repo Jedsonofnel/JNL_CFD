@@ -166,7 +166,6 @@ func inputToC(input Input) cInput {
 }
 
 // cOutputToGo converts C types from Triangle.c to Go types.
-// Triangle.c uses 1-based indexing, so we convert to 0-based here
 func cOutputToGo(co cOutput) *Output {
 	output := &Output{}
 
@@ -182,7 +181,7 @@ func cOutputToGo(co cOutput) *Output {
 	if len(co.Triangles) > 0 {
 		output.Triangles = make([]int, len(co.Triangles))
 		for i, v := range co.Triangles {
-			output.Triangles[i] = int(v) - 1
+			output.Triangles[i] = int(v)
 		}
 	}
 
@@ -193,7 +192,7 @@ func cOutputToGo(co cOutput) *Output {
 			if v == -1 {
 				output.Neighbors[i] = -1
 			} else {
-				output.Neighbors[i] = int(v) - 1
+				output.Neighbors[i] = int(v)
 			}
 		}
 	}
@@ -202,7 +201,7 @@ func cOutputToGo(co cOutput) *Output {
 	if len(co.Segments) > 0 {
 		output.Segments = make([]int, len(co.Segments))
 		for i, v := range co.Segments {
-			output.Segments[i] = int(v) - 1
+			output.Segments[i] = int(v)
 		}
 	}
 
@@ -218,7 +217,7 @@ func cOutputToGo(co cOutput) *Output {
 	if len(co.Edges) > 0 {
 		output.Edges = make([]int, len(co.Edges))
 		for i, v := range co.Edges {
-			output.Edges[i] = int(v) - 1
+			output.Edges[i] = int(v)
 		}
 	}
 

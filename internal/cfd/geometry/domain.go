@@ -43,6 +43,30 @@ func (db *DomainBuilder) AddPolygon(p Polygon) error {
 	return nil
 }
 
+func (db *DomainBuilder) AddHole(p Polygon) error {
+	if db.err != nil {
+		return nil
+	}
+
+	// Reverse points to make it clockwise (hole convention)
+	reversed := make([]Vec2, len(p.Points))
+	for i := range p.Points {
+		reversed[i] = p.Points[len(p.Points)-1-i]
+	}
+	p.Points = reversed
+
+	// Also reverse boundaries to match
+	reversedBoundaries := make([]string, len(p.Boundaries))
+	for i := range p.Boundaries {
+		reversedBoundaries[i] = p.Boundaries[len(p.Boundaries)-1-i]
+	}
+	p.Boundaries = reversedBoundaries
+
+	p.IsHole = true
+
+	return db.AddPolygon(p)
+}
+
 func (db *DomainBuilder) Build() (*Domain, error) {
 	slices.SortFunc(db.polygons, func(p1, p2 Polygon) int {
 		return cmp.Compare(p1.Area(), p2.Area())
@@ -166,16 +190,22 @@ func (d *Domain) ToPSLG() PSLG {
 	var allPoints []Vec2
 	var allSegments []Segment
 	var allRegions []Region
+	var allHoles []Vec2 // add this
 
 	pointOffset := 0
 	for i := range d.Polygons {
 		poly := d.Polygons[i]
-		pts, segs, reg := poly.ToPSLG(pointOffset, d.boundaryNames)
+		pts, segs, reg := poly.toPSLG(pointOffset, d.boundaryNames)
+
 		allPoints = append(allPoints, pts...)
 		allSegments = append(allSegments, segs...)
-		if reg != nil {
+
+		if poly.IsHole {
+			allHoles = append(allHoles, poly.regionCenter)
+		} else if reg != nil {
 			allRegions = append(allRegions, *reg)
 		}
+
 		pointOffset += len(pts)
 	}
 
@@ -183,5 +213,6 @@ func (d *Domain) ToPSLG() PSLG {
 		Points:   allPoints,
 		Segments: allSegments,
 		Regions:  allRegions,
+		Holes:    allHoles,
 	}
 }

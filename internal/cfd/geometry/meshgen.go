@@ -3,8 +3,6 @@ package geometry
 import (
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry/triangle"
 	"math"
-
-	"fmt"
 )
 
 //
@@ -42,38 +40,6 @@ func MeshDomain(domain *Domain, options string) (*Mesh, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	return triangleOutputToMesh(output, domain), nil
-}
-
-func MeshDomainDebug(domain *Domain, options string) (*Mesh, error) {
-	pslg := domain.ToPSLG()
-
-	// DEBUG: Check PSLG
-	fmt.Printf("PSLG Debug:\n")
-	fmt.Printf("  Points: %d\n", len(pslg.Points))
-	fmt.Printf("  Segments: %d\n", len(pslg.Segments))
-	fmt.Printf("  Regions: %d\n", len(pslg.Regions))
-	if len(pslg.Regions) > 0 {
-		fmt.Printf("  Region[0]: Point=%+v, ID=%d, MaxArea=%f\n",
-			pslg.Regions[0].Point, pslg.Regions[0].ID, pslg.Regions[0].MaxArea)
-	}
-	for i, seg := range pslg.Segments {
-		fmt.Printf("  Segment[%d]: %d->%d, Marker=%d\n", i, seg.P0, seg.P1, seg.Marker)
-	}
-
-	input := pslgToTriangleInput(pslg)
-
-	output, err := triangle.Triangulate(input, options)
-	if err != nil {
-		return nil, err
-	}
-
-	// DEBUG: Check Triangle output
-	fmt.Printf("Triangle Output:\n")
-	fmt.Printf("  Points: %d\n", len(output.Points)/2)
-	fmt.Printf("  Triangles: %d\n", len(output.Triangles)/3)
-	fmt.Printf("  Segments: %d\n", len(output.Segments)/2)
 
 	return triangleOutputToMesh(output, domain), nil
 }

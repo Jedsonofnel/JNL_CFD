@@ -21,28 +21,23 @@ var header string = `
 
 func main() {
 	fmt.Println(header)
-    fmt.Println("\ndisplaying mesh...")
+	fmt.Println("\ndisplaying mesh...")
 
-    var db geometry.DomainBuilder
-    db.AddPolygon(geometry.MakeRectangle(0, 0, 100, 100, "pcb", "outer"))
-    
-    domain, err := db.Build()
-    if err != nil {
-        log.Fatal(err)
-    }
+	var db geometry.DomainBuilder
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 100, 100, "pcb", "outer"))
+	db.AddPolygon(geometry.MakeRectangle(10, 10, 30, 30, "chip", "wall"))
 
-    // Debug: check if region center is set correctly
-    fmt.Printf("Region center: %+v\n", domain.Polygons[0].Center())
-    
-    // Use more reasonable triangle size
-    mesh, err := geometry.MeshDomain(domain, "pq30a500")
-    if err != nil {
-        log.Fatal(err)
-    }
+	db.AddHole(geometry.MakeCircle(50, 50, 5, 32, "hole", "hole-wall"))
 
-    // Debug: print mesh stats
-    fmt.Printf("Mesh: %d vertices, %d connections\n", 
-        len(mesh.Vertices), len(mesh.Connections))
+	domain, err := db.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mesh, err := geometry.MeshDomain(domain, "pzq30a10")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	viewer := nativedisp.NewMeshViewer(mesh, 800, 600)
 
