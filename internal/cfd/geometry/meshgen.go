@@ -33,7 +33,7 @@ type Region struct {
 
 // MeshDomain runs Triangle.c on the domain and returns a fully qualified *Mesh
 func MeshDomain(domain *Domain, options string) (*Mesh, error) {
-	pslg := domain.ToPSLG()
+	pslg := domain.toPSLG()
 	input := pslgToTriangleInput(pslg) // Pending
 
 	output, err := triangle.Triangulate(input, options)

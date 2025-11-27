@@ -1,12 +1,13 @@
 module github.com/Jedsonofnel/jnlcfd
 
-go 1.24.0
+go 1.24.7
 
-toolchain go1.24.7
+replace jedn.dev/jnlisp => github.com/Jedsonofnel/jnlisp v0.1.0
 
 require (
 	github.com/cbroglie/mustache v1.4.0
 	github.com/hajimehoshi/ebiten/v2 v2.9.4
+	jedn.dev/jnlisp v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -16,4 +17,5 @@ require (
 	github.com/jezek/xgb v1.1.1 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/term v0.36.0 // indirect
 )

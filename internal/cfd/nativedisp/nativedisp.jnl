@@ -1,0 +1,40 @@
+# JNLisp CFD Native Display Package
+
+- Author: Jed Nelson  
+- Date: [Current]
+
+Native visualization for domains and meshes using Ebitengine.
+
+TODO: Add the `ns` macro to make clear that this requires access
+to jnl.cfd.geometry
+
+
+## Display functions
+
+Shows a domain in a native window. Returns viewer handle.
+Window size defaults to 800x600.
+j(defn show-domain
+  ([domain] (show-domain domain 800 600))
+  ([domain width height]
+    (.show-domain domain width height)))
+
+Shows a mesh in a native window. Returns viewer handle.
+Window size defaults to 800x600.
+j(defn show-mesh
+  ([mesh] (show-mesh mesh 800 600))
+  ([mesh width height]
+    (.show-mesh mesh width height)))
+
+Closes the viewer window gracefully.
+j(defn close-viewer []
+  (.viewer-close))
+
+
+## Convenience
+
+View whatever geometry object you have.
+j(defn view [obj]
+  (cond
+    (domain? obj) (show-domain obj)
+    (mesh? obj) (show-mesh obj)
+    :else (throw (ex-info "Cannot view object of type " (type obj)))))

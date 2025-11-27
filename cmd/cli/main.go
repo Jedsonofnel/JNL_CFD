@@ -3,14 +3,18 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/fvm"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/nativedisp"
-	"github.com/hajimehoshi/ebiten/v2"
+
+	jnl "jedn.dev/jnlisp"
+	"jedn.dev/jnlisp/cli"
 )
 
 var header string = `
@@ -21,26 +25,43 @@ var header string = `
  __/ /_/ /_/_/\____/_/   /_____/  
 /___/                             `
 
+var runtime *jnl.Runtime
+
+func init() {
+	lispIO := jnl.IO{
+		FS:     os.DirFS("."),
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}
+
+	runtime = jnl.NewRuntime(lispIO)
+	runtime.RegisterNamespace(geometry.NS)
+	runtime.RegisterNamespace(nativedisp.NS)
+}
+
 func main() {
 	fmt.Println(header)
-	fmt.Println("\nSolving PCB heat transfer...")
-
-	mesh := buildPCBMesh()
-
-	ctx := setupPCBCase(mesh)
-
-	T := solveHeatEquation(mesh, ctx)
-
-	fmt.Printf("\nTemperature range: %.2f - %.2f K\n", minTemp(T), maxTemp(T))
-	fmt.Println("Displaying solution...")
-
-	viewer := nativedisp.NewSolutionViewer(mesh, T, 800, 600)
-	ebiten.SetWindowSize(640, 480)
-	ebiten.SetWindowTitle("jnlCFD viewer")
-
-	if err := ebiten.RunGame(viewer); err != nil {
-		log.Fatal(err)
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
+}
+
+func run() error {
+	switch len(os.Args[1:]) {
+	case 0:
+		return startREPL()
+	}
+	return errors.New("jnlcfd does not expect any args")
+}
+
+func startREPL() error {
+	repl := cli.NewREPL(runtime)
+	if err := repl.RawTerminal(); err != nil {
+		return repl.SimpleTerminal()
+	}
+	return nil
 }
 
 func buildPCBMesh() *geometry.Mesh {

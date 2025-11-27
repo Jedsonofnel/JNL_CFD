@@ -1,0 +1,117 @@
+# JNLisp CFD Geometry Package
+
+- Author: Jed Nelson
+- Date: 27/11/25
+
+High level geometry and domain construction for CFD workflow.
+
+
+## Polygon constructors
+
+Rectangle with sane defaults - single boundary name applies to all edges.
+j(defn rect
+  ([x y w h] (rect x y w h ""))
+  ([x y w h region] (rect x y w h region ""))
+  ([x y w h region boundary]
+    (.make-rectangle (float x) (float y) (float w) (float h) region boundary))
+  ([x y w h region bottom right top left]
+    (.make-rectangle (float x) (float y) (float w) (float h) 
+                     region bottom right top left)))
+
+Circle with reasonable discretization default.
+j(defn circle
+  ([cx cy r] (circle cx cy r ""))
+  ([cx cy r region] (circle cx cy r region ""))
+  ([cx cy r region boundary] (circle cx cy r region boundary 64))
+  ([cx cy r region boundary n-sides]
+    (.make-circle (float cx) (float cy) (float r) n-sides region boundary)))
+
+General polygon from point pairs [x0 y0 x1 y1 ...].
+j(defn poly
+  ([points region] (poly points region ""))
+  ([points region boundary]
+    (.make-polygon points region boundary)))
+
+
+## Domain builder operations
+
+Creates a new empty domain builder.
+j(defn domain-builder []
+  (.make-domain-builder))
+
+Adds a polygon to the domain.
+j(defn add-poly [builder polygon]
+  (.domain-builder-add-polygon builder polygon))
+
+Adds a polygon as a hole (reverses winding automatically).
+j(defn add-hole [builder polygon]
+  (.domain-builder-add-hole builder polygon))
+
+Builds the final domain from accumulated polygons.
+j(defn build-domain [builder]
+  (.domain-builder-build builder))
+
+
+## Domain construction macro
+
+Builds a domain from a series of polygon expressions.
+j(defmacro domain [...shapes]
+  (let [builder-sym (gensym)]
+    `(let [~builder-sym (domain-builder)]
+       ~@(map (fn [shape]
+                (if (and (list? shape) 
+                         (= 'hole (first shape)))
+                    `(add-hole ~builder-sym ~(second shape))
+                    `(add-poly ~builder-sym ~shape)))
+              shapes)
+       (build-domain ~builder-sym))))
+
+
+## Domain queries
+
+Returns domain bounds as [minx miny maxx maxy].
+j(defn domain-bounds [d]
+  (.domain-bounds d))
+
+
+## Polygon queries
+
+Returns polygon area.
+j(defn poly-area [p]
+  (.polygon-area p))
+
+Returns polygon bounds as [minx miny maxx maxy].
+j(defn poly-bounds [p]
+  (.polygon-bounds p))
+
+Tests if polygon contains point (x, y).
+j(defn poly-contains? [p x y]
+  (.polygon-contains p (float x) (float y)))
+
+
+## Example usage patterns
+
+Simple rectangular domain with circular hole:
+j(def ^:private example-1
+  (domain
+    (rect 0 0 10 10 "fluid" "wall")
+    (hole (circle 5 5 1 "void"))))
+
+Multi-region with named boundaries:
+j(def ^:private example-2
+  (domain
+    (rect 0 0 10 10 "outer" "inlet" "wall" "outlet" "wall")
+    (rect 2 2 6 6 "inner" "interface")))
+
+Programmatic construction for parameter sweeps:
+j(defn ^:private make-heat-sink [fin-count fin-height]
+  (let [base (rect 0 0 10 2 "solid" "bottom")]
+    (-> (domain-builder)
+        (add-poly base)
+        ((fn [b] 
+           (reduce (fn [builder i]
+                     (add-poly builder
+                               (rect (* i 2) 2 1 fin-height "solid" "wall")))
+                   b
+                   (range fin-count))))
+        (build-domain))))

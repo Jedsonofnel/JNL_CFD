@@ -186,7 +186,7 @@ func (d *Domain) Bounds() (minX, minY, maxX, maxY float64) {
 	return
 }
 
-func (d *Domain) ToPSLG() PSLG {
+func (d *Domain) toPSLG() PSLG {
 	var allPoints []Vec2
 	var allSegments []Segment
 	var allRegions []Region
