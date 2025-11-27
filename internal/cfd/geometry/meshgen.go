@@ -165,7 +165,7 @@ func triangleOutputToMesh(output *triangle.Output, domain *Domain) *Mesh {
 		VertexIndices: vertexIndices,
 		FaceStarts:    faceStarts,
 
-		BoundaryNames: meshRegionNames,
+		BoundaryNames: meshBoundaryNames,
 		RegionNames:   meshRegionNames,
 	}
 
