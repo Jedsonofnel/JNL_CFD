@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"sync"
 
+	"github.com/Jedsonofnel/jnlcfd/internal/cfd/fvm"
 	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -168,6 +169,18 @@ func (m *meshViewerAdapter) Layout(w, h int) (int, int) {
 	return m.MeshViewer.Layout(w, h)
 }
 
+type solutionViewerAdapter struct {
+	*SolutionViewer
+}
+
+func (s *solutionViewerAdapter) Draw(screen *ebiten.Image) {
+	s.SolutionViewer.Draw(screen)
+}
+
+func (s *solutionViewerAdapter) Layout(w, h int) (int, int) {
+	return s.SolutionViewer.Layout(w, h)
+}
+
 // Sexp implementations
 
 func (dv *DomainViewer) String() string {
@@ -186,6 +199,14 @@ func (mv *MeshViewer) Type() string {
 	return "mesh-viewer"
 }
 
+func (sv *SolutionViewer) String() string {
+	return jnl.FormatNonReadable("cfd", "solution-viewer")
+}
+
+func (sv *SolutionViewer) Type() string {
+	return "solution-viewer"
+}
+
 //
 // jnlisp bindings
 //
@@ -200,6 +221,9 @@ func init() {
 	NS.BindNativeFn(".show-mesh",
 		jnl.PosVarArity("mesh", "width", "height"),
 		showMesh)
+	NS.BindNativeFn(".show-solution",
+		jnl.PosVarArity("mesh", "field", "width", "height"),
+		showSolution)
 	NS.BindNativeFn(".clear-viewer", jnl.ZeroArity(), clearViewer)
 }
 
@@ -242,6 +266,36 @@ func showMesh(ctx *jnl.CallContext) (jnl.Sexp, error) {
 
 	mv := NewMeshViewer(mesh, width, height)
 	adapter := &meshViewerAdapter{mv}
+
+	mgr := getManager()
+	mgr.showContent(adapter)
+
+	return jnl.Nil{}, nil
+}
+
+func showSolution(ctx *jnl.CallContext) (jnl.Sexp, error) {
+	mesh := jnl.GetArg[*geometry.Mesh](ctx)
+	field := jnl.GetArg[*fvm.Field](ctx)
+	sizeArgs := jnl.GetVariadic[jnl.Int](ctx)
+	if err := ctx.Validate(); err != nil {
+		return nil, err
+	}
+
+	width, height := 800, 600
+	if len(sizeArgs) >= 2 {
+		width = int(sizeArgs[0])
+		height = int(sizeArgs[1])
+	}
+
+	if field.IsScalar() {
+		return nil, jnl.NewRTErr(
+			jnl.ErrArgType,
+			"cannot visualize constant field",
+		)
+	}
+
+	sv := NewSolutionViewer(mesh, field.Values, width, height)
+	adapter := &solutionViewerAdapter{sv}
 
 	mgr := getManager()
 	mgr.showContent(adapter)

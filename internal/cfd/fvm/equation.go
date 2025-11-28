@@ -30,6 +30,7 @@ type Equation struct {
 
 	cachedCSR   *linalg.CSR
 	csrValueMap []csrMapping // how to fill CSR values
+	solutions   []float64    // scratch buffer
 
 	mesh *geometry.Mesh
 }
@@ -108,6 +109,7 @@ func NewEquation(mesh *geometry.Mesh, regions ...string) *Equation {
 		boundaryConnections: boundaryConnections,
 		cellToLocal:         cellToLocal,
 		mesh:                mesh,
+		solutions:           make([]float64, len(mesh.Centroids)),
 	}
 
 	eq.buildCSRStructure()
@@ -307,8 +309,29 @@ func (eq *Equation) buildCSRStructure() {
 	eq.csrValueMap = csrValueMap
 }
 
+func (eq *Equation) Solve(solver linalg.Solver, ctx *Context, fieldName string) {
+	field := ctx.Fields[fieldName]
+	if field.IsScalar() {
+		panic("cannot solve equation into constant field")
+	}
+
+	// Extract initial guess from field at active cells
+	for i, globalIdx := range eq.activeCells {
+		eq.solutions[i] = field.Values[globalIdx]
+	}
+
+	// Solve into scratch buffer
+	eq.updateCSRValues()
+	solver.Solve(eq.getCSR(), eq.Source, eq.solutions)
+
+	// Write back to field
+	for i, globalIdx := range eq.activeCells {
+		field.Values[globalIdx] = eq.solutions[i]
+	}
+}
+
 // updateCSRValues updates the CSR matrix (zero-allocation)
-func (eq *Equation) UpdateCSRValues() {
+func (eq *Equation) updateCSRValues() {
 	values := eq.cachedCSR.Values
 	for csrIdx, mapping := range eq.csrValueMap {
 		switch mapping.source {
@@ -323,6 +346,6 @@ func (eq *Equation) UpdateCSRValues() {
 
 }
 
-func (eq *Equation) GetCSR() *linalg.CSR {
+func (eq *Equation) getCSR() *linalg.CSR {
 	return eq.cachedCSR
 }

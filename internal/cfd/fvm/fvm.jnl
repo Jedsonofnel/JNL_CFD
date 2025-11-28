@@ -1,0 +1,110 @@
+# JNLisp CFD FVM Package
+
+- Author: Jed Nelson
+- Date: 27/11/25
+
+High level FVM interactions for CFD workflows.
+
+
+## Fields
+
+Creates context from mesh and initializes empty field storage.
+j(defn make-context [mesh]
+  (.make-context mesh))
+
+Adds a field with per-cell values to context.
+j(defn add-field! [ctx name vals]
+  (.add-field ctx name vals))
+
+Adds a field with uniform value across all cells to context.
+j(defn add-uniform-field! [ctx name val]
+  (.add-uniform-field ctx name val))
+
+Adds a field with single constant value to context.
+j(defn add-constant-field! [ctx name val]
+  (.add-constant-field ctx name val))
+
+Sets field values for cells in named region.
+j(defn set-region-vals! [ctx fname regname val]
+  (.set-region-vals ctx fname regname val))
+
+
+## Expressions
+
+Expression constructors enable field arithmetic without runtime overhead.
+
+Creates expression from field name in context.
+j(defn expr-field [ctx name]
+  (.expr-field ctx name))
+
+Creates constant expression with fixed value.
+j(defn expr-const [val]
+  (.expr-const val))
+
+Multiplies two expressions.
+j(defn expr-mul [e1 e2]
+  (.expr-mul e1 e2))
+
+Adds two expressions.
+j(defn expr-add [e1 e2]
+  (.expr-add e1 e2))
+
+Subtracts two expressions.
+j(defn expr-sub [e1 e2]
+  (.expr-sub e1 e2))
+
+Divides two expressions.
+j(defn expr-quot [e1 e2]
+  (.expr-quot e1 e2))
+
+
+## Equations
+
+Creates equation on mesh for named field.
+j(defn make-equation [mesh]
+  (.make-equation mesh))
+
+Zeros equation coefficients for reuse.
+j(defn zero! [eq]
+  (.equation-zero eq))
+
+Solves equation with given solver and writes solution to named field.
+j(defn solve! [eq solver ctx fname]
+  (.equation-solve eq solver ctx fname))
+
+
+## Operators
+
+Operators accumulate coefficients into equation matrices. They mutate the equation in place and return it for threading.
+
+Adds Laplacian term to equation with gamma diffusivity.
+j(defn laplacian! [eq ctx phi gamma]
+  (.laplacian eq ctx phi gamma))
+
+Adds linearized source term to equation.
+j(defn source! [eq ctx phi su sp]
+  (.source eq ctx phi su sp))
+
+
+## Boundary Conditions
+
+Boundary conditions modify equation coefficients and source terms. They are applied after flux operators accumulate boundary fluxes.
+
+Applies Dirichlet boundary condition with fixed value.
+j(defn bc-dirichlet! [eq ctx bname val]
+  (.bc-dirichlet eq ctx bname val))
+
+Applies Neumann boundary condition with fixed flux.
+j(defn bc-neumann! [eq ctx bname val]
+  (.bc-neumann eq ctx bname val))
+
+Applies Robin boundary condition with mixed coefficients.
+j(defn bc-robin! [eq ctx bname alpha gamma]
+  (.bc-robin eq ctx bname alpha gamma))
+
+
+## High-level helpers
+
+Threading helper for equation assembly.
+j(defn assemble [eq ...ops]
+  (reduce (fn [e op] (op e)) eq ops))

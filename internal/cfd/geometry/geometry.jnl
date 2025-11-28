@@ -3,14 +3,31 @@
 - Author: Jed Nelson
 - Date: 27/11/25
 
-High level geometry and domain construction for CFD workflow.
+High level geometry and domain construction for CFD workflows.
 
 
 ## Meshing
 
 Meshes the domain with Triangle.c according to the option string passed.
-j(defn mesh [domain opt-string]
+j(defn mesh-tris [domain opt-string]
   (.make-mesh domain opt-string))
+
+Returns the number of cells in a given mesh.
+j(defn ncells [mesh]
+  (.mesh-ncells mesh))
+
+Returns the number of vertices in a given mesh.
+j(defn nverts [mesh]
+  (.mesh-nverts mesh))
+
+Returns a map of the region name mapping for a mesh.
+j(defn region-names [mesh]
+  (.mesh-region-names mesh))
+
+Returns a map of the boundary name mapping for a mesh.
+j(defn boundary-names [mesh]
+  (.mesh-boundary-names mesh))
+
 
 ## Polygon constructors
 
@@ -109,7 +126,7 @@ j(def ^:private example-2
     (rect 0 0 10 10 "outer" "inlet" "wall" "outlet" "wall")
     (rect 2 2 6 6 "inner" "interface")))
 
-(defn- make-chip-array [x0 y0 rows cols chip-w chip-h spacing]
+j(defn- make-chip-array [x0 y0 rows cols chip-w chip-h spacing]
   (let [builder (domain-builder)]
     (doseq [i (range rows)
             j (range cols)]

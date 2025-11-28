@@ -1,0 +1,62 @@
+# 1D Steady Heat Diffusion Test
+
+Simple validation case for FVM implementation. Horizontal bar with fixed
+temperatures at ends.
+
+
+## Problem Setup
+
+Bar geometry: 1m long, 0.1m wide. Left end at 400K, right end at 300K. Thermal
+conductivity 50 W/m·K.
+
+j(require 'jnl.cfd.geometry)
+j(require 'jnl.cfd.fvm)
+
+j(def bar-domain
+  (domain
+    (rect 0 0 1.0 0.2 "solid" 
+          "left" "adiabatic" "right" "adiabatic")))
+
+j(def bar-mesh
+  (mesh-tris bar-domain "pzq30a0.001"))
+
+
+## Field Initialization
+
+Create context and initialize temperature field with linear guess.
+j(def ctx (make-context bar-mesh))
+
+j(add-uniform-field! ctx "T" 350.0)
+j(add-constant-field! ctx "k" 50.0)
+
+
+## Equation Assembly
+
+Laplacian operator for diffusion plus Dirichlet boundaries.
+j(def T-eq (make-equation bar-mesh))
+
+j(-> T-eq
+    zero!
+    (laplacian! ctx "T" (expr-field ctx "k"))
+    (bc-dirichlet! ctx "left" 400.0)
+    (bc-dirichlet! ctx "right" 300.0))
+
+
+## Solve
+
+Create solver and solve equation directly into T field.
+j(def solver (make-solver (count (ctx "T")) 1000 1e-6))
+
+j(solve! T-eq solver ctx "T")
+
+
+## Validation
+
+Analytical solution is linear profile. Check center temperature.
+j(def T-field (ctx "T"))
+j(def T-vals (.field-values T-field))
+j(def T-center (nth T-vals (/ (count T-vals) 2)))
+
+j(println "Center temperature:" T-center)
+j(println "Expected (analytical): 350.0 K")
+j(println "Error:" (- T-center 350.0) "K")

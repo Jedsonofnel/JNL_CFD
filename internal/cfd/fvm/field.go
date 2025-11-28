@@ -9,7 +9,7 @@ import (
 //
 
 type Field struct {
-	Name   string
+	name   string
 	Values []float64
 	Scalar float64
 }
@@ -53,8 +53,13 @@ func (ctx *Context) AddField(name string, values []float64) {
 		panic("context cannot create a field with an empty name")
 	}
 
+	nVals := len(ctx.Mesh.Centroids)
+	if len(values) != nVals {
+		panic("context cannot create a field with a different number of values as cells")
+	}
+
 	ctx.Fields[name] = &Field{
-		Name:   name,
+		name:   name,
 		Values: values,
 	}
 }
@@ -78,7 +83,7 @@ func (ctx *Context) AddConstantField(name string, value float64) {
 	}
 
 	ctx.Fields[name] = &Field{
-		Name:   name,
+		name:   name,
 		Values: nil,
 		Scalar: value,
 	}
@@ -105,7 +110,7 @@ func (ctx *Context) AddRegionField(name string, regionValues map[string]float64,
 }
 
 // SetRegionValues modifies a field's values for specific regions
-func (ctx *Context) SetRegionValues(fieldName string, regionName string, value float64) {
+func (ctx *Context) SetRegionValues(fieldName, regionName string, value float64) {
 	field, ok := ctx.Fields[fieldName]
 	if !ok {
 		panic("field " + fieldName + " not found")

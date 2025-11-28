@@ -1,0 +1,14 @@
+# JNLisp CFD Linalg Package
+
+- Author: Jed Nelson
+- Date: 27/11/25
+
+Linear algebra for solving CFD.
+
+
+## Solvers
+
+Creates Jacobi preconditioned conjugate gradient solver with max iterations and
+tolerance.
+j(defn make-solver [ncells max-iters tol]
+  (.make-jacobi-cg ncells max-iters tol))
