@@ -3,10 +3,10 @@
 bin
 
 # asset copying for production
-internal/web/assets.go
-internal/web/assets
-internal/web/templates
-internal/web/jnlisp
+web/assets.go
+web/assets
+web/templates
+web/jnlisp
 
 # production logs
 logs/
