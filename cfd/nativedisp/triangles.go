@@ -3,7 +3,7 @@
 package nativedisp
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/geometry"
 )
 
 // Triangle represents a simple triangle for rendering

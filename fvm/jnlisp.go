@@ -3,8 +3,8 @@ package fvm
 import (
 	_ "embed"
 
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
+	"github.com/Jedsonofnel/jnlcfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/linalg"
 	jnl "jedn.dev/jnlisp"
 )
 
@@ -91,7 +91,7 @@ func fieldIsScalar(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	return jnl.Boolean(field.IsScalar()), nil
+	return jnl.Bool(field.IsScalar()), nil
 }
 
 func fieldValues(ctx *jnl.CallContext) (jnl.Sexp, error) {
@@ -218,7 +218,7 @@ func contextAddField(ctx *jnl.CallContext) (jnl.Sexp, error) {
 
 	nVals := len(context.Mesh.Centroids)
 	if vals.Length() != nVals {
-		return nil, jnl.NewRTErr(
+		return nil, jnl.NewRuntimeError(
 			jnl.ErrArgType,
 			"'add-field' requires same number of vals as cells",
 		)
@@ -228,7 +228,7 @@ func contextAddField(ctx *jnl.CallContext) (jnl.Sexp, error) {
 		val, _ := vals.Nth(i)
 		rat, ok := val.(jnl.Rational)
 		if !ok {
-			return nil, jnl.NewRTErr(
+			return nil, jnl.NewRuntimeError(
 				jnl.ErrArgType,
 				"'add-field' requires rational values for cells",
 			)

@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/fvm"
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/nativedisp"
+	"github.com/Jedsonofnel/jnlcfd/cfd/nativedisp"
+	"github.com/Jedsonofnel/jnlcfd/fvm"
+	"github.com/Jedsonofnel/jnlcfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/linalg"
 
 	jnl "jedn.dev/jnlisp"
-	"jedn.dev/jnlisp/cli"
+	"jedn.dev/jnlisp/repl"
+	"jedn.dev/jnlisp/stdlib"
 )
 
 var header string = `
@@ -27,18 +28,19 @@ var header string = `
 var runtime *jnl.Runtime
 
 func init() {
-	lispIO := jnl.IO{
-		FS:     os.DirFS("."),
-		Stdin:  os.Stdin,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-	}
+	runtime = jnl.NewRuntime(
+		os.Stdin,
+		os.Stdout,
+		os.Stderr,
+		os.DirFS("."),
+	)
 
-	runtime = jnl.NewRuntime(lispIO)
 	runtime.RegisterNamespace(linalg.NS)
 	runtime.RegisterNamespace(geometry.NS)
 	runtime.RegisterNamespace(fvm.NS)
 	runtime.RegisterNamespace(nativedisp.NS)
+
+	stdlib.RegisterEntirety(runtime)
 }
 
 func main() {
@@ -58,7 +60,7 @@ func run() error {
 }
 
 func startREPL() error {
-	repl := cli.NewREPL(runtime, "jnlCFD REPL")
+	repl := repl.NewREPL(runtime, "jnlCFD REPL")
 	repl.SetNamespace("jnlcfd")
 
 	var err error
@@ -68,7 +70,7 @@ func startREPL() error {
 	err = repl.LoadAndRefer(linalg.NS, "")
 
 	if err != nil {
-		return jnl.FormatError(err)
+		return jnl.FormatError(err, runtime)
 	}
 
 	if err := repl.RawTerminal(); err != nil {

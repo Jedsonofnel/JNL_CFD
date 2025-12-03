@@ -3,8 +3,8 @@ package fvm
 import (
 	"sort"
 
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/linalg"
+	"github.com/Jedsonofnel/jnlcfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/linalg"
 )
 
 //

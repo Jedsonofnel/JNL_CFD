@@ -1,0 +1,101 @@
+# jnlCFD CLI script
+
+- Author: Jed Nelson
+- Date: 01/12/25
+
+
+j(ns jnl.cfd.cli
+  (:require [jnl.http :as http]
+            [jnl.html :as html]
+            [jnl.os :as os]))
+
+
+j(def banner
+  (str
+    "       _       __________________  \n"
+    "      (_)___  / / ____/ ____/ __ \ \n"
+    "     / / __ \/ / /   / /_  / / / / \n"
+    "    / / / / / / /___/ __/ / /_/ /  \n"
+    " __/ /_/ /_/_/\____/_/   /_____/   \n"
+    "/___/                              \n"))
+
+  
+
+## Configuration
+
+j(def dev-mode? true)
+
+j(def viz-port 3000)
+
+j(def viz-server (atom nil))
+
+
+## Static Assets
+
+j(defn static-handler [req]
+  (let [path (get-in req [:params path])
+        full-path (str "assets/" path)]
+    (println full-path)
+    (if dev-mode?
+      ;; Hot reload in dev
+      {:status 200
+       :body (.read-file full-path)}
+      ;; Production - TODO: use embedded assets
+      {:status 200
+       :body (.read-asset path)})))
+
+
+## Pages
+
+j(defn layout [title & body]
+  (html/render
+    [:html
+      [:head
+        [:meta {:charset "utf-8"}]
+        [:meta {:name "viewport"
+                :content "width=device-width, initial-scale=1"}]
+        [:title title]
+        [:link {:rel "stylesheet" :href "/static/base.css"}]
+        [:link {:rel "stylesheet" :href "/static/components.css"}]]
+    [:body #@body]]))
+
+
+j(defn home-page [] (layout "JNL CFD Visualization"
+    [:div {:class "container"}
+      [:h1 "CFD Visualization EDIT"]
+      [:p "Visualization server running on port " viz-port]
+      [:div {:id "viz-container"}
+        [:p "No mesh data yet. Use " [:code "push-viz"] 
+            " to send data from the REPL."]]]))
+
+j(defn home-handler [req]
+  {:status 200
+   :headers {"content-type" "text/html"}
+   :body (home-page)})
+
+
+## Server
+
+j(def routes
+  (http/routes
+    (http/GET "/" #'home-handler)
+    (http/GET "/static/{path}" #'static-handler)))
+
+j(defn start-viz-server []
+  (println "Starting visualization server on port" viz-port)
+    (reset! viz-server (http/serve routes {:port viz-port}))
+    (println "Viz server running at http://localhost:" viz-port)))
+
+j(defn stop-viz-server []
+  (when @viz-server
+    (http/shutdown viz-port)
+    (reset! viz-server nil)
+    (println "Viz server stopped")))
+
+
+## Main
+
+j(defn -main []
+  (println "JNL CFD - Lisp CLI")
+  (start-viz-server)
+  (println "REPL ready. Type (stop-viz-server) to stop the server."))

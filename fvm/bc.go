@@ -1,7 +1,7 @@
 package fvm
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/geometry"
 )
 
 //

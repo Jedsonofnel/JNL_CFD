@@ -39,9 +39,9 @@ func init() {
 
 	// Polygon bindings
 	jnl.CreatePredicate[*Polygon](NS, "polygon")
-	NS.BindNativeFn(".make-rectangle", jnl.PosVarArity("x", "y", "w", "h", "region", "boundaries"), makeRectangle)
+	NS.BindNativeFn(".make-rectangle", jnl.PosRestArity("x", "y", "w", "h", "region", "boundaries"), makeRectangle)
 	NS.BindNativeFn(".make-circle", jnl.PosArity("cx", "cy", "radius", "num-sides", "region", "boundary"), makeCircle)
-	NS.BindNativeFn(".make-polygon", jnl.PosVarArity("points", "region", "boundaries"), makePolygon)
+	NS.BindNativeFn(".make-polygon", jnl.PosRestArity("points", "region", "boundaries"), makePolygon)
 	NS.BindNativeFn(".polygon-area", jnl.PosArity("polygon"), polygonArea)
 	NS.BindNativeFn(".polygon-bounds", jnl.PosArity("polygon"), polygonBounds)
 	NS.BindNativeFn(".polygon-contains", jnl.PosArity("polygon", "x", "y"), polygonContains)
@@ -245,10 +245,10 @@ func makePolygon(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	}
 
 	if pointsVec.Length()%2 != 0 {
-		return jnl.NewRTErr(
+		return nil, jnl.NewRuntimeError(
 			jnl.ErrArgType,
 			"points vector expected to be even length with [x y x y ...] pairs",
-		).AtArg(1), nil
+		).AtArg(1)
 	}
 
 	// Convert vector of [x y x y ...] to []Vec2
@@ -305,6 +305,5 @@ func polygonContains(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	}
 
 	contains := polygon.Contains(Vec2{X: float64(x), Y: float64(y)})
-	return jnl.Boolean(contains), nil
+	return jnl.Bool(contains), nil
 }
-

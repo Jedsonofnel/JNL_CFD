@@ -1,7 +1,7 @@
 package geometry
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry/triangle"
+	"github.com/Jedsonofnel/jnlcfd/geometry/triangle"
 	"math"
 )
 

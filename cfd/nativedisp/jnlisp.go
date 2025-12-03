@@ -7,8 +7,8 @@ import (
 	"image/color"
 	"sync"
 
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/fvm"
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/fvm"
+	"github.com/Jedsonofnel/jnlcfd/geometry"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	jnl "jedn.dev/jnlisp"
@@ -216,13 +216,13 @@ func init() {
 
 	// Viewer functions
 	NS.BindNativeFn(".show-domain",
-		jnl.PosVarArity("domain", "width", "height"),
+		jnl.PosRestArity("domain", "width", "height"),
 		showDomain)
 	NS.BindNativeFn(".show-mesh",
-		jnl.PosVarArity("mesh", "width", "height"),
+		jnl.PosRestArity("mesh", "width", "height"),
 		showMesh)
 	NS.BindNativeFn(".show-solution",
-		jnl.PosVarArity("mesh", "field", "width", "height"),
+		jnl.PosRestArity("mesh", "field", "width", "height"),
 		showSolution)
 	NS.BindNativeFn(".clear-viewer", jnl.ZeroArity(), clearViewer)
 }
@@ -288,7 +288,7 @@ func showSolution(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	}
 
 	if field.IsScalar() {
-		return nil, jnl.NewRTErr(
+		return nil, jnl.NewRuntimeError(
 			jnl.ErrArgType,
 			"cannot visualize constant field",
 		)

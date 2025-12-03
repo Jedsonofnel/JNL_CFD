@@ -5,7 +5,7 @@ package nativedisp
 import (
 	"image/color"
 
-	"github.com/Jedsonofnel/jnlcfd/internal/cfd/geometry"
+	"github.com/Jedsonofnel/jnlcfd/geometry"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
