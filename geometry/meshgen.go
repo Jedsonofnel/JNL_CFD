@@ -46,8 +46,6 @@ func buildTriangleOptions(quality float64, maximumArea float64) string {
 		result += strconv.FormatFloat(maximumArea, 'f', -1, 64)
 	}
 
-	println(result)
-
 	return result
 }
 
@@ -213,17 +211,44 @@ func dedupVertices(vertices []Vec2, tolerance float64) (
 	}
 
 	maxRange := max(maxX-minX, maxY-minY)
-	scale := 1 / (maxRange * tolerance) // how much to multiply our vertices by before casting as integers
+	scale := 0.5 / (maxRange * tolerance) // how much to multiply our vertices by before casting as integers
 
 	dedupMap := make(map[[2]int]int)
 	indexMap = make([]int, len(vertices))
 
 	for i := range vertices {
-		key := [2]int{int(vertices[i].X * scale), int(vertices[i].Y * scale)}
+		gridX := int(math.Round(vertices[i].X * scale))
+		gridY := int(math.Round(vertices[i].Y * scale))
 
-		if existingIdx, found := dedupMap[key]; found {
-			indexMap[i] = existingIdx
+		// Check this cell and 8 neighbors for nearby vertices
+		found := false
+		var foundIdx int
+
+		for dx := -1; dx <= 1; dx++ {
+			for dy := -1; dy <= 1; dy++ {
+				key := [2]int{gridX + dx, gridY + dy}
+				if existingIdx, ok := dedupMap[key]; ok {
+					existing := dedup[existingIdx]
+					dist := math.Sqrt(
+						(vertices[i].X-existing.X)*(vertices[i].X-existing.X) +
+							(vertices[i].Y-existing.Y)*(vertices[i].Y-existing.Y))
+
+					if dist < tolerance*maxRange {
+						found = true
+						foundIdx = existingIdx
+						break
+					}
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		if found {
+			indexMap[i] = foundIdx
 		} else {
+			key := [2]int{gridX, gridY}
 			newIdx := len(dedup)
 			dedupMap[key] = newIdx
 			indexMap[i] = newIdx
@@ -481,7 +506,7 @@ func calculateInterpWeight(ownerCentroid, neighbourCentroid, faceV0, faceV1 Vec2
 		return distToFace / totalDist
 	}
 
-	t1 := (dX*(faceV0.Y-ownerCentroid.Y) - dY*(faceV0.X-ownerCentroid.X)) / det
+	t1 := (fX*(faceV0.Y-ownerCentroid.Y) - fY*(faceV0.X-ownerCentroid.X)) / det
 
 	// t1 should be in [0, 1] for valid intersection
 	if t1 < 0 || t1 > 1 {
