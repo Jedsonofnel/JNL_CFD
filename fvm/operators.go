@@ -1,17 +1,27 @@
 package fvm
 
+import (
+	"github.com/Jedsonofnel/jnlcfd/geometry"
+	jnl "jedn.dev/jnlisp"
+)
+
 //
 // Core operators for equations
 //
 
-func LaplacianOperator(
+func LaplacianConstant(
 	eq *Equation,
-	ctx *Context,
-	phiName string,
-	gamma *Expression,
+	ctx jnl.Map,
+	gammaKey string,
 	mask RegionMask,
-) *Equation {
-	mesh := ctx.Mesh
+) (*Equation, error) {
+	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
+	mesh := meshVal.(*geometry.Mesh)
+
+	gamma, err := GetExpression(ctx, gammaKey)
+	if err != nil {
+		return nil, err
+	}
 
 	eq.ForEachConnection(func(localIdx, globalIdx, owner, neighbour int) {
 		if !mask.Contains(mesh.CellRegions[owner]) {
@@ -44,7 +54,7 @@ func LaplacianOperator(
 		eq.AddBoundaryFlux(boundaryIdx, geomDiff, geomDiff)
 	})
 
-	return eq
+	return eq, nil
 }
 
 // LinearSourceOperator is a generalised linear source S_u + S_p * phi

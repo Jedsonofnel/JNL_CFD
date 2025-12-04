@@ -2,6 +2,8 @@ package fvm
 
 import (
 	"github.com/Jedsonofnel/jnlcfd/geometry"
+
+	jnl "jedn.dev/jnlisp"
 )
 
 //
@@ -23,6 +25,14 @@ func (f *Field) Get(i int) float64 {
 		return f.Scalar
 	}
 	return f.Values[i]
+}
+
+func NewUniformField(init float64, mesh *geometry.Mesh) jnl.FloatTuple {
+	field := make([]float64, len(mesh.Centroids))
+	for i := range field {
+		field[i] = init
+	}
+	return jnl.NewFloatTuple(field)
 }
 
 //

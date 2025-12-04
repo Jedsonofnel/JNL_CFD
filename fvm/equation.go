@@ -309,15 +309,10 @@ func (eq *Equation) buildCSRStructure() {
 	eq.csrValueMap = csrValueMap
 }
 
-func (eq *Equation) Solve(solver linalg.Solver, ctx *Context, fieldName string) {
-	field := ctx.Fields[fieldName]
-	if field.IsScalar() {
-		panic("cannot solve equation into constant field")
-	}
-
+func (eq *Equation) Solve(solver linalg.Solver, field []float64) {
 	// Extract initial guess from field at active cells
 	for i, globalIdx := range eq.activeCells {
-		eq.solutions[i] = field.Values[globalIdx]
+		eq.solutions[i] = field[globalIdx]
 	}
 
 	// Solve into scratch buffer
@@ -326,7 +321,7 @@ func (eq *Equation) Solve(solver linalg.Solver, ctx *Context, fieldName string) 
 
 	// Write back to field
 	for i, globalIdx := range eq.activeCells {
-		field.Values[globalIdx] = eq.solutions[i]
+		field[globalIdx] = eq.solutions[i]
 	}
 }
 

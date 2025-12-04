@@ -5,108 +5,145 @@
 
 High level FVM interactions for CFD workflows.
 
-j(ns jnl.cfd.fvm)
+j(ns jnl.cfd.fvm
+  (:require [jnl.cfd.geometry :as geo]
+            [jnl.cfd.linalg :as linalg]))
 
 
 ## Fields
 
-Creates context from mesh and initializes empty field storage.
-j(defn make-context [mesh]
-  (.make-context mesh))
+Creates a new namespace
+j(defn new-context [mesh]
+  {:mesh mesh})
 
-Adds a field with per-cell values to context.
-j(defn add-field! [ctx name vals]
-  (.add-field ctx name vals))
+Creates a new field in the context map
+j(defn add-field [ctx name init]
+  (let [mesh (get ctx :mesh)]
+    (assoc ctx name
+      (.new-uniform-field init mesh))))
 
-Adds a field with uniform value across all cells to context.
-j(defn add-uniform-field! [ctx name val]
-  (.add-uniform-field ctx name val))
+Adds a constant scalar to the context.
+j(defn add-constant [ctx name value]
+  (assoc ctx name value))
 
-Adds a field with single constant value to context.
-j(defn add-constant-field! [ctx name val]
-  (.add-constant-field ctx name val))
-
-Sets field values for cells in named region.
-j(defn set-region-vals! [ctx fname regname val]
-  (.set-region-vals ctx fname regname val))
-
-
-## Expressions
-
-Expression constructors enable field arithmetic without runtime overhead.
-
-Creates expression from field name in context.
-j(defn expr-field [ctx name]
-  (.expr-field ctx name))
-
-Creates constant expression with fixed value.
-j(defn expr-const [val]
-  (.expr-const val))
-
-Multiplies two expressions.
-j(defn expr-mul [e1 e2]
-  (.expr-mul e1 e2))
-
-Adds two expressions.
-j(defn expr-add [e1 e2]
-  (.expr-add e1 e2))
-
-Subtracts two expressions.
-j(defn expr-sub [e1 e2]
-  (.expr-sub e1 e2))
-
-Divides two expressions.
-j(defn expr-quot [e1 e2]
-  (.expr-quot e1 e2))
+j(defn set-equation-for-field [ctx field eqn]
+  (assoc-in ctx [:fields field :equation] eq))
 
 
 ## Equations
 
-Creates equation on mesh for named field.
-j(defn make-equation [mesh]
-  (.make-equation mesh))
+Creates a new equation for the entire mesh (all regions).
+j(defn new-equation [mesh]
+  (.new-equation mesh))
 
-Zeros equation coefficients for reuse.
-j(defn zero! [eq]
+Zeros all coefficients in an equation.
+j(defn zero-equation [eq]
   (.equation-zero eq))
 
-Solves equation with given solver and writes solution to named field.
-j(defn solve! [eq solver ctx fname]
-  (.equation-solve eq solver ctx fname))
+Creates an equation-spec like
+j(defmacro defeq perhaps?)
 
 
 ## Operators
 
-Operators accumulate coefficients into equation matrices. They mutate the equation in place and return it for threading.
-
-Adds Laplacian term to equation with gamma diffusivity.
-j(defn laplacian! [eq ctx phi gamma]
-  (.laplacian eq ctx phi gamma))
-
-Adds linearized source term to equation.
-j(defn source! [eq ctx phi su sp]
-  (.source eq ctx phi su sp))
+Adds constant diffusion operator: ∇·(γ∇φ)
+Takes field name for gamma from context.
+j(defn add-diffusion [eq ctx gamma-field]
+  (.flux-constant eq ctx gamma-field))
 
 
 ## Boundary Conditions
 
-Boundary conditions modify equation coefficients and source terms. They are applied after flux operators accumulate boundary fluxes.
+Dirichlet BC: fixed value at boundary.
+j(defn add-bc-dirichlet [eq ctx boundary-name value]
+  (.bc-dirichlet-constant eq ctx boundary-name value))
 
-Applies Dirichlet boundary condition with fixed value.
-j(defn bc-dirichlet! [eq ctx bname val]
-  (.bc-dirichlet eq ctx bname val))
-
-Applies Neumann boundary condition with fixed flux.
-j(defn bc-neumann! [eq ctx bname val]
-  (.bc-neumann eq ctx bname val))
-
-Applies Robin boundary condition with mixed coefficients.
-j(defn bc-robin! [eq ctx bname alpha gamma]
-  (.bc-robin eq ctx bname alpha gamma))
+Neumann BC: fixed gradient at boundary (positive = outward flux).
+For insulated/zero-gradient, use value = 0.
+j(defn add-bc-neumann [eq ctx boundary-name value]
+  (.bc-neumann-constant eq ctx boundary-name value))
 
 
-## High-level helpers
+## Solving
 
-Threading helper for equation assembly.
-j(defn assemble [eq ...ops]
-  (reduce (fn [e op] (op e)) eq ops))
+Solves the equation and updates the field in-place.
+j(defn solve [eq solver field]
+  (.equation-solve eq solver field))
+
+Retrieves solution vector from equation (for inspection).
+j(defn get-solutions [eq]
+  (.equation-solutions eq))
+
+
+## High-Level Workflow Helpers
+
+Assembles and solves a steady diffusion equation.
+j(defn solve-diffusion 
+  [mesh gamma-val field-init bcs]
+  (let [;; Setup context
+        ctx (-> (new-context mesh)
+                (add-constant "gamma" gamma-val)
+                (add-field "T" field-init))
+        ;; Get field reference
+        T (get ctx "T")
+        ;; Create solver
+        solver (linalg/make-solver (geo/ncells mesh) 1000 1e-8)
+        ;; Create and assemble equation
+        eq (-> (new-equation mesh)
+               (zero-equation)
+               (add-diffusion ctx "gamma"))
+        ;; Apply boundary conditions
+        eq (reduce (fn [e bc]
+                     (case (first bc)
+                       :dirichlet (add-bc-dirichlet e ctx (second bc) (nth bc 2))
+                       :neumann   (add-bc-neumann e ctx (second bc) (nth bc 2))
+                       e))
+                   eq
+                   bcs)
+        ;; Solve
+        _ (solve eq solver T)]
+    ;; Return context with solution
+    (assoc ctx :equation eq :solver solver)))
+
+
+## Demos and Examples
+
+Simple 1D-like heat conduction test.
+Bar with hot left side, cold right side, insulated top/bottom.
+j(def ^:private demo-1d-bar
+  (let [;; Create thin rectangle (quasi-1D)
+        domain (geo/domain 
+                 (geo/rect 0 0 10 1 "solid"
+                          "left" "right" "top" "bottom"))
+        mesh (geo/triangulate domain {:quality 30 :max-area 0.1})
+        ;; Boundary conditions
+        bcs [[:dirichlet "left" 100.0]
+             [:dirichlet "right" 0.0]
+             [:neumann "top" 0.0]
+             [:neumann "bottom" 0.0]]
+        ;; Solve
+        result (solve-diffusion mesh 1.0 50.0 bcs)]
+    result))
+
+Heat conduction with mixed BCs.
+j(def ^:private demo-mixed-bc
+  (let [domain (geo/domain 
+                 (geo/rect 0 0 5 5 "solid" "wall"))
+        mesh (geo/triangulate domain {:quality 30 :max-area 0.1})
+        ;; One hot wall, rest insulated
+        bcs [[:dirichlet "wall" 100.0]  ;; Applies to all "wall" boundaries
+             [:neumann "wall" 0.0]]     ;; This won't override, just for demo
+        result (solve-diffusion mesh 1.0 20.0 bcs)]
+    result))
+
+Two-sided Dirichlet problem.
+j(def ^:private demo-two-sided
+  (let [domain (geo/domain
+                 (geo/rect 0 0 8 4 "fluid"
+                          "cold" "insulated" "hot" "insulated"))
+        mesh (geo/triangulate domain {:quality 30 :max-area 0.1})
+        bcs [[:dirichlet "hot" 100.0]
+             [:dirichlet "cold" 0.0]
+             [:neumann "insulated" 0.0]]
+        result (solve-diffusion mesh 1.0 50.0 bcs)]
+    result))

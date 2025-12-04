@@ -2,6 +2,7 @@ package fvm
 
 import (
 	"github.com/Jedsonofnel/jnlcfd/geometry"
+	jnl "jedn.dev/jnlisp"
 )
 
 //
@@ -11,11 +12,12 @@ import (
 // DirichletBC sets a fixed value at a boundary
 func DirichletBC(
 	eq *Equation,
-	ctx *Context,
+	ctx jnl.Map,
 	boundaryName string,
 	value float64,
 ) *Equation {
-	mesh := ctx.Mesh
+	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
+	mesh := meshVal.(*geometry.Mesh)
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
 	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
@@ -36,11 +38,12 @@ func DirichletBC(
 // NeumannBC sets a fixed flux at a boundary
 func NeumannBC(
 	eq *Equation,
-	ctx *Context,
+	ctx jnl.Map,
 	boundaryName string,
 	value float64,
 ) *Equation {
-	mesh := ctx.Mesh
+	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
+	mesh := meshVal.(*geometry.Mesh)
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
 	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Jedsonofnel/jnlcfd/cfd/nativedisp"
 	"github.com/Jedsonofnel/jnlcfd/fvm"
 	"github.com/Jedsonofnel/jnlcfd/geometry"
 	"github.com/Jedsonofnel/jnlcfd/linalg"
@@ -35,7 +34,6 @@ func init() {
 	runtime.RegisterNamespace(linalg.NS)
 	runtime.RegisterNamespace(geometry.NS)
 	runtime.RegisterNamespace(fvm.NS)
-	runtime.RegisterNamespace(nativedisp.NS)
 
 	stdlib.RegisterEntirety(runtime)
 

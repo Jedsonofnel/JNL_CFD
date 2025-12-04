@@ -86,14 +86,14 @@ j(defn build-domain [builder]
 Builds a domain from a series of polygon expressions.
 j(defmacro domain [& shapes]
   (let [builder-sym (gensym)]
-    `(let [~builder-sym (domain-builder)]
+    `(let [~builder-sym (jnl.cfd.geometry/domain-builder)]
        ~@(map (fn [shape]
                 (if (and (list? shape) 
                          (= 'hole (first shape)))
-                    `(add-hole ~builder-sym ~(second shape))
-                    `(add-poly ~builder-sym ~shape)))
+                    `(jnl.cfd.geometry/add-hole ~builder-sym ~(second shape))
+                    `(jnl.cfd.geometry/add-poly ~builder-sym ~shape)))
               shapes)
-       (build-domain ~builder-sym))))
+       (jnl.cfd.geometry/build-domain ~builder-sym))))
 
 
 ## Domain queries

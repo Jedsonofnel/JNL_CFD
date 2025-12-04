@@ -38,13 +38,15 @@ func buildTriangleOptions(quality float64, maximumArea float64) string {
 
 	if quality > 0 {
 		result += "q"
-		result += strconv.FormatFloat(quality, 'f', 1, 64)
+		result += strconv.FormatFloat(quality, 'f', -1, 64)
 	}
 
 	if maximumArea > 0 {
 		result += "a"
-		result += strconv.FormatFloat(maximumArea, 'f', 1, 64)
+		result += strconv.FormatFloat(maximumArea, 'f', -1, 64)
 	}
+
+	println(result)
 
 	return result
 }
