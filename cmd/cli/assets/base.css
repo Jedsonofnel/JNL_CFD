@@ -2,7 +2,7 @@
 
 :root {
 	--fg: hsl(220, 35%, 15%);
-	--bg: hsl(220, 35%, 98%);
+	--bg: hsl(220, 35%, 95%);
 }
 
 html {
@@ -148,5 +148,5 @@ td.td--center {
 
 .table-col--min-width {
 	width: 1px;
-	whitespace: nowrap;
+	white-space: nowrap;
 }

@@ -4,6 +4,9 @@ import (
 	"cmp"
 	"errors"
 	"slices"
+	"strings"
+
+	jnl "jedn.dev/jnlisp"
 )
 
 //
@@ -69,7 +72,7 @@ func (db *DomainBuilder) AddHole(p Polygon) error {
 
 func (db *DomainBuilder) Build() (*Domain, error) {
 	slices.SortFunc(db.polygons, func(p1, p2 Polygon) int {
-		return cmp.Compare(p1.Area(), p2.Area())
+		return cmp.Compare(p2.Area(), p1.Area())
 	})
 
 	domain := &Domain{
@@ -109,6 +112,61 @@ type Domain struct {
 	boundaryNames map[string]int
 	nextRegionID  int
 	nextMarker    int
+}
+
+// Domain Sexp implementation
+func (d *Domain) String() string {
+	return jnl.FormatNonReadable("cfd", "domain")
+}
+
+func (d *Domain) Type() string {
+	return "domain"
+}
+
+func (d *Domain) Keys() []jnl.Hashable {
+	return []jnl.Hashable{
+		jnl.NewKeyword("bounds"),
+		jnl.NewKeyword("polygons"),
+		jnl.NewKeyword("region-names"),
+		jnl.NewKeyword("boundary-names"),
+	}
+}
+
+func (d *Domain) Lookup(key jnl.Hashable) jnl.Sexp {
+	name := strings.TrimLeft(key.String(), ":")
+	switch name {
+	case "bounds":
+		minX, minY, maxX, maxY := d.Bounds()
+		return jnl.NewMap(
+			"min-x", jnl.Float(minX),
+			"min-y", jnl.Float(minY),
+			"max-x", jnl.Float(maxX),
+			"max-y", jnl.Float(maxY),
+		)
+	case "polygons":
+		vec := jnl.NewVector()
+		for i := range d.Polygons {
+			poly := &d.Polygons[i]
+			pmap := jnl.ToMap(poly)
+			pmap.AssocBang(jnl.NewKeyword("layer"), jnl.Int(d.layers[i]))
+			vec.AppendBang(pmap)
+		}
+		return vec
+	case "region-names":
+		mapp := jnl.NewMap()
+		for name, code := range d.regionNames {
+			mapp.AssocBang(jnl.String(name), jnl.Int(code))
+		}
+		return mapp
+	case "boundary-names":
+		mapp := jnl.NewMap()
+		for name, code := range d.boundaryNames {
+			mapp.AssocBang(jnl.String(name), jnl.Int(code))
+		}
+		return mapp
+	default:
+		return jnl.Nil{}
+	}
 }
 
 func (d *Domain) getOrCreateRegionID(name string) int {
@@ -152,14 +210,43 @@ func (d *Domain) computeLayers() {
 		centerY := (minY + maxY) / 2
 		center := Vec2{centerX, centerY}
 
-		// Look for parent among earlier (larger) shapes
+		// Find parent among earlier (larger) shapes
+		parentIdx := -1
 		for j := 0; j < i; j++ {
 			if d.Polygons[j].Contains(center) {
-				d.parents[i] = j
-				d.layers[i] = d.layers[j] + 1
+				parentIdx = j
 				break
 			}
 		}
+
+		d.parents[i] = parentIdx
+
+		// Start at parent's layer + 1
+		baseLayer := 0
+		if parentIdx >= 0 {
+			baseLayer = d.layers[parentIdx] + 1
+		}
+
+		// Find the first available layer where we don't intersect with siblings
+		layer := baseLayer
+		for {
+			hasConflict := false
+			// Check all earlier polygons with the same parent at this layer
+			for j := 0; j < i; j++ {
+				if d.parents[j] == parentIdx && d.layers[j] == layer {
+					if d.Polygons[i].Intersects(&d.Polygons[j]) {
+						hasConflict = true
+						break
+					}
+				}
+			}
+			if !hasConflict {
+				break
+			}
+			layer++
+		}
+
+		d.layers[i] = layer
 	}
 }
 

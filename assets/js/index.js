@@ -1,55 +1,20 @@
-import {
-	CodeEditorBehaviour,
-	CodeInterpreterBehaviour,
-	MeshViz,
-	ScenarioViz,
-	WorkbookLayoutBehaviour,
-	WorkbookMenuBarBehaviour,
-	WorkbookResultsExtraBehaviour,
-	WorkbookResultsTableBehaviour,
-} from "./behaviours/index.js";
-
-import { WorkbookContext } from "./contexts/workbook.js";
+import { Visualiser } from "./behaviours/index.js";
 import { BehaviourManager } from "./lib/behaviour-manager.js";
 
 const manager = new BehaviourManager();
 
-// REGISTER CONTEXTS
-
-manager.registerContext(`[data-context="workbook"]`, WorkbookContext);
-
+//
 // REGISTER BEHAVIOURS
+//
 
-manager.register(
-	`[data-behaviour*="workbook-layout"]`,
-	WorkbookLayoutBehaviour,
-);
+manager.register(`[data-behaviour*="visualiser"]`, Visualiser);
 
-manager.register(
-	`[data-behaviour*="workbook-menu-bar"]`,
-	WorkbookMenuBarBehaviour,
-);
-
-manager.register(`[data-behaviour*="code-editor"]`, CodeEditorBehaviour);
-
-manager.register(`[data-viz-behaviour*="mesh-viz"]`, MeshViz);
-manager.register(`[data-viz-behaviour*="scenario-viz"]`, ScenarioViz);
-
-manager.register(
-	`[data-behaviour*="code-interpreter"]`,
-	CodeInterpreterBehaviour,
-);
-
-manager.register(
-	`[data-behaviour*="results-extra"]`,
-	WorkbookResultsExtraBehaviour,
-);
-
-manager.register(
-	`[data-behaviour*="results-table"]`,
-	WorkbookResultsTableBehaviour,
-);
-
+//
 // INIT BEHAVIOURS
+//
 
 document.addEventListener("DOMContentLoaded", () => manager.init());
+
+document.body.addEventListener("htmx:afterSwap", (event) => {
+	manager.init(event.detail.target);
+});

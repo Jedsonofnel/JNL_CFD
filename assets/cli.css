@@ -67,7 +67,7 @@ header.header--slim {
 	align-items: baseline;
 	justify-content: space-between;
 	margin: 16px auto;
-	width: min(90%, 161ch);
+	width: 90%;
 }
 
 main {
@@ -121,6 +121,40 @@ button[disabled] {
 	}
 }
 
+/* Visualisation */
+
+.viz-container {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+}
+
+.viz-frame {
+	display: flex;
+	flex-direction: column;
+	align-items: start;
+	width: 100%;
+}
+
+.viz-canvas-container {
+	position: relative;
+	margin: 0 auto;
+	max-width: 800px;
+	width: 100%;
+}
+
+.viz-canvas-webgl,
+.viz-canvas-2d {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.viz-canvas-2d {
+	pointer-events: none;
+}
+
 /* TABLE */
 
 table {
@@ -148,5 +182,5 @@ td.td--center {
 
 .table-col--min-width {
 	width: 1px;
-	whitespace: nowrap;
+	white-space: nowrap;
 }

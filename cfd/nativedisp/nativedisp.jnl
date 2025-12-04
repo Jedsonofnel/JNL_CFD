@@ -5,6 +5,8 @@
 
 Native visualization for domains, meshes, and solution fields using Ebitengine.
 
+j(ns jnl.cfd.nativedisp)
+
 
 ## Display functions
 

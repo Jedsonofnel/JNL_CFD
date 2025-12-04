@@ -5,6 +5,8 @@
 
 Linear algebra for solving CFD.
 
+j(ns jnl.cfd.linalg)
+
 
 ## Solvers
 

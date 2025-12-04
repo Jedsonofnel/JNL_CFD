@@ -5,6 +5,8 @@
 
 High level FVM interactions for CFD workflows.
 
+j(ns jnl.cfd.fvm)
+
 
 ## Fields
 

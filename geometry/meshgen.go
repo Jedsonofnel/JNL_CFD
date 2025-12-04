@@ -1,8 +1,10 @@
 package geometry
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/geometry/triangle"
 	"math"
+	"strconv"
+
+	"github.com/Jedsonofnel/jnlcfd/geometry/triangle"
 )
 
 //
@@ -25,6 +27,26 @@ type Region struct {
 	Point   Vec2
 	ID      int
 	MaxArea float64
+}
+
+//
+// Options
+//
+
+func buildTriangleOptions(quality float64, maximumArea float64) string {
+	result := "pzQ"
+
+	if quality > 0 {
+		result += "q"
+		result += strconv.FormatFloat(quality, 'f', 1, 64)
+	}
+
+	if maximumArea > 0 {
+		result += "a"
+		result += strconv.FormatFloat(maximumArea, 'f', 1, 64)
+	}
+
+	return result
 }
 
 //
@@ -167,6 +189,7 @@ func triangleOutputToMesh(output *triangle.Output, domain *Domain) *Mesh {
 
 		BoundaryNames: meshBoundaryNames,
 		RegionNames:   meshRegionNames,
+		Domain:        domain,
 	}
 
 	return mesh

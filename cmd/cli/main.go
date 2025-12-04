@@ -1,8 +1,9 @@
-//go:build !wasm
+//go:build !wasm && !js
 
 package main
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -13,19 +14,15 @@ import (
 	"github.com/Jedsonofnel/jnlcfd/linalg"
 
 	jnl "jedn.dev/jnlisp"
-	"jedn.dev/jnlisp/repl"
 	"jedn.dev/jnlisp/stdlib"
 )
 
-var header string = `
-       _       __________________ 
-      (_)___  / / ____/ ____/ __ \
-     / / __ \/ / /   / /_  / / / /
-    / / / / / / /___/ __/ / /_/ / 
- __/ /_/ /_/_/\____/_/   /_____/  
-/___/                             `
-
 var runtime *jnl.Runtime
+
+//go:embed cli.jnl
+var cliSrc string
+
+var cliNS = jnl.NewNamespace("jnlCFD", cliSrc)
 
 func init() {
 	runtime = jnl.NewRuntime(
@@ -41,10 +38,11 @@ func init() {
 	runtime.RegisterNamespace(nativedisp.NS)
 
 	stdlib.RegisterEntirety(runtime)
+
+	runtime.RegisterNamespace(cliNS)
 }
 
 func main() {
-	fmt.Println(header)
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -60,21 +58,15 @@ func run() error {
 }
 
 func startREPL() error {
-	repl := repl.NewREPL(runtime, "jnlCFD REPL")
-	repl.SetNamespace("jnlcfd")
-
-	var err error
-	err = repl.LoadAndRefer(geometry.NS, "")
-	err = repl.LoadAndRefer(nativedisp.NS, "")
-	err = repl.LoadAndRefer(fvm.NS, "")
-	err = repl.LoadAndRefer(linalg.NS, "")
-
+	session := runtime.NewREPLSession(cliNS)
+	err := session.RunMain(cliNS)
 	if err != nil {
 		return jnl.FormatError(err, runtime)
 	}
 
-	if err := repl.RawTerminal(); err != nil {
-		return repl.SimpleTerminal()
+	if err := session.REPL(""); err != nil {
+		return session.SimpleREPL("")
 	}
+
 	return nil
 }

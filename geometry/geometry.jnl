@@ -5,12 +5,18 @@
 
 High level geometry and domain construction for CFD workflows.
 
+j(ns jnl.cfd.geometry)
+
 
 ## Meshing
 
 Meshes the domain with Triangle.c according to the option string passed.
-j(defn mesh-tris [domain opt-string]
-  (.make-mesh domain opt-string))
+j(defn triangulate 
+  ([domain] (triangulate domain {}))
+  ([domain opts]
+    (let [quality (get opts :quality 20)
+          max-area (get opts :max-area 0)]
+      (.triangulate domain quality max-area))))
 
 Returns the number of cells in a given mesh.
 j(defn ncells [mesh]
@@ -78,7 +84,7 @@ j(defn build-domain [builder]
 ## Domain construction macro
 
 Builds a domain from a series of polygon expressions.
-j(defmacro domain [...shapes]
+j(defmacro domain [& shapes]
   (let [builder-sym (gensym)]
     `(let [~builder-sym (domain-builder)]
        ~@(map (fn [shape]
@@ -112,29 +118,125 @@ j(defn poly-contains? [p x y]
   (.polygon-contains p (float x) (float y)))
 
 
-## Example usage patterns
+## Demos and Examples
 
-Simple rectangular domain with circular hole:
-j(def ^:private example-1
+
+### Basic Shapes
+
+j(def ^:private demo-rectangle
+  (rect 0 0 100 50 "fluid" "wall"))
+
+j(def ^:private demo-circle
+  (circle 50 50 25 "solid" "surface" 32))
+
+j(def ^:private demo-triangle
+  (poly [0.0 0.0  100.0 0.0  50.0 86.6]
+        "fluid" "wall"))
+
+j(def ^:private demo-hexagon
+  (poly [50.0 0.0   93.3 25.0   93.3 75.0  
+         50.0 100.0  6.7 75.0    6.7 25.0]
+        "solid" "boundary"))
+
+
+### Simple Domains
+
+Single rectangle with all boundaries named
+j(def ^:private demo-channel
   (domain
-    (rect 0 0 10 10 "fluid" "wall")
-    (hole (circle 5 5 1 "void"))))
+    (rect 0 0 200 50 "fluid" 
+          "inlet" "wall" "outlet" "wall")))
 
-Multi-region with named boundaries:
-j(def ^:private example-2
+Circle in a box (annular flow)
+j(def ^:private demo-annular
   (domain
-    (rect 0 0 10 10 "outer" "inlet" "wall" "outlet" "wall")
-    (rect 2 2 6 6 "inner" "interface")))
+    (rect 0 0 100 100 "fluid" "wall")
+    (hole (circle 50 50 20 "void"))))
 
-j(defn- make-chip-array [x0 y0 rows cols chip-w chip-h spacing]
-  (let [builder (domain-builder)]
-    (doseq [i (range rows)
-            j (range cols)]
-      (add-poly builder
-                (rect (+ x0 (* j (+ chip-w spacing)))
-                      (+ y0 (* i (+ chip-h spacing)))
-                      chip-w
-                      chip-h
-                      (str "chip-" i "-" j)
-                      "chip-surface")))
-    (build-domain builder)))
+Two regions with interface
+j(def ^:private demo-two-region
+  (domain
+    (rect 0 0 100 50 "fluid" "inlet" "interface" "outlet" "wall")
+    (rect 0 50 100 50 "solid" "wall" "wall" "wall" "interface")))
+
+
+### Complex Domains
+
+PCB with multiple chips
+j(def ^:private demo-pcb
+  (domain
+    ; Main PCB
+    (rect 0 0 120 80 "pcb" "ambient")
+    ; Chips
+    (rect 20 20 25 15 "chip-1" "chip-surface")
+    (rect 55 20 25 15 "chip-2" "chip-surface")
+    (rect 90 20 25 15 "chip-3" "chip-surface")
+    (rect 20 50 25 15 "chip-4" "chip-surface")
+    (rect 55 50 25 15 "chip-5" "chip-surface")
+    (rect 90 50 25 15 "chip-6" "chip-surface")))
+
+Heat exchanger with circular holes
+j(def ^:private demo-heat-exchanger
+  (domain
+    (rect 0 0 200 100 "fluid" "inlet" "wall" "outlet" "wall")
+    (hole (circle 50 50 8 "tube-1"))
+    (hole (circle 100 50 8 "tube-2"))
+    (hole (circle 150 50 8 "tube-3"))))
+
+Multi-layer with complex hole
+j(def ^:private demo-nested
+  (domain
+    (rect 0 0 100 100 "outer" "wall")
+    (rect 20 20 60 60 "middle" "")
+    (hole (rect 35 35 30 30 "void" ""))))
+
+Pipe junction (T-junction)
+j(def ^:private demo-t-junction
+  (domain
+    ; Main horizontal pipe
+    (rect 0 40 200 20 "fluid" "inlet" "wall" "outlet" "wall")
+    ; Vertical branch
+    (rect 90 0 20 100 "fluid" "wall" "branch" "wall" "")))
+
+Thermal domain with circular components
+(def ^:private demo-thermal
+  (domain
+    ; Substrate
+    (rect 0 0 150 100 "substrate" "ambient")
+    ; Hot spot (polygon)
+    (poly [50.0 30.0  70.0 30.0  80.0 50.0  
+           70.0 70.0  50.0 70.0  40.0 50.0]
+          "hotspot" "heat-source")
+    ; Circular heat sink
+    (circle 100 50 25 "heatsink" "convection" 48)))
+
+Microfluidic mixer
+j(def ^:private demo-microfluidic
+  (domain
+    ; Inlet channels
+    (rect 0 10 50 5 "fluid" "inlet-1" "" "" "")
+    (rect 0 35 50 5 "fluid" "inlet-2" "" "" "")
+    ; Mixing chamber
+    (circle 75 25 20 "fluid" "" 64)
+    ; Outlet
+    (rect 95 22.5 50 5 "fluid" "" "" "outlet" "")))
+
+
+### Demo with all features
+
+(def ^:private demo-comprehensive
+  (domain
+    ; Outer boundary with all edges named differently
+    (rect 0 0 200 150 "main-region" 
+          "bottom-wall" "right-wall" "top-wall" "left-wall")
+    ; Multiple solid obstacles
+    (rect 40 40 30 30 "obstacle-1" "obs-surface")
+    (rect 120 40 30 30 "obstacle-2" "obs-surface")
+    ; Circular feature
+    (circle 100 75 15 "circular-region" "circle-boundary" 36)
+    ; Holes
+    (hole (circle 60 100 8 "void-1"))
+    (hole (rect 140 100 15 15 "void-2" ""))
+    ; Irregular polygon
+    (poly [30.0 110.0  50.0 100.0  60.0 120.0  45.0 140.0  25.0 130.0]
+          "irregular" "irregular-boundary")))

@@ -20,7 +20,7 @@ func init() {
 
 	meshArity := jnl.PosArity("mesh")
 	jnl.CreatePredicate[*Mesh](NS, "mesh")
-	NS.BindNativeFn(".make-mesh", jnl.PosArity("domain", "opt-string"), makeMesh)
+	NS.BindNativeFn(".triangulate", jnl.PosArity("domain", "quality", "max-area"), triangulateMesh)
 	NS.BindNativeFn(".mesh-ncells", meshArity, meshNumCells)
 	NS.BindNativeFn(".mesh-nverts", meshArity, meshNumVertices)
 	NS.BindNativeFn(".mesh-region-names", meshArity, meshRegionNames)
@@ -47,15 +47,6 @@ func init() {
 	NS.BindNativeFn(".polygon-contains", jnl.PosArity("polygon", "x", "y"), polygonContains)
 }
 
-// Mesh Sexp implementation
-func (m *Mesh) String() string {
-	return jnl.FormatNonReadable("cfd", "mesh")
-}
-
-func (m *Mesh) Type() string {
-	return "mesh"
-}
-
 // Domain builder Sexp implementation
 func (db *DomainBuilder) String() string {
 	return jnl.FormatNonReadable("cfd", "domain-builder")
@@ -65,31 +56,15 @@ func (db *DomainBuilder) Type() string {
 	return "domain-builder"
 }
 
-// Domain Sexp implementation
-func (d *Domain) String() string {
-	return jnl.FormatNonReadable("cfd", "domain")
-}
-
-func (d *Domain) Type() string {
-	return "domain"
-}
-
-// Polygon Sexp implementation
-func (p *Polygon) String() string {
-	return jnl.FormatNonReadable("cfd", "polygon")
-}
-
-func (p *Polygon) Type() string {
-	return "polygon"
-}
-
-func makeMesh(ctx *jnl.CallContext) (jnl.Sexp, error) {
+func triangulateMesh(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	domain := jnl.GetArg[*Domain](ctx)
-	options := jnl.GetArg[jnl.String](ctx)
+	quality := ctx.GetRationalArg()
+	maxArea := ctx.GetRationalArg()
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	mesh, err := MeshDomain(domain, options.String())
+	optString := buildTriangleOptions(quality, maxArea)
+	mesh, err := MeshDomain(domain, optString)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +212,7 @@ func makeCircle(ctx *jnl.CallContext) (jnl.Sexp, error) {
 }
 
 func makePolygon(ctx *jnl.CallContext) (jnl.Sexp, error) {
-	pointsVec := jnl.GetArg[*jnl.Vector](ctx)
+	pointsVec := jnl.GetArg[jnl.Vector](ctx)
 	region := jnl.GetArg[jnl.String](ctx)
 	boundaries := jnl.GetVariadic[jnl.String](ctx)
 	if err := ctx.Validate(); err != nil {
