@@ -530,6 +530,12 @@ func buildSegmentMarkerMap(output *triangle.Output, indexMap []int) map[[2]int]i
 	for i := range numSegs {
 		p0 := indexMap[output.Segments[i*2+0]]
 		p1 := indexMap[output.Segments[i*2+1]]
+
+		// in case of degenerate cases - these have been skipped by dedupe
+		if p0 == p1 {
+			continue
+		}
+
 		key := [2]int{min(p0, p1), max(p0, p1)}
 
 		if len(output.SegmentMarkers) > i {
