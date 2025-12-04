@@ -23,6 +23,7 @@ func init() {
 	NS.BindNativeFn(".equation-zero", jnl.PosArity("eq"), equationZero)
 	NS.BindNativeFn(".equation-solve", jnl.PosArity("eq", "solver", "field"), equationSolve)
 	NS.BindNativeFn(".equation-solutions", jnl.PosArity("eq"), equationSolutions)
+	NS.BindNativeFn(".equation-diagnostics", jnl.PosArity("eq"), equationDiagnostics)
 
 	// fields
 	NS.BindNativeFn(".new-uniform-field", jnl.PosArity("init", "mesh"), newUniformField)
@@ -80,13 +81,64 @@ func equationSolutions(ctx *jnl.CallContext) (jnl.Sexp, error) {
 
 func equationSolve(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	eq := jnl.GetArg[*Equation](ctx)
-	solver := jnl.GetArg[*linalg.JacobiCG](ctx)
+	solver := jnl.GetNativeArg[linalg.Solver](ctx, "solver")
 	field := jnl.GetArg[jnl.FloatTuple](ctx)
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
 	eq.Solve(solver, field.Elements)
 	return eq, nil
+}
+
+func equationDiagnostics(ctx *jnl.CallContext) (jnl.Sexp, error) {
+	eq := jnl.GetArg[*Equation](ctx)
+	if err := ctx.Validate(); err != nil {
+		return nil, err
+	}
+
+	diagSum := 0.0
+	for _, v := range eq.Diag {
+		diagSum += v
+	}
+
+	sourceSum := 0.0
+	for _, v := range eq.Source {
+		sourceSum += v
+	}
+
+	minDiag := eq.Diag[0]
+	maxDiag := eq.Diag[0]
+	negativeCount := 0
+	zeroCount := 0
+
+	for _, v := range eq.Diag {
+		if v < minDiag {
+			minDiag = v
+		}
+		if v > maxDiag {
+			maxDiag = v
+		}
+		if v < 0 {
+			negativeCount++
+		}
+		if v == 0 {
+			zeroCount++
+		}
+	}
+
+	mapp := jnl.NewMap(
+		"num-active-cells", len(eq.activeCells),
+		"num-active-conns", len(eq.activeConnections),
+		"num-boundary-conns", len(eq.boundaryConnections),
+		"diagonal-sum", diagSum,
+		"source-sum", sourceSum,
+		"min-diag", minDiag,
+		"max-diag", maxDiag,
+		"num-negative-diags", negativeCount,
+		"num-zero-diags", zeroCount,
+	)
+
+	return mapp, nil
 }
 
 func newUniformField(ctx *jnl.CallContext) (jnl.Sexp, error) {
@@ -101,18 +153,21 @@ func newUniformField(ctx *jnl.CallContext) (jnl.Sexp, error) {
 func operatorFluxConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	eq := jnl.GetArg[*Equation](ctx)
 	context := ctx.GetMapArg()
-	gammaKey := ctx.GetStringArg()
+	gammaKey := ctx.GetUnqualifiedKeyword()
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	LaplacianConstant(eq, context, gammaKey, AllRegions())
+	_, err := LaplacianConstant(eq, context, gammaKey, AllRegions())
+	if err != nil {
+		return nil, err
+	}
 	return eq, nil
 }
 
 func bcDirichletConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	eq := jnl.GetArg[*Equation](ctx)
 	context := ctx.GetMapArg()
-	bname := ctx.GetStringArg()
+	bname := ctx.GetUnqualifiedKeyword()
 	rat := jnl.GetInterfaceArg[jnl.Rational](ctx, "rational")
 	if err := ctx.Validate(); err != nil {
 		return nil, err
@@ -124,7 +179,7 @@ func bcDirichletConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 func bcNeumannConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	eq := jnl.GetArg[*Equation](ctx)
 	context := ctx.GetMapArg()
-	bname := ctx.GetStringArg()
+	bname := ctx.GetUnqualifiedKeyword()
 	rat := jnl.GetInterfaceArg[jnl.Rational](ctx, "rational")
 	if err := ctx.Validate(); err != nil {
 		return nil, err

@@ -8,7 +8,8 @@ j(ns jnlCFD
   (:require [jnl.http :as http]
             [jnl.html :as html]
             [jnl.os :as os]
-            [jnl.cfd.geometry :as geo]))
+            [jnl.cfd.geometry :as geo]
+            [jnl.cfd.fvm :as fvm]))
 
 
 

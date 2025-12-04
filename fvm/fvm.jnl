@@ -40,9 +40,9 @@ Zeros all coefficients in an equation.
 j(defn zero-equation [eq]
   (.equation-zero eq))
 
-Creates an equation-spec like
-j(defmacro defeq perhaps?)
-
+Gets diagnostics about the equation as a map
+j(defn equation-diagnostics [eq]
+  (.equation-diagnostics eq))
 
 ## Operators
 
@@ -82,16 +82,16 @@ j(defn solve-diffusion
   [mesh gamma-val field-init bcs]
   (let [;; Setup context
         ctx (-> (new-context mesh)
-                (add-constant "gamma" gamma-val)
-                (add-field "T" field-init))
+                (add-constant :gamma gamma-val)
+                (add-field :T field-init))
         ;; Get field reference
-        T (get ctx "T")
+        T (get ctx :T)
         ;; Create solver
-        solver (linalg/make-solver (geo/ncells mesh) 1000 1e-8)
+        solver (linalg/make-simple-solver (geo/ncells mesh) 1000 1e-8)
         ;; Create and assemble equation
         eq (-> (new-equation mesh)
                (zero-equation)
-               (add-diffusion ctx "gamma"))
+               (add-diffusion ctx :gamma))
         ;; Apply boundary conditions
         eq (reduce (fn [e bc]
                      (case (first bc)
@@ -108,19 +108,39 @@ j(defn solve-diffusion
 
 ## Demos and Examples
 
+j(def ^:private test-domain
+  (geo/domain
+    (geo/rect 0 0 10 1 "solid"
+              "left" "right" "top" "bottom")))
+
+j(def ^:private test-mesh
+  (geo/triangulate test-domain 
+    {:quality 30 :max-area 0.1}))
+
+j(def ^:private test-ctx
+  (-> (new-context test-mesh)
+      (add-field :T 30)
+      (add-field :gamma 2)))
+
+j(def ^:private test-eq
+  (new-equation test-mesh))
+
+j(def ^:private test-solver
+  (linalg/make-solver (geo/ncells test-mesh) 1000 1e-8))
+
 Simple 1D-like heat conduction test.
 Bar with hot left side, cold right side, insulated top/bottom.
 j(def ^:private demo-1d-bar
   (let [;; Create thin rectangle (quasi-1D)
         domain (geo/domain 
                  (geo/rect 0 0 10 1 "solid"
-                          "left" "right" "top" "bottom"))
+                          "bottom" "right" "top" "left"))
         mesh (geo/triangulate domain {:quality 30 :max-area 0.1})
         ;; Boundary conditions
-        bcs [[:dirichlet "left" 100.0]
-             [:dirichlet "right" 0.0]
-             [:neumann "top" 0.0]
-             [:neumann "bottom" 0.0]]
+        bcs [[:dirichlet :left 100.0]
+             [:dirichlet :right 0.0]
+             [:neumann :top 0.0]
+             [:neumann :bottom 0.0]]
         ;; Solve
         result (solve-diffusion mesh 1.0 50.0 bcs)]
     result))
@@ -131,8 +151,8 @@ j(def ^:private demo-mixed-bc
                  (geo/rect 0 0 5 5 "solid" "wall"))
         mesh (geo/triangulate domain {:quality 30 :max-area 0.1})
         ;; One hot wall, rest insulated
-        bcs [[:dirichlet "wall" 100.0]  ;; Applies to all "wall" boundaries
-             [:neumann "wall" 0.0]]     ;; This won't override, just for demo
+        bcs [[:dirichlet :wall 100.0]  ;; Applies to all "wall" boundaries
+             [:neumann :wall 0.0]]     ;; This won't override, just for demo
         result (solve-diffusion mesh 1.0 20.0 bcs)]
     result))
 
@@ -142,8 +162,8 @@ j(def ^:private demo-two-sided
                  (geo/rect 0 0 8 4 "fluid"
                           "cold" "insulated" "hot" "insulated"))
         mesh (geo/triangulate domain {:quality 30 :max-area 0.1})
-        bcs [[:dirichlet "hot" 100.0]
-             [:dirichlet "cold" 0.0]
-             [:neumann "insulated" 0.0]]
+        bcs [[:dirichlet :hot 100.0]
+             [:dirichlet :cold 0.0]
+             [:neumann :insulated 0.0]]
         result (solve-diffusion mesh 1.0 50.0 bcs)]
     result))

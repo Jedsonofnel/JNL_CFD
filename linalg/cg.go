@@ -42,6 +42,7 @@ func (cg *JacobiCG) Solve(A *CSR, b, x []float64) error {
 	recomputeAxInterval := 50
 
 	threshold := cg.tolerance * cg.tolerance * rDotr
+
 	for iter := 0; iter < cg.maxIterations && rDotr > threshold; iter++ {
 		Ad = A.MatVec(d, Ad)
 

@@ -14,3 +14,6 @@ Creates Jacobi preconditioned conjugate gradient solver with max iterations and
 tolerance.
 j(defn make-solver [ncells max-iters tol]
   (.make-jacobi-cg ncells max-iters tol))
+
+j(defn make-simple-solver [ncells max-iters tol]
+  (.make-simple-cg ncells max-iters tol))

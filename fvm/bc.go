@@ -40,7 +40,7 @@ func NeumannBC(
 	eq *Equation,
 	ctx jnl.Map,
 	boundaryName string,
-	value float64,
+	flux float64,
 ) *Equation {
 	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
 	mesh := meshVal.(*geometry.Mesh)
@@ -51,7 +51,7 @@ func NeumannBC(
 			return
 		}
 		localOwner := eq.GetLocalCellIndex(owner)
-		eq.Source[localOwner] += value
+		eq.Source[localOwner] += flux
 	})
 
 	return eq

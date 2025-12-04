@@ -14,18 +14,11 @@ var nsSrc string
 func init() {
 	NS = jnl.NewNamespace("jnl.cfd.linalg", nsSrc)
 
-	NS.BindNativeFn(".make-jacobi-cg", jnl.PosArity("ncells", "iters", "tolerance"), makeJacobi)
+	NS.BindNativeFn(".make-jacobi-cg", jnl.PosArity("ncells", "iters", "tolerance"), makeJacobiCG)
+	NS.BindNativeFn(".make-simple-cg", jnl.PosArity("ncells", "iters", "tolerance"), makeSimpleCG)
 }
 
-func (cg *JacobiCG) String() string {
-	return jnl.FormatNonReadable("solver", "jacobi-cg")
-}
-
-func (cg *JacobiCG) Type() string {
-	return "solver"
-}
-
-func makeJacobi(ctx *jnl.CallContext) (jnl.Sexp, error) {
+func makeJacobiCG(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	numCells := jnl.GetArg[jnl.Int](ctx)
 	maxIters := jnl.GetArg[jnl.Int](ctx)
 	tolerance := jnl.GetArg[jnl.Float](ctx)
@@ -33,5 +26,18 @@ func makeJacobi(ctx *jnl.CallContext) (jnl.Sexp, error) {
 		return nil, err
 	}
 
-	return NewJacobiCG(int(numCells), int(maxIters), float64(tolerance)), nil
+	solver := NewJacobiCG(int(numCells), int(maxIters), float64(tolerance))
+	return jnl.Native{Value: solver, TypeName: "solver"}, nil
+}
+
+func makeSimpleCG(ctx *jnl.CallContext) (jnl.Sexp, error) {
+	numCells := jnl.GetArg[jnl.Int](ctx)
+	maxIters := jnl.GetArg[jnl.Int](ctx)
+	tolerance := jnl.GetArg[jnl.Float](ctx)
+	if err := ctx.Validate(); err != nil {
+		return nil, err
+	}
+
+	solver := NewSimpleCG(int(numCells), int(maxIters), float64(tolerance))
+	return jnl.Native{Value: solver, TypeName: "solver"}, nil
 }
