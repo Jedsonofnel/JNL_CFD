@@ -102,3 +102,46 @@ func (m *Mesh) GetConnectionVertices(connIdx int) (v0, v1 Vec2) {
 
 	return m.Vertices[vi0], m.Vertices[vi1]
 }
+
+//
+// Rendering implementation
+//
+
+func TriangulateMesh(mesh *Mesh) (vertices []float64, triToCells []int) {
+	// Count triangles first for allocation
+	numTris := 0
+	for i := 0; i < len(mesh.FaceStarts)-1; i++ {
+		nVerts := mesh.FaceStarts[i+1] - mesh.FaceStarts[i]
+		numTris += max(0, nVerts-2) // fan triangulation
+	}
+
+	vertices = make([]float64, numTris*6)
+	triToCells = make([]int, numTris)
+
+	triIdx := 0
+	for cellIdx := 0; cellIdx < len(mesh.FaceStarts)-1; cellIdx++ {
+		start := mesh.FaceStarts[cellIdx]
+		end := mesh.FaceStarts[cellIdx+1]
+		nVerts := end - start
+
+		// Fan triangulation from vertex 0
+		v0 := mesh.Vertices[mesh.VertexIndices[start]]
+		for i := 1; i < nVerts-1; i++ {
+			v1 := mesh.Vertices[mesh.VertexIndices[start+i]]
+			v2 := mesh.Vertices[mesh.VertexIndices[start+i+1]]
+
+			baseIdx := triIdx * 6
+			vertices[baseIdx+0] = v0.X
+			vertices[baseIdx+1] = v0.Y
+			vertices[baseIdx+2] = v1.X
+			vertices[baseIdx+3] = v1.Y
+			vertices[baseIdx+4] = v2.X
+			vertices[baseIdx+5] = v2.Y
+
+			triToCells[triIdx] = cellIdx
+			triIdx++
+		}
+	}
+
+	return vertices, triToCells
+}

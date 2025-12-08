@@ -35,6 +35,11 @@ j(defn boundary-names [mesh]
   (.mesh-boundary-names mesh))
 
 
+## Mesh Rendering
+
+j(defn triangulate-mesh [mesh]
+  (.triangulate-mesh mesh))
+
 ## Polygon constructors
 
 Rectangle with sane defaults - single boundary name applies to all edges.

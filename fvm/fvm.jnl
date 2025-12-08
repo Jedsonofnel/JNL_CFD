@@ -30,6 +30,7 @@ j(defn set-equation-for-field [ctx field eqn]
   (assoc-in ctx [:fields field :equation] eq))
 
 
+
 ## Equations
 
 Creates a new equation for the entire mesh (all regions).

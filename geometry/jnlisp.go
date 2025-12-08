@@ -26,6 +26,9 @@ func init() {
 	NS.BindNativeFn(".mesh-region-names", meshArity, meshRegionNames)
 	NS.BindNativeFn(".mesh-boundary-names", meshArity, meshBoundaryNames)
 
+	// Rendering bindings
+	NS.BindNativeFn(".triangulate-mesh", jnl.PosArity("mesh"), meshTriangulate)
+
 	// DomainBuilder bindings
 	jnl.CreatePredicate[*DomainBuilder](NS, "domain-builder")
 	NS.BindNativeFn(".make-domain-builder", jnl.ZeroArity(), makeDomainBuilder)
@@ -111,6 +114,19 @@ func meshBoundaryNames(ctx *jnl.CallContext) (jnl.Sexp, error) {
 		mapp.AssocBang(jnl.Int(i), jnl.String(name))
 	}
 	return mapp, nil
+}
+
+func meshTriangulate(ctx *jnl.CallContext) (jnl.Sexp, error) {
+	mesh := jnl.GetArg[*Mesh](ctx)
+	if err := ctx.Validate(); err != nil {
+		return nil, err
+	}
+
+	vertices, triToCells := TriangulateMesh(mesh)
+	return jnl.NewMap(
+		"vertices", jnl.NewFloatTuple(vertices),
+		"tri-to-cells", jnl.NewIntTuple(triToCells),
+	), nil
 }
 
 func makeDomainBuilder(ctx *jnl.CallContext) (jnl.Sexp, error) {
