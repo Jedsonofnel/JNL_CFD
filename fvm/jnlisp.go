@@ -25,9 +25,6 @@ func init() {
 	NS.BindNativeFn(".equation-solutions", jnl.PosArity("eq"), equationSolutions)
 	NS.BindNativeFn(".equation-diagnostics", jnl.PosArity("eq"), equationDiagnostics)
 
-	// fields
-	NS.BindNativeFn(".new-uniform-field", jnl.PosArity("init", "mesh"), newUniformField)
-
 	// operators
 	NS.BindNativeFn(".flux-constant", jnl.PosArity("eq", "ctx", "gamma"), operatorFluxConstant)
 
@@ -139,15 +136,6 @@ func equationDiagnostics(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	)
 
 	return mapp, nil
-}
-
-func newUniformField(ctx *jnl.CallContext) (jnl.Sexp, error) {
-	init := ctx.GetRationalArg()
-	mesh := jnl.GetArg[*geometry.Mesh](ctx)
-	if err := ctx.Validate(); err != nil {
-		return nil, err
-	}
-	return NewUniformField(init, mesh), nil
 }
 
 func operatorFluxConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {

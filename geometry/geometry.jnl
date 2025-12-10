@@ -126,24 +126,6 @@ j(defn poly-contains? [p x y]
 ## Demos and Examples
 
 
-### Basic Shapes
-
-j(def ^:private demo-rectangle
-  (rect 0 0 100 50 "fluid" "wall"))
-
-j(def ^:private demo-circle
-  (circle 50 50 25 "solid" "surface" 32))
-
-j(def ^:private demo-triangle
-  (poly [0.0 0.0  100.0 0.0  50.0 86.6]
-        "fluid" "wall"))
-
-j(def ^:private demo-hexagon
-  (poly [50.0 0.0   93.3 25.0   93.3 75.0  
-         50.0 100.0  6.7 75.0    6.7 25.0]
-        "solid" "boundary"))
-
-
 ### Simple Domains
 
 Single rectangle with all boundaries named
@@ -167,81 +149,42 @@ j(def ^:private demo-two-region
 
 ### Complex Domains
 
-PCB with multiple chips
+PCB with multiple chips generator function
+j(defn ^:private demo-pcb-generator [spacing num-x num-y chip-w chip-h]
+  (let [pcb-width (+ (* num-x chip-w) (* spacing (inc num-x)))
+        pcb-height (+ (* num-y chip-h) (* spacing (inc num-y)))
+        builder (domain-builder)]
+    ;; Add the main PCB
+    (add-poly builder
+      (rect 0 0 pcb-width pcb-height "pcb" "ambient"))
+    ;; Add the chips with spacing
+    (doseq [j (range num-y)
+          i (range num-x)]
+      (let [x (+ spacing (* i (+ chip-w spacing)))
+            y (+ spacing (* j (+ chip-h spacing)))
+            chip-id (str "chip-" (+ (* j num-x i 1)))]
+        (add-poly builder (rect x y chip-w chip-h chip-id))))
+    ;; Build and return
+    (build-domain builder)))
+
 j(def ^:private demo-pcb
-  (domain
-    ; Main PCB
-    (rect 0 0 120 80 "pcb" "ambient")
-    ; Chips
-    (rect 20 20 25 15 "chip-1" "chip-surface")
-    (rect 55 20 25 15 "chip-2" "chip-surface")
-    (rect 90 20 25 15 "chip-3" "chip-surface")
-    (rect 20 50 25 15 "chip-4" "chip-surface")
-    (rect 55 50 25 15 "chip-5" "chip-surface")
-    (rect 90 50 25 15 "chip-6" "chip-surface")))
+  (demo-pcb-generator 0.01 3 2 0.05 0.04))
 
-Heat exchanger with circular holes
+Heat exchanger with circular tubes generator function
+j(defn ^:private demo-heat-exchanger-generator [width height num-tubes tube-r]
+  (let [tube-spacing (/ width (+ num-tubes 1))
+        center-y (/ height 2)
+        builder (domain-builder)]
+    ; Add main channel
+    (add-poly builder 
+              (rect 0 0 width height "fluid" "inlet" "wall" "outlet" "wall"))
+    ; Add tube holes
+    (doseq [i (range num-tubes)]
+      (let [cx (* tube-spacing (+ i 1))
+            tube-id (str "tube-" (+ i 1))]
+        (add-hole builder (circle cx center-y tube-r tube-id))))
+    ; Build and return
+    (build-domain builder)))
+
 j(def ^:private demo-heat-exchanger
-  (domain
-    (rect 0 0 200 100 "fluid" "inlet" "wall" "outlet" "wall")
-    (hole (circle 50 50 8 "tube-1"))
-    (hole (circle 100 50 8 "tube-2"))
-    (hole (circle 150 50 8 "tube-3"))))
-
-Multi-layer with complex hole
-j(def ^:private demo-nested
-  (domain
-    (rect 0 0 100 100 "outer" "wall")
-    (rect 20 20 60 60 "middle" "")
-    (hole (rect 35 35 30 30 "void" ""))))
-
-Pipe junction (T-junction)
-j(def ^:private demo-t-junction
-  (domain
-    ; Main horizontal pipe
-    (rect 0 40 200 20 "fluid" "inlet" "wall" "outlet" "wall")
-    ; Vertical branch
-    (rect 90 0 20 100 "fluid" "wall" "branch" "wall" "")))
-
-Thermal domain with circular components
-(def ^:private demo-thermal
-  (domain
-    ; Substrate
-    (rect 0 0 150 100 "substrate" "ambient")
-    ; Hot spot (polygon)
-    (poly [50.0 30.0  70.0 30.0  80.0 50.0  
-           70.0 70.0  50.0 70.0  40.0 50.0]
-          "hotspot" "heat-source")
-    ; Circular heat sink
-    (circle 100 50 25 "heatsink" "convection" 48)))
-
-Microfluidic mixer
-j(def ^:private demo-microfluidic
-  (domain
-    ; Inlet channels
-    (rect 0 10 50 5 "fluid" "inlet-1" "" "" "")
-    (rect 0 35 50 5 "fluid" "inlet-2" "" "" "")
-    ; Mixing chamber
-    (circle 75 25 20 "fluid" "" 64)
-    ; Outlet
-    (rect 95 22.5 50 5 "fluid" "" "" "outlet" "")))
-
-
-### Demo with all features
-
-(def ^:private demo-comprehensive
-  (domain
-    ; Outer boundary with all edges named differently
-    (rect 0 0 200 150 "main-region" 
-          "bottom-wall" "right-wall" "top-wall" "left-wall")
-    ; Multiple solid obstacles
-    (rect 40 40 30 30 "obstacle-1" "obs-surface")
-    (rect 120 40 30 30 "obstacle-2" "obs-surface")
-    ; Circular feature
-    (circle 100 75 15 "circular-region" "circle-boundary" 36)
-    ; Holes
-    (hole (circle 60 100 8 "void-1"))
-    (hole (rect 140 100 15 15 "void-2" ""))
-    ; Irregular polygon
-    (poly [30.0 110.0  50.0 100.0  60.0 120.0  45.0 140.0  25.0 130.0]
-          "irregular" "irregular-boundary")))
+  (demo-heat-exchanger-generator 10 8 4 1))

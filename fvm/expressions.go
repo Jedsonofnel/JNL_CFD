@@ -17,12 +17,12 @@ type Expression struct {
 }
 
 // FieldExpr gets the value of a field
-func FieldExpr(ctx *Context, name string) *Expression {
-	field := ctx.Fields[name]
-	return &Expression{
-		Eval: func(i int) float64 { return field.Get(i) },
-	}
-}
+// func FieldExpr(ctx *Context, name string) *Expression {
+// 	field := ctx.Fields[name]
+// 	return &Expression{
+// 		Eval: func(i int) float64 { return field.Get(i) },
+// 	}
+// }
 
 func ConstExpr(value float64) *Expression {
 	return &Expression{

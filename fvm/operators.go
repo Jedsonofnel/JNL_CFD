@@ -59,34 +59,34 @@ func LaplacianConstant(
 
 // LinearSourceOperator is a generalised linear source S_u + S_p * phi
 // Linearized as S_u contributes to source, S_p contributes to diag
-func LinearSourceOperator(
-	eq *Equation,
-	ctx *Context,
-	phiName string,
-	Su *Expression, // explicit source
-	Sp *Expression, // implicit coefficient (negative for stability)
-	mask RegionMask,
-) *Equation {
-	mesh := ctx.Mesh
-
-	eq.ForEachCell(func(localIdx, globalIdx int) {
-		if !mask.Contains(mesh.CellRegions[globalIdx]) {
-			return
-		}
-
-		vol := mesh.CellVolumes[globalIdx]
-
-		if Su != nil {
-			eq.Source[localIdx] += Su.Eval(globalIdx) * vol
-		}
-
-		if Sp != nil {
-			eq.Diag[localIdx] -= Sp.Eval(globalIdx) * vol // Note: Sp should be negative for stability
-		}
-	})
-
-	return eq
-}
+// func LinearSourceOperator(
+// 	eq *Equation,
+// 	ctx *Context,
+// 	phiName string,
+// 	Su *Expression, // explicit source
+// 	Sp *Expression, // implicit coefficient (negative for stability)
+// 	mask RegionMask,
+// ) *Equation {
+// 	mesh := ctx.Mesh
+// 
+// 	eq.ForEachCell(func(localIdx, globalIdx int) {
+// 		if !mask.Contains(mesh.CellRegions[globalIdx]) {
+// 			return
+// 		}
+// 
+// 		vol := mesh.CellVolumes[globalIdx]
+// 
+// 		if Su != nil {
+// 			eq.Source[localIdx] += Su.Eval(globalIdx) * vol
+// 		}
+// 
+// 		if Sp != nil {
+// 			eq.Diag[localIdx] -= Sp.Eval(globalIdx) * vol // Note: Sp should be negative for stability
+// 		}
+// 	})
+// 
+// 	return eq
+// }
 
 //
 // Masking operators by region
@@ -119,19 +119,19 @@ func RegionsFromIndices(indices ...int) RegionMask {
 	return mask
 }
 
-func RegionsFromNames(ctx *Context, names ...string) RegionMask {
-	if len(names) == 0 {
-		return nil
-	}
-
-	mask := make(RegionMask)
-	for regionIdx, regionName := range ctx.Regions {
-		for _, name := range names {
-			if regionName == name {
-				mask[regionIdx] = true
-				break
-			}
-		}
-	}
-	return mask
-}
+// func RegionsFromNames(ctx *Context, names ...string) RegionMask {
+// 	if len(names) == 0 {
+// 		return nil
+// 	}
+// 
+// 	mask := make(RegionMask)
+// 	for regionIdx, regionName := range ctx.Regions {
+// 		for _, name := range names {
+// 			if regionName == name {
+// 				mask[regionIdx] = true
+// 				break
+// 			}
+// 		}
+// 	}
+// 	return mask
+// }
