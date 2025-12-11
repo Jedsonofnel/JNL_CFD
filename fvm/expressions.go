@@ -1,10 +1,6 @@
 package fvm
 
-import (
-	"errors"
-
-	jnl "jedn.dev/jnlisp"
-)
+import ()
 
 //
 // Compiled field arithmetic for arbitrary expressions
@@ -51,32 +47,5 @@ func SubExpr(a, b *Expression) *Expression {
 func QuotExpr(a, b *Expression) *Expression {
 	return &Expression{
 		Eval: func(i int) float64 { return a.Eval(i) / b.Eval(i) },
-	}
-}
-
-// GetExpression extracts a field from context and returns an Expression
-func GetExpression(ctx jnl.Map, key string) (*Expression, error) {
-	val := ctx.Lookup(jnl.NewKeyword(key))
-	if val == (jnl.Nil{}) || val == nil {
-		return nil, errors.New("field '" + key + "' not found in context")
-	}
-
-	switch v := val.(type) {
-	case jnl.Float:
-		// Constant scalar
-		f := float64(v)
-		return ConstExpr(f), nil
-	case jnl.Int:
-		// Integer constant
-		f := float64(v)
-		return ConstExpr(f), nil
-	case jnl.FloatTuple:
-		// Field array
-		values := v.Elements
-		return &Expression{
-			Eval: func(i int) float64 { return values[i] },
-		}, nil
-	default:
-		return nil, errors.New("cannot convert" + v.Type() + " to expression (key: " + key + ")")
 	}
 }

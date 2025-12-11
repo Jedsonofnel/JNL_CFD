@@ -97,8 +97,8 @@ j(defn- apply-operator! [matrix ctx op]
   (let [[op-type & args] op]
     (case op-type
       :laplacian 
-        (let [[coefficient] args]
-          (.laplacian-constant matrix ctx coefficient)))))
+        (let [[coeff] args]
+          (.laplacian-constant matrix ctx coeff)))))
 
 j(defn- apply-source! [matrix ctx src]
   (let [[src-type & args] src]
@@ -108,17 +108,18 @@ j(defn- apply-source! [matrix ctx src]
           (.source-constant matrix value)))))
 
 j(defn- apply-bc! [matrix ctx bc]
-  (let [[bc-type boundary & args] bc]
+  (let [[bc-type boundary & args] bc
+        bname (keyword boundary)]
     (case bc-type
       :dirichlet 
         (let [[value] args]
-          (.bc-dirichlet-constant matrix ctx boundary value))
+          (.bc-dirichlet-constant matrix ctx bname value))
       :neumann 
         (let [[value] args]
-          (.bc-neumann-constant matrix ctx boundary value))
+          (.bc-neumann-constant matrix ctx bname value))
       :robin
         (let [[h t-inf] args]
-          (.bc-robin-constant matrix ctx boundary h t-inf)))))
+          (.bc-robin-constant matrix ctx bname h t-inf)))))
 
 Builds the matrix according to the equation
 j(defn- build-matrix! [matrix ctx eqn]

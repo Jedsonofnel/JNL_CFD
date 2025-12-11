@@ -1,7 +1,6 @@
 package fvm
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/geometry"
 	jnl "jedn.dev/jnlisp"
 )
 
@@ -15,10 +14,12 @@ func LaplacianConstant(
 	gammaKey string,
 	mask RegionMask,
 ) (*Equation, error) {
-	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
-	mesh := meshVal.(*geometry.Mesh)
+	mesh, err := GetMesh(ctx)
+	if err != nil {
+		return eq, err
+	}
 
-	gamma, err := GetExpression(ctx, gammaKey)
+	gamma, err := GetFieldExpression(ctx, gammaKey)
 	if err != nil {
 		return nil, err
 	}

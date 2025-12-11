@@ -147,11 +147,7 @@ func operatorLaplacianConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	_, err := LaplacianConstant(eq, context, gammaKey, AllRegions())
-	if err != nil {
-		return nil, err
-	}
-	return eq, nil
+	return LaplacianConstant(eq, context, gammaKey, AllRegions())
 }
 
 func operatorSourceConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
@@ -172,8 +168,7 @@ func bcDirichletConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	DirichletBC(eq, context, string(bname), rat.Rational())
-	return eq, nil
+	return DirichletBC(eq, context, string(bname), rat.Rational())
 }
 
 func bcNeumannConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
@@ -184,8 +179,7 @@ func bcNeumannConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	NeumannBC(eq, context, string(bname), rat.Rational())
-	return eq, nil
+	return NeumannBC(eq, context, string(bname), rat.Rational())
 }
 
 func bcRobin(ctx *jnl.CallContext) (jnl.Sexp, error) {
@@ -197,6 +191,5 @@ func bcRobin(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	RobinBC(eq, context, string(bname), h.Rational(), tInf.Rational())
-	return eq, nil
+	return RobinBC(eq, context, string(bname), h.Rational(), tInf.Rational())
 }

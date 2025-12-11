@@ -15,9 +15,11 @@ func DirichletBC(
 	ctx jnl.Map,
 	boundaryName string,
 	value float64,
-) *Equation {
-	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
-	mesh := meshVal.(*geometry.Mesh)
+) (*Equation, error) {
+	mesh, err := GetMesh(ctx)
+	if err != nil {
+		return eq, nil
+	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
 	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
@@ -32,7 +34,7 @@ func DirichletBC(
 		eq.Source[localOwner] += lower * value
 	})
 
-	return eq
+	return eq, nil
 }
 
 // NeumannBC sets a fixed flux at a boundary
@@ -41,9 +43,11 @@ func NeumannBC(
 	ctx jnl.Map,
 	boundaryName string,
 	flux float64,
-) *Equation {
-	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
-	mesh := meshVal.(*geometry.Mesh)
+) (*Equation, error) {
+	mesh, err := GetMesh(ctx)
+	if err != nil {
+		return eq, nil
+	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
 	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
@@ -54,7 +58,7 @@ func NeumannBC(
 		eq.Source[localOwner] += flux
 	})
 
-	return eq
+	return eq, nil
 }
 
 // RobinBC implements a mixed boundary condition: alpha*phi + flux = gamma
@@ -66,9 +70,11 @@ func RobinBC(
 	boundaryName string,
 	alpha float64, // coefficient of phi (e.g., h for convection)
 	gamma float64, // RHS value (e.g., h*Tinf)
-) *Equation {
-	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
-	mesh := meshVal.(*geometry.Mesh)
+) (*Equation, error) {
+	mesh, err := GetMesh(ctx)
+	if err != nil {
+		return eq, nil
+	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
 	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
@@ -90,7 +96,7 @@ func RobinBC(
 		eq.Source[localOwner] += effectiveCoeff * (gamma / alpha)
 	})
 
-	return eq
+	return eq, nil
 }
 
 //
