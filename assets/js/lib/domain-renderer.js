@@ -133,11 +133,6 @@ export function renderDomain(ctx, transform, data, options = {}) {
 		transparent: options.transparent ?? false, // New: stroke-only mode
 	};
 
-	// Clear canvas (unless transparent overlay mode)
-	if (!opts.transparent) {
-		ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-	}
-
 	const polygonsSorted = [...data.polygons].sort((a, b) => {
 		const layerA = a.layer ?? 0;
 		const layerB = b.layer ?? 0;

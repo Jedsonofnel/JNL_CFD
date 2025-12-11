@@ -140,6 +140,7 @@ button[disabled] {
 	margin: 0 auto;
 	max-width: 800px;
 	width: 100%;
+	background-color: var(--bg);
 }
 
 .viz-canvas-webgl,
