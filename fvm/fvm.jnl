@@ -10,21 +10,10 @@ j(ns jnl.cfd.fvm
             [jnl.cfd.linalg :as linalg]))
 
 
-## Matrices
-j(defn new-equation [mesh]
-  (.new-equation  mesh))
+## Linear Systems (matrix + rhs)
 
-j(defn zero-equation [eq]
-  (.equation-zero eq))
-
-j(defn solve [eq solver field]
-  (.equation-solve eq solver field))
-
-j(defn equation-solutions [eq]
-  (.equation-solutions eq))
-
-j(defn equation-diagnostics [eq]
-  (.equation-diagnostics))
+j(defn system-diagnostics [eq]
+  (.sys-diagnostics))
 
 
 ## Context Structure
@@ -82,7 +71,7 @@ j(defn- ensure-matrix [ctx field-name]
   (if (get-in ctx [:matrices field-name])
       ctx
       (let [mesh (get ctx :mesh)
-            matrix (.new-equation mesh)]
+            matrix (.new-linear-system mesh)]
         (assoc-in ctx [:matrices field-name] matrix))))
 
 j(defn- ensure-solver [ctx field-name solver-spec]
@@ -123,7 +112,7 @@ j(defn- apply-bc! [matrix ctx bc]
 
 Builds the matrix according to the equation
 j(defn- build-matrix! [matrix ctx eqn]
-  (.equation-zero matrix)
+  (.sys-zero matrix)
   (doseq [op (get eqn :operators)]
     (apply-operator! matrix ctx op))
   (doseq [src (get eqn :sources)]
@@ -146,7 +135,7 @@ j(defn solve-equation
           solver-obj (get-in ctx [:solvers field-name])
           field (get-in ctx [:values field-name])]
       (build-matrix! matrix ctx eqn)
-      (.equation-solve matrix solver-obj field)
+      (.sys-solve matrix solver-obj field)
       ctx)))
 
 

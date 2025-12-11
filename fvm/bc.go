@@ -11,92 +11,92 @@ import (
 
 // DirichletBC sets a fixed value at a boundary
 func DirichletBC(
-	eq *Equation,
+	sys *LinearSystem,
 	ctx jnl.Map,
 	boundaryName string,
 	value float64,
-) (*Equation, error) {
+) (*LinearSystem, error) {
 	mesh, err := GetMesh(ctx)
 	if err != nil {
-		return eq, nil
+		return sys, nil
 	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
-	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
+	sys.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
 		if boundaryMarker != marker {
 			return
 		}
 
-		localOwner := eq.GetLocalCellIndex(owner)
-		_, lower := eq.GetBoundaryFlux(boundaryIdx)
+		localOwner := sys.GetLocalCellIndex(owner)
+		_, lower := sys.GetBoundaryFlux(boundaryIdx)
 
-		eq.Diag[localOwner] += lower
-		eq.Source[localOwner] += lower * value
+		sys.Diag[localOwner] += lower
+		sys.Source[localOwner] += lower * value
 	})
 
-	return eq, nil
+	return sys, nil
 }
 
 // NeumannBC sets a fixed flux at a boundary
 func NeumannBC(
-	eq *Equation,
+	sys *LinearSystem,
 	ctx jnl.Map,
 	boundaryName string,
 	flux float64,
-) (*Equation, error) {
+) (*LinearSystem, error) {
 	mesh, err := GetMesh(ctx)
 	if err != nil {
-		return eq, nil
+		return sys, nil
 	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
-	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
+	sys.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
 		if boundaryMarker != marker {
 			return
 		}
-		localOwner := eq.GetLocalCellIndex(owner)
-		eq.Source[localOwner] += flux
+		localOwner := sys.GetLocalCellIndex(owner)
+		sys.Source[localOwner] += flux
 	})
 
-	return eq, nil
+	return sys, nil
 }
 
 // RobinBC implements a mixed boundary condition: alpha*phi + flux = gamma
 // Where flux is the normal gradient flux at the boundary
 // For convection: alpha=h, gamma=h*Tinf
 func RobinBC(
-	eq *Equation,
+	sys *LinearSystem,
 	ctx jnl.Map,
 	boundaryName string,
 	alpha float64, // coefficient of phi (e.g., h for convection)
 	gamma float64, // RHS value (e.g., h*Tinf)
-) (*Equation, error) {
+) (*LinearSystem, error) {
 	mesh, err := GetMesh(ctx)
 	if err != nil {
-		return eq, nil
+		return sys, nil
 	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
-	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
+	sys.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
 		if boundaryMarker != marker {
 			return
 		}
 
-		localOwner := eq.GetLocalCellIndex(owner)
+		localOwner := sys.GetLocalCellIndex(owner)
 
 		// Get accumulated fluxes from operators (diffusion, convection, etc.)
-		_, lower := eq.GetBoundaryFlux(boundaryIdx)
+		_, lower := sys.GetBoundaryFlux(boundaryIdx)
 
 		// Mixed BC discretization:
 		// alpha*(phi_cell) + lower*(phi_boundary - phi_cell) = gamma
 		// Solve for phi_boundary and substitute back:
 		effectiveCoeff := (lower * alpha) / (lower + alpha)
 
-		eq.Diag[localOwner] += effectiveCoeff
-		eq.Source[localOwner] += effectiveCoeff * (gamma / alpha)
+		sys.Diag[localOwner] += effectiveCoeff
+		sys.Source[localOwner] += effectiveCoeff * (gamma / alpha)
 	})
 
-	return eq, nil
+	return sys, nil
 }
 
 //

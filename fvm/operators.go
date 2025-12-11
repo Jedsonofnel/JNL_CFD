@@ -9,14 +9,14 @@ import (
 //
 
 func LaplacianConstant(
-	eq *Equation,
+	sys *LinearSystem,
 	ctx jnl.Map,
 	gammaKey string,
 	mask RegionMask,
-) (*Equation, error) {
+) (*LinearSystem, error) {
 	mesh, err := GetMesh(ctx)
 	if err != nil {
-		return eq, err
+		return sys, err
 	}
 
 	gamma, err := GetFieldExpression(ctx, gammaKey)
@@ -24,26 +24,26 @@ func LaplacianConstant(
 		return nil, err
 	}
 
-	eq.ForEachConnection(func(localIdx, globalIdx, owner, neighbour int) {
+	sys.ForEachConnection(func(localIdx, globalIdx, owner, neighbour int) {
 		if !mask.Contains(mesh.CellRegions[owner]) {
 			return // skip this connection
 		}
 
 		// get local indices
-		localOwner := eq.GetLocalCellIndex(owner)
-		localNeighbour := eq.GetLocalCellIndex(neighbour)
+		localOwner := sys.GetLocalCellIndex(owner)
+		localNeighbour := sys.GetLocalCellIndex(neighbour)
 
 		gammaFace := gamma.Eval(owner)
 		geomDiff := gammaFace * mesh.FaceAreas[globalIdx] / mesh.ConnectionDists[globalIdx]
 
 		// write to local arrays
-		eq.Diag[localOwner] += geomDiff
-		eq.Diag[localNeighbour] += geomDiff
-		eq.UpperDiag[localIdx] -= geomDiff
-		eq.LowerDiag[localIdx] -= geomDiff
+		sys.Diag[localOwner] += geomDiff
+		sys.Diag[localNeighbour] += geomDiff
+		sys.UpperDiag[localIdx] -= geomDiff
+		sys.LowerDiag[localIdx] -= geomDiff
 	})
 
-	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
+	sys.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
 		if !mask.Contains(mesh.CellRegions[owner]) {
 			return
 		}
@@ -52,15 +52,15 @@ func LaplacianConstant(
 		geomDiff := gammaFace * mesh.FaceAreas[globalIdx] /
 			mesh.ConnectionDists[globalIdx]
 
-		eq.AddBoundaryFlux(boundaryIdx, geomDiff, geomDiff)
+		sys.AddBoundaryFlux(boundaryIdx, geomDiff, geomDiff)
 	})
 
-	return eq, nil
+	return sys, nil
 }
 
-func SourceConstant(eq *Equation, value float64) {
-	eq.ForEachCell(func(localIdx, globalIdx int) {
-		eq.Source[localIdx] += value
+func SourceConstant(sys *LinearSystem, value float64) {
+	sys.ForEachCell(func(localIdx, globalIdx int) {
+		sys.Source[localIdx] += value
 	})
 }
 
