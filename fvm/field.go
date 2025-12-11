@@ -29,9 +29,9 @@ func UpdateTriField(triField, results []float64, triToCells []int) error {
 	for triIdx, cellIdx := range triToCells {
 		res := results[cellIdx]
 		normalised := (res - minResult) / resultRange
-		triField[triIdx+0] = normalised
-		triField[triIdx+1] = normalised
-		triField[triIdx+2] = normalised
+		triField[triIdx*3+0] = normalised
+		triField[triIdx*3+1] = normalised
+		triField[triIdx*3+2] = normalised
 	}
 
 	return nil

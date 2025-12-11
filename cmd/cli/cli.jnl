@@ -79,6 +79,13 @@ j(def viz-version (atom 0))
 
 j(defn push-viz [data]
   (cond
+    (and (map? data)
+         (contains? data :context)
+         (contains? data :field))
+      (let [ctx (get data :context)
+            field (get data :field)]
+        (reset! current-viz
+                (fvm/prepare-field-viz ctx field)))
     (geo/domain? data)
       (reset!
         current-viz
@@ -141,3 +148,10 @@ j(defn -main []
   (println "JNL CFD - Lisp CLI")
   (start-viz-server)
   (println "REPL ready. Type (stop-viz-server) to stop the server."))
+
+
+## Demos and Examples
+
+j(defn demo-1D-heat-diffusion []
+  (let [ctx (fvm/demo-1D-heat-diffusion)]
+    (push-viz {:context ctx :field :T})))

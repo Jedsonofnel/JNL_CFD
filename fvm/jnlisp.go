@@ -33,6 +33,9 @@ func init() {
 	NS.BindNativeFn(".bc-dirichlet-constant", jnl.PosArity("eq", "ctx", "bname", "val"), bcDirichletConstant)
 	NS.BindNativeFn(".bc-neumann-constant", jnl.PosArity("eq", "ctx", "bname", "val"), bcNeumannConstant)
 	NS.BindNativeFn(".bc-robin", jnl.PosArity("eq", "ctx", "bname", "h", "t_inf"), bcRobin)
+
+	// Rendering
+	NS.BindNativeFn(".update-tri-field", jnl.PosArity("results", "tri-to-cells"), updateTriField)
 }
 
 func (eq *LinearSystem) String() string {
@@ -192,4 +195,20 @@ func bcRobin(ctx *jnl.CallContext) (jnl.Sexp, error) {
 		return nil, err
 	}
 	return RobinBC(sys, context, string(bname), h.Rational(), tInf.Rational())
+}
+
+func updateTriField(ctx *jnl.CallContext) (jnl.Sexp, error) {
+	results := jnl.GetArg[jnl.FloatTuple](ctx)
+	triToCells := jnl.GetArg[jnl.IntTuple](ctx)
+	if err := ctx.Validate(); err != nil {
+		return nil, err
+	}
+
+	triField := make([]float64, len(triToCells.Elements)*3)
+	err := UpdateTriField(triField, results.Elements, triToCells.Elements)
+	if err != nil {
+		return nil, err
+	}
+
+	return jnl.NewFloatTuple(triField), nil
 }

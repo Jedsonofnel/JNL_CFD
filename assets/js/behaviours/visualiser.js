@@ -1,4 +1,5 @@
 import { renderDomain } from "../lib/domain-renderer.js";
+import { renderField } from "../lib/field-renderer.js";
 import { EDNParser } from "../lib/edn-parser.js";
 import { renderMesh } from "../lib/mesh-renderer.js";
 import { ViewportTransform } from "../lib/viewport-transform.js";
@@ -47,6 +48,10 @@ export class Visualiser {
 			bounds = this.data.domain.bounds;
 		}
 
+		if(!bounds && this.data.mesh) {
+			bounds = this.data.mesh.domain.bounds;
+		}
+
 		if (!bounds) {
 			return 4 / 3; // Default aspect ratio
 		}
@@ -85,7 +90,7 @@ export class Visualiser {
 
 		const type = this.getDataType();
 
-		if (type === "mesh") {
+		if (type === "mesh" || type == "field-viz") {
 			// Create WebGL canvas (bottom layer)
 			this.canvasWebGL = document.createElement("canvas");
 			this.canvasWebGL.className = "viz-canvas-webgl";
@@ -169,6 +174,10 @@ export class Visualiser {
 			bounds = this.data.domain.bounds;
 		}
 
+		if (!bounds && this.data.mesh) {
+			bounds = this.data.mesh.domain.bounds;
+		}
+
 		if (!bounds) {
 			console.warn("No bounds found in data");
 			return;
@@ -193,43 +202,56 @@ export class Visualiser {
 		const type = this.getDataType();
 
 		switch (type) {
-			case "domain":
-				if (!this.ctx2d) {
-					console.error("2D context not available");
-					return;
-				}
-				renderDomain(this.ctx2d, this.transform, this.data, this.options);
-				break;
+		case "domain":
+			if (!this.ctx2d) {
+				console.error("2D context not available");
+				return;
+			}
+			renderDomain(this.ctx2d, this.transform, this.data, this.options);
+			break;
 
-			case "mesh":
-				if (!this.ctxWebGL) {
-					console.error("WebGL context not available");
-					return;
-				}
+		case "mesh":
+			if (!this.ctxWebGL) {
+				console.error("WebGL context not available");
+				return;
+			}
 
-				renderMesh(this.ctxWebGL, this.transform, this.data, {
-					lineColor: [0.2, 0.2, 0.2, 1.0],
-					lineWidth: 1.0,
-					clear: true,
+			renderMesh(this.ctxWebGL, this.transform, this.data, {
+				lineColor: [0.2, 0.2, 0.2, 1.0],
+				lineWidth: 1.0,
+				clear: true,
+			});
+
+			if (this.data.domain && this.ctx2d) {
+				renderDomain(this.ctx2d, this.transform, this.data.domain, {
+					...this.options,
+					transparent: true, // Stroke-only overlay
 				});
+			}
+			break;
 
-				if (this.data.domain && this.ctx2d) {
-					renderDomain(this.ctx2d, this.transform, this.data.domain, {
-						...this.options,
-						transparent: true, // Stroke-only overlay
-					});
-				}
-				break;
+		case "field-viz":
+			if (!this.ctxWebGL) {
+				console.error("WebGL context not available");
+				return;
+			}
 
-			default:
-				this.ctx.font = "20px monospace";
-				this.ctx.fillStyle = "#666";
-				this.ctx.textAlign = "center";
-				this.ctx.fillText(
+			renderField(this.ctxWebGL, this.transform, this.data, {
+				colorMap: "hot",
+				clear: true,
+			})
+
+		default:
+			if (this.ctx2d) {
+				this.ctx2d.font = "20px monospace";
+				this.ctx2d.fillStyle = "#666";
+				this.ctx2d.textAlign = "center";
+				this.ctx2d.fillText(
 					`Unknown visualization type: ${type}`,
-					this.canvas.width / 2,
-					this.canvas.height / 2,
+					this.canvas2D.width / 2,
+					this.canvas2D.height / 2,
 				);
+			}
 		}
 	}
 

@@ -132,7 +132,7 @@ Single rectangle with all boundaries named
 j(def ^:private demo-channel
   (domain
     (rect 0 0 200 50 "fluid" 
-          "inlet" "wall" "outlet" "wall")))
+          "wall" "inlet" "wall" "outlet")))
 
 Circle in a box (annular flow)
 j(def ^:private demo-annular
@@ -193,7 +193,7 @@ j(def ^:private demo-heat-exchanger
 ### Simple Meshes
 
 j(def demo-channel-mesh
-  (triangulate demo-channel {:quality 20 :max-area 2.0}))
+  (triangulate demo-channel {:quality 20 :max-area 10.0}))
 
 j(def demo-annular-mesh
-  (triangulate demo-annular {:quality 25 :max-area 1.5}))
+  (triangulate demo-annular {:quality 25 :max-area 10.0}))

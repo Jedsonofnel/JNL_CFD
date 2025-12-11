@@ -139,6 +139,23 @@ j(defn solve-equation
       ctx)))
 
 
+## Visualisation
+
+Prepare field data for WebGL rendering
+j(defn prepare-field-viz [ctx field-name]
+  (let [mesh (get ctx :mesh)
+        field (get-field ctx field-name)
+        tri-data (geo/triangulate-mesh mesh)
+        vertices (get tri-data :vertices)
+        tri-to-cells (get tri-data :tri-to-cells)
+        normalized (.update-tri-field field tri-to-cells)]
+    {:type :field-viz
+     :field field-name
+     :vertices vertices
+     :values normalized
+     :mesh (hash-map mesh)}))
+
+
 ## Demos and Examples
 
 
