@@ -1,6 +1,7 @@
 package fvm
 
 import (
+	"github.com/Jedsonofnel/jnlcfd/geometry"
 	jnl "jedn.dev/jnlisp"
 )
 
@@ -12,17 +13,19 @@ func LaplacianConstant(
 	sys *LinearSystem,
 	ctx jnl.Map,
 	gammaKey string,
-	mask RegionMask,
-) (*LinearSystem, error) {
+	regionNames ...string,
+) error {
 	mesh, err := GetMesh(ctx)
 	if err != nil {
-		return sys, err
+		return err
 	}
 
 	gamma, err := GetFieldExpression(ctx, gammaKey)
 	if err != nil {
-		return nil, err
+		return err
 	}
+
+	mask := RegionsFromNames(mesh, regionNames...)
 
 	sys.ForEachConnection(func(localIdx, globalIdx, owner, neighbour int) {
 		if !mask.Contains(mesh.CellRegions[owner]) {
@@ -55,17 +58,35 @@ func LaplacianConstant(
 		sys.AddBoundaryFlux(boundaryIdx, geomDiff, geomDiff)
 	})
 
-	return sys, nil
+	return nil
 }
 
-func SourceConstant(sys *LinearSystem, value float64) {
+func SourceConstant(
+	sys *LinearSystem,
+	ctx jnl.Map,
+	value float64,
+	regionNames ...string,
+) error {
+	mesh, err := GetMesh(ctx)
+	if err != nil {
+		return err
+	}
+
+	mask := RegionsFromNames(mesh, regionNames...)
+
 	sys.ForEachCell(func(localIdx, globalIdx int) {
-		sys.Source[localIdx] += value
+		if !mask.Contains(mesh.CellRegions[globalIdx]) {
+			return
+		}
+		cellVolume := mesh.CellVolumes[globalIdx]
+		sys.Source[localIdx] += value * cellVolume
 	})
+
+	return nil
 }
 
 //
-// Masking operators by region
+// Region masking
 //
 
 // Region mask masks an operator by region
@@ -83,31 +104,19 @@ func AllRegions() RegionMask {
 	return nil // nil map = all regions
 }
 
-func RegionsFromIndices(indices ...int) RegionMask {
-	if len(indices) == 0 {
-		return nil
+func RegionsFromNames(mesh *geometry.Mesh, names ...string) RegionMask {
+	if len(names) == 0 {
+		return nil // all regions
 	}
 
 	mask := make(RegionMask)
-	for _, idx := range indices {
-		mask[idx] = true
+	for regionIdx, regionName := range mesh.RegionNames {
+		for _, name := range names {
+			if regionName == name {
+				mask[regionIdx] = true
+				break
+			}
+		}
 	}
 	return mask
 }
-
-// func RegionsFromNames(ctx *Context, names ...string) RegionMask {
-// 	if len(names) == 0 {
-// 		return nil
-// 	}
-//
-// 	mask := make(RegionMask)
-// 	for regionIdx, regionName := range ctx.Regions {
-// 		for _, name := range names {
-// 			if regionName == name {
-// 				mask[regionIdx] = true
-// 				break
-// 			}
-// 		}
-// 	}
-// 	return mask
-// }

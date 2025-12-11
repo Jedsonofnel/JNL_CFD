@@ -150,7 +150,7 @@ j(def ^:private demo-two-region
 ### Complex Domains
 
 PCB with multiple chips generator function
-j(defn ^:private demo-pcb-generator [spacing num-x num-y chip-w chip-h]
+j(defn demo-pcb-generator [spacing num-x num-y chip-w chip-h]
   (let [pcb-width (+ (* num-x chip-w) (* spacing (inc num-x)))
         pcb-height (+ (* num-y chip-h) (* spacing (inc num-y)))
         builder (domain-builder)]
@@ -161,13 +161,12 @@ j(defn ^:private demo-pcb-generator [spacing num-x num-y chip-w chip-h]
     (doseq [j (range num-y)
           i (range num-x)]
       (let [x (+ spacing (* i (+ chip-w spacing)))
-            y (+ spacing (* j (+ chip-h spacing)))
-            chip-id (str "chip-" (+ (* j num-x i 1)))]
-        (add-poly builder (rect x y chip-w chip-h chip-id))))
+            y (+ spacing (* j (+ chip-h spacing)))]
+        (add-poly builder (rect x y chip-w chip-h "chip"))))
     ;; Build and return
     (build-domain builder)))
 
-j(def ^:private demo-pcb
+j(def demo-pcb
   (demo-pcb-generator 0.01 3 2 0.05 0.04))
 
 Heat exchanger with circular tubes generator function
@@ -193,7 +192,7 @@ j(def ^:private demo-heat-exchanger
 ### Simple Meshes
 
 j(def demo-channel-mesh
-  (triangulate demo-channel {:quality 20 :max-area 10.0}))
+  (triangulate demo-channel {:quality 20 :max-area 2.0}))
 
-j(def demo-annular-mesh
-  (triangulate demo-annular {:quality 25 :max-area 10.0}))
+j(def demo-pcb-mesh
+  (triangulate demo-pcb {:quality 25 :max-area 0.0005}))

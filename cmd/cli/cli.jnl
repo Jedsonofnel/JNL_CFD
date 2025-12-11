@@ -155,3 +155,7 @@ j(defn -main []
 j(defn demo-1D-heat-diffusion []
   (let [ctx (fvm/demo-1D-heat-diffusion)]
     (push-viz {:context ctx :field :T})))
+
+j(defn demo-chip-array []
+  (let [solved (fvm/demo-chip-array 0.015 3 2 293.0 10.0)]
+    (push-viz {:context solved :field :T})))

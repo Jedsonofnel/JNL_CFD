@@ -49,11 +49,23 @@ j(defn equation []
    :sources []
    :bcs []})
 
-j(defn with-laplacian [eqn coefficient]
-  (update eqn :operators conj [:laplacian coefficient]))
 
-j(defn with-source-const [eqn value]
-  (update eqn :sources conj [:const value]))
+### Operators
+
+j(defn with-laplacian 
+  ([eqn coefficient] 
+    (update eqn :operators conj [:laplacian coefficient]))
+  ([eqn coefficient & regions]
+    (update eqn :operators conj (into [:laplacian coefficient] regions))))
+
+j(defn with-source-const
+  ([eqn value]
+    (update eqn :sources conj [:const value]))
+  ([eqn value & regions]
+    (update eqn :sources conj (into [:const value] regions))))
+
+
+### Boundary Conditions
 
 j(defn with-bc-dirichlet [eqn boundary value]
   (update eqn :bcs conj [:dirichlet boundary value]))
@@ -86,15 +98,15 @@ j(defn- apply-operator! [matrix ctx op]
   (let [[op-type & args] op]
     (case op-type
       :laplacian 
-        (let [[coeff] args]
-          (.laplacian-constant matrix ctx coeff)))))
+        (let [[coeff & regions] args]
+          (apply .laplacian-constant matrix ctx coeff regions)))))
 
 j(defn- apply-source! [matrix ctx src]
   (let [[src-type & args] src]
     (case src-type
       :const
-        (let [[value] args]
-          (.source-constant matrix value)))))
+        (let [[value & regions] args]
+          (apply .source-constant matrix ctx value regions)))))
 
 j(defn- apply-bc! [matrix ctx bc]
   (let [[bc-type boundary & args] bc
@@ -173,3 +185,34 @@ j(defn demo-1D-heat-diffusion []
             (with-bc-dirichlet "outlet" 300.0)
             (with-bc-neumann "wall" 0.0)))
       (solve-equation :T)))
+
+
+### Parametric Solvers
+
+PCB thermal with chip heat sources - generates geometry on the fly
+j(defn demo-chip-array 
+  ([] 
+    (demo-chip-array 0.01 3 2 293.0 10.0))
+  ([spacing num-x num-y] 
+    (demo-chip-array spacing num-x num-y 293.0 10.0))
+  ([spacing num-x num-y t-ambient h]
+    (let [; Generate PCB geometry
+          chip-w 0.05
+          chip-h 0.04
+          domain (geo/demo-pcb-generator spacing num-x num-y chip-w chip-h)
+          mesh (geo/triangulate domain {:quality 25 :max-area 0.000005})]
+      (-> (new-context mesh)
+          (add-field :T t-ambient)
+          (add-constant :k-pcb 0.3)      ; W/(m·K) - FR4
+          (add-constant :k-chip 150.0)   ; W/(m·K) - Silicon
+          (add-constant :q-chip 5e6)     ; W/m³ - volumetric heat gen
+          (add-constant :h h)            ; W/(m²·K) - convection coeff (for later)
+          (define-equation :T
+            (-> (equation)
+                ; Diffusion with same k everywehere
+                (with-laplacian :k-pcb)
+                ; Heat generation only in chip region
+                (with-source-const 5e6 :chip)
+                ; Simple Dirichlet BC at ambient on perimeter
+                (with-bc-dirichlet "ambient" t-ambient)))
+          (solve-equation :T)))))

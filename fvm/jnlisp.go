@@ -18,31 +18,31 @@ var NS = jnl.NewNamespace("jnl.cfd.fvm", nsSrc)
 //
 
 func init() {
-	jnl.CreatePredicate[*LinearSystem](NS, "equation")
+	jnl.CreatePredicate[*LinearSystem](NS, "linear-system")
 	NS.BindNativeFn(".new-linear-system", jnl.PosArity("mesh"), makeLinearSystem)
-	NS.BindNativeFn(".sys-zero", jnl.PosArity("eq"), sysZero)
-	NS.BindNativeFn(".sys-solve", jnl.PosArity("eq", "solver", "field"), sysSolve)
-	NS.BindNativeFn(".sys-solutions", jnl.PosArity("eq"), sysSolutions)
-	NS.BindNativeFn(".sys-diagnostics", jnl.PosArity("eq"), sysDiagnostics)
+	NS.BindNativeFn(".sys-zero", jnl.PosArity("sys"), sysZero)
+	NS.BindNativeFn(".sys-solve", jnl.PosArity("sys", "solver", "field"), sysSolve)
+	NS.BindNativeFn(".sys-solutions", jnl.PosArity("sys"), sysSolutions)
+	NS.BindNativeFn(".sys-diagnostics", jnl.PosArity("sys"), sysDiagnostics)
 
 	// operators
-	NS.BindNativeFn(".laplacian-constant", jnl.PosArity("eq", "ctx", "gamma"), operatorLaplacianConstant)
-	NS.BindNativeFn(".source-constant", jnl.PosArity("eq", "val"), operatorSourceConstant)
+	NS.BindNativeFn(".laplacian-constant", jnl.PosRestArity("sys", "ctx", "gamma", "regions"), operatorLaplacianConstant)
+	NS.BindNativeFn(".source-constant", jnl.PosRestArity("sys", "ctx", "val", "regions"), operatorSourceConstant)
 
 	// Boundary conditions
-	NS.BindNativeFn(".bc-dirichlet-constant", jnl.PosArity("eq", "ctx", "bname", "val"), bcDirichletConstant)
-	NS.BindNativeFn(".bc-neumann-constant", jnl.PosArity("eq", "ctx", "bname", "val"), bcNeumannConstant)
-	NS.BindNativeFn(".bc-robin", jnl.PosArity("eq", "ctx", "bname", "h", "t_inf"), bcRobin)
+	NS.BindNativeFn(".bc-dirichlet-constant", jnl.PosArity("sys", "ctx", "bname", "val"), bcDirichletConstant)
+	NS.BindNativeFn(".bc-neumann-constant", jnl.PosArity("sys", "ctx", "bname", "val"), bcNeumannConstant)
+	NS.BindNativeFn(".bc-robin", jnl.PosArity("sys", "ctx", "bname", "h", "t_inf"), bcRobin)
 
 	// Rendering
 	NS.BindNativeFn(".update-tri-field", jnl.PosArity("results", "tri-to-cells"), updateTriField)
 }
 
-func (eq *LinearSystem) String() string {
+func (sys *LinearSystem) String() string {
 	return jnl.FormatNonReadable("cfd", "linear-system")
 }
 
-func (eq *LinearSystem) Type() string {
+func (sys *LinearSystem) Type() string {
 	return "linear-system"
 }
 
@@ -147,19 +147,39 @@ func operatorLaplacianConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	sys := jnl.GetArg[*LinearSystem](ctx)
 	context := ctx.GetMapArg()
 	gammaKey := ctx.GetUnqualifiedKeyword()
+	regions := jnl.GetVariadic[jnl.Keyword](ctx)
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	return LaplacianConstant(sys, context, gammaKey, AllRegions())
+
+	regionStrs := make([]string, len(regions))
+	for i, r := range regions {
+		regionStrs[i] = r.Name
+	}
+
+	if err := LaplacianConstant(sys, context, gammaKey, regionStrs...); err != nil {
+		return nil, err
+	}
+	return sys, nil
 }
 
 func operatorSourceConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	sys := jnl.GetArg[*LinearSystem](ctx)
+	context := ctx.GetMapArg()
 	rat := jnl.GetInterfaceArg[jnl.Rational](ctx, "rational")
+	regions := jnl.GetVariadic[jnl.Keyword](ctx)
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	SourceConstant(sys, rat.Rational())
+
+	regionStrs := make([]string, len(regions))
+	for i, r := range regions {
+		regionStrs[i] = r.Name
+	}
+
+	if err := SourceConstant(sys, context, rat.Rational(), regionStrs...); err != nil {
+		return nil, err
+	}
 	return sys, nil
 }
 
@@ -171,7 +191,11 @@ func bcDirichletConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	return DirichletBC(sys, context, string(bname), rat.Rational())
+
+	if err := DirichletBC(sys, context, bname, rat.Rational()); err != nil {
+		return nil, err
+	}
+	return sys, nil
 }
 
 func bcNeumannConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
@@ -182,7 +206,11 @@ func bcNeumannConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	return NeumannBC(sys, context, string(bname), rat.Rational())
+
+	if err := NeumannBC(sys, context, bname, rat.Rational()); err != nil {
+		return nil, err
+	}
+	return sys, nil
 }
 
 func bcRobin(ctx *jnl.CallContext) (jnl.Sexp, error) {
@@ -194,7 +222,11 @@ func bcRobin(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err := ctx.Validate(); err != nil {
 		return nil, err
 	}
-	return RobinBC(sys, context, string(bname), h.Rational(), tInf.Rational())
+
+	if err := RobinBC(sys, context, bname, h.Rational(), tInf.Rational()); err != nil {
+		return nil, err
+	}
+	return sys, nil
 }
 
 func updateTriField(ctx *jnl.CallContext) (jnl.Sexp, error) {

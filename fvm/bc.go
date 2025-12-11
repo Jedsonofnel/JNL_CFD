@@ -15,10 +15,10 @@ func DirichletBC(
 	ctx jnl.Map,
 	boundaryName string,
 	value float64,
-) (*LinearSystem, error) {
+) error {
 	mesh, err := GetMesh(ctx)
 	if err != nil {
-		return sys, nil
+		return err
 	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
@@ -34,7 +34,7 @@ func DirichletBC(
 		sys.Source[localOwner] += lower * value
 	})
 
-	return sys, nil
+	return nil
 }
 
 // NeumannBC sets a fixed flux at a boundary
@@ -43,10 +43,10 @@ func NeumannBC(
 	ctx jnl.Map,
 	boundaryName string,
 	flux float64,
-) (*LinearSystem, error) {
+) error {
 	mesh, err := GetMesh(ctx)
 	if err != nil {
-		return sys, nil
+		return err
 	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
@@ -58,7 +58,7 @@ func NeumannBC(
 		sys.Source[localOwner] += flux
 	})
 
-	return sys, nil
+	return nil
 }
 
 // RobinBC implements a mixed boundary condition: alpha*phi + flux = gamma
@@ -70,10 +70,10 @@ func RobinBC(
 	boundaryName string,
 	alpha float64, // coefficient of phi (e.g., h for convection)
 	gamma float64, // RHS value (e.g., h*Tinf)
-) (*LinearSystem, error) {
+) error {
 	mesh, err := GetMesh(ctx)
 	if err != nil {
-		return sys, nil
+		return err
 	}
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 
@@ -96,7 +96,7 @@ func RobinBC(
 		sys.Source[localOwner] += effectiveCoeff * (gamma / alpha)
 	})
 
-	return sys, nil
+	return nil
 }
 
 //
