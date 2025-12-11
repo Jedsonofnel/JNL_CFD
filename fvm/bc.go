@@ -83,15 +83,13 @@ func RobinBC(
 		}
 
 		localOwner := sys.GetLocalCellIndex(owner)
-
-		// Get accumulated fluxes from operators (diffusion, convection, etc.)
 		_, lower := sys.GetBoundaryFlux(boundaryIdx)
 
 		// Mixed BC discretization:
 		// alpha*(phi_cell) + lower*(phi_boundary - phi_cell) = gamma
 		// Solve for phi_boundary and substitute back:
-		effectiveCoeff := (lower * alpha) / (lower + alpha)
 
+		effectiveCoeff := (lower * alpha) / (lower + alpha)
 		sys.Diag[localOwner] += effectiveCoeff
 		sys.Source[localOwner] += effectiveCoeff * (gamma / alpha)
 	})

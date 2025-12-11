@@ -167,27 +167,24 @@ j(defn demo-pcb-generator [spacing num-x num-y chip-w chip-h]
     (build-domain builder)))
 
 j(def demo-pcb
-  (demo-pcb-generator 0.01 3 2 0.05 0.04))
+  (demo-pcb-generator 0.02 2 2 0.06 0.04))
 
 Heat exchanger with circular tubes generator function
-j(defn ^:private demo-heat-exchanger-generator [width height num-tubes tube-r]
-  (let [tube-spacing (/ width (+ num-tubes 1))
+Takes spacing as direct parameter for tube separation
+j(defn demo-heat-exchanger-generator [spacing num-tubes tube-r height]
+  (let [; Width calculated from spacing and number of tubes
+        width (* spacing (+ num-tubes 1))
         center-y (/ height 2)
         builder (domain-builder)]
     ; Add main channel
     (add-poly builder 
               (rect 0 0 width height "fluid" "inlet" "wall" "outlet" "wall"))
-    ; Add tube holes
+    ; Add tube holes with explicit spacing
     (doseq [i (range num-tubes)]
-      (let [cx (* tube-spacing (+ i 1))
-            tube-id (str "tube-" (+ i 1))]
-        (add-hole builder (circle cx center-y tube-r tube-id))))
+      (let [cx (* spacing (+ i 1))]
+        (add-hole builder (circle cx center-y tube-r "tube" "tube"))))
     ; Build and return
     (build-domain builder)))
-
-j(def ^:private demo-heat-exchanger
-  (demo-heat-exchanger-generator 10 8 4 1))
-
 
 ### Simple Meshes
 

@@ -223,7 +223,10 @@ func bcRobin(ctx *jnl.CallContext) (jnl.Sexp, error) {
 		return nil, err
 	}
 
-	if err := RobinBC(sys, context, bname, h.Rational(), tInf.Rational()); err != nil {
+	hVal := h.Rational()
+	gamma := hVal * tInf.Rational()
+
+	if err := RobinBC(sys, context, bname, hVal, gamma); err != nil {
 		return nil, err
 	}
 	return sys, nil
