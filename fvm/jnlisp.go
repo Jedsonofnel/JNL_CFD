@@ -26,11 +26,13 @@ func init() {
 	NS.BindNativeFn(".equation-diagnostics", jnl.PosArity("eq"), equationDiagnostics)
 
 	// operators
-	NS.BindNativeFn(".flux-constant", jnl.PosArity("eq", "ctx", "gamma"), operatorFluxConstant)
+	NS.BindNativeFn(".laplacian-constant", jnl.PosArity("eq", "ctx", "gamma"), operatorLaplacianConstant)
+	NS.BindNativeFn(".source-constant", jnl.PosArity("eq", "val"), operatorSourceConstant)
 
 	// Boundary conditions
 	NS.BindNativeFn(".bc-dirichlet-constant", jnl.PosArity("eq", "ctx", "bname", "val"), bcDirichletConstant)
 	NS.BindNativeFn(".bc-neumann-constant", jnl.PosArity("eq", "ctx", "bname", "val"), bcNeumannConstant)
+	NS.BindNativeFn(".bc-robin", jnl.PosArity("eq", "ctx", "bname", "h", "t_inf"), bcRobin)
 }
 
 func (eq *Equation) String() string {
@@ -138,7 +140,7 @@ func equationDiagnostics(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	return mapp, nil
 }
 
-func operatorFluxConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
+func operatorLaplacianConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	eq := jnl.GetArg[*Equation](ctx)
 	context := ctx.GetMapArg()
 	gammaKey := ctx.GetUnqualifiedKeyword()
@@ -149,6 +151,16 @@ func operatorFluxConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 	if err != nil {
 		return nil, err
 	}
+	return eq, nil
+}
+
+func operatorSourceConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
+	eq := jnl.GetArg[*Equation](ctx)
+	rat := jnl.GetInterfaceArg[jnl.Rational](ctx, "rational")
+	if err := ctx.Validate(); err != nil {
+		return nil, err
+	}
+	SourceConstant(eq, rat.Rational())
 	return eq, nil
 }
 
@@ -173,5 +185,18 @@ func bcNeumannConstant(ctx *jnl.CallContext) (jnl.Sexp, error) {
 		return nil, err
 	}
 	NeumannBC(eq, context, string(bname), rat.Rational())
+	return eq, nil
+}
+
+func bcRobin(ctx *jnl.CallContext) (jnl.Sexp, error) {
+	eq := jnl.GetArg[*Equation](ctx)
+	context := ctx.GetMapArg()
+	bname := ctx.GetUnqualifiedKeyword()
+	h := jnl.GetInterfaceArg[jnl.Rational](ctx, "h")
+	tInf := jnl.GetInterfaceArg[jnl.Rational](ctx, "t_inf")
+	if err := ctx.Validate(); err != nil {
+		return nil, err
+	}
+	RobinBC(eq, context, string(bname), h.Rational(), tInf.Rational())
 	return eq, nil
 }

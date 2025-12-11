@@ -188,3 +188,12 @@ j(defn ^:private demo-heat-exchanger-generator [width height num-tubes tube-r]
 
 j(def ^:private demo-heat-exchanger
   (demo-heat-exchanger-generator 10 8 4 1))
+
+
+### Simple Meshes
+
+j(def demo-channel-mesh
+  (triangulate demo-channel {:quality 20 :max-area 2.0}))
+
+j(def demo-annular-mesh
+  (triangulate demo-annular {:quality 25 :max-area 1.5}))

@@ -60,45 +60,38 @@ func NeumannBC(
 // RobinBC implements a mixed boundary condition: alpha*phi + flux = gamma
 // Where flux is the normal gradient flux at the boundary
 // For convection: alpha=h, gamma=h*Tinf
-// func RobinBC(
-// 	eq *Equation,
-// 	ctx *Context,
-// 	boundaryName string,
-// 	alpha float64, // coefficient of phi (e.g., h for convection)
-// 	gamma float64, // RHS value (e.g., h*Tinf)
-// ) *Equation {
-// 	mesh := ctx.Mesh
-// 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
-// 
-// 	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
-// 		if boundaryMarker != marker {
-// 			return
-// 		}
-// 
-// 		localOwner := eq.GetLocalCellIndex(owner)
-// 
-// 		// Get accumulated fluxes from operators (diffusion, convection, etc.)
-// 		_, lower := eq.GetBoundaryFlux(boundaryIdx)
-// 
-// 		// Mixed BC discretization:
-// 		// alpha*(phi_cell) + lower*(phi_boundary - phi_cell) = gamma
-// 		// Solve for phi_boundary and substitute back:
-// 		// effective_coeff = (lower * alpha) / (lower + alpha)
-// 
-// 		effectiveCoeff := (lower * alpha) / (lower + alpha)
-// 
-// 		eq.Diag[localOwner] += effectiveCoeff
-// 		eq.Source[localOwner] += effectiveCoeff * (gamma / alpha)
-// 	})
-// 
-// 	return eq
-// }
-// 
-// // ConvectionBC is a helper for thermal convection: q = h(T - Tinf)
-// func ConvectionBC(eq *Equation, ctx *Context,
-// 	boundaryName string, h, Tinf float64) *Equation {
-// 	return RobinBC(eq, ctx, boundaryName, h, h*Tinf)
-// }
+func RobinBC(
+	eq *Equation,
+	ctx jnl.Map,
+	boundaryName string,
+	alpha float64, // coefficient of phi (e.g., h for convection)
+	gamma float64, // RHS value (e.g., h*Tinf)
+) *Equation {
+	meshVal := ctx.Lookup(jnl.NewKeyword("mesh"))
+	mesh := meshVal.(*geometry.Mesh)
+	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
+
+	eq.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
+		if boundaryMarker != marker {
+			return
+		}
+
+		localOwner := eq.GetLocalCellIndex(owner)
+
+		// Get accumulated fluxes from operators (diffusion, convection, etc.)
+		_, lower := eq.GetBoundaryFlux(boundaryIdx)
+
+		// Mixed BC discretization:
+		// alpha*(phi_cell) + lower*(phi_boundary - phi_cell) = gamma
+		// Solve for phi_boundary and substitute back:
+		effectiveCoeff := (lower * alpha) / (lower + alpha)
+
+		eq.Diag[localOwner] += effectiveCoeff
+		eq.Source[localOwner] += effectiveCoeff * (gamma / alpha)
+	})
+
+	return eq
+}
 
 //
 // Helpers

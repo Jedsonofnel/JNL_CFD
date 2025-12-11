@@ -10,8 +10,7 @@ j(ns jnl.cfd.fvm
             [jnl.cfd.linalg :as linalg]))
 
 
-## Equations
-
+## Matrices
 j(defn new-equation [mesh]
   (.new-equation  mesh))
 
@@ -33,86 +32,137 @@ j(defn equation-diagnostics [eq]
 Context holds schemas, values and cached compiled equations separately
 j(defn new-context [mesh]
   {:mesh mesh
-   :schemas {} ; Symbolic equation definitions
-   :values {} ; Field data and constants
-   :equations {}})
+   :values {}
+   :equations {} ; Symbolic equation definitions
+   :matrices {} ; Field data and constants
+   :solvers {}})
 
 j(defn add-field [ctx name init]
   (let [mesh (get ctx :mesh)]
     (assoc-in ctx [:values name]
-                  (float-tuple (geo/ncells mesh) init))))
+              (float-tuple (geo/ncells mesh) init))))
 
 j(defn add-constant [ctx name value]
   (assoc-in ctx [:values name] value))
 
+j(defn get-field [ctx name]
+  (get-in ctx [:values name]))
 
-## Equation Schema Definition
+
+## Equation Definition
 
 Define equation schema for a field
 j(defn define-equation [ctx field-name schema]
-  (assoc-in ctx [:schemas field-name] schema))
+  (assoc-in ctx [:equations field-name] schema))
 
-j(defn equation-schema []
+j(defn equation []
   {:operators []
    :sources []
    :bcs []})
 
-j(defn with-laplacian [schema diffusivity-field]
-  (update schema :operators conj [:laplacian diffusivity-field]))
+j(defn with-laplacian [eqn coefficient]
+  (update eqn :operators conj [:laplacian coefficient]))
 
-j(defn with-bc [schema bc-type boundary-name value]
-  (update schema :bcs conj {:type bc-type
-                            :boundary boundary-name
-                            :value value}))
+j(defn with-source-const [eqn value]
+  (update eqn :sources conj [:const value]))
+
+j(defn with-bc-dirichlet [eqn boundary value]
+  (update eqn :bcs conj [:dirichlet boundary value]))
+
+j(defn with-bc-neumann [eqn boundary value]
+  (update eqn :bcs conj [:neumann boundary value]))
+
+j(defn with-bc-robin [eqn boundary h t-inf]
+  (update eqn :bcs conj [:robin boundary h t-inf]))
 
 
-## Equation Compilation
+### Internal Matrix Management
 
-j(defn ^:private apply-operator! [eq ctx op]
+j(defn- ensure-matrix [ctx field-name]
+  (if (get-in ctx [:matrices field-name])
+      ctx
+      (let [mesh (get ctx :mesh)
+            matrix (.new-equation mesh)]
+        (assoc-in ctx [:matrices field-name] matrix))))
+
+j(defn- ensure-solver [ctx field-name solver-spec]
+  (if (get-in ctx [:solvers field-name])
+      ctx
+      (assoc-in ctx [:solvers field-name] solver-spec)))
+
+
+### Equation Solving
+
+j(defn- apply-operator! [matrix ctx op]
   (let [[op-type & args] op]
     (case op-type
-      :laplacian (let [[diff-field] args
-                       gamma (get-in ctx [:values diff-field])]
-                  (.flux-constant eq ctx diff-field))
-      )))
+      :laplacian 
+        (let [[coefficient] args]
+          (.laplacian-constant matrix ctx coefficient)))))
 
-j(defn ^:private apply-bc! [eq ctx bc-spec]
-  (case (get bc-spec :type)
-    :dirichlet (.bc-dirichlet-constant eq ctx 
-                                       (get bc-spec :boundary)
-                                       (get bc-spec :value))
-    :neumann (.bc-neumann-constant eq ctx
-                                   (get bc-spec :boundary)
-                                   (get bc-spec :value))))
+j(defn- apply-source! [matrix ctx src]
+  (let [[src-type & args] src]
+    (case src-type
+      :const
+        (let [[value] args]
+          (.source-constant matrix value)))))
 
-Compiles schema into equation object and caches it
-j(defn compile-equation! [ctx field-name]
-  (let [schema (get-in ctx [:schemas field-name])
-        mesh (get ctx :mesh)
-        eq (new-equation mesh)]
-    ; Apply all operators
-    (doseq [op (get schema :operators)]
-      (apply-operator! eq ctx op))
-    ; Apply all sources
-    (doseq [src (get schema :sources)]
-      (apply-operator! eq ctx src))
-    ; Apply all BCs
-    (doseq [bc (get schema :bcs)]
-      (apply-bc! eq ctx bc))
-    ; Cache compiled equation
-    (assoc-in ctx [:equations field-name] eq)))
+j(defn- apply-bc! [matrix ctx bc]
+  (let [[bc-type boundary & args] bc]
+    (case bc-type
+      :dirichlet 
+        (let [[value] args]
+          (.bc-dirichlet-constant matrix ctx boundary value))
+      :neumann 
+        (let [[value] args]
+          (.bc-neumann-constant matrix ctx boundary value))
+      :robin
+        (let [[h t-inf] args]
+          (.bc-robin-constant matrix ctx boundary h t-inf)))))
+
+Builds the matrix according to the equation
+j(defn- build-matrix! [matrix ctx eqn]
+  (.equation-zero matrix)
+  (doseq [op (get eqn :operators)]
+    (apply-operator! matrix ctx op))
+  (doseq [src (get eqn :sources)]
+    (apply-source! matrix ctx src))
+  (doseq [bc (get eqn :bcs)]
+    (apply-bc! matrix ctx bc)))
+
+j(defn solve-equation
+  ([ctx field-name]
+    (solve-equation ctx field-name nil))
+  ([ctx field-name solver]
+    (let [solver (or solver
+                     (let [ncells (geo/ncells (get ctx :mesh))]
+                          (linalg/make-cg-simple-solver ncells 1000 1e-6)))
+          ctx (-> ctx
+                  (ensure-matrix field-name)
+                  (ensure-solver field-name solver))
+          matrix (get-in ctx [:matrices field-name])
+          eqn (get-in ctx [:equations field-name])
+          solver-obj (get-in ctx [:solvers field-name])
+          field (get-in ctx [:values field-name])]
+      (build-matrix! matrix ctx eqn)
+      (.equation-solve matrix solver-obj field)
+      ctx)))
 
 
+## Demos and Examples
 
-## Solving
 
-Solve field using cached or freshly compiled equation
-j(defn solve-field [ctx field-name solver]
-  (let [; Compile if not cached
-        ctx (if (get-in ctx [:equations field-name])
-                ctx
-                (compile-equation! ctx field-name))
-        eq (get-in ctx [:equations field-name])
-        field (get-in ctx [:values field-name])]
-    (solve eq solver field)
-    ctx))
+### Simple Solvers
+
+Simple 1D-like heat diffusion in a channel with hot inlet, cold outlet
+j(defn demo-1D-heat-diffusion []
+  (-> (new-context geo/demo-channel-mesh)
+      (add-field :T 293.0)
+      (add-constant :gamma 100.0)
+      (define-equation :T
+        (-> (equation)
+            (with-laplacian :gamma)
+            (with-bc-dirichlet "inlet" 400.0)
+            (with-bc-dirichlet "outlet" 300.0)
+            (with-bc-neumann "wall" 0.0)))
+      (solve-equation :T)))

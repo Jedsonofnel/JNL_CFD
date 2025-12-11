@@ -57,36 +57,11 @@ func LaplacianConstant(
 	return eq, nil
 }
 
-// LinearSourceOperator is a generalised linear source S_u + S_p * phi
-// Linearized as S_u contributes to source, S_p contributes to diag
-// func LinearSourceOperator(
-// 	eq *Equation,
-// 	ctx *Context,
-// 	phiName string,
-// 	Su *Expression, // explicit source
-// 	Sp *Expression, // implicit coefficient (negative for stability)
-// 	mask RegionMask,
-// ) *Equation {
-// 	mesh := ctx.Mesh
-// 
-// 	eq.ForEachCell(func(localIdx, globalIdx int) {
-// 		if !mask.Contains(mesh.CellRegions[globalIdx]) {
-// 			return
-// 		}
-// 
-// 		vol := mesh.CellVolumes[globalIdx]
-// 
-// 		if Su != nil {
-// 			eq.Source[localIdx] += Su.Eval(globalIdx) * vol
-// 		}
-// 
-// 		if Sp != nil {
-// 			eq.Diag[localIdx] -= Sp.Eval(globalIdx) * vol // Note: Sp should be negative for stability
-// 		}
-// 	})
-// 
-// 	return eq
-// }
+func SourceConstant(eq *Equation, value float64) {
+	eq.ForEachCell(func(localIdx, globalIdx int) {
+		eq.Source[localIdx] += value
+	})
+}
 
 //
 // Masking operators by region
@@ -123,7 +98,7 @@ func RegionsFromIndices(indices ...int) RegionMask {
 // 	if len(names) == 0 {
 // 		return nil
 // 	}
-// 
+//
 // 	mask := make(RegionMask)
 // 	for regionIdx, regionName := range ctx.Regions {
 // 		for _, name := range names {
