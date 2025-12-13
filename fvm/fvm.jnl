@@ -189,7 +189,6 @@ j(defn demo-1D-heat-diffusion []
 
 ### Parametric Solvers
 
-
 Heat exchanger with hot tube banks and convective cooling
 Generates geometry on the fly based on width parameter
 Parameters:
@@ -206,11 +205,11 @@ j(defn demo-heat-exchanger
   ([spacing t-ambient t-tube h-ambient h-tube]
     (let [; Geometry scales with width
           num-tubes 3
-          tube-r 0.8
+          tube-r 0.2
           height 4.0
           ; Generate mesh
           domain (geo/demo-heat-exchanger-generator spacing num-tubes tube-r height)
-          mesh (geo/triangulate domain {:quality 25 :max-area (* spacing spacing 0.001)})]
+          mesh (geo/triangulate domain {:quality 25 :max-area (* spacing spacing 0.0001)})]
       (-> (new-context mesh)
           ; Initial guess = average of hot and cold
           (add-field :T (* 0.5 (+ t-ambient t-tube)))

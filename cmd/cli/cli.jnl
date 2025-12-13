@@ -156,8 +156,8 @@ j(defn demo-1D-heat-diffusion []
   (let [ctx (fvm/demo-1D-heat-diffusion)]
     (push-viz {:context ctx :field :T})))
 
-j(defn demo-heat-exchanger []
-  (let [solved (fvm/demo-heat-exchanger 2.0 293.0 373.0 10.0 100.0)]
+j(defn demo-heat-exchanger [spacing]
+  (let [solved (fvm/demo-heat-exchanger spacing 293.0 373.0 20.0 100.0)]
     (push-viz {:context solved :field :T})))
 
 j(defn demo-chip-array []
