@@ -1,8 +1,9 @@
 package fvm
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/geometry"
-	jnl "jedn.dev/jnlisp"
+	"slices"
+
+	"jedn.dev/jnlcfd/geometry"
 )
 
 //
@@ -10,80 +11,55 @@ import (
 //
 
 func LaplacianConstant(
-	sys *LinearSystem,
-	ctx jnl.Map,
-	gammaKey string,
+	sys *FVSystem,
+	mesh *geometry.Mesh,
+	gamma float64,
 	regionNames ...string,
 ) error {
-	mesh, err := GetMesh(ctx)
-	if err != nil {
-		return err
-	}
+	// mask := RegionsFromNames(mesh, regionNames...)
+	matrix := sys.Matrix
 
-	gamma, err := GetFieldExpression(ctx, gammaKey)
-	if err != nil {
-		return err
-	}
+	for i, conn := range mesh.Connections {
+		faceArea := mesh.FaceAreas[i]
+		distance := mesh.ConnectionDists[i]
+		fluxCoeff := gamma * faceArea / distance
 
-	mask := RegionsFromNames(mesh, regionNames...)
+		matrix.lower[i] -= fluxCoeff
+		matrix.upper[i] -= fluxCoeff
 
-	sys.ForEachConnection(func(localIdx, globalIdx, owner, neighbour int) {
-		if !mask.Contains(mesh.CellRegions[owner]) {
-			return // skip this connection
+		// add diagonals for internal connections
+		if conn.Neighbour >= 0 {
+			matrix.diag[conn.Owner] += fluxCoeff
+			matrix.diag[conn.Neighbour] += fluxCoeff
 		}
-
-		// get local indices
-		localOwner := sys.GetLocalCellIndex(owner)
-		localNeighbour := sys.GetLocalCellIndex(neighbour)
-
-		gammaFace := gamma.Eval(owner)
-		geomDiff := gammaFace * mesh.FaceAreas[globalIdx] / mesh.ConnectionDists[globalIdx]
-
-		// write to local arrays
-		sys.Diag[localOwner] += geomDiff
-		sys.Diag[localNeighbour] += geomDiff
-		sys.UpperDiag[localIdx] -= geomDiff
-		sys.LowerDiag[localIdx] -= geomDiff
-	})
-
-	sys.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
-		if !mask.Contains(mesh.CellRegions[owner]) {
-			return
-		}
-
-		gammaFace := gamma.Eval(owner)
-		geomDiff := gammaFace * mesh.FaceAreas[globalIdx] /
-			mesh.ConnectionDists[globalIdx]
-
-		sys.AddBoundaryFlux(boundaryIdx, geomDiff, geomDiff)
-	})
+	}
 
 	return nil
 }
 
-func SourceConstant(
-	sys *LinearSystem,
-	ctx jnl.Map,
-	value float64,
-	regionNames ...string,
-) error {
-	mesh, err := GetMesh(ctx)
-	if err != nil {
-		return err
-	}
-
-	mask := RegionsFromNames(mesh, regionNames...)
-
-	sys.ForEachCell(func(localIdx, globalIdx int) {
-		if !mask.Contains(mesh.CellRegions[globalIdx]) {
-			return
-		}
-		cellVolume := mesh.CellVolumes[globalIdx]
-		sys.Source[localIdx] += value * cellVolume
-	})
-
-	return nil
-}
+// func SourceConstant(
+// 	sys *LinearSystem,
+// 	ctx jnl.Map,
+// 	value float64,
+// 	regionNames ...string,
+// ) error {
+// 	mesh, err := GetMesh(ctx)
+// 	if err != nil {
+// 		return err
+// 	}
+//
+// 	mask := RegionsFromNames(mesh, regionNames...)
+//
+// 	sys.ForEachCell(func(localIdx, globalIdx int) {
+// 		if !mask.Contains(mesh.CellRegions[globalIdx]) {
+// 			return
+// 		}
+// 		cellVolume := mesh.CellVolumes[globalIdx]
+// 		sys.Source[localIdx] += value * cellVolume
+// 	})
+//
+// 	return nil
+// }
 
 //
 // Region masking
@@ -111,11 +87,8 @@ func RegionsFromNames(mesh *geometry.Mesh, names ...string) RegionMask {
 
 	mask := make(RegionMask)
 	for regionIdx, regionName := range mesh.RegionNames {
-		for _, name := range names {
-			if regionName == name {
-				mask[regionIdx] = true
-				break
-			}
+		if slices.Contains(names, regionName) {
+			mask[regionIdx] = true
 		}
 	}
 	return mask

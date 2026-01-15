@@ -4,7 +4,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/Jedsonofnel/jnlcfd/geometry/triangle"
+	"jedn.dev/jnlcfd/geometry/triangle"
 )
 
 //
@@ -336,13 +336,11 @@ func buildConnectionGeometry(
 		endIdx := faceStarts[owner+1]
 		ownerCentroid := centroids[owner]
 
-		localFaceIdx := 0
 		for faceIdx := startIdx; faceIdx < endIdx; faceIdx++ {
 			neighbour := neighbourIndices[faceIdx]
 
 			// only store internal faces once (lower index is owner)
 			if neighbour >= 0 && owner >= neighbour {
-				localFaceIdx++ // increment this even for skipped faces
 				continue
 			}
 
@@ -353,20 +351,16 @@ func buildConnectionGeometry(
 			v0 := vertices[vi]
 			v1 := vertices[nextVi]
 
-			// get marker (0 for internal faces)
-			marker := 0
+			// get boundary marker if neighbour < 0
 			if neighbour < 0 {
-				marker = faceMarkers[faceIdx]
+				neighbour = -1 * faceMarkers[faceIdx] // multiply by -1 so it's negative
 			}
 
 			// Add connection
 			connections = append(connections, Connection{
-				Owner:        int32(owner),
-				Neighbour:    int32(neighbour),
-				Marker:       int32(marker),
-				LocalFaceIdx: uint8(localFaceIdx),
+				Owner:     int32(owner),
+				Neighbour: int32(neighbour),
 			})
-			localFaceIdx++
 
 			dx := v1.X - v0.X
 			dy := v1.Y - v0.Y

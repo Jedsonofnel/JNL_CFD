@@ -1,113 +1,53 @@
 package fvm
 
 import (
-	"github.com/Jedsonofnel/jnlcfd/geometry"
-	jnl "jedn.dev/jnlisp"
+	"jedn.dev/jnlcfd/geometry"
 )
 
 //
 // Boundary conditions - act like source terms
 //
 
-// DirichletBC sets a fixed value at a boundary
 func DirichletBC(
-	sys *LinearSystem,
-	ctx jnl.Map,
-	boundaryName string,
+	system *FVSystem,
+	mesh *geometry.Mesh,
 	value float64,
-) error {
-	mesh, err := GetMesh(ctx)
-	if err != nil {
-		return err
-	}
+	boundaryName string,
+) {
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
+	matrix := system.Matrix
 
-	sys.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
-		if boundaryMarker != marker {
-			return
+	for i, conn := range matrix.conns {
+		if conn.Neighbour == boundaryMarker {
+			bcCoeff := -matrix.lower[i]
+			diagCoeff := -matrix.upper[i]
+
+			matrix.diag[conn.Owner] += diagCoeff
+			system.Rhs[conn.Owner] += value * bcCoeff // phi_bc * a_n
 		}
-
-		localOwner := sys.GetLocalCellIndex(owner)
-		_, lower := sys.GetBoundaryFlux(boundaryIdx)
-
-		sys.Diag[localOwner] += lower
-		sys.Source[localOwner] += lower * value
-	})
-
-	return nil
+	}
 }
 
-// NeumannBC sets a fixed flux at a boundary
-func NeumannBC(
-	sys *LinearSystem,
-	ctx jnl.Map,
-	boundaryName string,
-	flux float64,
-) error {
-	mesh, err := GetMesh(ctx)
-	if err != nil {
-		return err
-	}
-	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
-
-	sys.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
-		if boundaryMarker != marker {
-			return
+func NeumannBC(system *FVSystem, mesh *geometry.Mesh, flux float64, marker int32) {
+	// boundaryMarker := findBoundaryMarker(mesh, boundaryName)
+	for i, conn := range system.Matrix.conns {
+		if conn.Neighbour == marker {
+			system.Rhs[conn.Owner] += flux * mesh.FaceAreas[i]
 		}
-		localOwner := sys.GetLocalCellIndex(owner)
-		sys.Source[localOwner] += flux
-	})
-
-	return nil
-}
-
-// RobinBC implements a mixed boundary condition: alpha*phi + flux = gamma
-// Where flux is the normal gradient flux at the boundary
-// For convection: alpha=h, gamma=h*Tinf
-func RobinBC(
-	sys *LinearSystem,
-	ctx jnl.Map,
-	boundaryName string,
-	alpha float64, // coefficient of phi (e.g., h for convection)
-	gamma float64, // RHS value (e.g., h*Tinf)
-) error {
-	mesh, err := GetMesh(ctx)
-	if err != nil {
-		return err
 	}
-	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
-
-	sys.ForEachBoundaryConnection(func(boundaryIdx, globalIdx, owner, marker int) {
-		if boundaryMarker != marker {
-			return
-		}
-
-		localOwner := sys.GetLocalCellIndex(owner)
-		_, lower := sys.GetBoundaryFlux(boundaryIdx)
-
-		// Mixed BC discretization:
-		// alpha*(phi_cell) + lower*(phi_boundary - phi_cell) = gamma
-		// Solve for phi_boundary and substitute back:
-
-		effectiveCoeff := (lower * alpha) / (lower + alpha)
-		sys.Diag[localOwner] += effectiveCoeff
-		sys.Source[localOwner] += effectiveCoeff * (gamma / alpha)
-	})
-
-	return nil
 }
 
 //
 // Helpers
 //
 
-func findBoundaryMarker(mesh *geometry.Mesh, name string) int {
+func findBoundaryMarker(mesh *geometry.Mesh, name string) int32 {
 	for marker, boundaryName := range mesh.BoundaryNames {
 		if boundaryName == name {
-			return marker
+			return int32(marker)
 		}
 	}
 
-	// TODO wrap in an error that implements Exception
+	// TODO wrap in an error
 	panic("boundary " + name + " not found")
 }

@@ -3,7 +3,7 @@ package geometry
 import (
 	"testing"
 
-	"github.com/Jedsonofnel/jnlcfd/geometry/triangle"
+	"jedn.dev/jnlcfd/geometry/triangle"
 )
 
 //
@@ -29,9 +29,9 @@ func TestTriangleIntegration_SimpleSquareMarkers(t *testing.T) {
 	boundaryConns := 0
 
 	for _, conn := range mesh.Connections {
-		if conn.Marker != 0 {
+		if conn.Neighbour < 0 {
 			boundaryConns++
-			markerCounts[conn.Marker]++
+			markerCounts[-1*conn.Neighbour]++
 		}
 	}
 
@@ -77,8 +77,8 @@ func TestTriangleIntegration_RectangleWithRefinement(t *testing.T) {
 	unmarkedBoundary := 0
 
 	for _, conn := range mesh.Connections {
-		if conn.Marker != 0 {
-			markerCounts[conn.Marker]++
+		if conn.Neighbour < 0 {
+			markerCounts[-conn.Neighbour]++
 		} else if conn.Neighbour < 0 {
 			// Boundary connection but marker is 0!
 			unmarkedBoundary++
@@ -256,13 +256,13 @@ func TestBuildConnectionGeometry_BoundaryMarkers(t *testing.T) {
 
 	// All should be boundary connections with correct markers
 	for i, conn := range connections {
-		if conn.Neighbour != -1 {
+		if conn.Neighbour >= 0 {
 			t.Errorf("connection %d should be boundary, got neighbour %d", i, conn.Neighbour)
 		}
 		expectedMarker := int32(faceMarkers[i])
-		if conn.Marker != expectedMarker {
+		if -conn.Neighbour != expectedMarker {
 			t.Errorf("connection %d should have marker %d, got %d",
-				i, expectedMarker, conn.Marker)
+				i, expectedMarker, -conn.Neighbour)
 		}
 	}
 }
@@ -287,14 +287,14 @@ func TestBuildConnectionGeometry_InternalFacesHaveZeroMarker(t *testing.T) {
 	for i, conn := range connections {
 		if conn.Neighbour >= 0 {
 			// Internal connection
-			if conn.Marker != 0 {
-				t.Errorf("internal connection %d should have marker 0, got %d",
-					i, conn.Marker)
+			if conn.Neighbour < 0 {
+				t.Errorf("internal connection %d should have neighbour >0, got %d",
+					i, conn.Neighbour)
 			}
 		} else {
 			// Boundary connection - should have non-zero marker
-			if conn.Marker == 0 {
-				t.Errorf("boundary connection %d should have non-zero marker", i)
+			if conn.Neighbour >= 0 {
+				t.Errorf("boundary connection %d should have negative neighbour", i)
 			}
 		}
 	}
@@ -388,8 +388,8 @@ func TestTriangleIntegration_DebugMarkerLoss(t *testing.T) {
 
 	finalMarkerCounts := make(map[int32]int)
 	for _, conn := range mesh.Connections {
-		if conn.Marker != 0 {
-			finalMarkerCounts[conn.Marker]++
+		if conn.Neighbour < 0 {
+			finalMarkerCounts[-conn.Neighbour]++
 		}
 	}
 

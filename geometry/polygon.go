@@ -2,59 +2,7 @@ package geometry
 
 import (
 	"math"
-	"strconv"
-	"strings"
-
-	jnl "jedn.dev/jnlisp"
 )
-
-//
-// Lisp-enabled vector tuple type
-//
-
-type VectorTuple struct {
-	Elements []Vec2
-	jnl.Metadata
-}
-
-func NewVectorTuple(vecs []Vec2) VectorTuple {
-	return VectorTuple{
-		Elements: vecs,
-	}
-}
-
-func (t VectorTuple) Type() string {
-	return "tuple"
-}
-
-func (t VectorTuple) String() string {
-	strs := make([]string, len(t.Elements)*2)
-	for i, vec := range t.Elements {
-		strs[i*2+0] = strconv.FormatFloat(vec.X, 'g', -1, 64)
-		strs[i*2+1] = strconv.FormatFloat(vec.Y, 'g', -1, 64)
-	}
-	return "[" + strings.Join(strs, " ") + "]"
-}
-
-func (t VectorTuple) Nth(i int) (jnl.Sexp, bool) {
-	numElems := len(t.Elements)
-	if i >= 0 && i < numElems {
-		vec := t.Elements[i]
-		x, y := jnl.Float(vec.X), jnl.Float(vec.Y)
-		return jnl.NewVector(x, y), true
-	}
-
-	return nil, false
-}
-
-func (t VectorTuple) Length() int {
-	return len(t.Elements)
-}
-
-func (t VectorTuple) WithMeta(data jnl.Map) jnl.Sexp {
-	t.Metadata.SetMeta(data)
-	return t
-}
 
 //
 // Single shape type - everything is a polygon
@@ -72,52 +20,6 @@ type Polygon struct {
 	bounds       [4]float64
 	boundsCache  bool
 	area         float64 // for caching
-}
-
-// Polygon Sexp implementation
-func (p *Polygon) String() string {
-	return jnl.FormatNonReadable("cfd", "polygon")
-}
-
-func (p *Polygon) Type() string {
-	return "polygon"
-}
-
-func (p *Polygon) Keys() []jnl.Hashable {
-	return []jnl.Hashable{
-		jnl.NewKeyword("points"),
-		jnl.NewKeyword("boundaries"),
-		jnl.NewKeyword("region"),
-		jnl.NewKeyword("is-hole"),
-		jnl.NewKeyword("region-id"),
-		jnl.NewKeyword("bounds"),
-	}
-}
-
-func (p *Polygon) Lookup(key jnl.Hashable) jnl.Sexp {
-	name := strings.TrimLeft(key.String(), ":")
-	switch name {
-	case "points":
-		return NewVectorTuple(p.Points)
-	case "bounds":
-		minX, minY, maxX, maxY := p.Bounds()
-		return jnl.NewMap(
-			"min-x", jnl.Float(minX),
-			"min-y", jnl.Float(minY),
-			"max-x", jnl.Float(maxX),
-			"max-y", jnl.Float(maxY),
-		)
-	case "boundaries":
-		return jnl.StringToVector(p.Boundaries)
-	case "region":
-		return jnl.String(p.Region)
-	case "is-hole":
-		return jnl.Bool(p.IsHole)
-	case "region-id":
-		return jnl.Int(p.RegionID)
-	default:
-		return jnl.Nil{}
-	}
 }
 
 // Bounds returns the axis-aligned bounding box
@@ -301,7 +203,7 @@ func MakeRectangle(x, y, w, h float64, region string, boundaries ...string) Poly
 	case 1:
 		b := boundaries[0]
 		boundaryNames = []string{b, b, b, b}
-	case 4:
+	case 4: // south, east, north, west
 		boundaryNames = boundaries
 	default:
 		panic("MakeRectangle: boundaries must be 0, 1, or 4 strings")

@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/Jedsonofnel/jnlcfd/geometry/triangle"
+	"jedn.dev/jnlcfd/geometry/triangle"
 )
 
 const floatTolerance = 1e-9
@@ -497,11 +497,8 @@ func TestBuildConnectionGeometry_SingleTriangle(t *testing.T) {
 
 	// All should be boundaries
 	for i, conn := range connections {
-		if conn.Neighbour != -1 {
+		if conn.Neighbour >= 0 {
 			t.Errorf("connection %d should be boundary, got neighbour %d", i, conn.Neighbour)
-		}
-		if conn.Marker == 0 {
-			t.Errorf("connection %d should have non-zero marker", i)
 		}
 		if interpWeights[i] != 1.0 {
 			t.Errorf("boundary connection %d should have weight 1.0, got %.6f", i, interpWeights[i])
