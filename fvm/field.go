@@ -40,6 +40,39 @@ func NeumannFaceValuesConst(mesh *geometry.Mesh, field, faceField []float64, bou
 }
 
 //
+// Gradient reconstruction
+//
+
+func GreenGaussGradient(
+	mesh *geometry.Mesh,
+	faceField []float64,
+	gradX, gradY []float64,
+) {
+	for i := range gradX {
+		gradX[i], gradY[i] = 0, 0
+	}
+
+	for i, conn := range mesh.Connections {
+		flux := faceField[i] * mesh.FaceAreas[i]
+		nx, ny := mesh.FaceNormals[i].X, mesh.FaceNormals[i].Y
+
+		gradX[conn.Owner] += flux * nx
+		gradY[conn.Owner] += flux * ny
+
+		if conn.Neighbour >= 0 {
+			gradX[conn.Neighbour] -= flux * nx
+			gradY[conn.Neighbour] -= flux * ny
+		}
+	}
+
+	for i := range gradX {
+		vol := mesh.CellVolumes[i]
+		gradX[i] /= vol
+		gradY[i] /= vol
+	}
+}
+
+//
 // For rendering
 //
 
