@@ -28,10 +28,16 @@ func DirichletBC(
 	}
 }
 
-func NeumannBC(system *FVSystem, mesh *geometry.Mesh, flux float64, marker int32) {
-	// boundaryMarker := findBoundaryMarker(mesh, boundaryName)
+func NeumannBC(
+	system *FVSystem,
+	mesh *geometry.Mesh,
+	flux float64,
+	boundaryName string,
+) {
+	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
+
 	for i, conn := range system.Matrix.conns {
-		if conn.Neighbour == marker {
+		if conn.Neighbour == boundaryMarker {
 			system.Rhs[conn.Owner] += flux * mesh.FaceAreas[i]
 		}
 	}
@@ -44,7 +50,7 @@ func NeumannBC(system *FVSystem, mesh *geometry.Mesh, flux float64, marker int32
 func findBoundaryMarker(mesh *geometry.Mesh, name string) int32 {
 	for marker, boundaryName := range mesh.BoundaryNames {
 		if boundaryName == name {
-			return int32(marker)
+			return -int32(marker)
 		}
 	}
 

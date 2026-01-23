@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -18,6 +19,11 @@ const (
 
 func main() {
 	mesh := geometry.MakeRectangular1DMesh(NUM_CELLS)
+	fmt.Printf("%v\n", mesh.BoundaryNames)
+
+	for i, conn := range mesh.Connections {
+		fmt.Printf("conn %d: %v\n", i, conn)
+	}
 	field := make([]float64, NUM_CELLS)
 	sys := fvm.NewFVSystem(mesh)
 
@@ -25,6 +31,10 @@ func main() {
 
 	fvm.DirichletBC(sys, mesh, 0, "west")
 	fvm.DirichletBC(sys, mesh, 100, "east")
+
+	// implicit when no BC is specified BUT good to be explicit here
+	fvm.NeumannBC(sys, mesh, 0, "south")
+	fvm.NeumannBC(sys, mesh, 0, "north")
 
 	sys.Solve(field, 1e-6, 100)
 
