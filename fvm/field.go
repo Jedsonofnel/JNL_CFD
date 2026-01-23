@@ -3,10 +3,44 @@ package fvm
 import (
 	"errors"
 	"math"
+
+	"jedn.dev/jnlcfd/geometry"
 )
 
 //
-// FVM/field.go
+// Face value reconstruction
+//
+
+// InternalConnInterp updates connField for every internal connection using CDS
+func FaceInterpCDS(mesh *geometry.Mesh, field, faceField []float64) {
+	for i, conn := range mesh.Connections {
+		if conn.Neighbour < 0 {
+			continue // internal only
+		}
+
+		w := mesh.InterpWeights[i]
+		faceField[i] = (1-w)*field[conn.Owner] + w*field[conn.Neighbour]
+	}
+}
+
+func DirichletFaceValuesConst(mesh *geometry.Mesh, faceField []float64, boundaryName string, value float64) {
+	faceIndices := mesh.BoundaryFaces[boundaryName]
+	for _, connIdx := range faceIndices {
+		faceField[connIdx] = value
+	}
+}
+
+func NeumannFaceValuesConst(mesh *geometry.Mesh, field, faceField []float64, boundaryName string, flux float64) {
+	faceIndices := mesh.BoundaryFaces[boundaryName]
+	for _, connIdx := range faceIndices {
+		owner := mesh.Connections[connIdx].Owner
+		dist := mesh.ConnectionDists[connIdx]
+		faceField[connIdx] = field[owner] + flux*dist
+	}
+}
+
+//
+// For rendering
 //
 
 func UpdateTriField(triField, results []float64, triToCells []int) error {

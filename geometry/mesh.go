@@ -37,7 +37,8 @@ type Mesh struct {
 	FaceStarts    []int // CSR format: cell i's faces are at [FaceStarts[i]:FaceStarts[i+1]]
 
 	// Meta
-	BoundaryNames map[int]string // marker -> name
+	BoundaryNames map[int]string   // marker -> name
+	BoundaryFaces map[string][]int // name -> connections
 	RegionNames   map[int]string
 	Domain        *Domain
 }

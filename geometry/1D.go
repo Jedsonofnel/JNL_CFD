@@ -62,7 +62,7 @@ func MakeRectangular1DMesh(numCells int) *Mesh {
 		cellRegions[i] = 1
 	}
 
-	return &Mesh{
+	mesh := &Mesh{
 		Vertices:        vertices,
 		Connections:     connections,
 		FaceAreas:       faceAreas,
@@ -83,4 +83,8 @@ func MakeRectangular1DMesh(numCells int) *Mesh {
 		},
 		RegionNames: map[int]string{1: "default"},
 	}
+
+	mesh.buildBoundaryFaces()
+
+	return mesh
 }

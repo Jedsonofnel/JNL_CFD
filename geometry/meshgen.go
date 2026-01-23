@@ -192,6 +192,8 @@ func triangleOutputToMesh(output *triangle.Output, domain *Domain) *Mesh {
 		Domain:        domain,
 	}
 
+	mesh.buildBoundaryFaces()
+
 	return mesh
 }
 
@@ -276,24 +278,24 @@ func calculateCellGeometry(
 
 	for i := range nCells {
 		startIdx, endIdx := faceStarts[i], faceStarts[i+1]
-		numVertices := endIdx - startIdx
 
-		var totalX, totalY, shoelace float64
+		var cx, cy, signedArea float64
 		for fi := startIdx; fi < endIdx; fi++ {
 			vi := vertexIndices[fi]
 			nextFi := startIdx + (fi-startIdx+1)%(endIdx-startIdx)
 			nextVi := vertexIndices[nextFi]
 
-			totalX += vertices[vi].X
-			totalY += vertices[vi].Y
-			shoelace += vertices[vi].X*vertices[nextVi].Y - vertices[nextVi].X*vertices[vi].Y
+			cross := vertices[vi].X*vertices[nextVi].Y - vertices[nextVi].X*vertices[vi].Y
+			signedArea += cross
+			cx += (vertices[vi].X + vertices[nextVi].X) * cross
+			cy += (vertices[vi].Y + vertices[nextVi].Y) * cross
 		}
+		signedArea /= 2
+		cellVolumes[i] = math.Abs(signedArea)
+		centroids[i].X = cx / (6 * signedArea)
+		centroids[i].Y = cy / (6 * signedArea)
 
-		centroids[i].X = totalX / float64(numVertices)
-		centroids[i].Y = totalY / float64(numVertices)
-		cellVolumes[i] = shoelace / 2
-
-		if cellVolumes[i] < 0 {
+		if signedArea < 0 {
 			panic("calculateCellGeometry fatal: cannot have a negative volume")
 		}
 	}
@@ -563,4 +565,25 @@ func buildFaceMarkers(segmentMarkers map[[2]int]int, vertexIndices, faceStarts [
 	}
 
 	return markers
+}
+
+//
+// Fully derived fields
+//
+
+func (m *Mesh) buildBoundaryFaces() {
+	if m.BoundaryFaces != nil {
+		return // already built
+	}
+
+	m.BoundaryFaces = make(map[string][]int)
+
+	for i, conn := range m.Connections {
+		if conn.Neighbour < 0 {
+			marker := int(-conn.Neighbour)
+			if name, ok := m.BoundaryNames[marker]; ok {
+				m.BoundaryFaces[name] = append(m.BoundaryFaces[name], i)
+			}
+		}
+	}
 }

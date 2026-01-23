@@ -8,7 +8,7 @@ import (
 // Boundary conditions - act like source terms
 //
 
-func DirichletBC(
+func DirichletConstBC(
 	system *FVSystem,
 	mesh *geometry.Mesh,
 	value float64,
@@ -28,7 +28,7 @@ func DirichletBC(
 	}
 }
 
-func NeumannBC(
+func NeumannConstBC(
 	system *FVSystem,
 	mesh *geometry.Mesh,
 	flux float64,
