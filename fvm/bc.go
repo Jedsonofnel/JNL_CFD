@@ -16,18 +16,15 @@ func DirichletConstBC(
 ) {
 	boundaryMarker := findBoundaryMarker(mesh, boundaryName)
 	matrix := system.Matrix
-
 	for i, conn := range matrix.conns {
 		if conn.Neighbour == boundaryMarker {
-			bcCoeff := -matrix.lower[i]
-			diagCoeff := -matrix.upper[i]
-
+			bcCoeff := -matrix.upper[i]
+			diagCoeff := -matrix.lower[i]
 			matrix.diag[conn.Owner] += diagCoeff
-			system.Rhs[conn.Owner] += value * bcCoeff // phi_bc * a_n
+			system.Rhs[conn.Owner] += value * bcCoeff
 		}
 	}
 }
-
 func NeumannConstBC(
 	system *FVSystem,
 	mesh *geometry.Mesh,

@@ -1,0 +1,40 @@
+=== Boundary face debug ===
+Boundary "south" (marker 1):
+  conn 0: normal=(0.00, -1.00), Unormal=0.00
+  conn 4: normal=(0.00, -1.00), Unormal=0.00
+  conn 7: normal=(0.00, -1.00), Unormal=0.00
+  conn 10: normal=(0.00, -1.00), Unormal=0.00
+  conn 13: normal=(0.00, -1.00), Unormal=0.00
+  conn 16: normal=(0.00, -1.00), Unormal=0.00
+  conn 19: normal=(0.00, -1.00), Unormal=0.00
+  conn 22: normal=(0.00, -1.00), Unormal=0.00
+  conn 25: normal=(0.00, -1.00), Unormal=0.00
+  conn 28: normal=(0.00, -1.00), Unormal=0.00
+Boundary "east" (marker 2):
+  conn 29: normal=(1.00, -0.00), Unormal=1.00
+Boundary "north" (marker 3):
+  conn 2: normal=(0.00, 1.00), Unormal=0.00
+  conn 6: normal=(0.00, 1.00), Unormal=0.00
+  conn 9: normal=(0.00, 1.00), Unormal=0.00
+  conn 12: normal=(0.00, 1.00), Unormal=0.00
+  conn 15: normal=(0.00, 1.00), Unormal=0.00
+  conn 18: normal=(0.00, 1.00), Unormal=0.00
+  conn 21: normal=(0.00, 1.00), Unormal=0.00
+  conn 24: normal=(0.00, 1.00), Unormal=0.00
+  conn 27: normal=(0.00, 1.00), Unormal=0.00
+  conn 30: normal=(0.00, 1.00), Unormal=0.00
+Boundary "west" (marker 4):
+  conn 3: normal=(-1.00, -0.00), Unormal=-1.00
+
+=== Internal face debug ===
+conn 1: owner=0→neighbour=1, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+conn 5: owner=1→neighbour=2, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+conn 8: owner=2→neighbour=3, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+conn 11: owner=3→neighbour=4, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+conn 14: owner=4→neighbour=5, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+conn 17: owner=5→neighbour=6, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+conn 20: owner=6→neighbour=7, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+conn 23: owner=7→neighbour=8, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+conn 26: owner=8→neighbour=9, normal=(1.00, -0.00), Unormal=1.00, weight=0.500
+CDS - Diag dominance: 1.000, Asymmetry: 1.00e+00, Residual: 9.70e+01
+UDS - Diag dominance: 1.000, Asymmetry: 1.00e+00, Residual: 9.69e+01

@@ -14,12 +14,19 @@ import (
 // InternalConnInterp updates connField for every internal connection using CDS
 func FaceInterpCDS(mesh *geometry.Mesh, field, faceField []float64) {
 	for i, conn := range mesh.Connections {
-		if conn.Neighbour < 0 {
-			continue // internal only
+		if conn.Neighbour >= 0 {
+			w := mesh.InterpWeights[i]
+			faceField[i] = (1-w)*field[conn.Owner] + w*field[conn.Neighbour]
+		} else {
+			faceField[i] = field[conn.Owner] // zero-gradient default
 		}
+	}
+}
 
-		w := mesh.InterpWeights[i]
-		faceField[i] = (1-w)*field[conn.Owner] + w*field[conn.Neighbour]
+func FaceNormalComponent(mesh *geometry.Mesh, UxFace, UyFace, Unormal []float64) {
+	for i := range Unormal {
+		n := mesh.FaceNormals[i]
+		Unormal[i] = UxFace[i]*n.X + UyFace[i]*n.Y
 	}
 }
 

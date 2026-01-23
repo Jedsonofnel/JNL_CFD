@@ -10,7 +10,7 @@ import (
 // Core operators for equations
 //
 
-func LaplacianConstant(
+func LaplacianConst(
 	sys *FVSystem,
 	mesh *geometry.Mesh,
 	gamma float64,
@@ -37,30 +37,54 @@ func LaplacianConstant(
 	return nil
 }
 
-// OLDER VERSION TO BE REPLACED!!!!
-// func SourceConstant(
-// 	sys *LinearSystem,
-// 	ctx jnl.Map,
-// 	value float64,
-// 	regionNames ...string,
-// ) error {
-// 	mesh, err := GetMesh(ctx)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	mask := RegionsFromNames(mesh, regionNames...)
-//
-// 	sys.ForEachCell(func(localIdx, globalIdx int) {
-// 		if !mask.Contains(mesh.CellRegions[globalIdx]) {
-// 			return
-// 		}
-// 		cellVolume := mesh.CellVolumes[globalIdx]
-// 		sys.Source[localIdx] += value * cellVolume
-// 	})
-//
-// 	return nil
-// }
+func DivConstCDS(
+	sys *FVSystem,
+	mesh *geometry.Mesh,
+	rho float64,
+	uNormal []float64,
+	regionNames ...string,
+) error {
+	matrix := sys.Matrix
+	for i, conn := range mesh.Connections {
+		F := rho * uNormal[i] * mesh.FaceAreas[i]
+
+		if conn.Neighbour >= 0 {
+			w := mesh.InterpWeights[i]
+			matrix.lower[i] -= F * (1 - w)
+			matrix.upper[i] += F * w
+
+			matrix.diag[conn.Owner] += F * (1 - w)
+			matrix.diag[conn.Neighbour] -= F * w
+		} else {
+			matrix.upper[i] += F
+		}
+	}
+	return nil
+}
+
+func DivConstUDS(
+	sys *FVSystem,
+	mesh *geometry.Mesh,
+	rho float64,
+	uNormal []float64,
+	regionNames ...string,
+) error {
+	matrix := sys.Matrix
+	for i, conn := range mesh.Connections {
+		F := rho * uNormal[i] * mesh.FaceAreas[i]
+
+		if conn.Neighbour >= 0 {
+			matrix.lower[i] -= max(F, 0)
+			matrix.upper[i] -= max(-F, 0)
+
+			matrix.diag[conn.Owner] += max(F, 0)
+			matrix.diag[conn.Neighbour] += max(-F, 0)
+		} else {
+			matrix.upper[i] += F
+		}
+	}
+	return nil
+}
 
 //
 // Region masking
