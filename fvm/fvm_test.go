@@ -14,16 +14,7 @@ const (
 )
 
 func Test1DDiffusion(t *testing.T) {
-	mesh := geometry.MakeRectangular1DMesh(10)
-	field := make([]float64, 10)
-	sys := NewFVSystem(mesh)
-
-	LaplacianConst(sys, mesh, GAMMA)
-
-	DirichletConstBC(sys, mesh, 0, "west")
-	DirichletConstBC(sys, mesh, 100, "east")
-
-	sys.Solve(field, 1e-6, 100)
+	field, mesh, sys := CaseDiffusion1D(10, GAMMA)
 
 	for i, point := range mesh.Centroids {
 		actual := 100 * point.X
@@ -138,37 +129,11 @@ func TestGreenGaussGradientDiagonal(t *testing.T) {
 }
 
 func Test1DConvectionDiffusion(t *testing.T) {
-	mesh := geometry.MakeRectangular1DMesh(10)
-	sys := NewFVSystem(mesh)
-	phi := make([]float64, 10)
-
-	var rho, gamma float64 = 1, 1
-	velocity := 1.0 // Peclet number == velocity
-
-	Ux := make([]float64, 10)
-	for i := range Ux {
-		Ux[i] = velocity
-	}
-
-	UxFace := make([]float64, len(mesh.Connections))
-	UyFace := make([]float64, len(mesh.Connections)) // stays 0
-
-	FaceInterpCDS(mesh, Ux, UxFace)
-
-	Unormal := make([]float64, len(mesh.Connections))
-
-	FaceNormalComponent(mesh, UxFace, UyFace, Unormal)
-
-	LaplacianConst(sys, mesh, gamma)
-	DivConstCDS(sys, mesh, rho, Unormal)
-
-	DirichletConstBC(sys, mesh, 0, "west")
-	DirichletConstBC(sys, mesh, 100, "east")
-
-	sys.Solve(phi, 1e-6, 100)
+	velocity := 1.0
+	phi, mesh, sys := CaseConvectionDiffusion1D(10, GAMMA, RHO, velocity)
 
 	for i, point := range mesh.Centroids {
-		actual := calculate1DAnalytical(mesh.Centroids[i].X, 1, velocity, rho, gamma, 0, 100)
+		actual := calculate1DAnalytical(mesh.Centroids[i].X, 1, velocity, RHO, GAMMA, 0, 100)
 
 		if got, want := phi[i], actual; !floatsEqual(got, want, 5e-1) {
 			t.Errorf("incorrect value at x=%v, got %v, wanted %v", point.X, phi[i], actual)
@@ -177,6 +142,17 @@ func Test1DConvectionDiffusion(t *testing.T) {
 			t.FailNow()
 		}
 	}
+}
+
+func TestPoiseuilleGivenPressure(t *testing.T) {
+	Uy, mesh, _ := CasePoiseuilleGivenPressure(10, GAMMA, 10)
+
+	for i, point := range mesh.Centroids {
+		t.Logf("x=%v, Uy=%v", point.X, Uy[i])
+	}
+	// actually need to compare against poiseuille flow equation but the
+	// logf values are symmetric and parabolic which is exciting!
+	t.Fatalf("TODO: Test")
 }
 
 //

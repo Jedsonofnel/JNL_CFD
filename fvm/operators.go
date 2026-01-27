@@ -86,6 +86,12 @@ func DivConstUDS(
 	return nil
 }
 
+func SuConst(sys *FVSystem, mesh *geometry.Mesh, coeff float64) {
+	for i := range sys.Rhs {
+		sys.Rhs[i] += coeff
+	}
+}
+
 //
 // Region masking
 //
