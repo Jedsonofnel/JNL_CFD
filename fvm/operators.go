@@ -88,7 +88,7 @@ func DivConstUDS(
 
 func SuConst(sys *FVSystem, mesh *geometry.Mesh, coeff float64) {
 	for i := range sys.Rhs {
-		sys.Rhs[i] += coeff
+		sys.Rhs[i] += coeff * mesh.CellVolumes[i]
 	}
 }
 

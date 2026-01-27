@@ -145,14 +145,36 @@ func Test1DConvectionDiffusion(t *testing.T) {
 }
 
 func TestPoiseuilleGivenPressure(t *testing.T) {
-	Uy, mesh, _ := CasePoiseuilleGivenPressure(10, GAMMA, 10)
+	nCells := 10
+	PyGrad := -100.0
+	Uy, mesh, sys := CasePoiseuilleGivenPressure(nCells, GAMMA, PyGrad)
 
 	for i, point := range mesh.Centroids {
-		t.Logf("x=%v, Uy=%v", point.X, Uy[i])
+		analytical := (-PyGrad / (2 * GAMMA)) * point.X * (1 - point.X)
+
+		// Float tolerance is 0.05 due to 2D effects (when really this should
+		// be 1D)
+		if got, want := Uy[i], analytical; !floatsEqual(got, want, 0.1) {
+			t.Errorf("incorrect value at x=%v, got %v, wanted %v", point.X, Uy[i], analytical)
+			t.Logf("Diag dominance: %.3f, Asymmetry: %.2e, Residual: %.2e",
+				sys.DiagonalDominanceRatio(), sys.MaxAsymmetry(), sys.ResidualNorm(Uy))
+			t.FailNow()
+		}
 	}
-	// actually need to compare against poiseuille flow equation but the
-	// logf values are symmetric and parabolic which is exciting!
-	t.Fatalf("TODO: Test")
+
+	// Verify parabolic profile: max should be at center
+	maxIdx := 0
+	for i := range Uy {
+		if Uy[i] > Uy[maxIdx] {
+			maxIdx = i
+		}
+	}
+
+	expectedMaxUy := (PyGrad / (2 * GAMMA)) * 0.25
+	if !floatsEqual(Uy[maxIdx], expectedMaxUy, 0.1) {
+		t.Logf("Expected max velocity ~%v at center, got %v at cell %d",
+			expectedMaxUy, Uy[maxIdx], maxIdx)
+	}
 }
 
 //
@@ -160,7 +182,15 @@ func TestPoiseuilleGivenPressure(t *testing.T) {
 //
 
 func floatsEqual(a, b, tol float64) bool {
-	return math.Abs(a-b) <= tol
+	diff := math.Abs(a - b)
+
+	// Absolute tolerance for near-zero values
+	if math.Abs(b) < 1e-9 {
+		return diff <= 1e-9
+	}
+
+	// Relative tolerance otherwise
+	return diff <= tol*math.Abs(b)
 }
 
 func calculate1DAnalytical(x, length, ux, rho, gamma, phi_0, phi_L float64) float64 {

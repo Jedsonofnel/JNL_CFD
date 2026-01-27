@@ -54,16 +54,14 @@ func CaseConvectionDiffusion1D(
 
 func CasePoiseuilleGivenPressure(nCells int, gamma, pYgrad float64,
 ) ([]float64, *geometry.Mesh, *FVSystem) {
-	numCells := 10
-
-	Uy := make([]float64, numCells)
-	mesh := geometry.MakeRectangular1DMesh(numCells)
+	Uy := make([]float64, nCells)
+	mesh := geometry.MakeRectangular1DMesh(nCells)
 
 	// solve laplacian(Uy) = 1/mu dp/dx
 	sys := NewFVSystem(mesh)
 
 	LaplacianConst(sys, mesh, gamma)
-	SuConst(sys, mesh, pYgrad)
+	SuConst(sys, mesh, -pYgrad)
 
 	DirichletConstBC(sys, mesh, 0, "west")
 	DirichletConstBC(sys, mesh, 0, "east")
