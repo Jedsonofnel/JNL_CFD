@@ -22,8 +22,47 @@ func LaplacianConst(
 	for i, conn := range mesh.Connections {
 		faceArea := mesh.FaceAreas[i]
 		distance := mesh.ConnectionDists[i]
-		fluxCoeff := gamma * faceArea / distance
 
+		fluxCoeff := gamma * faceArea / distance
+		matrix.lower[i] -= fluxCoeff
+		matrix.upper[i] -= fluxCoeff
+
+		// add diagonals for internal connections
+		if conn.Neighbour >= 0 {
+			matrix.diag[conn.Owner] += fluxCoeff
+			matrix.diag[conn.Neighbour] += fluxCoeff
+		}
+	}
+
+	return nil
+}
+
+func LaplacianExpr(
+	sys *FVSystem,
+	mesh *geometry.Mesh,
+	gamma Expression,
+) error {
+	matrix := sys.Matrix
+
+	if gamma.IsConst {
+		LaplacianConst(sys, mesh, gamma.Eval(0))
+		return nil
+	}
+
+	for i, conn := range mesh.Connections {
+		faceArea := mesh.FaceAreas[i]
+		distance := mesh.ConnectionDists[i]
+
+		gammaOwner := gamma.Eval(int(conn.Owner))
+		gammaFace := gammaOwner
+
+		if conn.Neighbour >= 0 {
+			w := mesh.InterpWeights[i]
+			gammaNeigh := gamma.Eval(int(conn.Neighbour))
+			gammaFace = w*gammaOwner + (1-w)*gammaNeigh
+		}
+
+		fluxCoeff := gammaFace * faceArea / distance
 		matrix.lower[i] -= fluxCoeff
 		matrix.upper[i] -= fluxCoeff
 
