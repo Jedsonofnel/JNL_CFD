@@ -6,7 +6,7 @@ import (
 
 func CaseDiffusion1D(nCells int, gamma float64,
 ) ([]float64, *geometry.Mesh, *FVSystem) {
-	mesh := geometry.MakeRectangular1DMesh(10)
+	mesh := geometry.MakeSimple1DMesh(10)
 	field := make([]float64, 10)
 	sys := NewFVSystem(mesh)
 
@@ -23,7 +23,7 @@ func CaseConvectionDiffusion1D(
 	nCells int,
 	gamma, rho, velocity float64,
 ) ([]float64, *geometry.Mesh, *FVSystem) {
-	mesh := geometry.MakeRectangular1DMesh(10)
+	mesh := geometry.MakeSimple1DMesh(10)
 	sys := NewFVSystem(mesh)
 	phi := make([]float64, 10)
 
@@ -55,7 +55,7 @@ func CaseConvectionDiffusion1D(
 func CasePoiseuilleGivenPressure(nCells int, gamma, pYgrad float64,
 ) ([]float64, *geometry.Mesh, *FVSystem) {
 	Uy := make([]float64, nCells)
-	mesh := geometry.MakeRectangular1DMesh(nCells)
+	mesh := geometry.MakeSimple1DMesh(nCells)
 
 	// solve laplacian(Uy) = 1/mu dp/dx
 	sys := NewFVSystem(mesh)
@@ -66,7 +66,7 @@ func CasePoiseuilleGivenPressure(nCells int, gamma, pYgrad float64,
 	DirichletConstBC(sys, mesh, 0, "west")
 	DirichletConstBC(sys, mesh, 0, "east")
 
-	sys.Solve(Uy, 1e-6, 100)
+	sys.Solve(Uy, 1e-6, 1000)
 
 	return Uy, mesh, sys
 }

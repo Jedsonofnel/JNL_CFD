@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -12,20 +13,58 @@ import (
 	"jedn.dev/jnlcfd/geometry"
 )
 
+//
+// bin/example is for creating plots of test cases
+//
+
 const (
-	NUM_CELLS = 10
-	GAMMA     = 1.0
-	RHO       = 1.0
-	VELOCITY  = 1.0
+	DEFAULT_CASE = "poiseuille" // others are "convdiff" and "lineardiff"
 )
 
 func main() {
-	mesh := geometry.MakeRectangular1DMesh(NUM_CELLS)
+	flag.Parse()
+	args := flag.Args()
+	if len(args) > 1 {
+		fmt.Fprintf(os.Stderr, "Too many arguments, got %d, expected 1 at most\n", len(args))
+		os.Exit(1) // an error!
+	}
+
+	if len(args) == 0 { // ie if nothing then use default case
+		poiseuille(10, 2, -10)
+		os.Exit(0)
+	}
+
+	fmt.Fprintf(os.Stderr, "TODO: implement specifying named case\n")
+	os.Exit(1)
+}
+
+func poiseuille(nCells int, gamma, PyGrad float64) {
+	phi, mesh, _ := fvm.CasePoiseuilleGivenPressure(nCells, gamma, PyGrad)
+
+	w := csv.NewWriter(os.Stdout)
+	w.Write([]string{"y", "Ux_given", "Ux_analytic"})
+	w.Write([]string{"0", "0", "0"}) // manual no-slip
+
+	for i, point := range mesh.Centroids {
+		analytic := (-PyGrad / (2 * gamma)) * point.X * (1 - point.X)
+		w.Write([]string{
+			strconv.FormatFloat(point.X, 'g', -1, 64),
+			strconv.FormatFloat(phi[i], 'g', -1, 64),
+			strconv.FormatFloat(analytic, 'g', -1, 64),
+		})
+	}
+	w.Write([]string{"1", "0", "0"})
+
+	w.Flush()
+}
+
+func convdiff(nCells int, gamma, rho, velocity float64) {
+	mesh := geometry.MakeSimple1DMesh(nCells)
 
 	// Velocity field
-	Ux := make([]float64, NUM_CELLS)
+	Ux := make([]float64, nCells)
 	for i := range Ux {
-		Ux[i] = VELOCITY
+		Ux[i] = velocity
 	}
 	// Uy := make([]float64, NUM_CELLS) // zero
 
@@ -37,35 +76,11 @@ func main() {
 	Unormal := make([]float64, len(mesh.Connections))
 	fvm.FaceNormalComponent(mesh, UxFace, UyFace, Unormal)
 
-	// Debug: print face normals and Unormal at boundaries
-	fmt.Fprintln(os.Stderr, "=== Boundary face debug ===")
-	for marker, name := range mesh.BoundaryNames {
-		fmt.Fprintf(os.Stderr, "Boundary %q (marker %d):\n", name, marker)
-		for i, conn := range mesh.Connections {
-			if conn.Neighbour == int32(-marker) {
-				n := mesh.FaceNormals[i]
-				fmt.Fprintf(os.Stderr, "  conn %d: normal=(%.2f, %.2f), Unormal=%.2f\n",
-					i, n.X, n.Y, Unormal[i])
-			}
-		}
-	}
-	fmt.Fprintln(os.Stderr)
-
-	fmt.Fprintln(os.Stderr, "=== Internal face debug ===")
-	for i, conn := range mesh.Connections {
-		if conn.Neighbour >= 0 {
-			n := mesh.FaceNormals[i]
-			w := mesh.InterpWeights[i]
-			fmt.Fprintf(os.Stderr, "conn %d: owner=%d→neighbour=%d, normal=(%.2f, %.2f), Unormal=%.2f, weight=%.3f\n",
-				i, conn.Owner, conn.Neighbour, n.X, n.Y, Unormal[i], w)
-		}
-	}
-
 	// CDS solution
-	phiCDS := make([]float64, NUM_CELLS)
+	phiCDS := make([]float64, nCells)
 	sysCDS := fvm.NewFVSystem(mesh)
-	fvm.LaplacianConst(sysCDS, mesh, GAMMA)
-	fvm.DivConstCDS(sysCDS, mesh, RHO, Unormal)
+	fvm.LaplacianConst(sysCDS, mesh, gamma)
+	fvm.DivConstCDS(sysCDS, mesh, rho, Unormal)
 	fvm.DirichletConstBC(sysCDS, mesh, 0, "west")
 	fvm.DirichletConstBC(sysCDS, mesh, 100, "east")
 	sysCDS.Solve(phiCDS, 1e-6, 100)
@@ -74,10 +89,10 @@ func main() {
 		sysCDS.DiagonalDominanceRatio(), sysCDS.MaxAsymmetry(), sysCDS.ResidualNorm(phiCDS))
 
 	// UDS solution
-	phiUDS := make([]float64, NUM_CELLS)
+	phiUDS := make([]float64, nCells)
 	sysUDS := fvm.NewFVSystem(mesh)
-	fvm.LaplacianConst(sysUDS, mesh, GAMMA)
-	fvm.DivConstUDS(sysUDS, mesh, RHO, Unormal)
+	fvm.LaplacianConst(sysUDS, mesh, gamma)
+	fvm.DivConstUDS(sysUDS, mesh, rho, Unormal)
 	fvm.DirichletConstBC(sysUDS, mesh, 0, "west")
 	fvm.DirichletConstBC(sysUDS, mesh, 100, "east")
 	sysUDS.Solve(phiUDS, 1e-6, 100)
@@ -86,9 +101,9 @@ func main() {
 		sysUDS.DiagonalDominanceRatio(), sysUDS.MaxAsymmetry(), sysUDS.ResidualNorm(phiUDS))
 
 	// Analytical
-	phiAnalytical := make([]float64, NUM_CELLS)
+	phiAnalytical := make([]float64, nCells)
 	for i, c := range mesh.Centroids {
-		phiAnalytical[i] = analytical1D(c.X, 1.0, VELOCITY, RHO, GAMMA, 0, 100)
+		phiAnalytical[i] = analytical1D(c.X, 1.0, velocity, rho, gamma, 0, 100)
 	}
 
 	WriteComparisonCSV(os.Stdout, mesh, phiCDS, phiUDS, phiAnalytical)

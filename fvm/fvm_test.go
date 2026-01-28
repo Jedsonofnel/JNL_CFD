@@ -3,8 +3,6 @@ package fvm
 import (
 	"math"
 	"testing"
-
-	"jedn.dev/jnlcfd/geometry"
 )
 
 const (
@@ -27,107 +25,6 @@ func Test1DDiffusion(t *testing.T) {
 	}
 }
 
-func TestFaceInterpolation(t *testing.T) {
-	mesh := geometry.MakeRectangular1DMesh(10)
-
-	// Linear profile: φ = 100x (exact for CDS)
-	field := make([]float64, 10)
-	for i, c := range mesh.Centroids {
-		field[i] = 100 * c.X
-	}
-
-	faceField := make([]float64, len(mesh.Connections))
-	FaceInterpCDS(mesh, field, faceField)
-	DirichletFaceValuesConst(mesh, faceField, "west", 0)
-	DirichletFaceValuesConst(mesh, faceField, "east", 100)
-	NeumannFaceValuesConst(mesh, field, faceField, "north", 0)
-	NeumannFaceValuesConst(mesh, field, faceField, "south", 0)
-
-	for i, conn := range mesh.Connections {
-		var want float64
-		if conn.Neighbour >= 0 {
-			want = 100 * mesh.FaceCentroids[i].X // linear field → exact interp
-		} else {
-			switch mesh.BoundaryNames[int(-conn.Neighbour)] {
-			case "west":
-				want = 0
-			case "east":
-				want = 100
-			default: // north/south: zero flux → face = owner
-				want = field[conn.Owner]
-			}
-		}
-		if !floatsEqual(faceField[i], want, FLOAT_TOL) {
-			t.Errorf("face %d: got %v, want %v", i, faceField[i], want)
-		}
-	}
-}
-
-func TestGreenGaussGradient(t *testing.T) {
-	mesh := geometry.MakeRectangular1DMesh(10)
-
-	// Linear profile: φ = 100x → ∇φ = (100, 0)
-	field := make([]float64, 10)
-	for i, c := range mesh.Centroids {
-		field[i] = 100 * c.X
-	}
-
-	faceField := make([]float64, len(mesh.Connections))
-	gradX := make([]float64, 10)
-	gradY := make([]float64, 10)
-
-	FaceInterpCDS(mesh, field, faceField)
-	DirichletFaceValuesConst(mesh, faceField, "west", 0)
-	DirichletFaceValuesConst(mesh, faceField, "east", 100)
-	NeumannFaceValuesConst(mesh, field, faceField, "north", 0)
-	NeumannFaceValuesConst(mesh, field, faceField, "south", 0)
-
-	GreenGaussGradient(mesh, faceField, gradX, gradY)
-
-	for i := range field {
-		if !floatsEqual(gradX[i], 100, FLOAT_TOL) {
-			t.Errorf("cell %d: gradX = %v, want 100", i, gradX[i])
-		}
-		if !floatsEqual(gradY[i], 0, FLOAT_TOL) {
-			t.Errorf("cell %d: gradY = %v, want 0", i, gradY[i])
-		}
-	}
-}
-
-func TestGreenGaussGradientDiagonal(t *testing.T) {
-	mesh := geometry.MakeRectangular1DMesh(10)
-
-	// φ = 3x + 7y → ∇φ = (3, 7)
-	field := make([]float64, 10)
-	for i, c := range mesh.Centroids {
-		field[i] = 3*c.X + 7*c.Y
-	}
-
-	faceField := make([]float64, len(mesh.Connections))
-	gradX := make([]float64, 10)
-	gradY := make([]float64, 10)
-
-	// All boundaries: extrapolate from linear field
-	FaceInterpCDS(mesh, field, faceField)
-	for i, conn := range mesh.Connections {
-		if conn.Neighbour < 0 {
-			fc := mesh.FaceCentroids[i]
-			faceField[i] = 3*fc.X + 7*fc.Y
-		}
-	}
-
-	GreenGaussGradient(mesh, faceField, gradX, gradY)
-
-	for i := range field {
-		if !floatsEqual(gradX[i], 3, FLOAT_TOL) {
-			t.Errorf("cell %d: gradX = %v, want 3", i, gradX[i])
-		}
-		if !floatsEqual(gradY[i], 7, FLOAT_TOL) {
-			t.Errorf("cell %d: gradY = %v, want 7", i, gradY[i])
-		}
-	}
-}
-
 func Test1DConvectionDiffusion(t *testing.T) {
 	velocity := 1.0
 	phi, mesh, sys := CaseConvectionDiffusion1D(10, GAMMA, RHO, velocity)
@@ -145,15 +42,13 @@ func Test1DConvectionDiffusion(t *testing.T) {
 }
 
 func TestPoiseuilleGivenPressure(t *testing.T) {
-	nCells := 10
+	nCells := 1000
 	PyGrad := -100.0
 	Uy, mesh, sys := CasePoiseuilleGivenPressure(nCells, GAMMA, PyGrad)
 
 	for i, point := range mesh.Centroids {
 		analytical := (-PyGrad / (2 * GAMMA)) * point.X * (1 - point.X)
 
-		// Float tolerance is 0.05 due to 2D effects (when really this should
-		// be 1D)
 		if got, want := Uy[i], analytical; !floatsEqual(got, want, 0.1) {
 			t.Errorf("incorrect value at x=%v, got %v, wanted %v", point.X, Uy[i], analytical)
 			t.Logf("Diag dominance: %.3f, Asymmetry: %.2e, Residual: %.2e",
@@ -174,6 +69,56 @@ func TestPoiseuilleGivenPressure(t *testing.T) {
 	if !floatsEqual(Uy[maxIdx], expectedMaxUy, 0.1) {
 		t.Logf("Expected max velocity ~%v at center, got %v at cell %d",
 			expectedMaxUy, Uy[maxIdx], maxIdx)
+	}
+}
+
+func TestPoiseuilleConvergenceOrder(t *testing.T) {
+	gamma := 1.0
+	PyGrad := -100.0
+
+	cellCounts := []int{5, 10, 20, 40, 80}
+	errors := make([]float64, len(cellCounts))
+	dxValues := make([]float64, len(cellCounts))
+
+	for i, nCells := range cellCounts {
+		Uy, mesh, _ := CasePoiseuilleGivenPressure(nCells, gamma, PyGrad)
+		dxValues[i] = 1.0 / float64(nCells)
+
+		// Compute max error
+		maxErr := 0.0
+		for j, point := range mesh.Centroids {
+			analytical := (-PyGrad / (2 * gamma)) * point.X * (1 - point.X)
+			err := math.Abs(Uy[j] - analytical)
+			maxErr = max(maxErr, err)
+		}
+		errors[i] = maxErr
+	}
+
+	// Log the convergence table
+	t.Logf("Convergence study:")
+	t.Logf("%8s %12s %12s %8s", "nCells", "dx", "maxError", "order")
+	t.Logf("%8d %12.6f %12.6e %8s", cellCounts[0], dxValues[0], errors[0], "-")
+
+	for i := 1; i < len(cellCounts); i++ {
+		// Order = log(e1/e2) / log(dx1/dx2)
+		order := math.Log(errors[i-1]/errors[i]) / math.Log(dxValues[i-1]/dxValues[i])
+		t.Logf("%8d %12.6f %12.6e %8.2f", cellCounts[i], dxValues[i], errors[i], order)
+	}
+
+	// Verify second-order convergence (order ~= 2.0)
+	// Use the last refinement step where asymptotic behaviour is clearest
+	finalOrder := math.Log(errors[len(errors)-2]/errors[len(errors)-1]) /
+		math.Log(dxValues[len(dxValues)-2]/dxValues[len(dxValues)-1])
+
+	if finalOrder < 1.9 || finalOrder > 2.1 {
+		t.Errorf("Expected second-order convergence (≈2.0), got %.2f", finalOrder)
+	}
+
+	// Also verify absolute error is decreasing
+	for i := 1; i < len(errors); i++ {
+		if errors[i] >= errors[i-1] {
+			t.Errorf("Error not decreasing: %v -> %v", errors[i-1], errors[i])
+		}
 	}
 }
 

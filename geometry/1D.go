@@ -4,9 +4,107 @@ package geometry
 // 1D meshes for testing
 //
 
-// MakeRectangular1DMesh creates a simple 1xN rectangular mesh
-// with boundaries named "south", "east", "north", "west"
-func MakeRectangular1DMesh(numCells int) *Mesh {
+// MakeSimple1DMesh creates a truly 1D mesh with N cells along [0, 1] Only
+// "west" (x=0) and "east" (x=1) boundaries exist
+func MakeSimple1DMesh(numCells int) *Mesh {
+	if numCells < 1 {
+		panic("MakeSimple1DMesh: need at least 1 cell")
+	}
+
+	dx := 1.0 / float64(numCells)
+
+	vertices := make([]Vec2, numCells+1)
+	for i := 0; i <= numCells; i++ {
+		vertices[i] = Vec2{X: float64(i) * dx, Y: 0}
+	}
+
+	// Cell geometry is computed directly
+	cellVolumes := make([]float64, numCells)
+	centroids := make([]Vec2, numCells)
+	cellRegions := make([]int, numCells)
+	for i := range numCells {
+		cellVolumes[i] = dx // "volume" = length in 1D
+		centroids[i] = Vec2{X: (float64(i) + 0.5) * dx, Y: 0}
+		cellRegions[i] = 1
+	}
+
+	// CSR format: 2 vertices per cell (left, right endpoints)
+	vertexIndices := make([]int, numCells*2)
+	faceStarts := make([]int, numCells+1)
+	for i := range numCells {
+		faceStarts[i] = i * 2
+		vertexIndices[i*2+0] = i
+		vertexIndices[i*2+1] = i + 1
+	}
+	faceStarts[numCells] = numCells * 2
+
+	// Connections: N+1 faces total (N-1 internal + 2 boundary)
+	const (
+		westMarker = 1
+		eastMarker = 2
+	)
+
+	numFaces := numCells + 1
+	connections := make([]Connection, numFaces)
+	faceAreas := make([]float64, numFaces)
+	faceNormals := make([]Vec2, numFaces)
+	faceCentroids := make([]Vec2, numFaces)
+	connectionDists := make([]float64, numFaces)
+	interpWeights := make([]float64, numFaces)
+
+	for face := range numFaces {
+		faceCentroids[face] = vertices[face]
+		faceAreas[face] = 1.0 // "area" of a point = 1 for flux scaling
+
+		switch face {
+		case 0: // West boundary
+			connections[face] = Connection{Owner: 0, Neighbour: -westMarker}
+			faceNormals[face] = Vec2{X: -1, Y: 0}
+			connectionDists[face] = 0.5 * dx
+			interpWeights[face] = 1.0
+
+		case numCells: // East boundary
+			connections[face] = Connection{Owner: int32(numCells - 1), Neighbour: -eastMarker}
+			faceNormals[face] = Vec2{X: 1, Y: 0}
+			connectionDists[face] = 0.5 * dx
+			interpWeights[face] = 1.0
+
+		default: // Internal face between cell (face-1) and cell (face)
+			connections[face] = Connection{Owner: int32(face - 1), Neighbour: int32(face)}
+			faceNormals[face] = Vec2{X: 1, Y: 0} // points from owner → neighbour
+			connectionDists[face] = dx
+			interpWeights[face] = 0.5 // symmetric for uniform mesh
+		}
+	}
+
+	mesh := &Mesh{
+		Vertices:        vertices,
+		Connections:     connections,
+		FaceAreas:       faceAreas,
+		FaceNormals:     faceNormals,
+		FaceCentroids:   faceCentroids,
+		ConnectionDists: connectionDists,
+		InterpWeights:   interpWeights,
+		CellRegions:     cellRegions,
+		Centroids:       centroids,
+		CellVolumes:     cellVolumes,
+		VertexIndices:   vertexIndices,
+		FaceStarts:      faceStarts,
+		BoundaryNames: map[int]string{
+			westMarker: "west",
+			eastMarker: "east",
+		},
+		RegionNames: map[int]string{1: "default"},
+	}
+
+	mesh.buildBoundaryFaces()
+
+	return mesh
+}
+
+// MakeRectangular2DStrip creates a simple 1xN rectangular mesh with boundaries
+// named "south", "east", "north", "west"
+func MakeRectangular2DStrip(numCells int) *Mesh {
 	if numCells < 1 {
 		panic("MakeRectangular1DMesh: need at least 1 cell")
 	}
