@@ -10,7 +10,7 @@ func CaseDiffusion1D(nCells int, gamma float64,
 	field := make([]float64, 10)
 	sys := NewFVSystem(mesh)
 
-	LaplacianConst(sys, mesh, gamma)
+	LaplacianConst(sys, mesh, gamma, nil, nil)
 
 	DirichletConstBC(sys, mesh, 0, "west")
 	DirichletConstBC(sys, mesh, 100, "east")
@@ -41,7 +41,7 @@ func CaseConvectionDiffusion1D(
 
 	FaceNormalComponent(mesh, UxFace, UyFace, Unormal)
 
-	LaplacianConst(sys, mesh, gamma)
+	LaplacianConst(sys, mesh, gamma, nil, nil)
 	DivConstCDS(sys, mesh, rho, Unormal)
 
 	DirichletConstBC(sys, mesh, 0, "west")
@@ -60,7 +60,7 @@ func CasePoiseuilleGivenPressure(nCells int, gamma, pYgrad float64,
 	// solve laplacian(Uy) = 1/mu dp/dx
 	sys := NewFVSystem(mesh)
 
-	LaplacianConst(sys, mesh, gamma)
+	LaplacianConst(sys, mesh, gamma, nil, nil)
 	SuConst(sys, mesh, -pYgrad)
 
 	DirichletConstBC(sys, mesh, 0, "west")

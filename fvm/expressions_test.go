@@ -9,7 +9,7 @@ func TestExpressions(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		expr      *Expression
+		expr      Expression
 		wantConst bool
 		want      []float64 // expected values at indices 0-4
 	}{
