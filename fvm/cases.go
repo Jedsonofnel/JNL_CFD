@@ -15,7 +15,7 @@ func CaseDiffusion1D(nCells int, gamma float64,
 	DirichletConstBC(sys, mesh, 0, "west")
 	DirichletConstBC(sys, mesh, 100, "east")
 
-	sys.Solve(field, 1e-6, 100)
+	sys.SolveCG(field, 1e-6, 1000)
 	return field, mesh, sys
 }
 
@@ -47,7 +47,7 @@ func CaseConvectionDiffusion1D(
 	DirichletConstBC(sys, mesh, 0, "west")
 	DirichletConstBC(sys, mesh, 100, "east")
 
-	sys.Solve(phi, 1e-6, 100)
+	sys.SolveBiCGSTAB(phi, 1e-6, 0)
 
 	return phi, mesh, sys
 }
@@ -66,7 +66,7 @@ func CasePoiseuilleGivenPressure(nCells int, gamma, pYgrad float64,
 	DirichletConstBC(sys, mesh, 0, "west")
 	DirichletConstBC(sys, mesh, 0, "east")
 
-	sys.Solve(Uy, 1e-6, 1000)
+	sys.SolveCG(Uy, 1e-6, 1000)
 
 	return Uy, mesh, sys
 }

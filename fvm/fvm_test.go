@@ -49,7 +49,7 @@ func TestPoiseuilleGivenPressure(t *testing.T) {
 	for i, point := range mesh.Centroids {
 		analytical := (-PyGrad / (2 * GAMMA)) * point.X * (1 - point.X)
 
-		if got, want := Uy[i], analytical; !floatsEqual(got, want, 0.1) {
+		if got, want := Uy[i], analytical; !floatsEqual(got, want, 0.01) {
 			t.Errorf("incorrect value at x=%v, got %v, wanted %v", point.X, Uy[i], analytical)
 			t.Logf("Diag dominance: %.3f, Asymmetry: %.2e, Residual: %.2e",
 				sys.DiagonalDominanceRatio(), sys.MaxAsymmetry(), sys.ResidualNorm(Uy))

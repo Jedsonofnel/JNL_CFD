@@ -31,13 +31,21 @@ func NewLDUMatrix(mesh *geometry.Mesh) *LDUMatrix {
 type FVSystem struct {
 	Matrix *LDUMatrix
 	Rhs    []float64
+
+	scratch [][]float64 // for solvers to use
 }
 
 func NewFVSystem(mesh *geometry.Mesh) *FVSystem {
 	matrix := NewLDUMatrix(mesh)
+	scratch := make([][]float64, 8) // 8 for BiCGSTAB
+	for i := range scratch {
+		scratch[i] = make([]float64, len(mesh.Centroids))
+	}
+
 	return &FVSystem{
-		Matrix: matrix,
-		Rhs:    make([]float64, len(mesh.Centroids)),
+		Matrix:  matrix,
+		Rhs:     make([]float64, len(mesh.Centroids)),
+		scratch: scratch,
 	}
 }
 
@@ -76,27 +84,28 @@ func (m *LDUMatrix) MatVec(x, y []float64) []float64 {
 	return y
 }
 
-// Solve solves an FVSystem using the conjugate gradient method
-func (sys *FVSystem) Solve(x []float64, tolerance float64, maxIters int) {
-	nCells := len(sys.Rhs)
+// Solve solves an FVSystem using the conjugate gradient method with a jacobi
+// preconditioner
+func (sys *FVSystem) SolveCG(x []float64, tolerance float64, maxIters int) {
+	if maxIters <= 0 {
+		maxIters = min(len(x), 1000)
+	}
 
 	A := sys.Matrix
 	b := sys.Rhs
 
-	r := make([]float64, nCells)
-	d := make([]float64, nCells)
-	Ad := make([]float64, nCells)
+	r := sys.scratch[0]
+	d := sys.scratch[1]
+	Ad := sys.scratch[2]
+	z := sys.scratch[3]
 
 	Ax := A.MatVec(x, r)
 	for i, val := range Ax {
 		r[i] = b[i] - val
-		d[i] = r[i]
+		d[i] = 1 / A.diag[i] * r[i]
 	}
 
-	var rDotr float64 = 0
-	for _, val := range r {
-		rDotr += val * val
-	}
+	rDotr := dot(r, d)
 
 	recomputeAxInterval := 50
 
@@ -104,10 +113,7 @@ func (sys *FVSystem) Solve(x []float64, tolerance float64, maxIters int) {
 	for iter := 0; iter < maxIters && rDotr > threshold; iter++ {
 		Ad = A.MatVec(d, Ad)
 
-		var dDotAd float64 = 0
-		for i, val := range d {
-			dDotAd += val * Ad[i]
-		}
+		dDotAd := dot(d, Ad)
 
 		alpha := rDotr / dDotAd
 
@@ -126,18 +132,139 @@ func (sys *FVSystem) Solve(x []float64, tolerance float64, maxIters int) {
 			}
 		}
 
-		rDotrOld := rDotr
-		rDotr = 0
-		for _, val := range r {
-			rDotr += val * val
+		for i, val := range r {
+			z[i] = val / A.diag[i]
 		}
+
+		rDotrOld := rDotr
+		rDotr = dot(r, z)
 
 		beta := rDotr / rDotrOld
 
 		for i, val := range d {
-			d[i] = r[i] + beta*val
+			d[i] = z[i] + beta*val
 		}
 	}
+}
+
+func (sys *FVSystem) SolveBiCGSTAB(x []float64, tolerance float64, maxIters int) {
+	if maxIters <= 0 {
+		maxIters = min(len(x), 1000)
+	}
+
+	A := sys.Matrix
+	b := sys.Rhs
+	n := len(b)
+
+	// Scratch allocation
+	r := sys.scratch[0]
+	rHat := sys.scratch[1]
+	p := sys.scratch[2]
+	v := sys.scratch[3]
+	s := sys.scratch[4]
+	t := sys.scratch[5]
+	y := sys.scratch[6]
+	z := sys.scratch[7]
+
+	// r_0 = b - Ax_0 (initial residual)
+	A.MatVec(x, r)
+	for i := range n {
+		r[i] = b[i] - r[i]
+	}
+
+	// choose rHat_0 such that (r_0, rHat_0) != 0
+	copy(rHat, r)
+
+	rho := dot(rHat, r)
+
+	// p_0 = r_0
+	copy(p, r)
+
+	// compute initial residual for convergence check
+	thresholdSq := tolerance * tolerance * dot(r, r)
+
+	for range maxIters {
+		// y = K_2^-1 K_1^-1 p (K_2 = I, K_1 = diag for Jacobi, y = p / diag)
+		for i := range n {
+			y[i] = p[i] / A.diag[i]
+		}
+
+		// v = Ay
+		A.MatVec(y, v)
+
+		// alpha = rho_{i-1} / (rHat, v)
+		rHatDotV := dot(rHat, v)
+		if math.Abs(rHatDotV) < 1e-30 {
+			break // breakdown
+		}
+		alpha := rho / rHatDotV
+
+		// h = x + alpha.y (early candidate)
+		// s = r - alpha.v
+		for i := range n {
+			x[i] = x[i] + alpha*y[i]
+			s[i] = r[i] - alpha*v[i]
+		}
+
+		if dot(s, s) < thresholdSq {
+			return // x already holds h
+		}
+
+		// z = K_2^-1.K_1^-1.s = s / diag
+		for i := range n {
+			z[i] = s[i] / A.diag[i]
+		}
+
+		// t = Az
+		A.MatVec(z, t)
+
+		// simplified omega calculation for Jacobi
+		tDotS := dot(t, s)
+		tDotT := dot(t, t)
+		if math.Abs(tDotT) < 1e-30 {
+			break // breakdown
+		}
+		omega := tDotS / tDotT
+
+		// x_i = h + omega.z
+		// r_i = s - omega.t
+		for i := range n {
+			x[i] = x[i] + omega*z[i]
+			r[i] = s[i] - omega*t[i]
+		}
+
+		if dot(r, r) < thresholdSq {
+			return
+		}
+
+		// rho_i = (rHat, r_i)
+		rhoNew := dot(rHat, r)
+
+		// beta = (rho_i / rho_{i-1}) * (alpha / omega)
+		if math.Abs(rho) < 1e-30 || math.Abs(omega) < 1e-30 {
+			break // breakdown
+		}
+		beta := (rhoNew / rho) * (alpha / omega)
+
+		// p_i = r_i + beta.(p_{i-1} - omega.v)
+		for i := range n {
+			p[i] = r[i] + beta*(p[i]-omega*v[i])
+		}
+
+		rho = rhoNew
+	}
+}
+
+//
+// Linear algebra helpers
+//
+
+func dot(a, b []float64) float64 {
+	sum := 0.0
+	for i, v := range a {
+		sum += v * b[i]
+	}
+	return sum
 }
 
 //

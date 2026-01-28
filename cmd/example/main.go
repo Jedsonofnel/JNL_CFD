@@ -79,11 +79,11 @@ func convdiff(nCells int, gamma, rho, velocity float64) {
 	// CDS solution
 	phiCDS := make([]float64, nCells)
 	sysCDS := fvm.NewFVSystem(mesh)
-	fvm.LaplacianConst(sysCDS, mesh, gamma)
+	fvm.LaplacianConst(sysCDS, mesh, gamma, nil, nil)
 	fvm.DivConstCDS(sysCDS, mesh, rho, Unormal)
 	fvm.DirichletConstBC(sysCDS, mesh, 0, "west")
 	fvm.DirichletConstBC(sysCDS, mesh, 100, "east")
-	sysCDS.Solve(phiCDS, 1e-6, 100)
+	sysCDS.SolveCG(phiCDS, 1e-6, 100)
 
 	fmt.Fprintf(os.Stderr, "CDS - Diag dominance: %.3f, Asymmetry: %.2e, Residual: %.2e\n",
 		sysCDS.DiagonalDominanceRatio(), sysCDS.MaxAsymmetry(), sysCDS.ResidualNorm(phiCDS))
@@ -91,11 +91,11 @@ func convdiff(nCells int, gamma, rho, velocity float64) {
 	// UDS solution
 	phiUDS := make([]float64, nCells)
 	sysUDS := fvm.NewFVSystem(mesh)
-	fvm.LaplacianConst(sysUDS, mesh, gamma)
+	fvm.LaplacianConst(sysUDS, mesh, gamma, nil, nil)
 	fvm.DivConstUDS(sysUDS, mesh, rho, Unormal)
 	fvm.DirichletConstBC(sysUDS, mesh, 0, "west")
 	fvm.DirichletConstBC(sysUDS, mesh, 100, "east")
-	sysUDS.Solve(phiUDS, 1e-6, 100)
+	sysUDS.SolveCG(phiUDS, 1e-6, 100)
 
 	fmt.Fprintf(os.Stderr, "UDS - Diag dominance: %.3f, Asymmetry: %.2e, Residual: %.2e\n",
 		sysUDS.DiagonalDominanceRatio(), sysUDS.MaxAsymmetry(), sysUDS.ResidualNorm(phiUDS))
