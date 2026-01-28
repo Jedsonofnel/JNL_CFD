@@ -151,6 +151,7 @@ func triangleOutputToMesh(output *triangle.Output, domain *Domain) *Mesh {
 		faceAreas,
 		faceNormals,
 		faceCentroids,
+		connectionVecs,
 		connectionDists,
 		interpWeights := buildConnectionGeometry(
 		vertexIndices,
@@ -177,6 +178,7 @@ func triangleOutputToMesh(output *triangle.Output, domain *Domain) *Mesh {
 		FaceAreas:       faceAreas,
 		FaceNormals:     faceNormals,
 		FaceCentroids:   faceCentroids,
+		ConnectionVecs:  connectionVecs,
 		ConnectionDists: connectionDists,
 		InterpWeights:   interpWeights,
 
@@ -193,6 +195,7 @@ func triangleOutputToMesh(output *triangle.Output, domain *Domain) *Mesh {
 	}
 
 	mesh.buildBoundaryFaces()
+	mesh.buildNonOrthogonalCoeffs()
 
 	return mesh
 }
@@ -316,6 +319,7 @@ func buildConnectionGeometry(
 	faceAreas []float64,
 	faceNormals []Vec2,
 	faceCentroids []Vec2,
+	connectionVecs []Vec2,
 	connectionDists []float64,
 	interpWeights []float64,
 ) {
@@ -329,6 +333,7 @@ func buildConnectionGeometry(
 	faceAreas = make([]float64, 0, estimatedConnections)
 	faceNormals = make([]Vec2, 0, estimatedConnections)
 	faceCentroids = make([]Vec2, 0, estimatedConnections)
+	connectionVecs = make([]Vec2, 0, estimatedConnections)
 	connectionDists = make([]float64, 0, estimatedConnections)
 	interpWeights = make([]float64, 0, estimatedConnections)
 
@@ -397,6 +402,11 @@ func buildConnectionGeometry(
 				distY := fc.Y - ownerCentroid.Y
 				dist := math.Sqrt(distX*distX + distY*distY)
 
+				connectionVecs = append(connectionVecs, Vec2{
+					X: fc.X - ownerCentroid.X,
+					Y: fc.Y - ownerCentroid.Y,
+				})
+
 				connectionDists = append(connectionDists, dist)
 				interpWeights = append(interpWeights, 1.0) // Boundary
 
@@ -408,6 +418,11 @@ func buildConnectionGeometry(
 			distX := neighbourCentroid.X - ownerCentroid.X
 			distY := neighbourCentroid.Y - ownerCentroid.Y
 			totalDist := math.Sqrt(distX*distX + distY*distY)
+
+			connectionVecs = append(connectionVecs, Vec2{
+				X: neighbourCentroid.X - ownerCentroid.X,
+				Y: neighbourCentroid.Y - ownerCentroid.Y,
+			})
 
 			connectionDists = append(connectionDists, totalDist)
 
@@ -576,6 +591,10 @@ func (m *Mesh) buildBoundaryFaces() {
 		return // already built
 	}
 
+	if m.Connections == nil || m.BoundaryNames == nil {
+		panic("buildBoundaryFaces requires Connections and BoundaryFaces")
+	}
+
 	m.BoundaryFaces = make(map[string][]int)
 
 	for i, conn := range m.Connections {
@@ -584,6 +603,43 @@ func (m *Mesh) buildBoundaryFaces() {
 			if name, ok := m.BoundaryNames[marker]; ok {
 				m.BoundaryFaces[name] = append(m.BoundaryFaces[name], i)
 			}
+		}
+	}
+}
+
+func (m *Mesh) buildNonOrthogonalCoeffs() {
+	if m.OrthFactors != nil && m.NonOrthDeltas != nil {
+		return // already built
+	}
+
+	if m.ConnectionVecs == nil || m.FaceNormals == nil {
+		panic("buildNonOrthogonalCoeffs requires ConnectionVecs and FaceNormals")
+	}
+
+	n := len(m.Connections)
+	m.OrthFactors = make([]float64, n)
+	m.NonOrthDeltas = make([]Vec2, n)
+
+	for i, fn := range m.FaceNormals {
+		d := m.ConnectionDists[i]
+
+		if d < 1e-30 {
+			m.OrthFactors[i] = 1.0
+			continue
+		}
+
+		// Unit vector along connection
+		eX := m.ConnectionVecs[i].X / d
+		eY := m.ConnectionVecs[i].Y / d
+
+		// Orthogonality factor
+		dot := fn.X*eX + fn.Y*eY
+		m.OrthFactors[i] = dot
+
+		// Correction vector: Δ = n - (n·e)e
+		m.NonOrthDeltas[i] = Vec2{
+			X: fn.X - dot*eX,
+			Y: fn.Y - dot*eY,
 		}
 	}
 }

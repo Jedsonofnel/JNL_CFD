@@ -46,6 +46,54 @@ func NeumannFaceValuesConst(mesh *geometry.Mesh, field, faceField []float64, bou
 	}
 }
 
+func RhieChowFaceNormal(
+	mesh *geometry.Mesh,
+	Ux, Uy []float64,
+	p []float64,
+	gradPx, gradPy []float64,
+	aPx, aPy []float64,
+	UnormalMWI []float64,
+) {
+	for i, conn := range mesh.Connections {
+		n := mesh.FaceNormals[i]
+		owner := conn.Owner
+
+		dxOwner := mesh.CellVolumes[owner] / aPx[owner]
+		dyOwner := mesh.CellVolumes[owner] / aPy[owner]
+		UnOwner := Ux[owner]*n.X + Uy[owner]*n.Y
+		gradPnOwner := gradPx[owner]*n.X + gradPy[owner]*n.Y
+
+		if conn.Neighbour >= 0 {
+			neigh := conn.Neighbour
+			w := mesh.InterpWeights[i]
+
+			dxNeigh := mesh.CellVolumes[neigh] / aPx[neigh]
+			dyNeigh := mesh.CellVolumes[neigh] / aPy[neigh]
+			UnNeigh := Ux[neigh]*n.X + Uy[neigh]*n.Y
+			gradPnNeigh := gradPx[neigh]*n.X + gradPy[neigh]*n.Y
+
+			UnInterp := (1-w)*UnOwner + w*UnNeigh
+			dxFace := (1-w)*dxOwner + w*dxNeigh
+			dyFace := (1-w)*dyOwner + w*dyNeigh
+			gradPnInterp := (1-w)*gradPnOwner + w*gradPnNeigh
+
+			// Direct pressure gradient with non-orthogonality correction
+			pDiff := p[neigh] - p[owner]
+			dist := mesh.ConnectionDists[i]
+			gradPxFace := (1-w)*gradPx[owner] + w*gradPx[neigh]
+			gradPyFace := (1-w)*gradPy[owner] + w*gradPy[neigh]
+
+			delta := mesh.NonOrthDeltas[i]
+			gradPnDirect := mesh.OrthFactors[i]*pDiff/dist + delta.X*gradPxFace + delta.Y*gradPyFace
+
+			dNormal := dxFace*n.X*n.X + dyFace*n.Y*n.Y
+			UnormalMWI[i] = UnInterp - dNormal*(gradPnDirect-gradPnInterp)
+		} else {
+			UnormalMWI[i] = UnOwner
+		}
+	}
+}
+
 //
 // Gradient reconstruction
 //

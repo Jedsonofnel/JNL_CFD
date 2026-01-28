@@ -102,3 +102,77 @@ func TestGreenGaussGradientDiagonal(t *testing.T) {
 		}
 	}
 }
+
+func TestRhieChowFaceNormal(t *testing.T) {
+	tests := []struct {
+		name      string
+		makeMesh  func() *geometry.Mesh
+		setup     func(mesh *geometry.Mesh) (Ux, Uy, p, gradPx, gradPy, aPx, aPy []float64)
+		checkFace func(i int, conn geometry.Connection, n geometry.Vec2, got float64) (float64, bool) // returns (want, ok)
+	}{
+		{
+			name:     "uniform flow linear pressure",
+			makeMesh: func() *geometry.Mesh { return geometry.MakeSimple1DMesh(10) },
+			setup: func(mesh *geometry.Mesh) (Ux, Uy, p, gradPx, gradPy, aPx, aPy []float64) {
+				n := len(mesh.Centroids)
+				Ux, Uy, p = make([]float64, n), make([]float64, n), make([]float64, n)
+				gradPx, gradPy = make([]float64, n), make([]float64, n)
+				aPx, aPy = make([]float64, n), make([]float64, n)
+				for i, c := range mesh.Centroids {
+					Ux[i], Uy[i] = 2.0, 0.0
+					p[i] = 100 * c.X
+					gradPx[i], gradPy[i] = 100, 0
+					aPx[i], aPy[i] = 1.0, 1.0
+				}
+				return
+			},
+			checkFace: func(i int, conn geometry.Connection, n geometry.Vec2, got float64) (float64, bool) {
+				if conn.Neighbour < 0 {
+					return 0, true // skip boundaries
+				}
+				return 2.0, floatsEqual(got, 2.0, FLOAT_TOL)
+			},
+		},
+		{
+			name:     "2D diagonal flow",
+			makeMesh: func() *geometry.Mesh { return geometry.MakeRectangular2DStrip(5) },
+			setup: func(mesh *geometry.Mesh) (Ux, Uy, p, gradPx, gradPy, aPx, aPy []float64) {
+				n := len(mesh.Centroids)
+				Ux, Uy, p = make([]float64, n), make([]float64, n), make([]float64, n)
+				gradPx, gradPy = make([]float64, n), make([]float64, n)
+				aPx, aPy = make([]float64, n), make([]float64, n)
+				for i, c := range mesh.Centroids {
+					Ux[i], Uy[i] = 3.0, 4.0
+					p[i] = 2*c.X + 5*c.Y
+					gradPx[i], gradPy[i] = 2.0, 5.0
+					aPx[i], aPy[i] = 2.0, 2.0
+				}
+				return
+			},
+			checkFace: func(i int, conn geometry.Connection, n geometry.Vec2, got float64) (float64, bool) {
+				if conn.Neighbour < 0 {
+					return 0, true
+				}
+				want := 3.0*n.X + 4.0*n.Y
+				return want, floatsEqual(got, want, FLOAT_TOL)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mesh := tt.makeMesh()
+			Ux, Uy, p, gradPx, gradPy, aPx, aPy := tt.setup(mesh)
+			UnormalMWI := make([]float64, len(mesh.Connections))
+
+			RhieChowFaceNormal(mesh, Ux, Uy, p, gradPx, gradPy, aPx, aPy, UnormalMWI)
+
+			for i, conn := range mesh.Connections {
+				want, ok := tt.checkFace(i, conn, mesh.FaceNormals[i], UnormalMWI[i])
+				if !ok {
+					t.Errorf("face %d: got %v, want %v", i, UnormalMWI[i], want)
+				}
+			}
+		})
+	}
+}

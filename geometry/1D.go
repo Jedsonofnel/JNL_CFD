@@ -49,6 +49,7 @@ func MakeSimple1DMesh(numCells int) *Mesh {
 	faceAreas := make([]float64, numFaces)
 	faceNormals := make([]Vec2, numFaces)
 	faceCentroids := make([]Vec2, numFaces)
+	connectionVecs := make([]Vec2, numFaces)
 	connectionDists := make([]float64, numFaces)
 	interpWeights := make([]float64, numFaces)
 
@@ -60,18 +61,21 @@ func MakeSimple1DMesh(numCells int) *Mesh {
 		case 0: // West boundary
 			connections[face] = Connection{Owner: 0, Neighbour: -westMarker}
 			faceNormals[face] = Vec2{X: -1, Y: 0}
+			connectionVecs[face] = Vec2{X: -0.5 * dx, Y: 0}
 			connectionDists[face] = 0.5 * dx
 			interpWeights[face] = 1.0
 
 		case numCells: // East boundary
 			connections[face] = Connection{Owner: int32(numCells - 1), Neighbour: -eastMarker}
 			faceNormals[face] = Vec2{X: 1, Y: 0}
+			connectionVecs[face] = Vec2{X: 0.5 * dx, Y: 0}
 			connectionDists[face] = 0.5 * dx
 			interpWeights[face] = 1.0
 
 		default: // Internal face between cell (face-1) and cell (face)
 			connections[face] = Connection{Owner: int32(face - 1), Neighbour: int32(face)}
-			faceNormals[face] = Vec2{X: 1, Y: 0} // points from owner → neighbour
+			faceNormals[face] = Vec2{X: 1, Y: 0} // points from owner -> neighbour
+			connectionVecs[face] = Vec2{X: dx, Y: 0}
 			connectionDists[face] = dx
 			interpWeights[face] = 0.5 // symmetric for uniform mesh
 		}
@@ -83,6 +87,7 @@ func MakeSimple1DMesh(numCells int) *Mesh {
 		FaceAreas:       faceAreas,
 		FaceNormals:     faceNormals,
 		FaceCentroids:   faceCentroids,
+		ConnectionVecs:  connectionVecs,
 		ConnectionDists: connectionDists,
 		InterpWeights:   interpWeights,
 		CellRegions:     cellRegions,
@@ -98,6 +103,7 @@ func MakeSimple1DMesh(numCells int) *Mesh {
 	}
 
 	mesh.buildBoundaryFaces()
+	mesh.buildNonOrthogonalCoeffs()
 
 	return mesh
 }
@@ -152,7 +158,7 @@ func MakeRectangular2DStrip(numCells int) *Mesh {
 	// Reuse existing infrastructure
 	cellVolumes, centroids := calculateCellGeometry(vertices, vertexIndices, faceStarts)
 
-	connections, faceAreas, faceNormals, faceCentroids, connectionDists, interpWeights :=
+	connections, faceAreas, faceNormals, faceCentroids, connectionVecs, connectionDists, interpWeights :=
 		buildConnectionGeometry(vertexIndices, faceStarts, vertices, centroids, faceMarkers)
 
 	cellRegions := make([]int, numCells)
@@ -166,6 +172,7 @@ func MakeRectangular2DStrip(numCells int) *Mesh {
 		FaceAreas:       faceAreas,
 		FaceNormals:     faceNormals,
 		FaceCentroids:   faceCentroids,
+		ConnectionVecs:  connectionVecs,
 		ConnectionDists: connectionDists,
 		InterpWeights:   interpWeights,
 		CellRegions:     cellRegions,
@@ -183,6 +190,7 @@ func MakeRectangular2DStrip(numCells int) *Mesh {
 	}
 
 	mesh.buildBoundaryFaces()
+	mesh.buildNonOrthogonalCoeffs()
 
 	return mesh
 }

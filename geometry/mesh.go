@@ -41,6 +41,10 @@ type Mesh struct {
 	BoundaryFaces map[string][]int // name -> connections
 	RegionNames   map[int]string
 	Domain        *Domain
+
+	// Orthogonality
+	OrthFactors   []float64
+	NonOrthDeltas []Vec2
 }
 
 //
