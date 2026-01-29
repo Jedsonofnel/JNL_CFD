@@ -54,12 +54,17 @@ func NewFVSystem(mesh *geometry.Mesh) *FVSystem {
 //
 
 func (m *LDUMatrix) Zero() {
-	for i := range m.diag {
-		m.diag[i] = 0
-	}
-	for i := range m.lower {
-		m.lower[i] = 0
-		m.upper[i] = 0
+	clear(m.diag)
+	clear(m.lower)
+	clear(m.upper)
+}
+
+func (sys *FVSystem) Reset() {
+	clear(sys.Rhs)
+	sys.Matrix.Zero()
+
+	for i := range sys.scratch {
+		clear(sys.scratch[i])
 	}
 }
 
@@ -252,6 +257,13 @@ func (sys *FVSystem) SolveBiCGSTAB(x []float64, tolerance float64, maxIters int)
 		}
 
 		rho = rhoNew
+	}
+}
+
+func (sys *FVSystem) UnderRelax(fieldOld []float64, alpha float64) {
+	for i := range sys.Matrix.diag {
+		sys.Rhs[i] += ((1 - alpha) / alpha) * sys.Matrix.diag[i] * fieldOld[i]
+		sys.Matrix.diag[i] /= alpha
 	}
 }
 

@@ -128,6 +128,25 @@ func GreenGaussGradient(
 }
 
 //
+// Divergence
+//
+
+func Divergence(mesh *geometry.Mesh, UnFace []float64, div []float64) {
+	for i := range div {
+		div[i] = 0
+	}
+	for f, conn := range mesh.Connections {
+		flux := UnFace[f] * mesh.FaceAreas[f]
+		if conn.Owner >= 0 {
+			div[conn.Owner] += flux
+		}
+		if conn.Neighbour >= 0 {
+			div[conn.Neighbour] -= flux
+		}
+	}
+}
+
+//
 // For rendering
 //
 

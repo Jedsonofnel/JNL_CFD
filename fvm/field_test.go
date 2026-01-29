@@ -1,10 +1,15 @@
 package fvm
 
 import (
+	"math"
 	"testing"
 
 	"jedn.dev/jnlcfd/geometry"
 )
+
+//
+// Face interpolation
+//
 
 func TestFaceInterpolation(t *testing.T) {
 	mesh := geometry.MakeSimple1DMesh(10)
@@ -39,6 +44,10 @@ func TestFaceInterpolation(t *testing.T) {
 		}
 	}
 }
+
+//
+// Gradient reconstruction
+//
 
 func TestGreenGaussGradient(t *testing.T) {
 	mesh := geometry.MakeSimple1DMesh(10)
@@ -102,6 +111,54 @@ func TestGreenGaussGradientDiagonal(t *testing.T) {
 		}
 	}
 }
+
+func TestGreenGaussTriangular(t *testing.T) {
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 1, 1, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+	mesh, _ := geometry.MeshWithCells(domain, 200, 30)
+
+	nCells := len(mesh.Centroids)
+
+	// Linear field: φ = 3x + 7y → ∇φ = (3, 7) exactly
+	field := make([]float64, nCells)
+	for i, c := range mesh.Centroids {
+		field[i] = 3*c.X + 7*c.Y
+	}
+
+	faceField := make([]float64, len(mesh.Connections))
+	gradX := make([]float64, nCells)
+	gradY := make([]float64, nCells)
+
+	// Set face values exactly (this isolates gradient from interpolation)
+	for i, conn := range mesh.Connections {
+		if conn.Neighbour >= 0 {
+			fc := mesh.FaceCentroids[i]
+			faceField[i] = 3*fc.X + 7*fc.Y // exact face value
+		} else {
+			fc := mesh.FaceCentroids[i]
+			faceField[i] = 3*fc.X + 7*fc.Y
+		}
+	}
+
+	GreenGaussGradient(mesh, faceField, gradX, gradY)
+
+	maxErrX, maxErrY := 0.0, 0.0
+	for i := range field {
+		maxErrX = max(maxErrX, math.Abs(gradX[i]-3))
+		maxErrY = max(maxErrY, math.Abs(gradY[i]-7))
+	}
+
+	t.Logf("Max gradient error: gradX=%.2e, gradY=%.2e", maxErrX, maxErrY)
+
+	if maxErrX > 1e-10 || maxErrY > 1e-10 {
+		t.Errorf("Green-Gauss not exact for linear field on triangular mesh")
+	}
+}
+
+//
+// Rhie chow
+//
 
 func TestRhieChowFaceNormal(t *testing.T) {
 	tests := []struct {

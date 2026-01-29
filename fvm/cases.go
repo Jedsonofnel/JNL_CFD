@@ -70,3 +70,48 @@ func CasePoiseuilleGivenPressure(nCells int, gamma, pYgrad float64,
 
 	return Uy, mesh, sys
 }
+
+func CaseCouette(nCells int, gamma, Uwall float64) (Ux []float64, mesh *geometry.Mesh, sys *FVSystem) {
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 1, 1, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+
+	mesh, _ = geometry.MeshWithCells(domain, nCells, 30)
+
+	// actual nCells
+	nCells = len(mesh.Centroids)
+	Ux = make([]float64, nCells)
+	// Uy := make([]float64, nCells)
+
+	// For Couette, we only need to solve the x-momentum diffusion equation
+	// No pressure coupling needed since dp/dx = 0
+	sys = NewFVSystem(mesh)
+
+	// BCs: bottom wall u=0, top wall u=Uwall, sides zero-gradient
+	uxBCs := []BC{
+		NewDirichlet("south", 0),
+		NewDirichlet("north", Uwall),
+		NewNeumann("east", 0),
+		NewNeumann("west", 0),
+	}
+
+	gradUxx := make([]float64, nCells)
+	gradUxy := make([]float64, nCells)
+	UxFace := make([]float64, len(mesh.Connections))
+
+	// Iterate
+	for range 10 {
+		sys.Reset()
+
+		FaceInterpCDS(mesh, Ux, UxFace)
+		applyBCFaceValues(mesh, Ux, UxFace, uxBCs)
+		GreenGaussGradient(mesh, UxFace, gradUxx, gradUxy)
+
+		LaplacianConst(sys, mesh, gamma, gradUxx, gradUxy)
+		applyBCs(sys, mesh, uxBCs)
+
+		sys.SolveCG(Ux, 1e-10, 1000)
+	}
+
+	return Ux, mesh, sys
+}

@@ -245,3 +245,16 @@ func (d *Domain) toPSLG() PSLG {
 		Holes:    allHoles,
 	}
 }
+
+// meshableArea returns domain area minus holes
+func (d *Domain) meshableArea() float64 {
+	minX, minY, maxX, maxY := d.Bounds()
+	area := (maxX - minX) * (maxY - minY)
+
+	for _, poly := range d.Polygons {
+		if poly.IsHole {
+			area -= poly.Area()
+		}
+	}
+	return area
+}

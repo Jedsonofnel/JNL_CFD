@@ -122,6 +122,48 @@ func TestPoiseuilleConvergenceOrder(t *testing.T) {
 	}
 }
 
+func TestCouetteConvergence(t *testing.T) {
+	Uwall := 1.0
+
+	// Progressively finer meshes
+	cellCounts := []int{50, 200, 800, 3200}
+	errors := make([]float64, len(cellCounts))
+	h := make([]float64, len(cellCounts))
+
+	for i, nCells := range cellCounts {
+		Ux, mesh, _ := CaseCouette(nCells, GAMMA, Uwall)
+		nCells = len(mesh.Centroids)
+		cellCounts[i] = nCells
+
+		// Compute L2 error norm
+		sumSq := 0.0
+		for j, pt := range mesh.Centroids {
+			analytical := Uwall * pt.Y
+			err := Ux[j] - analytical
+			sumSq += err * err
+		}
+		errors[i] = math.Sqrt(sumSq / float64(nCells))
+		h[i] = 1.0 / math.Sqrt(float64(nCells)) // characteristic length
+	}
+
+	// Log convergence table
+	t.Logf("%10s %12s %12s %8s", "nCells", "h", "L2 error", "order")
+	t.Logf("%10d %12.4f %12.4e %8s", cellCounts[0], h[0], errors[0], "-")
+
+	for i := 1; i < len(cellCounts); i++ {
+		order := math.Log(errors[i-1]/errors[i]) / math.Log(h[i-1]/h[i])
+		t.Logf("%10d %12.4f %12.4e %8.2f", cellCounts[i], h[i], errors[i], order)
+	}
+
+	// Check final order is ~2 (second-order scheme)
+	finalOrder := math.Log(errors[len(errors)-2]/errors[len(errors)-1]) /
+		math.Log(h[len(h)-2]/h[len(h)-1])
+
+	if finalOrder < 0.8 {
+		t.Errorf("Expected first-order convergence, got %.2f", finalOrder)
+	}
+}
+
 //
 // Helpers
 //

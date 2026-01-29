@@ -364,9 +364,15 @@ func SuExpr(sys *FVSystem, mesh *geometry.Mesh, expr Expression) {
 	}
 }
 
-func SuIntegrated(sys *FVSystem, mesh *geometry.Mesh, field []float64) {
+func SuIntegrated(sys *FVSystem, field []float64) {
 	for i := range sys.Rhs {
 		sys.Rhs[i] += field[i]
+	}
+}
+
+func SuFieldScaled(sys *FVSystem, coeff float64, field []float64) {
+	for i := range sys.Rhs {
+		sys.Rhs[i] += coeff * field[i]
 	}
 }
 
@@ -446,7 +452,7 @@ func SpExpr(sys *FVSystem, mesh *geometry.Mesh, expr Expression) {
 	}
 }
 
-func SpIntegrated(sys *FVSystem, mesh *geometry.Mesh, field []float64) {
+func SpIntegrated(sys *FVSystem, field []float64) {
 	for i := range sys.Matrix.diag {
 		sys.Matrix.diag[i] += field[i]
 	}

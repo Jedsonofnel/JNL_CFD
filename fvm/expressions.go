@@ -88,12 +88,19 @@ func PowExpr(base Expression, exponent float64) Expression {
 }
 
 //
-// Mesh cellwise values for use in expression
+// Mesh and linalg cellwise values for use in expression
 //
 
 func CellVolExpr(mesh *geometry.Mesh) Expression {
 	return Expression{
 		Eval:    func(i int) float64 { return mesh.CellVolumes[i] },
+		IsConst: false,
+	}
+}
+
+func DiagExpr(sys *FVSystem) Expression {
+	return Expression{
+		Eval:    func(i int) float64 { return sys.Matrix.diag[i] },
 		IsConst: false,
 	}
 }

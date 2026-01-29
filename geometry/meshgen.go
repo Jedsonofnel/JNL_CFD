@@ -30,8 +30,49 @@ type Region struct {
 }
 
 //
-// Options
+// Converts to C types and calls CGO wrapper triangle package
 //
+
+// MeshDomain runs Triangle.c on the domain and returns a fully qualified *Mesh
+func MeshDomain(domain *Domain, options string) (*Mesh, error) {
+	pslg := domain.toPSLG()
+	input := pslgToTriangleInput(pslg) // Pending
+
+	output, err := triangle.Triangulate(input, options)
+	if err != nil {
+		return nil, err
+	}
+
+	return triangleOutputToMesh(output, domain), nil
+}
+
+func MeshWithArea(domain *Domain, maxArea, minAngle float64) (*Mesh, error) {
+	if minAngle <= 0 {
+		minAngle = 30
+	}
+	opts := buildTriangleOptions(minAngle, maxArea)
+	return MeshDomain(domain, opts)
+}
+
+func MeshWithCells(domain *Domain, targetCells int, minAngle float64) (*Mesh, error) {
+	maxArea := domain.meshableArea() / float64(targetCells)
+	return MeshWithArea(domain, maxArea, minAngle)
+}
+
+func MeshWithResolution(domain *Domain, cellsPerUnit, minAngle float64) (*Mesh, error) {
+	h := 1.0 / cellsPerUnit
+	maxArea := equilateralArea(h)
+	return MeshWithArea(domain, maxArea, minAngle)
+}
+
+func MeshWithEdgeLength(domain *Domain, edgeLength, minAngle float64) (*Mesh, error) {
+	maxArea := equilateralArea(edgeLength)
+	return MeshWithArea(domain, maxArea, minAngle)
+}
+
+func equilateralArea(h float64) float64 {
+	return (math.Sqrt(3) / 4.0) * h * h
+}
 
 func buildTriangleOptions(quality float64, maximumArea float64) string {
 	result := "pzQ"
@@ -50,21 +91,8 @@ func buildTriangleOptions(quality float64, maximumArea float64) string {
 }
 
 //
-// Converts to C types and calls CGO wrapper triangle package
+// Implementation details
 //
-
-// MeshDomain runs Triangle.c on the domain and returns a fully qualified *Mesh
-func MeshDomain(domain *Domain, options string) (*Mesh, error) {
-	pslg := domain.toPSLG()
-	input := pslgToTriangleInput(pslg) // Pending
-
-	output, err := triangle.Triangulate(input, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return triangleOutputToMesh(output, domain), nil
-}
 
 // pslgToTriangleInput converts a PSLG to Triangle.c input format
 func pslgToTriangleInput(pslg PSLG) triangle.Input {
