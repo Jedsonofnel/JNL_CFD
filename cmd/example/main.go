@@ -16,15 +16,16 @@ import (
 
 var cases = map[string]string{
 	"poiseuille":            "Pressure-driven channel flow (SIMPLE with convection)",
-	"couette":               "Shear-driven flow with moving top wall (SIMPLE with convection)",
 	"poiseuille-simplified": "Pressure-driven flow (pure diffusion, no pressure coupling)",
-	"couette-simplified":    "Shear-driven flow (pure diffusion, no pressure coupling)",
+	"couette":               "Shear-driven flow (pure diffusion, no pressure coupling)",
+	"cavity":                "Lid-driven cavity flow (SIMPLE with convection)",
 }
 
 func main() {
 	nCells := flag.Int("n", 400, "target number of mesh cells")
 	gamma := flag.Float64("gamma", 1.0, "dynamic viscosity")
 	rho := flag.Float64("rho", 1.0, "density")
+	re := flag.Float64("re", 100, "Reynolds number (cavity only)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: example [flags] <case>\n\nCases:\n")
 		for name, desc := range cases {
@@ -53,6 +54,8 @@ func main() {
 		runPoiseuilleSimplified(*nCells, *gamma)
 	case "couette":
 		runCouetteSimplified(*nCells, *gamma)
+	case "cavity":
+		runCavity(*nCells, *re)
 	}
 }
 
@@ -123,6 +126,23 @@ func runCouetteSimplified(nCells int, gamma float64) {
 		output.VTKField{Name: "Ux", Values: Ux},
 		output.VTKField{Name: "Ux_analytical", Values: analytical},
 		output.VTKField{Name: "error", Values: err},
+	)
+}
+
+func runCavity(nCells int, Re float64) {
+	result := fvm.CaseLidDrivenCavity(nCells, Re)
+	LogSIMPLEResult(result, fmt.Sprintf("Lid-driven cavity (Re=%.0f)", Re))
+
+	Umag := make([]float64, len(result.Mesh.Centroids))
+	for i := range Umag {
+		Umag[i] = math.Sqrt(result.Ux[i]*result.Ux[i] + result.Uy[i]*result.Uy[i])
+	}
+
+	output.WriteVTK(os.Stdout, result.Mesh,
+		output.VTKField{Name: "Ux", Values: result.Ux},
+		output.VTKField{Name: "Uy", Values: result.Uy},
+		output.VTKField{Name: "p", Values: result.P},
+		output.VTKField{Name: "Umag", Values: Umag},
 	)
 }
 

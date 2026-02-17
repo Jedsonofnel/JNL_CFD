@@ -215,6 +215,67 @@ func CasePoiseuilleSIMPLE(nCells int, gamma, rho float64) SIMPLEResult {
 	}
 }
 
+func CaseLidDrivenCavity(nCells int, Re float64) SIMPLEResult {
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 1, 1, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+	mesh, _ := geometry.MeshWithCells(domain, nCells, 30)
+
+	// Re = rho * Ulid * L / gamma, fix rho=1, Ulid=1, L=1 => gamma = 1/Re
+	Ulid := 1.0
+	rho := 1.0
+	gamma := 1.0 / Re
+
+	pBCs := []BC{
+		NewNeumann("north", 0), NewNeumann("south", 0),
+		NewNeumann("east", 0), NewNeumann("west", 0),
+	}
+	uxBCs := []BC{
+		NewDirichlet("north", Ulid),
+		NewDirichlet("south", 0),
+		NewDirichlet("east", 0),
+		NewDirichlet("west", 0),
+	}
+	uyBCs := []BC{
+		NewDirichlet("north", 0),
+		NewDirichlet("south", 0),
+		NewDirichlet("east", 0),
+		NewDirichlet("west", 0),
+	}
+
+	alphaU := 0.7
+	alphaP := 0.3
+	maxIters := 2000
+	if Re > 400 {
+		alphaU = 0.5
+		alphaP = 0.2
+		maxIters = 5000
+	}
+	if Re > 1000 {
+		alphaU = 0.3
+		alphaP = 0.1
+		maxIters = 10000
+	}
+
+	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, alphaU, alphaP, pBCs, uxBCs, uyBCs)
+
+	var finalRes float64
+	iters := 0
+	for i := range maxIters {
+		res := solver()
+		iters = i + 1
+		finalRes = res
+		if res < 1e-6 {
+			break
+		}
+	}
+
+	return SIMPLEResult{
+		Mesh: mesh, P: p, Ux: Ux, Uy: Uy,
+		Iterations: iters, FinalRes: finalRes,
+	}
+}
+
 //
 // Analytical solutions
 //
