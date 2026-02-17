@@ -331,6 +331,9 @@ func (sys *FVSystem) MaxRowSum() float64 {
 		rowSum := sys.Matrix.diag[i]
 
 		for connIdx, conn := range sys.Matrix.conns {
+			if conn.Neighbour < 0 {
+				continue
+			}
 			if conn.Owner == int32(i) {
 				rowSum += sys.Matrix.lower[connIdx]
 			}

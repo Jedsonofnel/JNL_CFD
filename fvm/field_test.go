@@ -233,3 +233,113 @@ func TestRhieChowFaceNormal(t *testing.T) {
 		})
 	}
 }
+
+//
+// Divergence
+//
+
+func TestDivergencePipeline(t *testing.T) {
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 4, 1, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+	mesh, _ := geometry.MeshWithCells(domain, 400, 30)
+
+	nCells := len(mesh.Centroids)
+	nConns := len(mesh.Connections)
+
+	// Case 1: Uniform flow — divergence must be machine zero
+	t.Run("uniform", func(t *testing.T) {
+		Ux := make([]float64, nCells)
+		Uy := make([]float64, nCells)
+		for i := range Ux {
+			Ux[i] = 3.0
+			Uy[i] = 7.0
+		}
+		UxF := make([]float64, nConns)
+		UyF := make([]float64, nConns)
+		Un := make([]float64, nConns)
+		FaceInterpCDS(mesh, Ux, UxF)
+		FaceInterpCDS(mesh, Uy, UyF)
+		// Dirichlet everywhere with the same constant
+		for _, name := range []string{"west", "east", "north", "south"} {
+			DirichletFaceValuesConst(mesh, UxF, name, 3.0)
+			DirichletFaceValuesConst(mesh, UyF, name, 7.0)
+		}
+		FaceNormalComponent(mesh, UxF, UyF, Un)
+		div := make([]float64, nCells)
+		Divergence(mesh, Un, div)
+		l1 := normL1(div)
+		t.Logf("Uniform flow divergence L1: %.4e", l1)
+		if l1 > 1e-10 {
+			t.Errorf("Uniform flow should be divergence-free, got %.4e", l1)
+		}
+	})
+
+	// Case 2: Linear Ux = x, Uy = -y (div-free: dUx/dx + dUy/dy = 1 - 1 = 0)
+	// CDS is exact for linear fields, so this should also be ~0
+	t.Run("linear_divfree", func(t *testing.T) {
+		Ux := make([]float64, nCells)
+		Uy := make([]float64, nCells)
+		for i, c := range mesh.Centroids {
+			Ux[i] = c.X
+			Uy[i] = -c.Y
+		}
+		UxF := make([]float64, nConns)
+		UyF := make([]float64, nConns)
+		Un := make([]float64, nConns)
+		FaceInterpCDS(mesh, Ux, UxF)
+		FaceInterpCDS(mesh, Uy, UyF)
+		// Set exact boundary values
+		for i, conn := range mesh.Connections {
+			if conn.Neighbour < 0 {
+				fc := mesh.FaceCentroids[i]
+				UxF[i] = fc.X
+				UyF[i] = -fc.Y
+			}
+		}
+		FaceNormalComponent(mesh, UxF, UyF, Un)
+		div := make([]float64, nCells)
+		Divergence(mesh, Un, div)
+		l1 := normL1(div)
+		t.Logf("Linear div-free divergence L1: %.4e", l1)
+		if l1 > 0.5*float64(nCells)*0.01 {
+			t.Errorf("Linear div-free field should have zero divergence, got %.4e", l1)
+		}
+	})
+
+	// Case 3: Linear Ux = x, Uy = 0 (div = 1 everywhere)
+	// Each cell's discrete divergence should equal its volume
+	t.Run("linear_unit_div", func(t *testing.T) {
+		Ux := make([]float64, nCells)
+		Uy := make([]float64, nCells)
+		for i, c := range mesh.Centroids {
+			Ux[i] = c.X
+			Uy[i] = 0
+		}
+		UxF := make([]float64, nConns)
+		UyF := make([]float64, nConns)
+		Un := make([]float64, nConns)
+		FaceInterpCDS(mesh, Ux, UxF)
+		FaceInterpCDS(mesh, Uy, UyF)
+		for i, conn := range mesh.Connections {
+			if conn.Neighbour < 0 {
+				fc := mesh.FaceCentroids[i]
+				UxF[i] = fc.X
+				UyF[i] = 0
+			}
+		}
+		FaceNormalComponent(mesh, UxF, UyF, Un)
+		div := make([]float64, nCells)
+		Divergence(mesh, Un, div)
+
+		maxErr := 0.0
+		for i := range div {
+			err := math.Abs(div[i] - mesh.CellVolumes[i])
+			maxErr = max(maxErr, err)
+		}
+		t.Logf("Unit divergence max error: %.4e", maxErr)
+		if maxErr > 0.01 {
+			t.Errorf("div(x,0) should equal cell volume, max error = %.4e", maxErr)
+		}
+	})
+}

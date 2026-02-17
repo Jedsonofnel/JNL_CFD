@@ -75,7 +75,7 @@ func LaplacianField(
 
 		if conn.Neighbour >= 0 {
 			w := mesh.InterpWeights[i]
-			gammaFace = (1-w)*gammaOwner + w*gamma[conn.Neighbour]
+			gammaFace = w*gammaOwner + (1-w)*gamma[conn.Neighbour]
 		}
 
 		fluxCoeff := gammaFace * faceArea * orthFactor / distance
@@ -120,23 +120,24 @@ func LaplacianExpr(
 		distance := mesh.ConnectionDists[i]
 		orthFactor := mesh.OrthFactors[i]
 
-		gammaOwner := gamma.Eval(int(conn.Owner))
-		gammaFace := gammaOwner
+		gO := gamma.Eval(int(conn.Owner))
+		gF := gO
 
 		if conn.Neighbour >= 0 {
 			w := mesh.InterpWeights[i]
-			gammaNeigh := gamma.Eval(int(conn.Neighbour))
-			gammaFace = w*gammaOwner + (1-w)*gammaNeigh
+			gN := gamma.Eval(int(conn.Neighbour))
+			gF = (1-w)*gO + w*gN
 		}
 
-		fluxCoeff := gammaFace * faceArea * orthFactor / distance
-		matrix.lower[i] -= fluxCoeff
-		matrix.upper[i] -= fluxCoeff
+		coeff := gF * faceArea * orthFactor / distance
+
+		matrix.lower[i] -= coeff
+		matrix.upper[i] -= coeff
 
 		// add diagonals for internal connections
 		if conn.Neighbour >= 0 {
-			matrix.diag[conn.Owner] += fluxCoeff
-			matrix.diag[conn.Neighbour] += fluxCoeff
+			matrix.diag[conn.Owner] += coeff
+			matrix.diag[conn.Neighbour] += coeff
 
 			if hasCorrection {
 				w := mesh.InterpWeights[i]
@@ -144,7 +145,7 @@ func LaplacianExpr(
 				gradYFace := (1-w)*gradY[conn.Owner] + w*gradY[conn.Neighbour]
 
 				delta := mesh.NonOrthDeltas[i]
-				correction := gammaFace * faceArea * (delta.X*gradXFace + delta.Y*gradYFace)
+				correction := gF * faceArea * (delta.X*gradXFace + delta.Y*gradYFace)
 
 				sys.Rhs[conn.Owner] += correction
 				sys.Rhs[conn.Neighbour] -= correction
@@ -357,6 +358,7 @@ func SuField(sys *FVSystem, mesh *geometry.Mesh, field []float64) {
 func SuExpr(sys *FVSystem, mesh *geometry.Mesh, expr Expression) {
 	if expr.IsConst {
 		SuConst(sys, mesh, expr.Eval(0))
+		return
 	}
 
 	for i := range sys.Rhs {
@@ -445,6 +447,7 @@ func SpField(sys *FVSystem, mesh *geometry.Mesh, field []float64) {
 func SpExpr(sys *FVSystem, mesh *geometry.Mesh, expr Expression) {
 	if expr.IsConst {
 		SpConst(sys, mesh, expr.Eval(0))
+		return
 	}
 
 	for i := range sys.Matrix.diag {

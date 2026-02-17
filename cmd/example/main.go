@@ -31,7 +31,7 @@ func main() {
 	}
 
 	if len(args) == 0 { // ie if nothing then use default case
-		couette(1, 10)
+		poiseuille(1, 1)
 		os.Exit(0)
 	}
 
@@ -58,46 +58,12 @@ func couette(rho, gamma float64) {
 }
 
 func poiseuille(rho, gamma float64) {
-	// Horizontal channel: long in x, short in y
-	db := geometry.DomainBuilder{}
-	db.AddPolygon(geometry.MakeRectangle(0, 0, 5, 1, "fluid", "south", "east", "north", "west"))
-	domain, _ := db.Build()
-	mesh, _ := geometry.MeshWithResolution(domain, 20, 30)
+	pYgrad := -10.0
+	Ux, mesh, _ := fvm.CaseCouette(3200, gamma, pYgrad)
 
-	alphaU := 0.7
-	alphaP := 0.3
-
-	pBCs := []fvm.BC{
-		fvm.NewDirichlet("west", 100), // inlet high pressure
-		fvm.NewDirichlet("east", 0),   // outlet low pressure
-	}
-
-	uxBCs := []fvm.BC{
-		fvm.NewDirichlet("north", 0), // no-slip walls
-		fvm.NewDirichlet("south", 0),
-		fvm.NewNeumann("west", 0), // fully developed (or set inlet profile)
-		fvm.NewNeumann("east", 0), // fully developed
-	}
-
-	uyBCs := []fvm.BC{
-		fvm.NewDirichlet("north", 0),
-		fvm.NewDirichlet("south", 0),
-		fvm.NewDirichlet("west", 0), // no wall-normal velocity at inlet
-		fvm.NewDirichlet("east", 0), // no wall-normal velocity at outlet
-	}
-
-	solver, p, Ux, Uy := fvm.MakeSIMPLE(mesh, gamma, rho, alphaU, alphaP, pBCs, uxBCs, uyBCs)
-
-	for i := range 50 {
-		residual := solver()
-		fmt.Printf("iter=%d, residual=%v\n", i, residual)
-		pMin, pMax := minMax(p)
-		fmt.Printf("  p:  min=%.3e max=%.3e\n", pMin, pMax)
-		uxMin, uxMax := minMax(Ux)
-		fmt.Printf("  Ux: min=%.3e max=%.3e\n", uxMin, uxMax)
-		uyMin, uyMax := minMax(Uy)
-		fmt.Printf("  Uy: min=%.3e max=%.3e\n", uyMin, uyMax)
-	}
+	output.WriteVTK(os.Stdout, mesh,
+		output.VTKField{Name: "Ux", Values: Ux},
+	)
 }
 
 func convdiff(nCells int, gamma, rho, velocity float64) {
