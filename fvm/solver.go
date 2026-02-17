@@ -125,6 +125,10 @@ func MakeSIMPLE(
 		SuFieldScaled(pSys, -rho, divU)
 
 		applyBCs(pSys, mesh, ppBCs) // uses p' BCs rather than p
+		if needsPressureRef {
+			pSys.Matrix.diag[0] += 1e10
+			pSys.Rhs[0] = 0
+		}
 		pSys.SolveCG(pPrime, 1e-6, 1000)
 
 		// Corrections
@@ -265,6 +269,10 @@ func MakeSIMPLEStokes(
 		SuFieldScaled(pSys, -rho, divU)
 
 		applyBCs(pSys, mesh, ppBCs) // uses p' BCs rather than p
+		if needsPressureRef {
+			pSys.Matrix.diag[0] += 1e10
+			pSys.Rhs[0] = 0
+		}
 		pSys.SolveCG(pPrime, 1e-6, 1000)
 
 		// DEBUG

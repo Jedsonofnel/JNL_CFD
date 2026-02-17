@@ -1,16 +1,12 @@
 package main
 
 import (
-	"encoding/csv"
 	"flag"
 	"fmt"
-	"io"
 	"math"
 	"os"
-	"strconv"
 
 	"jedn.dev/jnlcfd/fvm"
-	"jedn.dev/jnlcfd/geometry"
 	"jedn.dev/jnlcfd/geometry/output"
 )
 
@@ -18,140 +14,125 @@ import (
 // bin/example is for creating plots of test cases
 //
 
-const (
-	DEFAULT_CASE = "poiseuille" // others are "convdiff" and "lineardiff"
-)
-
-func main() {
-	flag.Parse()
-	args := flag.Args()
-	if len(args) > 1 {
-		fmt.Fprintf(os.Stderr, "Too many arguments, got %d, expected 1 at most\n", len(args))
-		os.Exit(1) // an error!
-	}
-
-	if len(args) == 0 { // ie if nothing then use default case
-		poiseuille(1, 1)
-		os.Exit(0)
-	}
-
-	fmt.Fprintf(os.Stderr, "TODO: implement specifying named case\n")
-	os.Exit(1)
+var cases = map[string]string{
+	"poiseuille":            "Pressure-driven channel flow (SIMPLE with convection)",
+	"couette":               "Shear-driven flow with moving top wall (SIMPLE with convection)",
+	"poiseuille-simplified": "Pressure-driven flow (pure diffusion, no pressure coupling)",
+	"couette-simplified":    "Shear-driven flow (pure diffusion, no pressure coupling)",
 }
 
-func couette(rho, gamma float64) {
-	Uwall := 1.0
-	Ux, mesh, _ := fvm.CaseCouette(3200, gamma, Uwall)
+func main() {
+	nCells := flag.Int("n", 400, "target number of mesh cells")
+	gamma := flag.Float64("gamma", 1.0, "dynamic viscosity")
+	rho := flag.Float64("rho", 1.0, "density")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: example [flags] <case>\n\nCases:\n")
+		for name, desc := range cases {
+			fmt.Fprintf(os.Stderr, "  %-24s %s\n", name, desc)
+		}
+		fmt.Fprintf(os.Stderr, "\nFlags:\n")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
 
-	analytical := make([]float64, len(mesh.Centroids))
-	err := make([]float64, len(mesh.Centroids))
-	for i, pt := range mesh.Centroids {
-		analytical[i] = pt.Y
-		err[i] = Ux[i] - analytical[i]
+	caseName := flag.Arg(0)
+	if caseName == "" {
+		caseName = "poiseuille"
 	}
 
-	output.WriteVTK(os.Stdout, mesh,
-		output.VTKField{Name: "Ux", Values: Ux},
-		output.VTKField{Name: "analytical", Values: analytical},
+	if _, ok := cases[caseName]; !ok {
+		fmt.Fprintf(os.Stderr, "Unknown case: %q\n", caseName)
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	switch caseName {
+	case "poiseuille":
+		runPoiseuilleSIMPLE(*nCells, *gamma, *rho)
+	case "poiseuille-simplified":
+		runPoiseuilleSimplified(*nCells, *gamma)
+	case "couette":
+		runCouetteSimplified(*nCells, *gamma)
+	}
+}
+
+func runPoiseuilleSIMPLE(nCells int, gamma, rho float64) {
+	result := fvm.CasePoiseuilleSIMPLE(nCells, gamma, rho)
+	LogSIMPLEResult(result, "Poiseuille (SIMPLE)")
+
+	// dpdx = (0 - 1) / 4 = -0.25 for the 4:1 channel with p_in=1, p_out=0
+	dpdx := -0.25
+	H := 1.0
+	maxErr := fvm.PoiseuilleMaxError(result.Ux, result.Mesh.Centroids, 2.0, 0.2, H, dpdx, gamma)
+	fmt.Fprintf(os.Stderr, "Max velocity error at x=2: %.4e (expected max Ux = %.4e)\n",
+		maxErr, fvm.PoiseuilleAnalytical(0.5, H, dpdx, gamma))
+
+	analytical := make([]float64, len(result.Mesh.Centroids))
+	err := make([]float64, len(result.Mesh.Centroids))
+	for i, c := range result.Mesh.Centroids {
+		analytical[i] = fvm.PoiseuilleAnalytical(c.Y, H, dpdx, gamma)
+		err[i] = result.Ux[i] - analytical[i]
+	}
+
+	output.WriteVTK(os.Stdout, result.Mesh,
+		output.VTKField{Name: "Ux", Values: result.Ux},
+		output.VTKField{Name: "Uy", Values: result.Uy},
+		output.VTKField{Name: "p", Values: result.P},
+		output.VTKField{Name: "Ux_analytical", Values: analytical},
 		output.VTKField{Name: "error", Values: err},
 	)
 }
 
-func poiseuille(rho, gamma float64) {
-	pYgrad := -10.0
-	Ux, mesh, _ := fvm.CaseCouette(3200, gamma, pYgrad)
+func runPoiseuilleSimplified(nCells int, gamma float64) {
+	dpdx := -10.0
+	Ux, mesh, _ := fvm.CasePoiseuille(nCells, gamma, dpdx)
+
+	analytical := make([]float64, len(mesh.Centroids))
+	err := make([]float64, len(mesh.Centroids))
+	H := 1.0
+	maxErr := 0.0
+	for i, c := range mesh.Centroids {
+		analytical[i] = fvm.PoiseuilleAnalytical(c.Y, H, dpdx, gamma)
+		err[i] = Ux[i] - analytical[i]
+		maxErr = max(maxErr, math.Abs(err[i]))
+	}
+	fmt.Fprintf(os.Stderr, "Poiseuille (simplified): max error = %.4e\n", maxErr)
 
 	output.WriteVTK(os.Stdout, mesh,
 		output.VTKField{Name: "Ux", Values: Ux},
+		output.VTKField{Name: "Ux_analytical", Values: analytical},
+		output.VTKField{Name: "error", Values: err},
 	)
 }
 
-func convdiff(nCells int, gamma, rho, velocity float64) {
-	mesh := geometry.MakeSimple1DMesh(nCells)
+func runCouetteSimplified(nCells int, gamma float64) {
+	Uwall := 1.0
+	Ux, mesh, _ := fvm.CaseCouette(nCells, gamma, Uwall)
 
-	// Velocity field
-	Ux := make([]float64, nCells)
-	for i := range Ux {
-		Ux[i] = velocity
-	}
-	// Uy := make([]float64, NUM_CELLS) // zero
-
-	UxFace := make([]float64, len(mesh.Connections))
-	UyFace := make([]float64, len(mesh.Connections))
-	fvm.FaceInterpCDS(mesh, Ux, UxFace)
-	// UyFace stays zero
-
-	Unormal := make([]float64, len(mesh.Connections))
-	fvm.FaceNormalComponent(mesh, UxFace, UyFace, Unormal)
-
-	// CDS solution
-	phiCDS := make([]float64, nCells)
-	sysCDS := fvm.NewFVSystem(mesh)
-	fvm.LaplacianConst(sysCDS, mesh, gamma, nil, nil)
-	fvm.DivConstCDS(sysCDS, mesh, rho, Unormal)
-	fvm.DirichletConstBC(sysCDS, mesh, 0, "west")
-	fvm.DirichletConstBC(sysCDS, mesh, 100, "east")
-	sysCDS.SolveCG(phiCDS, 1e-6, 100)
-
-	fmt.Fprintf(os.Stderr, "CDS - Diag dominance: %.3f, Asymmetry: %.2e, Residual: %.2e\n",
-		sysCDS.DiagonalDominanceRatio(), sysCDS.MaxAsymmetry(), sysCDS.ResidualNorm(phiCDS))
-
-	// UDS solution
-	phiUDS := make([]float64, nCells)
-	sysUDS := fvm.NewFVSystem(mesh)
-	fvm.LaplacianConst(sysUDS, mesh, gamma, nil, nil)
-	fvm.DivConstUDS(sysUDS, mesh, rho, Unormal)
-	fvm.DirichletConstBC(sysUDS, mesh, 0, "west")
-	fvm.DirichletConstBC(sysUDS, mesh, 100, "east")
-	sysUDS.SolveCG(phiUDS, 1e-6, 100)
-
-	fmt.Fprintf(os.Stderr, "UDS - Diag dominance: %.3f, Asymmetry: %.2e, Residual: %.2e\n",
-		sysUDS.DiagonalDominanceRatio(), sysUDS.MaxAsymmetry(), sysUDS.ResidualNorm(phiUDS))
-
-	// Analytical
-	phiAnalytical := make([]float64, nCells)
+	analytical := make([]float64, len(mesh.Centroids))
+	err := make([]float64, len(mesh.Centroids))
+	maxErr := 0.0
 	for i, c := range mesh.Centroids {
-		phiAnalytical[i] = analytical1D(c.X, 1.0, velocity, rho, gamma, 0, 100)
+		analytical[i] = Uwall * c.Y
+		err[i] = Ux[i] - analytical[i]
+		maxErr = max(maxErr, math.Abs(err[i]))
 	}
+	fmt.Fprintf(os.Stderr, "Couette (simplified): max error = %.4e\n", maxErr)
 
-	WriteComparisonCSV(os.Stdout, mesh, phiCDS, phiUDS, phiAnalytical)
+	output.WriteVTK(os.Stdout, mesh,
+		output.VTKField{Name: "Ux", Values: Ux},
+		output.VTKField{Name: "Ux_analytical", Values: analytical},
+		output.VTKField{Name: "error", Values: err},
+	)
 }
 
-func analytical1D(x, length, ux, rho, gamma, phi0, phiL float64) float64 {
-	Pe := rho * ux * length / gamma
-	if math.Abs(Pe) < 1e-10 {
-		return phi0 + (x/length)*(phiL-phi0)
-	}
-	coeff := (math.Exp(Pe*x/length) - 1) / (math.Exp(Pe) - 1)
-	return phi0 + coeff*(phiL-phi0)
-}
+//
+// Helpers
+//
 
-func WriteComparisonCSV(out io.Writer, mesh *geometry.Mesh, phiCDS, phiUDS, phiAnalytical []float64) {
-	w := csv.NewWriter(out)
-	w.Write([]string{"x", "phi_CDS", "phi_UDS", "phi_analytical"})
-	w.Write([]string{"0", "0", "0", "0"})
-
-	for i := range mesh.Centroids {
-		w.Write([]string{
-			strconv.FormatFloat(mesh.Centroids[i].X, 'g', -1, 64),
-			strconv.FormatFloat(phiCDS[i], 'g', -1, 64),
-			strconv.FormatFloat(phiUDS[i], 'g', -1, 64),
-			strconv.FormatFloat(phiAnalytical[i], 'g', -1, 64),
-		})
-	}
-	w.Write([]string{"1", "100", "100", "100"})
-	w.Flush()
-}
-
-func minMax(f []float64) (float64, float64) {
-	mn, mx := f[0], f[0]
-	for _, v := range f {
-		if v < mn {
-			mn = v
-		}
-		if v > mx {
-			mx = v
-		}
-	}
-	return mn, mx
+func LogSIMPLEResult(result fvm.SIMPLEResult, name string) {
+	fmt.Fprintf(
+		os.Stderr, "%s: converged in %d iterations, final residual = %.2e\n",
+		name, result.Iterations, result.FinalRes,
+	)
 }

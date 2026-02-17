@@ -1,6 +1,8 @@
 package fvm
 
 import (
+	"math"
+
 	"jedn.dev/jnlcfd/geometry"
 )
 
@@ -153,4 +155,94 @@ func CaseCouette(nCells int, gamma, Uwall float64) (Ux []float64, mesh *geometry
 	}
 
 	return Ux, mesh, sys
+}
+
+//
+// SIMPLE-based cases (full pressure-velocity coupling with convection)
+//
+
+type SIMPLEResult struct {
+	Mesh       *geometry.Mesh
+	P, Ux, Uy  []float64
+	Iterations int
+	FinalRes   float64
+}
+
+func CasePoiseuilleSIMPLE(nCells int, gamma, rho float64) SIMPLEResult {
+	// 4:1 aspect ratio channel
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 4, 1, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+	mesh, _ := geometry.MeshWithCells(domain, nCells, 30)
+
+	// Pressure-driven channel: Dirichlet p at inlet/outlet, no-slip walls
+	pBCs := []BC{
+		NewDirichlet("west", 1.0),
+		NewDirichlet("east", 0.0),
+		NewNeumann("north", 0),
+		NewNeumann("south", 0),
+	}
+	// Fully developed: zero-gradient velocity at inlet/outlet, no-slip walls
+	uxBCs := []BC{
+		NewNeumann("west", 0),
+		NewNeumann("east", 0),
+		NewDirichlet("north", 0),
+		NewDirichlet("south", 0),
+	}
+	uyBCs := []BC{
+		NewDirichlet("west", 0),
+		NewDirichlet("east", 0),
+		NewDirichlet("north", 0),
+		NewDirichlet("south", 0),
+	}
+
+	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, 0.7, 0.3, pBCs, uxBCs, uyBCs)
+
+	var finalRes float64
+	iters := 0
+	for i := range 1000 {
+		res := solver()
+		iters = i + 1
+		finalRes = res
+		if res < 1e-6 {
+			break
+		}
+	}
+
+	return SIMPLEResult{
+		Mesh: mesh, P: p, Ux: Ux, Uy: Uy,
+		Iterations: iters, FinalRes: finalRes,
+	}
+}
+
+//
+// Analytical solutions
+//
+
+func PoiseuilleAnalytical(y, H, dpdx, gamma float64) float64 {
+	return -dpdx / (2 * gamma) * y * (H - y)
+}
+
+func PoiseuilleMaxError(Ux []float64, centroids []geometry.Vec2, xCenter, xTol, H, dpdx, gamma float64) float64 {
+	maxErr := 0.0
+	for i, c := range centroids {
+		if math.Abs(c.X-xCenter) < xTol {
+			exact := PoiseuilleAnalytical(c.Y, H, dpdx, gamma)
+			err := math.Abs(Ux[i] - exact)
+			maxErr = max(maxErr, err)
+		}
+	}
+	return maxErr
+}
+
+func CouetteMaxError(Ux []float64, centroids []geometry.Vec2, xCenter, xTol, H, Uwall float64) float64 {
+	maxErr := 0.0
+	for i, c := range centroids {
+		if math.Abs(c.X-xCenter) < xTol {
+			exact := Uwall * c.Y / H
+			err := math.Abs(Ux[i] - exact)
+			maxErr = max(maxErr, err)
+		}
+	}
+	return maxErr
 }

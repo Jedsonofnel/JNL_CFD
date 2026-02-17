@@ -165,6 +165,52 @@ func TestCouetteConvergence(t *testing.T) {
 }
 
 //
+// With SIMPLE
+//
+
+func TestPoiseuilleSIMPLEConvergence(t *testing.T) {
+	cellCounts := []int{200, 400, 800}
+	gamma := 1.0
+	rho := 1.0
+	dpdx := -0.25
+	H := 1.0
+
+	errors := make([]float64, len(cellCounts))
+	h := make([]float64, len(cellCounts))
+
+	for idx, nTarget := range cellCounts {
+		result := CasePoiseuilleSIMPLE(nTarget, gamma, rho)
+		nActual := len(result.Mesh.Centroids)
+		h[idx] = 1.0 / math.Sqrt(float64(nActual))
+
+		t.Logf("n=%d (actual %d): converged in %d iters, final res = %.2e",
+			nTarget, nActual, result.Iterations, result.FinalRes)
+
+		if result.FinalRes > 1e-4 {
+			t.Errorf("n=%d: failed to converge, res = %.2e", nTarget, result.FinalRes)
+		}
+
+		errors[idx] = PoiseuilleMaxError(
+			result.Ux, result.Mesh.Centroids, 2.0, 0.2, H, dpdx, gamma,
+		)
+	}
+
+	t.Logf("\n%8s %12s %12s %8s", "nCells", "h", "maxError", "order")
+	t.Logf("%8d %12.4f %12.4e %8s", cellCounts[0], h[0], errors[0], "-")
+	for i := 1; i < len(cellCounts); i++ {
+		order := math.Log(errors[i-1]/errors[i]) / math.Log(h[i-1]/h[i])
+		t.Logf("%8d %12.4f %12.4e %8.2f", cellCounts[i], h[i], errors[i], order)
+	}
+
+	// Error should decrease with refinement
+	for i := 1; i < len(errors); i++ {
+		if errors[i] >= errors[i-1] {
+			t.Errorf("Error not decreasing: %.4e -> %.4e", errors[i-1], errors[i])
+		}
+	}
+}
+
+//
 // Helpers
 //
 
