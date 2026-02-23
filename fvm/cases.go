@@ -196,7 +196,7 @@ func CasePoiseuilleSIMPLE(nCells int, gamma, rho float64) SIMPLEResult {
 		NewDirichlet("south", 0),
 	}
 
-	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, 0.7, 0.3, pBCs, uxBCs, uyBCs)
+	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, 0.7, 0.3, pBCs, uxBCs, uyBCs, nil)
 
 	var finalRes float64
 	iters := 0
@@ -257,7 +257,7 @@ func CaseLidDrivenCavity(nCells int, Re float64) SIMPLEResult {
 		maxIters = 10000
 	}
 
-	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, alphaU, alphaP, pBCs, uxBCs, uyBCs)
+	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, alphaU, alphaP, pBCs, uxBCs, uyBCs, nil)
 
 	var finalRes float64
 	iters := 0

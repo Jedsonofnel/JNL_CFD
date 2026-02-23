@@ -75,7 +75,7 @@ func LaplacianField(
 
 		if conn.Neighbour >= 0 {
 			w := mesh.InterpWeights[i]
-			gammaFace = w*gammaOwner + (1-w)*gamma[conn.Neighbour]
+			gammaFace = (1-w)*gammaOwner + w*gamma[conn.Neighbour]
 		}
 
 		fluxCoeff := gammaFace * faceArea * orthFactor / distance

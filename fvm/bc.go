@@ -74,6 +74,62 @@ func NeumannConstBC(
 }
 
 //
+// Face interpolation at BCs
+//
+
+func DirichletFaceValuesConst(mesh *geometry.Mesh, faceField []float64, boundaryName string, value float64) {
+	faceIndices := mesh.BoundaryFaces[boundaryName]
+	for _, connIdx := range faceIndices {
+		faceField[connIdx] = value
+	}
+}
+
+func NeumannFaceValuesConst(mesh *geometry.Mesh, field, faceField []float64, boundaryName string, flux float64) {
+	faceIndices := mesh.BoundaryFaces[boundaryName]
+	for _, connIdx := range faceIndices {
+		owner := mesh.Connections[connIdx].Owner
+		dist := mesh.ConnectionDists[connIdx]
+		faceField[connIdx] = field[owner] + flux*dist
+	}
+}
+
+//
+// Face-normal velocity BCs for Rhie-Chow boundary faces
+//
+
+// DirichletFaceNormalConst sets the face-normal velocity on boundary faces
+// from known velocity component values: Un = uxValue*nx + uyValue*ny
+func DirichletFaceNormalConst(
+	mesh *geometry.Mesh,
+	UnFace []float64,
+	boundaryName string,
+	uxValue, uyValue float64,
+) {
+	for _, fi := range mesh.BoundaryFaces[boundaryName] {
+		n := mesh.FaceNormals[fi]
+		UnFace[fi] = uxValue*n.X + uyValue*n.Y
+	}
+}
+
+// NeumannFaceNormalConst sets the face-normal velocity on boundary faces
+// by extrapolating from cell-centre values (zero-gradient when flux=0):
+// Un = (Ux[owner] + uxFlux*dist)*nx + (Uy[owner] + uyFlux*dist)*ny
+func NeumannFaceNormalConst(
+	mesh *geometry.Mesh,
+	Ux, Uy []float64,
+	UnFace []float64,
+	boundaryName string,
+	uxFlux, uyFlux float64,
+) {
+	for _, fi := range mesh.BoundaryFaces[boundaryName] {
+		owner := mesh.Connections[fi].Owner
+		dist := mesh.ConnectionDists[fi]
+		n := mesh.FaceNormals[fi]
+		UnFace[fi] = (Ux[owner]+uxFlux*dist)*n.X + (Uy[owner]+uyFlux*dist)*n.Y
+	}
+}
+
+//
 // BC Application
 //
 
@@ -95,6 +151,27 @@ func applyBCFaceValues(mesh *geometry.Mesh, field, faceValues []float64, bcs []B
 			DirichletFaceValuesConst(mesh, faceValues, bc.Boundary, bc.Value)
 		case Neumann:
 			NeumannFaceValuesConst(mesh, field, faceValues, bc.Boundary, bc.Value)
+		}
+	}
+}
+
+// applyBCFaceNormals fills boundary entries in UnFace using paired
+// uxBCs/uyBCs. Dirichlet velocity boundaries get the known value; Neumann
+// velocity boundaries get cell-centre extrapolation. uxBCs and uyBCs must list
+// boundaries in the same order.
+func applyBCFaceNormals(
+	mesh *geometry.Mesh,
+	Ux, Uy []float64,
+	UnFace []float64,
+	uxBCs, uyBCs []BC,
+) {
+	for i, uxBC := range uxBCs {
+		uyBC := uyBCs[i]
+		switch uxBC.Type {
+		case Dirichlet:
+			DirichletFaceNormalConst(mesh, UnFace, uxBC.Boundary, uxBC.Value, uyBC.Value)
+		case Neumann:
+			NeumannFaceNormalConst(mesh, Ux, Uy, UnFace, uxBC.Boundary, uxBC.Value, uyBC.Value)
 		}
 	}
 }

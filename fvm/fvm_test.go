@@ -3,6 +3,8 @@ package fvm
 import (
 	"math"
 	"testing"
+
+	"jedn.dev/jnlcfd/geometry"
 )
 
 const (
@@ -168,6 +170,16 @@ func TestCouetteConvergence(t *testing.T) {
 // With SIMPLE
 //
 
+// Logging
+type testWriter struct {
+	t *testing.T
+}
+
+func (tw *testWriter) Write(p []byte) (int, error) {
+	tw.t.Log(string(p))
+	return len(p), nil
+}
+
 func TestPoiseuilleSIMPLEConvergence(t *testing.T) {
 	cellCounts := []int{200, 400, 800}
 	gamma := 1.0
@@ -190,23 +202,201 @@ func TestPoiseuilleSIMPLEConvergence(t *testing.T) {
 			t.Errorf("n=%d: failed to converge, res = %.2e", nTarget, result.FinalRes)
 		}
 
-		errors[idx] = PoiseuilleMaxError(
-			result.Ux, result.Mesh.Centroids, 2.0, 0.2, H, dpdx, gamma,
+		errors[idx] = PoiseuilleL2Error(
+			result.Ux, result.Mesh.Centroids, result.Mesh.CellVolumes,
+			H, dpdx, gamma,
+			1.0, 3.0, // xMin, xMax: exclude inlet/outlet regions
 		)
 	}
 
-	t.Logf("\n%8s %12s %12s %8s", "nCells", "h", "maxError", "order")
+	t.Logf("\n%8s %12s %12s %8s", "nCells", "h", "L2Error", "order")
 	t.Logf("%8d %12.4f %12.4e %8s", cellCounts[0], h[0], errors[0], "-")
 	for i := 1; i < len(cellCounts); i++ {
 		order := math.Log(errors[i-1]/errors[i]) / math.Log(h[i-1]/h[i])
 		t.Logf("%8d %12.4f %12.4e %8.2f", cellCounts[i], h[i], errors[i], order)
 	}
 
-	// Error should decrease with refinement
 	for i := 1; i < len(errors); i++ {
 		if errors[i] >= errors[i-1] {
 			t.Errorf("Error not decreasing: %.4e -> %.4e", errors[i-1], errors[i])
 		}
+	}
+
+	if len(errors) >= 2 {
+		finalOrder := math.Log(errors[len(errors)-2]/errors[len(errors)-1]) /
+			math.Log(h[len(errors)-2]/h[len(errors)-1])
+		if finalOrder < 1.0 {
+			t.Errorf("Expected at least order 1.0, got %.2f", finalOrder)
+		}
+	}
+}
+
+func PoiseuilleL2Error(
+	Ux []float64, centroids []geometry.Vec2, volumes []float64,
+	H, dpdx, mu float64,
+	xMin, xMax float64, // only include cells in [xMin, xMax]
+) float64 {
+	sumSqErr := 0.0
+	totalVol := 0.0
+	for i, c := range centroids {
+		if c.X < xMin || c.X > xMax {
+			continue
+		}
+		exact := PoiseuilleAnalytical(c.Y, H, dpdx, mu)
+		diff := Ux[i] - exact
+		sumSqErr += diff * diff * volumes[i]
+		totalVol += volumes[i]
+	}
+	return math.Sqrt(sumSqErr / totalVol)
+}
+
+func TestLidDrivenCavityDiagnostic(t *testing.T) {
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 1, 1, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+	mesh, _ := geometry.MeshWithCells(domain, 400, 30)
+
+	nCells := len(mesh.Centroids)
+	t.Logf("Mesh: %d cells, %d connections", nCells, len(mesh.Connections))
+
+	Re := 100.0
+	Ulid := 1.0
+	rho := 1.0
+	gamma := 1.0 / Re
+
+	pBCs := []BC{
+		NewNeumann("north", 0), NewNeumann("south", 0),
+		NewNeumann("east", 0), NewNeumann("west", 0),
+	}
+	uxBCs := []BC{
+		NewDirichlet("north", Ulid),
+		NewDirichlet("south", 0),
+		NewDirichlet("east", 0),
+		NewDirichlet("west", 0),
+	}
+	uyBCs := []BC{
+		NewDirichlet("north", 0),
+		NewDirichlet("south", 0),
+		NewDirichlet("east", 0),
+		NewDirichlet("west", 0),
+	}
+
+	w := &testWriter{t}
+	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, 0.7, 0.3, pBCs, uxBCs, uyBCs, w)
+
+	// Track residual history for convergence rate
+	var resHistory []float64
+
+	for i := range 500 {
+		res := solver()
+		resHistory = append(resHistory, res)
+
+		if i < 10 || i%50 == 0 || res < 1e-6 {
+			maxUx, maxUy, minP, maxP := 0.0, 0.0, math.Inf(1), math.Inf(-1)
+			for j := range Ux {
+				maxUx = max(maxUx, math.Abs(Ux[j]))
+				maxUy = max(maxUy, math.Abs(Uy[j]))
+				minP = min(minP, p[j])
+				maxP = max(maxP, p[j])
+			}
+
+			// Check mass conservation: sum of divergence should be ~0
+			nConns := len(mesh.Connections)
+			UnCheck := make([]float64, nConns)
+			UxF := make([]float64, nConns)
+			UyF := make([]float64, nConns)
+			FaceInterpCDS(mesh, Ux, UxF)
+			FaceInterpCDS(mesh, Uy, UyF)
+			applyBCFaceValues(mesh, Ux, UxF, uxBCs)
+			applyBCFaceValues(mesh, Uy, UyF, uyBCs)
+			FaceNormalComponent(mesh, UxF, UyF, UnCheck)
+			divCheck := make([]float64, nCells)
+			Divergence(mesh, UnCheck, divCheck)
+			globalDiv := 0.0
+			for _, d := range divCheck {
+				globalDiv += d
+			}
+
+			t.Logf("Iter %3d: res=%.2e  |Ux|=%.2e  |Uy|=%.2e  p=[%.2e, %.2e]  globalDiv=%.2e",
+				i, res, maxUx, maxUy, minP, maxP, globalDiv)
+		}
+
+		if res < 1e-6 {
+			t.Logf("Converged at iter %d", i)
+			break
+		}
+
+		// Detect blowup
+		if math.IsNaN(res) || res > 1e10 {
+			t.Fatalf("Blowup at iter %d: res=%.2e", i, res)
+		}
+	}
+
+	// Check convergence rate over last 100 iterations
+	n := len(resHistory)
+	if n > 100 {
+		recent := resHistory[n-100]
+		final := resHistory[n-1]
+		ratio := final / recent
+		t.Logf("Residual ratio (last 100 iters): %.4f (1.0 = stalled, <1.0 = converging)", ratio)
+		if ratio > 0.99 && final > 1e-4 {
+			t.Errorf("Solver stalled: residual barely changed over 100 iterations (%.2e -> %.2e)", recent, final)
+		}
+	}
+
+	// Physical sanity checks
+	t.Logf("\n--- Physical checks ---")
+
+	// 1. Velocity at lid should be ~Ulid
+	lidCells := 0
+	lidUxSum := 0.0
+	for i, c := range mesh.Centroids {
+		if c.Y > 0.9 {
+			lidCells++
+			lidUxSum += Ux[i]
+		}
+	}
+	if lidCells > 0 {
+		avgLidUx := lidUxSum / float64(lidCells)
+		t.Logf("Average Ux near lid (y>0.9): %.4f (expect ~%.1f)", avgLidUx, Ulid)
+	}
+
+	// 2. Ux along vertical centreline (x=0.5) — what Ghia reports
+	t.Logf("\nUx along x=0.5:")
+	type sample struct {
+		y, ux float64
+	}
+	var centreline []sample
+	for i, c := range mesh.Centroids {
+		if math.Abs(c.X-0.5) < 0.05 {
+			centreline = append(centreline, sample{c.Y, Ux[i]})
+		}
+	}
+	// Sort by y would be nice but just log a few
+	for _, s := range centreline {
+		if math.Abs(s.y-0.5) < 0.05 || s.y < 0.1 || s.y > 0.9 {
+			t.Logf("  y=%.3f: Ux=%.4f", s.y, s.ux)
+		}
+	}
+
+	// 3. Pressure should have zero mean (needsPressureRef)
+	pSum := 0.0
+	for _, pp := range p {
+		pSum += pp
+	}
+	pMean := pSum / float64(nCells)
+	t.Logf("Pressure mean: %.4e (should be ~0)", pMean)
+
+	// 4. Max velocity magnitude — for Re=100 cavity should be O(1)
+	maxUmag := 0.0
+	for i := range Ux {
+		umag := math.Sqrt(Ux[i]*Ux[i] + Uy[i]*Uy[i])
+		maxUmag = max(maxUmag, umag)
+	}
+	t.Logf("Max |U|: %.4f (expect O(1) for Re=100)", maxUmag)
+
+	if maxUmag > 10 {
+		t.Errorf("Velocity magnitude unreasonably large: %.2f", maxUmag)
 	}
 }
 

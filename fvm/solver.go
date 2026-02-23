@@ -1,7 +1,8 @@
 package fvm
 
 import (
-	//"fmt"
+	"fmt"
+	"io"
 	"math"
 
 	"jedn.dev/jnlcfd/geometry"
@@ -18,6 +19,7 @@ func MakeSIMPLE(
 	gamma, rho float64,
 	alphaU, alphaP float64,
 	pBCs, uxBCs, uyBCs []BC,
+	log io.Writer, // nil to disable
 ) (solver Solver, p, Ux, Uy []float64) {
 	nCells := len(mesh.Centroids)
 	nConns := len(mesh.Connections)
@@ -37,13 +39,12 @@ func MakeSIMPLE(
 	gradUyx := make([]float64, nCells)
 	gradUyy := make([]float64, nCells)
 
-	// TODO can I remove these by directly using the matrix.diag slices?
 	aPx := make([]float64, nCells)
 	aPy := make([]float64, nCells)
 
-	divU := make([]float64, nCells) // for continuity residual
+	divU := make([]float64, nCells)
 
-	// face fields
+	// Face fields
 	pFace := make([]float64, nConns)
 	UxFace := make([]float64, nConns)
 	UyFace := make([]float64, nConns)
@@ -54,7 +55,7 @@ func MakeSIMPLE(
 	UxSys := NewFVSystem(mesh)
 	UySys := NewFVSystem(mesh)
 
-	// initalise aPx/aPy to avoid division by zero
+	// Initialise aPx/aPy to avoid division by zero on first iteration
 	for i := range aPx {
 		aPx[i] = 1.0
 		aPy[i] = 1.0
@@ -64,17 +65,17 @@ func MakeSIMPLE(
 	needsPressureRef := !hasDirichletBC(pBCs)
 
 	solver = func() float64 {
-		// Update pressure gradients initially
+		// ── Pressure gradient ──
 		FaceInterpCDS(mesh, p, pFace)
 		applyBCFaceValues(mesh, p, pFace, pBCs)
 		GreenGaussGradient(mesh, pFace, gradPx, gradPy)
 
-		// Face velocities for convection
+		// ── Face velocities for convection ──
 		RhieChowFaceNormal(mesh, Ux, Uy, p, gradPx, gradPy, aPx, aPy, UnMWI)
+		applyBCFaceNormals(mesh, Ux, Uy, UnMWI, uxBCs, uyBCs)
 
-		// X-Momentum
+		// ── X-Momentum ──
 		UxSys.Reset()
-
 		FaceInterpCDS(mesh, Ux, UxFace)
 		applyBCFaceValues(mesh, Ux, UxFace, uxBCs)
 		GreenGaussGradient(mesh, UxFace, gradUxx, gradUxy)
@@ -82,16 +83,14 @@ func MakeSIMPLE(
 		DivConstUDS(UxSys, mesh, rho, UnMWI)
 		LaplacianConst(UxSys, mesh, gamma, gradUxx, gradUxy)
 		SuExpr(UxSys, mesh, NegExpr(FieldExpr(gradPx)))
-
 		applyBCs(UxSys, mesh, uxBCs)
 
-		copy(aPx, UxSys.Matrix.diag)
 		UxSys.UnderRelax(Ux, alphaU)
+		copy(aPx, UxSys.Matrix.diag)
 		UxSys.SolveBiCGSTAB(Ux, 1e-6, 1000)
 
-		// Y-Momentum
+		// ── Y-Momentum ──
 		UySys.Reset()
-
 		FaceInterpCDS(mesh, Uy, UyFace)
 		applyBCFaceValues(mesh, Uy, UyFace, uyBCs)
 		GreenGaussGradient(mesh, UyFace, gradUyx, gradUyy)
@@ -99,14 +98,13 @@ func MakeSIMPLE(
 		DivConstUDS(UySys, mesh, rho, UnMWI)
 		LaplacianConst(UySys, mesh, gamma, gradUyx, gradUyy)
 		SuExpr(UySys, mesh, NegExpr(FieldExpr(gradPy)))
-
 		applyBCs(UySys, mesh, uyBCs)
 
-		copy(aPy, UySys.Matrix.diag)
 		UySys.UnderRelax(Uy, alphaU)
+		copy(aPy, UySys.Matrix.diag)
 		UySys.SolveBiCGSTAB(Uy, 1e-6, 1000)
 
-		// Pressure correction
+		// ── Pressure correction ──
 		pSys.Reset()
 		clear(pPrime)
 
@@ -117,21 +115,42 @@ func MakeSIMPLE(
 		dExpr := DivExpr(CellVolExpr(mesh), FieldExpr(aPx))
 		LaplacianExpr(pSys, mesh, dExpr, gradPPrimeX, gradPPrimeY)
 
-		// From earlier solve for U*
+		// Recompute U* face velocities for divergence source
 		RhieChowFaceNormal(mesh, Ux, Uy, p, gradPx, gradPy, aPx, aPy, UnMWI)
+		applyBCFaceNormals(mesh, Ux, Uy, UnMWI, uxBCs, uyBCs)
 
-		// Divergence for RHS and continuity residual
 		Divergence(mesh, UnMWI, divU)
 		SuFieldScaled(pSys, -rho, divU)
+		applyBCs(pSys, mesh, ppBCs)
 
-		applyBCs(pSys, mesh, ppBCs) // uses p' BCs rather than p
 		if needsPressureRef {
-			pSys.Matrix.diag[0] += 1e10
+			// Pin cell 0: p' = 0 (well-scaled, not bigNum)
+			for k, conn := range pSys.Matrix.conns {
+				if conn.Owner == 0 {
+					pSys.Matrix.lower[k] = 0
+				}
+				if conn.Neighbour == 0 {
+					pSys.Matrix.upper[k] = 0
+				}
+			}
+			pSys.Matrix.diag[0] = 1.0
 			pSys.Rhs[0] = 0
 		}
+
+		if log != nil {
+			rhsSum := 0.0
+			for _, r := range pSys.Rhs {
+				rhsSum += r
+			}
+			fmt.Fprintf(log, "  aPx: [%.3e, %.3e]  p' diag: [%.3e, %.3e]  RHS sum: %.3e\n",
+				minSlice(aPx), maxSlice(aPx),
+				minSlice(pSys.Matrix.diag), maxSlice(pSys.Matrix.diag),
+				rhsSum)
+		}
+
 		pSys.SolveCG(pPrime, 1e-6, 1000)
 
-		// Corrections
+		// ── Corrections ──
 		FaceInterpCDS(mesh, pPrime, pFace)
 		applyBCFaceValues(mesh, pPrime, pFace, ppBCs)
 		GreenGaussGradient(mesh, pFace, gradPPrimeX, gradPPrimeY)
@@ -144,6 +163,12 @@ func MakeSIMPLE(
 
 		if needsPressureRef {
 			subtractMean(p)
+		}
+
+		if log != nil {
+			fmt.Fprintf(log, "  |p'|: [%.3e, %.3e]  |ΔUx|: %.3e  |ΔUy|: %.3e\n",
+				minSlice(pPrime), maxSlice(pPrime),
+				maxAbsSlice(gradPPrimeX), maxAbsSlice(gradPPrimeY))
 		}
 
 		contRes := normL1(divU) * rho
@@ -211,6 +236,7 @@ func MakeSIMPLEStokes(
 
 		// Face velocities for convection
 		RhieChowFaceNormal(mesh, Ux, Uy, p, gradPx, gradPy, aPx, aPy, UnMWI)
+		applyBCFaceNormals(mesh, Ux, Uy, UnMWI, uxBCs, uyBCs)
 
 		// X-Momentum
 		UxSys.Reset()
@@ -263,6 +289,7 @@ func MakeSIMPLEStokes(
 
 		// From earlier solve for U*
 		RhieChowFaceNormal(mesh, Ux, Uy, p, gradPx, gradPy, aPx, aPy, UnMWI)
+		applyBCFaceNormals(mesh, Ux, Uy, UnMWI, uxBCs, uyBCs)
 
 		// Divergence for RHS and continuity residual
 		Divergence(mesh, UnMWI, divU)
@@ -271,7 +298,6 @@ func MakeSIMPLEStokes(
 		applyBCs(pSys, mesh, ppBCs) // uses p' BCs rather than p
 		if needsPressureRef {
 			pSys.Matrix.diag[0] += 1e10
-			pSys.Rhs[0] = 0
 		}
 		pSys.SolveCG(pPrime, 1e-6, 1000)
 
@@ -345,4 +371,32 @@ func subtractMean(field []float64) {
 	for i := range field {
 		field[i] -= mean
 	}
+}
+
+func minSlice(s []float64) float64 {
+	m := s[0]
+	for _, v := range s[1:] {
+		if v < m {
+			m = v
+		}
+	}
+	return m
+}
+
+func maxAbsSlice(s []float64) float64 {
+	m := 0.0
+	for _, v := range s {
+		m = max(m, math.Abs(v))
+	}
+	return m
+}
+
+func maxSlice(s []float64) float64 {
+	m := s[0]
+	for _, v := range s[1:] {
+		if v > m {
+			m = v
+		}
+	}
+	return m
 }
