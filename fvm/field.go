@@ -132,6 +132,16 @@ func Divergence(mesh *geometry.Mesh, UnFace []float64, div []float64) {
 }
 
 //
+// Vorticity
+//
+
+func Vorticity2D(gradUyx, gradUxy, omega []float64) {
+	for i := range omega {
+		omega[i] = gradUyx[i] - gradUxy[i]
+	}
+}
+
+//
 // For rendering
 //
 

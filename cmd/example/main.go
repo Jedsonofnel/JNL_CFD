@@ -78,11 +78,11 @@ func runPoiseuilleSIMPLE(nCells int, gamma, rho float64) {
 	}
 
 	output.WriteVTK(os.Stdout, result.Mesh,
-		output.VTKField{Name: "Ux", Values: result.Ux},
-		output.VTKField{Name: "Uy", Values: result.Uy},
-		output.VTKField{Name: "p", Values: result.P},
-		output.VTKField{Name: "Ux_analytical", Values: analytical},
-		output.VTKField{Name: "error", Values: err},
+		output.Scalar{Name: "Ux", Values: result.Ux},
+		output.Scalar{Name: "Uy", Values: result.Uy},
+		output.Scalar{Name: "p", Values: result.P},
+		output.Scalar{Name: "Ux_analytical", Values: analytical},
+		output.Scalar{Name: "error", Values: err},
 	)
 }
 
@@ -102,9 +102,9 @@ func runPoiseuilleSimplified(nCells int, gamma float64) {
 	fmt.Fprintf(os.Stderr, "Poiseuille (simplified): max error = %.4e\n", maxErr)
 
 	output.WriteVTK(os.Stdout, mesh,
-		output.VTKField{Name: "Ux", Values: Ux},
-		output.VTKField{Name: "Ux_analytical", Values: analytical},
-		output.VTKField{Name: "error", Values: err},
+		output.Scalar{Name: "Ux", Values: Ux},
+		output.Scalar{Name: "Ux_analytical", Values: analytical},
+		output.Scalar{Name: "error", Values: err},
 	)
 }
 
@@ -123,9 +123,9 @@ func runCouetteSimplified(nCells int, gamma float64) {
 	fmt.Fprintf(os.Stderr, "Couette (simplified): max error = %.4e\n", maxErr)
 
 	output.WriteVTK(os.Stdout, mesh,
-		output.VTKField{Name: "Ux", Values: Ux},
-		output.VTKField{Name: "Ux_analytical", Values: analytical},
-		output.VTKField{Name: "error", Values: err},
+		output.Scalar{Name: "Ux", Values: Ux},
+		output.Scalar{Name: "Ux_analytical", Values: analytical},
+		output.Scalar{Name: "error", Values: err},
 	)
 }
 
@@ -133,16 +133,49 @@ func runCavity(nCells int, Re float64) {
 	result := fvm.CaseLidDrivenCavity(nCells, Re)
 	LogSIMPLEResult(result, fmt.Sprintf("Lid-driven cavity (Re=%.0f)", Re))
 
-	Umag := make([]float64, len(result.Mesh.Centroids))
+	mesh := result.Mesh
+	nConns := len(mesh.Connections)
+	nCells = len(mesh.Centroids)
+
+	// Velocity magnitude
+	Umag := make([]float64, nCells)
 	for i := range Umag {
 		Umag[i] = math.Sqrt(result.Ux[i]*result.Ux[i] + result.Uy[i]*result.Uy[i])
 	}
 
-	output.WriteVTK(os.Stdout, result.Mesh,
-		output.VTKField{Name: "Ux", Values: result.Ux},
-		output.VTKField{Name: "Uy", Values: result.Uy},
-		output.VTKField{Name: "p", Values: result.P},
-		output.VTKField{Name: "Umag", Values: Umag},
+	// Face interpolation with BCs for accurate boundary gradients
+	UxFace := make([]float64, nConns)
+	UyFace := make([]float64, nConns)
+
+	fvm.FaceInterpCDS(mesh, result.Ux, UxFace)
+	fvm.DirichletFaceValuesConst(mesh, UxFace, "north", 1.0)
+	fvm.DirichletFaceValuesConst(mesh, UxFace, "south", 0)
+	fvm.DirichletFaceValuesConst(mesh, UxFace, "east", 0)
+	fvm.DirichletFaceValuesConst(mesh, UxFace, "west", 0)
+
+	fvm.FaceInterpCDS(mesh, result.Uy, UyFace)
+	fvm.DirichletFaceValuesConst(mesh, UyFace, "north", 0)
+	fvm.DirichletFaceValuesConst(mesh, UyFace, "south", 0)
+	fvm.DirichletFaceValuesConst(mesh, UyFace, "east", 0)
+	fvm.DirichletFaceValuesConst(mesh, UyFace, "west", 0)
+
+	// Green-Gauss gradients
+	gradUxy := make([]float64, nCells) // ∂Ux/∂y
+	gradUyx := make([]float64, nCells) // ∂Uy/∂x
+	unused := make([]float64, nCells)
+
+	fvm.GreenGaussGradient(mesh, UxFace, unused, gradUxy) // only need ∂Ux/∂y
+	fvm.GreenGaussGradient(mesh, UyFace, gradUyx, unused) // only need ∂Uy/∂x
+
+	// Vorticity: ω = ∂Uy/∂x - ∂Ux/∂y
+	omega := make([]float64, nCells)
+	fvm.Vorticity2D(gradUyx, gradUxy, omega)
+
+	output.WriteVTK(os.Stdout, mesh,
+		output.Scalar{Name: "p", Values: result.P},
+		output.Scalar{Name: "Umag", Values: Umag},
+		output.Scalar{Name: "vorticity", Values: omega},
+		output.Vector{Name: "U", X: result.Ux, Y: result.Uy},
 	)
 }
 

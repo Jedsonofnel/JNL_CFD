@@ -7,11 +7,49 @@ import (
 	"jedn.dev/jnlcfd/geometry"
 )
 
-type VTKField struct {
+// VTKField is implemented by any type that can write itself into a VTK
+// CELL_DATA section. The Write method is responsible for emitting the
+// correct VTK header (SCALARS, VECTORS, TENSORS, etc.) and data lines.
+type VTKField interface {
+	Write(w io.Writer)
+}
+
+// Scalar writes a single-component cell field.
+//
+//	SCALARS <name> float 1
+//	LOOKUP_TABLE default
+//	<value per cell>
+type Scalar struct {
 	Name   string
 	Values []float64
 }
 
+func (s Scalar) Write(w io.Writer) {
+	fmt.Fprintf(w, "SCALARS %s float 1\n", s.Name)
+	fmt.Fprintln(w, "LOOKUP_TABLE default")
+	for _, v := range s.Values {
+		fmt.Fprintf(w, "%e\n", v)
+	}
+}
+
+// Vector writes a 3-component cell field (Z is always 0 for 2D).
+//
+//	VECTORS <name> float
+//	<x y 0> per cell
+type Vector struct {
+	Name string
+	X, Y []float64
+}
+
+func (v Vector) Write(w io.Writer) {
+	fmt.Fprintf(w, "VECTORS %s float\n", v.Name)
+	for i := range v.X {
+		fmt.Fprintf(w, "%e %e 0\n", v.X[i], v.Y[i])
+	}
+}
+
+// WriteVTK writes an unstructured grid VTK file with any combination of
+// scalar, vector (or future tensor) fields.
 func WriteVTK(w io.Writer, m *geometry.Mesh, fields ...VTKField) {
 	nCells := len(m.Centroids)
 	nVerts := len(m.Vertices)
@@ -26,7 +64,6 @@ func WriteVTK(w io.Writer, m *geometry.Mesh, fields ...VTKField) {
 		fmt.Fprintf(w, "%f %f 0\n", v.X, v.Y)
 	}
 
-	// Count total size for CELLS line
 	totalSize := 0
 	for i := 0; i < nCells; i++ {
 		nv := m.FaceStarts[i+1] - m.FaceStarts[i]
@@ -59,12 +96,8 @@ func WriteVTK(w io.Writer, m *geometry.Mesh, fields ...VTKField) {
 
 	if len(fields) > 0 {
 		fmt.Fprintf(w, "CELL_DATA %d\n", nCells)
-		for _, field := range fields {
-			fmt.Fprintf(w, "SCALARS %s float 1\n", field.Name)
-			fmt.Fprintln(w, "LOOKUP_TABLE default")
-			for _, v := range field.Values {
-				fmt.Fprintf(w, "%e\n", v)
-			}
+		for _, f := range fields {
+			f.Write(w)
 		}
 	}
 }
