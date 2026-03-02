@@ -487,7 +487,7 @@ func TestBuildConnectionGeometry_SingleTriangle(t *testing.T) {
 	centroids := []Vec2{{1.0 / 3.0, 1.0 / 3.0}}
 	faceMarkers := []int{10, 20, 30}
 
-	connections, faceAreas, faceNormals, faceCentroids, _, interpWeights :=
+	connections, faceAreas, faceNormals, faceCentroids, _, _, interpWeights :=
 		buildConnectionGeometry(vertexIndices, faceStarts, vertices, centroids, faceMarkers)
 
 	// Should have 3 boundary connections
@@ -538,7 +538,7 @@ func TestBuildConnectionGeometry_TwoTrianglesInternal(t *testing.T) {
 	centroids := []Vec2{{0.5, 0.167}, {0.833, 0.5}} // approximate
 	faceMarkers := []int{10, 0, 20, 30, 40, 0}      // internal faces have marker 0
 
-	connections, _, _, _, _, interpWeights :=
+	connections, _, _, _, _, _, interpWeights :=
 		buildConnectionGeometry(vertexIndices, faceStarts, vertices, centroids, faceMarkers)
 
 	// Should have 5 connections total (4 boundary + 1 internal, but internal stored once)
@@ -573,7 +573,7 @@ func TestBuildConnectionGeometry_NormalOrientation(t *testing.T) {
 	centroids := []Vec2{{1.0 / 3.0, 1.0 / 3.0}}
 	faceMarkers := []int{1, 1, 1}
 
-	_, _, faceNormals, faceCentroids, _, _ :=
+	_, _, faceNormals, faceCentroids, _, _, _ :=
 		buildConnectionGeometry(vertexIndices, faceStarts, vertices, centroids, faceMarkers)
 
 	centroid := centroids[0]
@@ -630,7 +630,7 @@ func TestMeshProperties_AllNormalsUnitLength(t *testing.T) {
 	centroids := []Vec2{{2.0 / 3.0, 1.0 / 3.0}, {1.0 / 3.0, 2.0 / 3.0}}
 	faceMarkers := make([]int, len(vertexIndices))
 
-	_, _, faceNormals, _, _, _ :=
+	_, _, faceNormals, _, _, _, _ :=
 		buildConnectionGeometry(vertexIndices, faceStarts, vertices, centroids, faceMarkers)
 
 	for i, n := range faceNormals {

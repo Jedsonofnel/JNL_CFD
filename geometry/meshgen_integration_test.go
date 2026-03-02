@@ -130,6 +130,106 @@ func TestTriangleIntegration_RectangleWithRefinement(t *testing.T) {
 	}
 }
 
+func TestTriangleOutputToMesh_RegionIDsPreserved(t *testing.T) {
+	// Two adjacent rectangles with distinct regions
+	//
+	//   +---------+---------+
+	//   | "left"  | "right" |
+	//   | region  | region  |
+	//   +---------+---------+
+	//  (0,0)    (1,0)     (2,0)
+	//
+	// Shared edge at x=1 is internal (empty boundary name)
+
+	db := &DomainBuilder{}
+
+	err := db.AddPolygon(MakeRectangle(0, 0, 1, 1, "left",
+		"south", "", "north", "west", // east edge is internal
+	))
+	if err != nil {
+		t.Fatalf("AddPolygon left: %v", err)
+	}
+
+	err = db.AddPolygon(MakeRectangle(1, 0, 1, 1, "right",
+		"south", "east", "north", "", // west edge is internal
+	))
+	if err != nil {
+		t.Fatalf("AddPolygon right: %v", err)
+	}
+
+	domain, err := db.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	mesh, err := MeshWithArea(domain, 0.05, 30)
+	if err != nil {
+		t.Fatalf("MeshWithArea: %v", err)
+	}
+
+	leftID := domain.regionNames["left"]
+	rightID := domain.regionNames["right"]
+
+	if leftID == 0 || rightID == 0 {
+		t.Fatalf("region IDs should be non-zero: left=%d, right=%d", leftID, rightID)
+	}
+	if leftID == rightID {
+		t.Fatalf("regions should have distinct IDs: both are %d", leftID)
+	}
+
+	// --- Every cell must have a region ID ---
+	for i, r := range mesh.CellRegions {
+		if r == 0 {
+			t.Errorf("cell %d has unset region ID (0)", i)
+		}
+	}
+
+	// --- Both region IDs must appear ---
+	regionCounts := make(map[int]int)
+	for _, r := range mesh.CellRegions {
+		regionCounts[r]++
+	}
+
+	if regionCounts[leftID] == 0 {
+		t.Errorf("no cells assigned to region 'left' (ID=%d)", leftID)
+	}
+	if regionCounts[rightID] == 0 {
+		t.Errorf("no cells assigned to region 'right' (ID=%d)", rightID)
+	}
+
+	// --- No unexpected region IDs ---
+	for id, count := range regionCounts {
+		if id != leftID && id != rightID {
+			t.Errorf("unexpected region ID %d found on %d cells", id, count)
+		}
+	}
+
+	// --- Spatial consistency: cells in each region are on the correct side ---
+	for i, r := range mesh.CellRegions {
+		cx := mesh.Centroids[i].X
+		if r == leftID && cx > 1.0 {
+			t.Errorf("cell %d in 'left' region but centroid at x=%.4f", i, cx)
+		}
+		if r == rightID && cx < 1.0 {
+			t.Errorf("cell %d in 'right' region but centroid at x=%.4f", i, cx)
+		}
+	}
+
+	// --- RegionNames reverse map is populated ---
+	if mesh.RegionNames[leftID] != "left" {
+		t.Errorf("RegionNames[%d] = %q, want 'left'", leftID, mesh.RegionNames[leftID])
+	}
+	if mesh.RegionNames[rightID] != "right" {
+		t.Errorf("RegionNames[%d] = %q, want 'right'", rightID, mesh.RegionNames[rightID])
+	}
+
+	t.Logf("mesh: %d cells, left(ID=%d)=%d, right(ID=%d)=%d",
+		len(mesh.CellRegions),
+		leftID, regionCounts[leftID],
+		rightID, regionCounts[rightID],
+	)
+}
+
 //
 // Test specific post-processing steps
 //
@@ -247,7 +347,7 @@ func TestBuildConnectionGeometry_BoundaryMarkers(t *testing.T) {
 	// All edges marked differently
 	faceMarkers := []int{10, 20, 30}
 
-	connections, _, _, _, _, _ := buildConnectionGeometry(
+	connections, _, _, _, _, _, _ := buildConnectionGeometry(
 		vertexIndices, faceStarts, vertices, centroids, faceMarkers)
 
 	if len(connections) != 3 {
@@ -280,7 +380,7 @@ func TestBuildConnectionGeometry_InternalFacesHaveZeroMarker(t *testing.T) {
 		30, 40, 0, // tri 1: faces have markers 30, 40, 0 (internal)
 	}
 
-	connections, _, _, _, _, _ := buildConnectionGeometry(
+	connections, _, _, _, _, _, _ := buildConnectionGeometry(
 		vertexIndices, faceStarts, vertices, centroids, faceMarkers)
 
 	// Check that internal connections have marker 0

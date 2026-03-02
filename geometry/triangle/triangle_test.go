@@ -280,6 +280,30 @@ func TestTriangulate_MultipleRegions(t *testing.T) {
 		regionCounts[10], regionCounts[20])
 }
 
+func TestTriangulate_WithoutAFlag_NoAttributes(t *testing.T) {
+	input := Input{
+		Points:         []float64{0, 0, 1, 0, 1, 1, 0, 1},
+		Segments:       []int{0, 1, 1, 2, 2, 3, 3, 0},
+		SegmentMarkers: []int{1, 1, 1, 1},
+		Regions:        []float64{0.5, 0.5, 42, 0},
+	}
+
+	// Without 'A' flag
+	output, _ := Triangulate(input, "pzQ")
+	if len(output.TriangleAttributes) != 0 {
+		t.Errorf("expected no attributes without A flag, got %d",
+			len(output.TriangleAttributes))
+	}
+
+	// With 'A' flag
+	output2, _ := Triangulate(input, "pzQA")
+	for i, attr := range output2.TriangleAttributes {
+		if attr != 42 {
+			t.Errorf("triangle %d: expected region 42, got %.0f", i, attr)
+		}
+	}
+}
+
 //
 // Test holes
 //

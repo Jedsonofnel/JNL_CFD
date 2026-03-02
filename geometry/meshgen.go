@@ -75,7 +75,7 @@ func equilateralArea(h float64) float64 {
 }
 
 func buildTriangleOptions(quality float64, maximumArea float64) string {
-	result := "pzQ"
+	result := "pzQA"
 
 	if quality > 0 {
 		result += "q"
