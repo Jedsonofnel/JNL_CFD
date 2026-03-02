@@ -343,7 +343,7 @@ func TestVelocityCorrection(t *testing.T) {
 
 	divU := make([]float64, nCells)
 	Divergence(mesh, UnFace, divU)
-	initialDiv := normL1(divU)
+	initialDiv := NormL1(divU)
 	t.Logf("Initial divergence L1: %.4f", initialDiv)
 
 	// Log face velocities
@@ -410,7 +410,7 @@ func TestVelocityCorrection(t *testing.T) {
 	FaceNormalComponent(mesh, UxFace, UyFace, UnFace)
 	Divergence(mesh, UnFace, divU)
 
-	finalDiv := normL1(divU)
+	finalDiv := NormL1(divU)
 	t.Logf("Final divergence L1: %.4f", finalDiv)
 	t.Logf("Divergence reduction: %.2fx", initialDiv/(finalDiv+1e-30))
 

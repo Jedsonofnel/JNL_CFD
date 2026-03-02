@@ -33,6 +33,8 @@ type FVSystem struct {
 	Rhs    []float64
 
 	scratch [][]float64 // for solvers to use
+
+	singularity uint8
 }
 
 func NewFVSystem(mesh *geometry.Mesh) *FVSystem {
@@ -48,6 +50,12 @@ func NewFVSystem(mesh *geometry.Mesh) *FVSystem {
 		scratch: scratch,
 	}
 }
+
+const (
+	singularityUnchecked uint8 = iota
+	singularityNonSingular
+	singularityNeedsPin
+)
 
 //
 // Simple solving functionality - cast to CSR for more sophisticated options
@@ -92,6 +100,8 @@ func (m *LDUMatrix) MatVec(x, y []float64) []float64 {
 // Solve solves an FVSystem using the conjugate gradient method with a jacobi
 // preconditioner
 func (sys *FVSystem) SolveCG(x []float64, tolerance float64, maxIters int) {
+	sys.EnsureNonSingular()
+
 	if maxIters <= 0 {
 		maxIters = min(len(x), 1000)
 	}
@@ -153,6 +163,8 @@ func (sys *FVSystem) SolveCG(x []float64, tolerance float64, maxIters int) {
 }
 
 func (sys *FVSystem) SolveBiCGSTAB(x []float64, tolerance float64, maxIters int) {
+	sys.EnsureNonSingular()
+
 	if maxIters <= 0 {
 		maxIters = min(len(x), 1000)
 	}
@@ -277,6 +289,106 @@ func dot(a, b []float64) float64 {
 		sum += v * b[i]
 	}
 	return sum
+}
+
+//
+// Singularity detection
+//
+
+// EnsureNonSingular detects singular matrices (all-Neumann Laplacians etc.)
+// and pins cell 0 to remove the null space. Caches the result so subsequent
+// calls after Reset() re-pin without rechecking.
+func (sys *FVSystem) EnsureNonSingular() {
+	switch sys.singularity {
+	case singularityNonSingular:
+		return
+	case singularityNeedsPin:
+		sys.PinCell(0, 0.0)
+		return
+	}
+
+	if sys.maxRowSumRatio() < 1e-10 {
+		sys.singularity = singularityNeedsPin
+		sys.PinCell(0, 0.0)
+	} else {
+		sys.singularity = singularityNonSingular
+	}
+}
+
+// maxRowSumRatio returns max(|row_sum|) / max(|diag|).
+// Near-zero means every row sums to ~0 → singular.
+func (sys *FVSystem) maxRowSumRatio() float64 {
+	m := sys.Matrix
+	n := len(m.diag)
+
+	rowSums := make([]float64, n)
+	copy(rowSums, m.diag)
+
+	for f, conn := range m.conns {
+		if conn.Neighbour < 0 {
+			continue
+		}
+		rowSums[conn.Owner] += m.upper[f]
+		rowSums[conn.Neighbour] += m.lower[f]
+	}
+
+	maxSum, maxDiag := 0.0, 0.0
+	for i := range n {
+		if v := math.Abs(rowSums[i]); v > maxSum {
+			maxSum = v
+		}
+		if v := math.Abs(m.diag[i]); v > maxDiag {
+			maxDiag = v
+		}
+	}
+
+	if maxDiag < 1e-30 {
+		return 0
+	}
+	return maxSum / maxDiag
+}
+
+func (sys *FVSystem) ResetSingularityCache() {
+	sys.singularity = singularityUnchecked
+}
+
+// PinCell zeroes row/column for cellIdx, sets diag=1, rhs=value.
+func (sys *FVSystem) PinCell(cellIdx int, value float64) {
+	for k, conn := range sys.Matrix.conns {
+		if conn.Owner == int32(cellIdx) {
+			sys.Matrix.lower[k] = 0
+		}
+		if conn.Neighbour == int32(cellIdx) {
+			sys.Matrix.upper[k] = 0
+		}
+	}
+	sys.Matrix.diag[cellIdx] = 1.0
+	sys.Rhs[cellIdx] = value
+}
+
+// PinCells pins every cell in the list to value.
+func (sys *FVSystem) PinCells(cells []int, value float64) {
+	pinned := make(map[int32]bool, len(cells))
+	for _, idx := range cells {
+		pinned[int32(idx)] = true
+	}
+	for k, conn := range sys.Matrix.conns {
+		if pinned[conn.Owner] {
+			sys.Matrix.lower[k] = 0
+		}
+		if pinned[conn.Neighbour] {
+			sys.Matrix.upper[k] = 0
+		}
+	}
+	for _, idx := range cells {
+		sys.Matrix.diag[idx] = 1.0
+		sys.Rhs[idx] = value
+	}
+}
+
+// CopyDiag copies the current diagonal into dst.
+func (sys *FVSystem) CopyDiag(dst []float64) {
+	copy(dst, sys.Matrix.diag)
 }
 
 //

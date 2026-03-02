@@ -268,7 +268,7 @@ func TestDivergencePipeline(t *testing.T) {
 		FaceNormalComponent(mesh, UxF, UyF, Un)
 		div := make([]float64, nCells)
 		Divergence(mesh, Un, div)
-		l1 := normL1(div)
+		l1 := NormL1(div)
 		t.Logf("Uniform flow divergence L1: %.4e", l1)
 		if l1 > 1e-10 {
 			t.Errorf("Uniform flow should be divergence-free, got %.4e", l1)
@@ -300,7 +300,7 @@ func TestDivergencePipeline(t *testing.T) {
 		FaceNormalComponent(mesh, UxF, UyF, Un)
 		div := make([]float64, nCells)
 		Divergence(mesh, Un, div)
-		l1 := normL1(div)
+		l1 := NormL1(div)
 		t.Logf("Linear div-free divergence L1: %.4e", l1)
 		if l1 > 0.5*float64(nCells)*0.01 {
 			t.Errorf("Linear div-free field should have zero divergence, got %.4e", l1)

@@ -3,7 +3,6 @@ package fvm
 import (
 	"fmt"
 	"io"
-	"math"
 
 	"jedn.dev/jnlcfd/geometry"
 )
@@ -62,7 +61,6 @@ func MakeSIMPLE(
 	}
 
 	ppBCs := pPrimeBCs(pBCs)
-	needsPressureRef := !hasDirichletBC(pBCs)
 
 	solver = func() float64 {
 		// ── Pressure gradient ──
@@ -123,20 +121,6 @@ func MakeSIMPLE(
 		SuFieldScaled(pSys, -rho, divU)
 		applyBCs(pSys, mesh, ppBCs)
 
-		if needsPressureRef {
-			// Pin cell 0: p' = 0 (well-scaled, not bigNum)
-			for k, conn := range pSys.Matrix.conns {
-				if conn.Owner == 0 {
-					pSys.Matrix.lower[k] = 0
-				}
-				if conn.Neighbour == 0 {
-					pSys.Matrix.upper[k] = 0
-				}
-			}
-			pSys.Matrix.diag[0] = 1.0
-			pSys.Rhs[0] = 0
-		}
-
 		if log != nil {
 			rhsSum := 0.0
 			for _, r := range pSys.Rhs {
@@ -161,23 +145,20 @@ func MakeSIMPLE(
 			p[i] += alphaP * pPrime[i]
 		}
 
-		if needsPressureRef {
-			subtractMean(p)
-		}
-
 		if log != nil {
 			fmt.Fprintf(log, "  |p'|: [%.3e, %.3e]  |ΔUx|: %.3e  |ΔUy|: %.3e\n",
 				minSlice(pPrime), maxSlice(pPrime),
-				maxAbsSlice(gradPPrimeX), maxAbsSlice(gradPPrimeY))
+				NormLInf(gradPPrimeX), NormLInf(gradPPrimeY))
 		}
 
-		contRes := normL1(divU) * rho
+		contRes := NormL1(divU) * rho
 		return contRes
 	}
 
 	return
 }
 
+// TODO: either remove or move to a test file - it's only used for testing
 func MakeSIMPLEStokes(
 	mesh *geometry.Mesh,
 	gamma, rho float64,
@@ -226,7 +207,6 @@ func MakeSIMPLEStokes(
 	}
 
 	ppBCs := pPrimeBCs(pBCs)
-	needsPressureRef := !hasDirichletBC(pBCs)
 
 	solver = func() float64 {
 		// Update pressure gradients initially
@@ -296,9 +276,6 @@ func MakeSIMPLEStokes(
 		SuFieldScaled(pSys, -rho, divU)
 
 		applyBCs(pSys, mesh, ppBCs) // uses p' BCs rather than p
-		if needsPressureRef {
-			pSys.Matrix.diag[0] += 1e10
-		}
 		pSys.SolveCG(pPrime, 1e-6, 1000)
 
 		// DEBUG
@@ -316,11 +293,7 @@ func MakeSIMPLEStokes(
 			p[i] += alphaP * pPrime[i]
 		}
 
-		if needsPressureRef {
-			subtractMean(p)
-		}
-
-		contRes := normL1(divU) * rho
+		contRes := NormL1(divU) * rho
 		return contRes
 	}
 
@@ -330,14 +303,6 @@ func MakeSIMPLEStokes(
 //
 // Helpers
 //
-
-func normL1(field []float64) float64 {
-	var sum float64
-	for _, v := range field {
-		sum += math.Abs(v)
-	}
-	return sum
-}
 
 func pPrimeBCs(pBCs []BC) []BC {
 	ppBCs := make([]BC, len(pBCs))
@@ -353,40 +318,12 @@ func pPrimeBCs(pBCs []BC) []BC {
 	return ppBCs
 }
 
-func hasDirichletBC(bcs []BC) bool {
-	for _, bc := range bcs {
-		if bc.Type == Dirichlet {
-			return true
-		}
-	}
-	return false
-}
-
-func subtractMean(field []float64) {
-	var sum float64
-	for _, v := range field {
-		sum += v
-	}
-	mean := sum / float64(len(field))
-	for i := range field {
-		field[i] -= mean
-	}
-}
-
 func minSlice(s []float64) float64 {
 	m := s[0]
 	for _, v := range s[1:] {
 		if v < m {
 			m = v
 		}
-	}
-	return m
-}
-
-func maxAbsSlice(s []float64) float64 {
-	m := 0.0
-	for _, v := range s {
-		m = max(m, math.Abs(v))
 	}
 	return m
 }

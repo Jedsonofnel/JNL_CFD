@@ -1,3 +1,6 @@
+// field.go - field operators like gradient reconstruction etc
+// Jed Nelson <jed@nelson.ac> // 2026-03-02
+
 package fvm
 
 import (
@@ -6,6 +9,40 @@ import (
 
 	"jedn.dev/jnlcfd/geometry"
 )
+
+//
+// Field helpers
+//
+
+// FieldZero sets every element to 0.
+func FieldZero(f []float64) { clear(f) }
+
+// FieldFill sets every element to v.
+func FieldFill(f []float64, v float64) {
+	for i := range f {
+		f[i] = v
+	}
+}
+
+// FieldCopy copies src into dst.
+func FieldCopy(dst, src []float64) { copy(dst, src) }
+
+// SubtractMean shifts a field so its arithmetic mean is zero.
+func SubtractMean(field []float64) {
+	var sum float64
+	for _, v := range field {
+		sum += v
+	}
+	mean := sum / float64(len(field))
+	for i := range field {
+		field[i] -= mean
+	}
+}
+
+// ContinuityResidual returns rho * L1(div(U)).
+func ContinuityResidual(divU []float64, rho float64) float64 {
+	return NormL1(divU) * rho
+}
 
 //
 // Face value reconstruction
@@ -168,4 +205,61 @@ func UpdateTriField(triField, results []float64, triToCells []int) error {
 	}
 
 	return nil
+}
+
+//
+// Norms
+//
+
+func NormL1(f []float64) float64 {
+	var sum float64
+	for _, v := range f {
+		if v < 0 {
+			sum -= v
+		} else {
+			sum += v
+		}
+	}
+	return sum
+}
+
+func NormL2(f []float64) float64 {
+	var sum float64
+	for _, v := range f {
+		sum += v * v
+	}
+	return math.Sqrt(sum)
+}
+
+func NormLInf(f []float64) float64 {
+	m := 0.0
+	for _, v := range f {
+		if v < 0 {
+			v = -v
+		}
+		if v > m {
+			m = v
+		}
+	}
+	return m
+}
+
+func NormL2Rel(f, ref []float64) float64 {
+	var fSum, refSum float64
+	for i, v := range f {
+		fSum += v * v
+		refSum += ref[i] * ref[i]
+	}
+	if refSum < 1e-30 {
+		return math.Sqrt(fSum)
+	}
+	return math.Sqrt(fSum / refSum)
+}
+
+func NormL2Weighted(f, weights []float64) float64 {
+	var sum float64
+	for i, v := range f {
+		sum += weights[i] * v * v
+	}
+	return math.Sqrt(sum)
 }
