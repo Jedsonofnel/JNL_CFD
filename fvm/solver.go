@@ -55,12 +55,11 @@ func MakeSIMPLE(
 	UySys := NewFVSystem(mesh)
 
 	// Initialise aPx/aPy to avoid division by zero on first iteration
-	for i := range aPx {
-		aPx[i] = 1.0
-		aPy[i] = 1.0
-	}
+	FieldFill(aPx, 1.0)
+	FieldFill(aPy, 1.0)
 
 	ppBCs := pPrimeBCs(pBCs)
+	volExpr := CellVolExpr(mesh)
 
 	solver = func() float64 {
 		// ── Pressure gradient ──
@@ -84,7 +83,7 @@ func MakeSIMPLE(
 		applyBCs(UxSys, mesh, uxBCs)
 
 		UxSys.UnderRelax(Ux, alphaU)
-		copy(aPx, UxSys.Matrix.diag)
+		UxSys.CopyDiag(aPx)
 		UxSys.SolveBiCGSTAB(Ux, 1e-6, 1000)
 
 		// ── Y-Momentum ──
@@ -99,18 +98,18 @@ func MakeSIMPLE(
 		applyBCs(UySys, mesh, uyBCs)
 
 		UySys.UnderRelax(Uy, alphaU)
-		copy(aPy, UySys.Matrix.diag)
+		UySys.CopyDiag(aPy)
 		UySys.SolveBiCGSTAB(Uy, 1e-6, 1000)
 
 		// ── Pressure correction ──
 		pSys.Reset()
-		clear(pPrime)
+		FieldZero(pPrime)
 
 		FaceInterpCDS(mesh, pPrime, pFace)
 		applyBCFaceValues(mesh, pPrime, pFace, ppBCs)
 		GreenGaussGradient(mesh, pFace, gradPPrimeX, gradPPrimeY)
 
-		dExpr := DivExpr(CellVolExpr(mesh), FieldExpr(aPx))
+		dExpr := DivExpr(volExpr, FieldExpr(aPx))
 		LaplacianExpr(pSys, mesh, dExpr, gradPPrimeX, gradPPrimeY)
 
 		// Recompute U* face velocities for divergence source
@@ -122,14 +121,10 @@ func MakeSIMPLE(
 		applyBCs(pSys, mesh, ppBCs)
 
 		if log != nil {
-			rhsSum := 0.0
-			for _, r := range pSys.Rhs {
-				rhsSum += r
-			}
 			fmt.Fprintf(log, "  aPx: [%.3e, %.3e]  p' diag: [%.3e, %.3e]  RHS sum: %.3e\n",
 				minSlice(aPx), maxSlice(aPx),
 				minSlice(pSys.Matrix.diag), maxSlice(pSys.Matrix.diag),
-				rhsSum)
+				sumSlice(pSys.Rhs))
 		}
 
 		pSys.SolveCG(pPrime, 1e-6, 1000)
@@ -139,11 +134,9 @@ func MakeSIMPLE(
 		applyBCFaceValues(mesh, pPrime, pFace, ppBCs)
 		GreenGaussGradient(mesh, pFace, gradPPrimeX, gradPPrimeY)
 
-		for i := range Ux {
-			Ux[i] -= (mesh.CellVolumes[i] / aPx[i]) * gradPPrimeX[i]
-			Uy[i] -= (mesh.CellVolumes[i] / aPy[i]) * gradPPrimeY[i]
-			p[i] += alphaP * pPrime[i]
-		}
+		MulExpr(DivExpr(volExpr, FieldExpr(aPx)), FieldExpr(gradPPrimeX)).SubFrom(Ux)
+		MulExpr(DivExpr(volExpr, FieldExpr(aPy)), FieldExpr(gradPPrimeY)).SubFrom(Uy)
+		ScaleExpr(FieldExpr(pPrime), alphaP).AddInto(p)
 
 		if log != nil {
 			fmt.Fprintf(log, "  |p'|: [%.3e, %.3e]  |ΔUx|: %.3e  |ΔUy|: %.3e\n",
@@ -151,14 +144,12 @@ func MakeSIMPLE(
 				NormLInf(gradPPrimeX), NormLInf(gradPPrimeY))
 		}
 
-		contRes := NormL1(divU) * rho
-		return contRes
+		return NormL1(divU) * rho
 	}
 
 	return
 }
 
-// TODO: either remove or move to a test file - it's only used for testing
 func MakeSIMPLEStokes(
 	mesh *geometry.Mesh,
 	gamma, rho float64,
@@ -183,7 +174,6 @@ func MakeSIMPLEStokes(
 	gradUyx := make([]float64, nCells)
 	gradUyy := make([]float64, nCells)
 
-	// TODO can I remove these by directly using the matrix.diag slices?
 	aPx := make([]float64, nCells)
 	aPy := make([]float64, nCells)
 
@@ -200,13 +190,12 @@ func MakeSIMPLEStokes(
 	UxSys := NewFVSystem(mesh)
 	UySys := NewFVSystem(mesh)
 
-	// initalise aPx/aPy to avoid division by zero
-	for i := range aPx {
-		aPx[i] = 1.0
-		aPy[i] = 1.0
-	}
+	// Initialise aPx/aPy to avoid division by zero
+	FieldFill(aPx, 1.0)
+	FieldFill(aPy, 1.0)
 
 	ppBCs := pPrimeBCs(pBCs)
+	volExpr := CellVolExpr(mesh)
 
 	solver = func() float64 {
 		// Update pressure gradients initially
@@ -230,7 +219,7 @@ func MakeSIMPLEStokes(
 
 		applyBCs(UxSys, mesh, uxBCs)
 
-		copy(aPx, UxSys.Matrix.diag)
+		UxSys.CopyDiag(aPx)
 		UxSys.UnderRelax(Ux, alphaU)
 		UxSys.SolveBiCGSTAB(Ux, 1e-6, 1000)
 
@@ -246,26 +235,20 @@ func MakeSIMPLEStokes(
 
 		applyBCs(UySys, mesh, uyBCs)
 
-		copy(aPy, UySys.Matrix.diag)
+		UySys.CopyDiag(aPy)
 		UySys.UnderRelax(Uy, alphaU)
 		UySys.SolveBiCGSTAB(Uy, 1e-6, 1000)
 
-		// DEBUG PRINTING
-		// fmt.Printf("  aPx range: [%.2e, %.2e]\n", slices.Min(aPx), slices.Max(aPx))
-		// fmt.Printf("  Ux range: [%.2e, %.2e]\n", slices.Min(Ux), slices.Max(Ux))
-		// fmt.Printf("  gradPx range: [%.2e, %.2e]\n", slices.Min(gradPx), slices.Max(gradPx))
-
 		// Pressure correction
 		pSys.Reset()
-		clear(pPrime)
+		FieldZero(pPrime)
 
 		FaceInterpCDS(mesh, pPrime, pFace)
 		applyBCFaceValues(mesh, pPrime, pFace, ppBCs)
 		GreenGaussGradient(mesh, pFace, gradPPrimeX, gradPPrimeY)
 
-		dExpr := DivExpr(CellVolExpr(mesh), FieldExpr(aPx))
+		dExpr := DivExpr(volExpr, FieldExpr(aPx))
 		LaplacianExpr(pSys, mesh, dExpr, gradPPrimeX, gradPPrimeY)
-		// fmt.Printf("pSys diagonal[0]: %.4f\n", pSys.Matrix.diag[0])
 
 		// From earlier solve for U*
 		RhieChowFaceNormal(mesh, Ux, Uy, p, gradPx, gradPy, aPx, aPy, UnMWI)
@@ -275,26 +258,19 @@ func MakeSIMPLEStokes(
 		Divergence(mesh, UnMWI, divU)
 		SuFieldScaled(pSys, -rho, divU)
 
-		applyBCs(pSys, mesh, ppBCs) // uses p' BCs rather than p
+		applyBCs(pSys, mesh, ppBCs)
 		pSys.SolveCG(pPrime, 1e-6, 1000)
-
-		// DEBUG
-		// fmt.Printf("  p' range: [%.2e, %.2e]\n", slices.Min(pPrime), slices.Max(pPrime))
-		// fmt.Printf("  gradP'x range: [%.2e, %.2e]\n", slices.Min(gradPPrimeX), slices.Max(gradPPrimeX))
 
 		// Corrections
 		FaceInterpCDS(mesh, pPrime, pFace)
 		applyBCFaceValues(mesh, pPrime, pFace, ppBCs)
 		GreenGaussGradient(mesh, pFace, gradPPrimeX, gradPPrimeY)
 
-		for i := range Ux {
-			Ux[i] -= (mesh.CellVolumes[i] / aPx[i]) * gradPPrimeX[i]
-			Uy[i] -= (mesh.CellVolumes[i] / aPy[i]) * gradPPrimeY[i]
-			p[i] += alphaP * pPrime[i]
-		}
+		MulExpr(DivExpr(volExpr, FieldExpr(aPx)), FieldExpr(gradPPrimeX)).SubFrom(Ux)
+		MulExpr(DivExpr(volExpr, FieldExpr(aPy)), FieldExpr(gradPPrimeY)).SubFrom(Uy)
+		ScaleExpr(FieldExpr(pPrime), alphaP).AddInto(p)
 
-		contRes := NormL1(divU) * rho
-		return contRes
+		return NormL1(divU) * rho
 	}
 
 	return
@@ -336,4 +312,12 @@ func maxSlice(s []float64) float64 {
 		}
 	}
 	return m
+}
+
+func sumSlice(s []float64) float64 {
+	sum := 0.0
+	for _, v := range s {
+		sum += v
+	}
+	return sum
 }
