@@ -379,6 +379,203 @@ func TestLidDrivenCavityDiagnostic(t *testing.T) {
 }
 
 //
+// CHT
+//
+
+func TestHeatedBlockCHTDiagnostic(t *testing.T) {
+	db := geometry.DomainBuilder{}
+	// Main fluid channel [10 x 2]
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 10, 2, "fluid", "south", "east", "north", "west"))
+	// Solid block sitting on the bottom wall [1 x 0.5]
+	db.AddPolygon(geometry.MakeRectangle(3, 0, 1, 0.5, "solid", "solid_south", "solid_east", "solid_north", "solid_west"))
+	domain, _ := db.Build()
+
+	// Use a coarser mesh for faster diagnostic iteration
+	mesh, _ := geometry.MeshWithCells(domain, 600, 30)
+
+	nCells := len(mesh.Centroids)
+	t.Logf("Mesh: %d cells, %d connections", nCells, len(mesh.Connections))
+
+	Uin := 1.0
+
+	cfg := CHTConfig{
+		FluidRegions: []string{"fluid"},
+		SolidRegions: []string{"solid"},
+		UseBuoyancy:  false,
+		RhoFluid:     1.0,
+		NuFluid:      0.01,
+		Tref:         300.0,
+		AlphaU:       0.7,
+		AlphaP:       0.3,
+		AlphaT:       0.9,
+		RhoCp: map[string]float64{
+			"fluid": 1000.0,
+			"solid": 2000.0,
+		},
+		K: map[string]float64{
+			"fluid": 0.026,
+			"solid": 10.0,
+		},
+		HeatSources: map[string]float64{
+			"fluid": 0.0,
+			"solid": 5000.0,
+		},
+	}
+
+	cfg.PBCs = []BC{
+		NewNeumann("west", 0), NewDirichlet("east", 0),
+		NewNeumann("north", 0), NewNeumann("south", 0),
+	}
+	cfg.UxBCs = []BC{
+		NewDirichlet("west", Uin), NewNeumann("east", 0),
+		NewDirichlet("north", 0), NewDirichlet("south", 0),
+	}
+	cfg.UyBCs = []BC{
+		NewDirichlet("west", 0), NewNeumann("east", 0),
+		NewDirichlet("north", 0), NewDirichlet("south", 0),
+	}
+	cfg.TBCs = []BC{
+		NewDirichlet("west", 300.0), NewNeumann("east", 0),
+		NewNeumann("north", 0), NewNeumann("south", 0),
+	}
+
+	w := &testWriter{t}
+	solver, p, Ux, Uy, T := MakeSIMPLE_CHT(mesh, cfg, w)
+
+	var resHistory []float64
+
+	for i := range 1000 {
+		res := solver()
+		resHistory = append(resHistory, res)
+
+		// Log frequently at the start, then every 50 iters
+		if i < 10 || i%50 == 0 || res < 1e-6 {
+			maxUx, maxUy := 0.0, 0.0
+			minP, maxP := math.Inf(1), math.Inf(-1)
+			minT, maxT := math.Inf(1), math.Inf(-1)
+
+			for j := range Ux {
+				maxUx = max(maxUx, math.Abs(Ux[j]))
+				maxUy = max(maxUy, math.Abs(Uy[j]))
+				minP = min(minP, p[j])
+				maxP = max(maxP, p[j])
+				minT = min(minT, T[j])
+				maxT = max(maxT, T[j])
+			}
+
+			t.Logf("Iter %3d: res=%.2e  |U|=(%.2e, %.2e)  p=[%.2e, %.2e]  T=[%.1f, %.1f]",
+				i, res, maxUx, maxUy, minP, maxP, minT, maxT)
+		}
+
+		if res < 1e-6 {
+			t.Logf("Converged at iter %d", i)
+			break
+		}
+
+		if math.IsNaN(res) || res > 1e10 {
+			t.Fatalf("Blowup at iter %d: res=%.2e", i, res)
+		}
+	}
+
+	// --- Physical Checks ---
+	t.Logf("\n--- Physical checks ---")
+
+	solidRegionID := -1
+	for id, name := range mesh.RegionNames {
+		if name == "solid" {
+			solidRegionID = id
+			break
+		}
+	}
+
+	if solidRegionID == -1 {
+		t.Fatal("Could not find 'solid' region")
+	}
+
+	solidZeroVel := true
+	for i, r := range mesh.CellRegions {
+		if r == solidRegionID {
+			if math.Abs(Ux[i]) > 1e-9 || math.Abs(Uy[i]) > 1e-9 {
+				solidZeroVel = false
+				t.Errorf("Solid velocity non-zero at cell %d: %v, %v", i, Ux[i], Uy[i])
+				break
+			}
+		}
+	}
+
+	if solidZeroVel {
+		t.Log("Check passed: Solid velocity perfectly zero.")
+	}
+}
+
+func TestHeatedBlockCHT(t *testing.T) {
+	// 1. Run the case on a relatively coarse mesh so the test suite is fast
+	nCells := 600
+	Uin := 1.0
+	result := CaseHeatedBlockCHT(nCells, Uin)
+
+	// 2. Ensure it actually converged
+	t.Logf("CHT Converged in %d iterations, final res = %.2e", result.Iterations, result.FinalRes)
+	if result.FinalRes > 1e-4 {
+		t.Errorf("CHT solver failed to converge, final residual = %.2e", result.FinalRes)
+	}
+
+	mesh := result.Mesh
+
+	// Find the integer ID for the "solid" region
+	var solidRegionID int
+	foundSolid := false
+	for id, name := range mesh.RegionNames {
+		if name == "solid" {
+			solidRegionID = id
+			foundSolid = true
+			break
+		}
+	}
+
+	if !foundSolid {
+		t.Fatal("Could not find 'solid' region in mesh")
+	}
+
+	maxT := 0.0
+	maxU_fluid := 0.0
+
+	// 3. Verify physical constraints cell by cell
+	for i, region := range mesh.CellRegions {
+		// Track max temperature globally
+		if result.T[i] > maxT {
+			maxT = result.T[i]
+		}
+
+		if region == solidRegionID {
+			// CONSTRAINT: Solid velocity must be perfectly zero
+			if !floatsEqual(result.Ux[i], 0.0, 1e-9) || !floatsEqual(result.Uy[i], 0.0, 1e-9) {
+				t.Errorf("Solid region velocity is non-zero at cell %d: Ux=%.2e, Uy=%.2e",
+					i, result.Ux[i], result.Uy[i])
+			}
+		} else {
+			// Track maximum fluid velocity to ensure flow exists
+			umag := math.Sqrt(result.Ux[i]*result.Ux[i] + result.Uy[i]*result.Uy[i])
+			if umag > maxU_fluid {
+				maxU_fluid = umag
+			}
+		}
+	}
+
+	// CONSTRAINT: Heat source must have heated the domain above the 300K inlet
+	if maxT <= 300.01 {
+		t.Errorf("Temperature did not increase as expected! Max T = %.2f K", maxT)
+	} else {
+		t.Logf("Max temperature reached %.2f K (expected > 300K)", maxT)
+	}
+
+	// CONSTRAINT: Fluid must actually be moving
+	if maxU_fluid < 0.1 {
+		t.Errorf("Fluid velocity seems incorrectly masked or too low, max fluid U = %.2e", maxU_fluid)
+	}
+}
+
+//
 // Helpers
 //
 

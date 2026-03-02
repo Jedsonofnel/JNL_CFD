@@ -19,6 +19,8 @@ var cases = map[string]string{
 	"poiseuille-simplified": "Pressure-driven flow (pure diffusion, no pressure coupling)",
 	"couette":               "Shear-driven flow (pure diffusion, no pressure coupling)",
 	"cavity":                "Lid-driven cavity flow (SIMPLE with convection)",
+	"developing-poiseuille": "Developing channel flow from a uniform inlet",
+	"cht-heated-block":      "Conjugate heat transfer over a heated block (SIMPLE_CHT)",
 }
 
 func main() {
@@ -56,6 +58,10 @@ func main() {
 		runCouetteSimplified(*nCells, *gamma)
 	case "cavity":
 		runCavity(*nCells, *re)
+	case "developing-poiseuille":
+		runDevelopingPoiseuille(*nCells, *gamma, *rho)
+	case "cht-heated-block":
+		runHeatedBlockCHT(*nCells)
 	}
 }
 
@@ -175,6 +181,42 @@ func runCavity(nCells int, Re float64) {
 		output.Scalar{Name: "p", Values: result.P},
 		output.Scalar{Name: "Umag", Values: Umag},
 		output.Scalar{Name: "vorticity", Values: omega},
+		output.Vector{Name: "U", X: result.Ux, Y: result.Uy},
+	)
+}
+
+func runDevelopingPoiseuille(nCells int, gamma, rho float64) {
+	Uin := 1.0
+	result := fvm.CaseDevelopingPoiseuille(nCells, gamma, rho, Uin)
+	LogSIMPLEResult(result, "Developing Poiseuille")
+
+	// For a developed profile, mass conservation dictates U_max = 1.5 * U_avg in 2D
+	H := 1.0
+	// Umax_expected := 1.5 * Uin
+
+	analytical := make([]float64, len(result.Mesh.Centroids))
+	for i, c := range result.Mesh.Centroids {
+		// Parabolic profile equation: U(y) = 6 * U_avg * (y/H) * (1 - y/H)
+		analytical[i] = 6.0 * Uin * (c.Y / H) * (1.0 - c.Y/H)
+	}
+
+	output.WriteVTK(os.Stdout, result.Mesh,
+		output.Scalar{Name: "Ux", Values: result.Ux},
+		output.Scalar{Name: "Uy", Values: result.Uy},
+		output.Scalar{Name: "p", Values: result.P},
+		output.Scalar{Name: "Ux_developed_analytical", Values: analytical},
+	)
+}
+
+func runHeatedBlockCHT(nCells int) {
+	Uin := 1.0
+	result := fvm.CaseHeatedBlockCHT(nCells, Uin)
+	fmt.Fprintf(os.Stderr, "CHT Heated Block: converged in %d iterations, final residual = %.2e\n",
+		result.Iterations, result.FinalRes)
+
+	output.WriteVTK(os.Stdout, result.Mesh,
+		output.Scalar{Name: "p", Values: result.P},
+		output.Scalar{Name: "T", Values: result.T},
 		output.Vector{Name: "U", X: result.Ux, Y: result.Uy},
 	)
 }

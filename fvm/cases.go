@@ -277,6 +277,138 @@ func CaseLidDrivenCavity(nCells int, Re float64) SIMPLEResult {
 }
 
 //
+// Developing Poiseuille Flow
+//
+
+func CaseDevelopingPoiseuille(nCells int, gamma, rho, Uin float64) SIMPLEResult {
+	// L = 20, H = 1 to allow the parabolic profile to fully develop
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 20, 1, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+	mesh, _ := geometry.MeshWithCells(domain, nCells, 30)
+
+	// Uniform velocity inlet, zero pressure gradient
+	// Fixed pressure outlet, zero velocity gradient
+	pBCs := []BC{
+		NewNeumann("west", 0.0),
+		NewDirichlet("east", 0.0),
+		NewNeumann("north", 0.0),
+		NewNeumann("south", 0.0),
+	}
+	uxBCs := []BC{
+		NewDirichlet("west", Uin),
+		NewNeumann("east", 0.0),
+		NewDirichlet("north", 0.0),
+		NewDirichlet("south", 0.0),
+	}
+	uyBCs := []BC{
+		NewDirichlet("west", 0.0),
+		NewNeumann("east", 0.0),
+		NewDirichlet("north", 0.0),
+		NewDirichlet("south", 0.0),
+	}
+
+	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, 0.7, 0.3, pBCs, uxBCs, uyBCs, nil)
+
+	var finalRes float64
+	iters := 0
+	for i := range 2000 { // Might need more iterations for a long domain
+		res := solver()
+		iters = i + 1
+		finalRes = res
+		if res < 1e-6 {
+			break
+		}
+	}
+
+	return SIMPLEResult{
+		Mesh: mesh, P: p, Ux: Ux, Uy: Uy,
+		Iterations: iters, FinalRes: finalRes,
+	}
+}
+
+//
+// Conjugate Heat Transfer (Heated Block in Channel)
+//
+
+type CHTResult struct {
+	Mesh         *geometry.Mesh
+	P, Ux, Uy, T []float64
+	Iterations   int
+	FinalRes     float64
+}
+
+func CaseHeatedBlockCHT(nCells int, Uin float64) CHTResult {
+	db := geometry.DomainBuilder{}
+	// Main fluid channel [10 x 2]
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 10, 2, "fluid", "south", "east", "north", "west"))
+	// Solid block sitting on the bottom wall [1 x 0.5]
+	db.AddPolygon(geometry.MakeRectangle(3, 0, 1, 0.5, "solid", "solid_south", "solid_east", "solid_north", "solid_west"))
+	domain, _ := db.Build()
+	mesh, _ := geometry.MeshWithCells(domain, nCells, 30)
+
+	cfg := CHTConfig{
+		FluidRegions: []string{"fluid"},
+		SolidRegions: []string{"solid"},
+		UseBuoyancy:  false, // Pure forced convection
+		RhoFluid:     1.0,
+		NuFluid:      0.01,
+		Tref:         300.0,
+		AlphaU:       0.7,
+		AlphaP:       0.3,
+		AlphaT:       0.9,
+		RhoCp: map[string]float64{
+			"fluid": 1000.0, // Air-ish volumetric capacity
+			"solid": 2000.0, // Solid block capacity
+		},
+		K: map[string]float64{
+			"fluid": 0.026, // Fluid conductivity
+			"solid": 10.0,  // Highly conductive block
+		},
+		HeatSources: map[string]float64{
+			"fluid": 0.0,
+			"solid": 5000.0, // Heat generation W/m^3 in the block
+		},
+	}
+
+	cfg.PBCs = []BC{
+		NewNeumann("west", 0), NewDirichlet("east", 0),
+		NewNeumann("north", 0), NewNeumann("south", 0),
+	}
+	cfg.UxBCs = []BC{
+		NewDirichlet("west", Uin), NewNeumann("east", 0),
+		NewDirichlet("north", 0), NewDirichlet("south", 0),
+	}
+	cfg.UyBCs = []BC{
+		NewDirichlet("west", 0), NewNeumann("east", 0),
+		NewDirichlet("north", 0), NewDirichlet("south", 0),
+	}
+	// Thermal BCs: Fixed 300K at inlet, insulated walls, zero gradient at outlet
+	cfg.TBCs = []BC{
+		NewDirichlet("west", 300.0), NewNeumann("east", 0),
+		NewNeumann("north", 0), NewNeumann("south", 0),
+	}
+
+	solver, p, Ux, Uy, T := MakeSIMPLE_CHT(mesh, cfg, nil)
+
+	var finalRes float64
+	iters := 0
+	for i := range 2000 {
+		res := solver()
+		iters = i + 1
+		finalRes = res
+		if res < 1e-6 {
+			break
+		}
+	}
+
+	return CHTResult{
+		Mesh: mesh, P: p, Ux: Ux, Uy: Uy, T: T,
+		Iterations: iters, FinalRes: finalRes,
+	}
+}
+
+//
 // Analytical solutions
 //
 
