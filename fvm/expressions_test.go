@@ -132,6 +132,32 @@ func TestExpressions(t *testing.T) {
 			wantConst: false,
 			want:      []float64{1.2, 0.6, 0.4, 0.3, 0.24},
 		},
+
+		// ScaleExpr
+		{
+			name:      "Scale const folds",
+			expr:      ScaleExpr(ConstExpr(5), 3),
+			wantConst: true,
+			want:      []float64{15, 15, 15, 15, 15},
+		},
+		{
+			name:      "Scale field",
+			expr:      ScaleExpr(FieldExpr(field), 0.5),
+			wantConst: false,
+			want:      []float64{0.5, 1, 1.5, 2, 2.5},
+		},
+		{
+			name:      "Scale by zero",
+			expr:      ScaleExpr(FieldExpr(field), 0),
+			wantConst: false,
+			want:      []float64{0, 0, 0, 0, 0},
+		},
+		{
+			name:      "Scale nested (field*2 scaled by 3 = field*6)",
+			expr:      ScaleExpr(MulExpr(FieldExpr(field), ConstExpr(2)), 3),
+			wantConst: false,
+			want:      []float64{6, 12, 18, 24, 30},
+		},
 	}
 
 	for _, tt := range tests {
@@ -149,5 +175,151 @@ func TestExpressions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExpressionMutations(t *testing.T) {
+	field := []float64{1, 2, 3, 4, 5}
+	expr := FieldExpr(field)
+
+	tests := []struct {
+		name   string
+		init   []float64
+		mutate func([]float64)
+		want   []float64
+	}{
+		{
+			name:   "Apply overwrites",
+			init:   []float64{99, 99, 99, 99, 99},
+			mutate: func(dst []float64) { expr.Apply(dst) },
+			want:   []float64{1, 2, 3, 4, 5},
+		},
+		{
+			name:   "AddInto accumulates",
+			init:   []float64{10, 20, 30, 40, 50},
+			mutate: func(dst []float64) { expr.AddInto(dst) },
+			want:   []float64{11, 22, 33, 44, 55},
+		},
+		{
+			name:   "SubFrom subtracts",
+			init:   []float64{10, 20, 30, 40, 50},
+			mutate: func(dst []float64) { expr.SubFrom(dst) },
+			want:   []float64{9, 18, 27, 36, 45},
+		},
+		{
+			name:   "MulInto multiplies",
+			init:   []float64{10, 20, 30, 40, 50},
+			mutate: func(dst []float64) { expr.MulInto(dst) },
+			want:   []float64{10, 40, 90, 160, 250},
+		},
+		{
+			name:   "Apply const",
+			init:   []float64{99, 99, 99, 99, 99},
+			mutate: func(dst []float64) { ConstExpr(7).Apply(dst) },
+			want:   []float64{7, 7, 7, 7, 7},
+		},
+		{
+			name: "AddInto nested tree",
+			init: []float64{0, 0, 0, 0, 0},
+			mutate: func(dst []float64) {
+				// (field * 2) + 10
+				AddExpr(MulExpr(FieldExpr(field), ConstExpr(2)), ConstExpr(10)).AddInto(dst)
+			},
+			want: []float64{12, 14, 16, 18, 20},
+		},
+		{
+			name: "Chained mutations",
+			init: []float64{100, 100, 100, 100, 100},
+			mutate: func(dst []float64) {
+				expr.SubFrom(dst)         // 99,98,97,96,95
+				ConstExpr(5).AddInto(dst) // 104,103,102,101,100
+			},
+			want: []float64{104, 103, 102, 101, 100},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dst := make([]float64, len(tt.init))
+			copy(dst, tt.init)
+			tt.mutate(dst)
+			for i, want := range tt.want {
+				if !floatsEqual(dst[i], want, FLOAT_TOL) {
+					t.Errorf("dst[%d] = %v, want %v", i, dst[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestResolveInto(t *testing.T) {
+	field := []float64{1, 2, 3, 4, 5}
+
+	tests := []struct {
+		name string
+		expr Expression
+		want []float64
+	}{
+		{
+			name: "Const",
+			expr: ConstExpr(42),
+			want: []float64{42, 42, 42, 42, 42},
+		},
+		{
+			name: "Field",
+			expr: FieldExpr(field),
+			want: []float64{1, 2, 3, 4, 5},
+		},
+		{
+			name: "Nested",
+			expr: AddExpr(FieldExpr(field), ConstExpr(10)),
+			want: []float64{11, 12, 13, 14, 15},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dst := make([]float64, 5)
+			tt.expr.ResolveInto(dst)
+			for i, want := range tt.want {
+				if !floatsEqual(dst[i], want, FLOAT_TOL) {
+					t.Errorf("dst[%d] = %v, want %v", i, dst[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestCellVolExpr(t *testing.T) {
+	mesh := opTestMesh() // from operators_test.go — volumes are [1, 1]
+	expr := CellVolExpr(mesh)
+
+	if expr.IsConst {
+		t.Error("CellVolExpr should not be const")
+	}
+	if expr.Eval(0) != 1.0 || expr.Eval(1) != 1.0 {
+		t.Errorf("got [%g, %g], want [1, 1]", expr.Eval(0), expr.Eval(1))
+	}
+}
+
+func TestDiagExpr(t *testing.T) {
+	mesh := opTestMesh()
+	sys := NewFVSystem(mesh)
+	sys.Matrix.diag[0] = 7
+	sys.Matrix.diag[1] = 13
+
+	expr := DiagExpr(sys)
+
+	if expr.IsConst {
+		t.Error("DiagExpr should not be const")
+	}
+	if expr.Eval(0) != 7 || expr.Eval(1) != 13 {
+		t.Errorf("got [%g, %g], want [7, 13]", expr.Eval(0), expr.Eval(1))
+	}
+
+	// DiagExpr should reflect mutations (it captures sys by pointer)
+	sys.Matrix.diag[0] = 99
+	if expr.Eval(0) != 99 {
+		t.Errorf("after mutation got %g, want 99", expr.Eval(0))
 	}
 }
