@@ -277,6 +277,60 @@ func MakeSIMPLEStokes(
 }
 
 //
+// Temperature scalar transport
+//
+
+// SolveTemperature takes a converged velocity field and solves for passive scalar temperature.
+func SolveTemperature(
+	mesh *geometry.Mesh,
+	Ux, Uy []float64,
+	uxBCs, uyBCs []BC,
+	TBCs []BC,
+	rhoCp, k float64,
+	Tref float64,
+) []float64 {
+	nCells := len(mesh.Centroids)
+	nConns := len(mesh.Connections)
+
+	T := make([]float64, nCells)
+	FieldFill(T, Tref)
+
+	TFace := make([]float64, nConns)
+	gradTx := make([]float64, nCells)
+	gradTy := make([]float64, nCells)
+
+	// 1. Reconstruct conservative face normal velocities from converged U field
+	UnFace := make([]float64, nConns)
+	UxF := make([]float64, nConns)
+	UyF := make([]float64, nConns)
+
+	FaceInterpCDS(mesh, Ux, UxF)
+	FaceInterpCDS(mesh, Uy, UyF)
+	applyBCFaceValues(mesh, Ux, UxF, uxBCs)
+	applyBCFaceValues(mesh, Uy, UyF, uyBCs)
+	FaceNormalComponent(mesh, UxF, UyF, UnFace)
+
+	TSys := NewFVSystem(mesh)
+
+	// 2. Solve Temperature (with a small loop for non-orthogonal deferred correction)
+	for iter := 0; iter < 10; iter++ {
+		TSys.Reset()
+
+		FaceInterpCDS(mesh, T, TFace)
+		applyBCFaceValues(mesh, T, TFace, TBCs)
+		GreenGaussGradient(mesh, TFace, gradTx, gradTy)
+
+		DivConstUDS(TSys, mesh, rhoCp, UnFace)
+		LaplacianConst(TSys, mesh, k, gradTx, gradTy)
+		applyBCs(TSys, mesh, TBCs)
+
+		TSys.SolveBiCGSTAB(T, 1e-6, 1000)
+	}
+
+	return T
+}
+
+//
 // CHT
 //
 

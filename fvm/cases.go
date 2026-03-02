@@ -328,6 +328,78 @@ func CaseDevelopingPoiseuille(nCells int, gamma, rho, Uin float64) SIMPLEResult 
 }
 
 //
+// Thermal
+//
+
+type ThermalResult struct {
+	Mesh         *geometry.Mesh
+	P, Ux, Uy, T []float64
+	Iterations   int
+}
+
+// CaseForcedConvectionPlate solves fluid flow over a flat plate,
+// then solves the decoupled temperature field with a heated bottom wall.
+func CaseForcedConvectionPlate(nCells int, Uin, heatFlux float64) ThermalResult {
+	// L = 10, H = 2
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 10, 2, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+	mesh, _ := geometry.MeshWithCells(domain, nCells, 30)
+
+	rho := 1.0
+	nu := 0.01 // Kinematic viscosity
+	gamma := rho * nu
+
+	// 1. Hydrodynamic BCs (Flow over a flat plate)
+	pBCs := []BC{
+		NewNeumann("west", 0), NewDirichlet("east", 0),
+		NewNeumann("north", 0), NewNeumann("south", 0),
+	}
+	uxBCs := []BC{
+		NewDirichlet("west", Uin), NewNeumann("east", 0),
+		NewNeumann("north", 0),   // Slip wall on top boundary
+		NewDirichlet("south", 0), // No-slip flat plate
+	}
+	uyBCs := []BC{
+		NewDirichlet("west", 0), NewNeumann("east", 0),
+		NewDirichlet("north", 0), // Slip wall on top boundary
+		NewDirichlet("south", 0), // No-slip flat plate
+	}
+
+	// 2. Solve hydrodynamics using SIMPLE
+	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, 0.7, 0.3, pBCs, uxBCs, uyBCs, nil)
+
+	iters := 0
+	for i := range 2000 {
+		res := solver()
+		iters = i + 1
+		if res < 1e-6 {
+			break
+		}
+	}
+
+	// 3. Thermal BCs
+	TBCs := []BC{
+		NewDirichlet("west", 300.0),   // Fixed inlet temp
+		NewNeumann("east", 0.0),       // Zero gradient outlet
+		NewNeumann("north", 0.0),      // Insulated top wall
+		NewNeumann("south", heatFlux), // Constant heat flux from the bottom plate
+	}
+
+	rhoCp := 1000.0
+	k := 0.026
+	Tref := 300.0
+
+	// 4. Solve Decoupled Temperature
+	T := SolveTemperature(mesh, Ux, Uy, uxBCs, uyBCs, TBCs, rhoCp, k, Tref)
+
+	return ThermalResult{
+		Mesh: mesh, P: p, Ux: Ux, Uy: Uy, T: T,
+		Iterations: iters,
+	}
+}
+
+//
 // Conjugate Heat Transfer (Heated Block in Channel)
 //
 

@@ -379,6 +379,151 @@ func TestLidDrivenCavityDiagnostic(t *testing.T) {
 }
 
 //
+// Plate
+//
+
+func TestForcedPlateDiagnostic(t *testing.T) {
+	// 1. Setup Domain [10 x 2]
+	db := geometry.DomainBuilder{}
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 10, 2, "fluid", "south", "east", "north", "west"))
+	domain, _ := db.Build()
+
+	// Coarse mesh for fast diagnostic turnaround
+	mesh, _ := geometry.MeshWithCells(domain, 600, 30)
+
+	nCells := len(mesh.Centroids)
+	t.Logf("Mesh: %d cells, %d connections", nCells, len(mesh.Connections))
+
+	rho := 1.0
+	nu := 0.01 // Kinematic viscosity
+	gamma := rho * nu
+	Uin := 1.0
+
+	// 2. Boundary Conditions
+	pBCs := []BC{
+		NewNeumann("west", 0), NewDirichlet("east", 0),
+		NewNeumann("north", 0), NewNeumann("south", 0),
+	}
+	uxBCs := []BC{
+		NewDirichlet("west", Uin), NewNeumann("east", 0),
+		NewNeumann("north", 0),   // Slip wall at top (symmetry)
+		NewDirichlet("south", 0), // No-slip bottom wall (the plate)
+	}
+	uyBCs := []BC{
+		NewDirichlet("west", 0), NewNeumann("east", 0),
+		NewDirichlet("north", 0), // No penetration top
+		NewDirichlet("south", 0), // No penetration bottom
+	}
+
+	w := &testWriter{t}
+	solver, p, Ux, Uy := MakeSIMPLE(mesh, gamma, rho, 0.7, 0.3, pBCs, uxBCs, uyBCs, w)
+
+	for i := range Ux {
+		Ux[i] = Uin
+	}
+
+	var resHistory []float64
+
+	// 3. Iteration Loop
+	for i := range 1000 {
+		res := solver()
+		resHistory = append(resHistory, res)
+
+		if i < 10 || i%50 == 0 || res < 1e-6 {
+			maxUx, maxUy := 0.0, 0.0
+			minP, maxP := math.Inf(1), math.Inf(-1)
+
+			for j := range Ux {
+				maxUx = max(maxUx, math.Abs(Ux[j]))
+				maxUy = max(maxUy, math.Abs(Uy[j]))
+				minP = min(minP, p[j])
+				maxP = max(maxP, p[j])
+			}
+
+			// Check global mass divergence
+			nConns := len(mesh.Connections)
+			UnCheck := make([]float64, nConns)
+			UxF := make([]float64, nConns)
+			UyF := make([]float64, nConns)
+
+			FaceInterpCDS(mesh, Ux, UxF)
+			FaceInterpCDS(mesh, Uy, UyF)
+			applyBCFaceValues(mesh, Ux, UxF, uxBCs)
+			applyBCFaceValues(mesh, Uy, UyF, uyBCs)
+			FaceNormalComponent(mesh, UxF, UyF, UnCheck)
+
+			divCheck := make([]float64, nCells)
+			Divergence(mesh, UnCheck, divCheck)
+
+			globalDiv := 0.0
+			for _, d := range divCheck {
+				globalDiv += d
+			}
+
+			t.Logf("Iter %3d: res=%.2e  |Ux|=%.2e  |Uy|=%.2e  p=[%.2e, %.2e]  globalDiv=%.2e",
+				i, res, maxUx, maxUy, minP, maxP, globalDiv)
+		}
+
+		if res < 1e-6 {
+			t.Logf("Converged at iter %d", i)
+			break
+		}
+
+		if math.IsNaN(res) || res > 1e10 {
+			t.Fatalf("Blowup at iter %d: res=%.2e", i, res)
+		}
+	}
+
+	// 4. Physical Sanity Checks
+	t.Logf("\n--- Physical checks ---")
+
+	var bottomUxSum, topUxSum float64
+	var bottomCells, topCells int
+
+	// Check boundary layers
+	for i, c := range mesh.Centroids {
+		// Near the bottom no-slip plate
+		if c.Y < 0.1 {
+			bottomUxSum += Ux[i]
+			bottomCells++
+		}
+		// Near the top slip-wall (freestream)
+		if c.Y > 1.9 {
+			topUxSum += Ux[i]
+			topCells++
+		}
+	}
+
+	if bottomCells > 0 {
+		avgBottomUx := bottomUxSum / float64(bottomCells)
+		t.Logf("Average Ux near plate (y < 0.1): %.4f (expect near 0.0)", avgBottomUx)
+		if avgBottomUx > 0.5 {
+			t.Errorf("Velocity near plate is too high! No-slip BC may be failing.")
+		}
+	}
+
+	if topCells > 0 {
+		avgTopUx := topUxSum / float64(topCells)
+		t.Logf("Average Ux near freestream (y > 1.9): %.4f (expect near %.1f)", avgTopUx, Uin)
+		if avgTopUx < Uin*0.8 {
+			t.Errorf("Freestream velocity dropped too much! Domain may be too restricted.")
+		}
+	}
+
+	// Check convergence stalling
+	n := len(resHistory)
+	if n > 100 {
+		recent := resHistory[n-100]
+		final := resHistory[n-1]
+		ratio := final / recent
+		t.Logf("Residual ratio (last 100 iters): %.4f", ratio)
+		if ratio > 0.99 && final > 1e-4 {
+			t.Errorf("Solver stalled.")
+		}
+	}
+}
+
+//
 // CHT
 //
 

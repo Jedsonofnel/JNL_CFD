@@ -21,6 +21,7 @@ var cases = map[string]string{
 	"cavity":                "Lid-driven cavity flow (SIMPLE with convection)",
 	"developing-poiseuille": "Developing channel flow from a uniform inlet",
 	"cht-heated-block":      "Conjugate heat transfer over a heated block (SIMPLE_CHT)",
+	"forced-plate":          "Decoupled forced convection over a heated flat plate",
 }
 
 func main() {
@@ -62,6 +63,8 @@ func main() {
 		runDevelopingPoiseuille(*nCells, *gamma, *rho)
 	case "cht-heated-block":
 		runHeatedBlockCHT(*nCells)
+	case "forced-plate":
+		runForcedConvectionPlate(*nCells)
 	}
 }
 
@@ -205,6 +208,23 @@ func runDevelopingPoiseuille(nCells int, gamma, rho float64) {
 		output.Scalar{Name: "Uy", Values: result.Uy},
 		output.Scalar{Name: "p", Values: result.P},
 		output.Scalar{Name: "Ux_developed_analytical", Values: analytical},
+	)
+}
+
+func runForcedConvectionPlate(nCells int) {
+	Uin := 1.0
+	heatFlux := 5000.0 // W/m^2 injected from the bottom plate
+
+	fmt.Fprintf(os.Stderr, "Running Forced Convection over Flat Plate (%d cells)...\n", nCells)
+
+	result := fvm.CaseForcedConvectionPlate(nCells, Uin, heatFlux)
+
+	fmt.Fprintf(os.Stderr, "Hydrodynamics converged in %d iterations.\n", result.Iterations)
+
+	output.WriteVTK(os.Stdout, result.Mesh,
+		output.Scalar{Name: "p", Values: result.P},
+		output.Scalar{Name: "T", Values: result.T},
+		output.Vector{Name: "U", X: result.Ux, Y: result.Uy},
 	)
 }
 

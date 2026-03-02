@@ -355,8 +355,10 @@ func (sys *FVSystem) ResetSingularityCache() {
 // PinCell zeroes row/column for cellIdx, sets diag=1, rhs=value.
 func (sys *FVSystem) PinCell(cellIdx int, value float64) {
 	for k, conn := range sys.Matrix.conns {
-		if conn.Owner == int32(cellIdx) || conn.Neighbour == int32(cellIdx) {
+		if conn.Owner == int32(cellIdx) {
 			sys.Matrix.lower[k] = 0
+		}
+		if conn.Neighbour == int32(cellIdx) {
 			sys.Matrix.upper[k] = 0
 		}
 	}
@@ -366,13 +368,15 @@ func (sys *FVSystem) PinCell(cellIdx int, value float64) {
 
 // PinCells pins every cell in the list to value.
 func (sys *FVSystem) PinCells(cells []int, value float64) {
-	pinned := make(map[int32]bool, len(cells))
+	pinned := make(map[int32]bool, len(cells)) // TODO urgh remove allocation
 	for _, idx := range cells {
 		pinned[int32(idx)] = true
 	}
 	for k, conn := range sys.Matrix.conns {
-		if pinned[conn.Owner] || pinned[conn.Neighbour] {
+		if pinned[conn.Owner] {
 			sys.Matrix.lower[k] = 0
+		}
+		if pinned[conn.Neighbour] {
 			sys.Matrix.upper[k] = 0
 		}
 	}
