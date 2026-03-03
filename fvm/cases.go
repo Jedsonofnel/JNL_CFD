@@ -280,10 +280,17 @@ func CaseLidDrivenCavity(nCells int, Re float64) SIMPLEResult {
 // Developing Poiseuille Flow
 //
 
-func CaseDevelopingPoiseuille(nCells int, gamma, rho, Uin float64) SIMPLEResult {
+func CaseDevelopingPoiseuille(nCells int, Re float64) SIMPLEResult {
+	// Nondimensionalize by setting rho and Uin to 1.0
+	// and deriving gamma from the Reynolds number and channel height (H).
+	rho := 1.0
+	Uin := 1.0
+	H := 1.0
+	gamma := (rho * Uin * H) / Re
+
 	// L = 20, H = 1 to allow the parabolic profile to fully develop
 	db := geometry.DomainBuilder{}
-	db.AddPolygon(geometry.MakeRectangle(0, 0, 20, 1, "fluid", "south", "east", "north", "west"))
+	db.AddPolygon(geometry.MakeRectangle(0, 0, 20, H, "fluid", "south", "east", "north", "west"))
 	domain, _ := db.Build()
 	mesh, _ := geometry.MeshWithCells(domain, nCells, 30)
 
@@ -322,8 +329,12 @@ func CaseDevelopingPoiseuille(nCells int, gamma, rho, Uin float64) SIMPLEResult 
 	}
 
 	return SIMPLEResult{
-		Mesh: mesh, P: p, Ux: Ux, Uy: Uy,
-		Iterations: iters, FinalRes: finalRes,
+		Mesh:       mesh,
+		P:          p,
+		Ux:         Ux,
+		Uy:         Uy,
+		Iterations: iters,
+		FinalRes:   finalRes,
 	}
 }
 

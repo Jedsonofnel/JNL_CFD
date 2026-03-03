@@ -68,6 +68,12 @@ func NeumannConstBC(
 
 	for i, conn := range system.Matrix.conns {
 		if conn.Neighbour == boundaryMarker {
+			// Absorb pending operator coefficients: for zero-gradient,
+			// φ_face = φ_owner so the face-value term becomes implicit.
+			// Same decomposition as Dirichlet but both parts go to diagonal.
+			system.Matrix.diag[conn.Owner] +=
+				system.Matrix.upper[i] - system.Matrix.lower[i]
+
 			system.Rhs[conn.Owner] += flux * mesh.FaceAreas[i]
 		}
 	}

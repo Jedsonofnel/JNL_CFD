@@ -60,7 +60,7 @@ func main() {
 	case "cavity":
 		runCavity(*nCells, *re)
 	case "developing-poiseuille":
-		runDevelopingPoiseuille(*nCells, *gamma, *rho)
+		runDevelopingPoiseuille(*nCells, *re)
 	case "cht-heated-block":
 		runHeatedBlockCHT(*nCells)
 	case "forced-plate":
@@ -188,9 +188,9 @@ func runCavity(nCells int, Re float64) {
 	)
 }
 
-func runDevelopingPoiseuille(nCells int, gamma, rho float64) {
+func runDevelopingPoiseuille(nCells int, Re float64) {
 	Uin := 1.0
-	result := fvm.CaseDevelopingPoiseuille(nCells, gamma, rho, Uin)
+	result := fvm.CaseDevelopingPoiseuille(nCells, Re)
 	LogSIMPLEResult(result, "Developing Poiseuille")
 
 	// For a developed profile, mass conservation dictates U_max = 1.5 * U_avg in 2D

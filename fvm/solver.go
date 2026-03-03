@@ -82,8 +82,8 @@ func MakeSIMPLE(
 		SuExpr(UxSys, mesh, NegExpr(FieldExpr(gradPx)))
 		applyBCs(UxSys, mesh, uxBCs)
 
-		UxSys.UnderRelax(Ux, alphaU)
 		UxSys.CopyDiag(aPx)
+		UxSys.UnderRelax(Ux, alphaU)
 		UxSys.SolveBiCGSTAB(Ux, 1e-6, 1000)
 
 		// ── Y-Momentum ──
@@ -97,8 +97,8 @@ func MakeSIMPLE(
 		SuExpr(UySys, mesh, NegExpr(FieldExpr(gradPy)))
 		applyBCs(UySys, mesh, uyBCs)
 
-		UySys.UnderRelax(Uy, alphaU)
 		UySys.CopyDiag(aPy)
+		UySys.UnderRelax(Uy, alphaU)
 		UySys.SolveBiCGSTAB(Uy, 1e-6, 1000)
 
 		// ── Pressure correction ──
