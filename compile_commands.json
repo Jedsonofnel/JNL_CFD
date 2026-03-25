@@ -1,0 +1,38 @@
+[
+  {
+    "file": "src/base/jnl_arena.c",
+    "arguments": [
+      "gcc",
+      "-g",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-c",
+      "-o",
+      "build/jnl_arena.o",
+      "src/base/jnl_arena.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/jnl_arena.o"
+  },
+  {
+    "file": "src/main.c",
+    "arguments": [
+      "gcc",
+      "-g",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-c",
+      "-o",
+      "build/main.o",
+      "src/main.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/main.o"
+  }
+]
