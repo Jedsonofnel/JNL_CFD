@@ -71,6 +71,44 @@ static SCM scm_node_array_find_or_add(SCM obj, SCM x, SCM y, SCM marker,
 
 }
 
+static SCM scm_node_array_get(SCM obj, SCM idx)
+{
+	node_array *ns = scm_to_node_array(obj);
+	f64 nx, ny;
+	i32 result = node_array_get(ns, scm_to_uint32(idx), &nx, &ny);
+
+	scm_remember_upto_here_1(obj);
+
+	if (result == GEO_OOB) {
+		scm_out_of_range("node-array-get", idx);
+	}
+
+	return scm_list_2(scm_from_double(nx), scm_from_double(ny));
+}
+
+static SCM scm_node_array_write(SCM obj, SCM port)
+{
+	if (SCM_UNBNDP(port)) {
+		port = scm_current_output_port();
+	}
+
+	scm_flush(port);
+
+	int fd = scm_to_int(scm_fileno(port));
+	FILE *f = fdopen(fd, "w");
+	if (!f) {
+		scm_syserror("node-array-write");
+	}
+
+	node_array *ns = scm_to_node_array(obj);
+	node_array_write(f, ns);
+
+	fflush(f);
+
+	scm_remember_upto_here_1(obj);
+	return SCM_UNSPECIFIED;
+}
+
 //
 // PSLG integration
 //
@@ -127,6 +165,9 @@ void geo2d_guile_init(void)
 			   scm_node_array_find_nearest);
 	scm_c_define_gsubr("node-array-find-or-add", 5, 0, 0,
 			   scm_node_array_find_or_add);
+	scm_c_define_gsubr("node-array-get", 2, 0, 0, scm_node_array_get);
+	scm_c_define_gsubr("node-array-write", 1, 1, 0,
+			   scm_node_array_write);
 
 	// PSLG
 	name = scm_from_utf8_symbol("geo2d-pslg");
