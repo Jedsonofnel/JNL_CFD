@@ -24,7 +24,7 @@ void node_array_free(node_array *ns);
 
 u32 node_array_add(node_array *ns, f64 x, f64 y, i32 marker);
 i32 node_array_find_nearest(node_array *ns, f64 x, f64 y);
-u32 node_array_find_or_add(node_array *ns, f64 x, f64 y, f64 eps, i32 marker);
+u32 node_array_find_or_add(node_array *ns, f64 x, f64 y, i32 marker, f64 eps);
 i32 node_array_get(node_array *ns, u32 index, f64 *x_out, f64 *y_out);
 
 void node_array_write(FILE *file, const node_array *ns);
@@ -34,10 +34,20 @@ void node_array_write(FILE *file, const node_array *ns);
 //
 
 typedef struct pslg {
+  // nodes
   node_array nodes;
+  // edges
   u32 *ps, *qs;
-  i32 *markers;
+  i32 *emarkers;
   u32 elen, ecap;
+  // holes
+  f64 *holes;
+  u32 hlen, hcap;
+  // regions
+  f64 *rcoords;
+  i32 *rmarkers;
+  f64 *rareas;
+  u32 rlen, rcap;
 } pslg;
 
 void pslg_init(pslg *g);
@@ -45,14 +55,13 @@ void pslg_free(pslg *g);
 
 u32 pslg_node_add(pslg *g, f64 x, f64 y, i32 marker);
 i32 pslg_node_find_nearest(pslg *g, f64 x, f64 y);
-u32 pslg_node_find_or_add(pslg *g, f64 x, f64 y, f64 eps, i32 marker);
+u32 pslg_node_find_or_add(pslg *g, f64 x, f64 y, i32 marker, f64 eps);
 i32 pslg_node_get(pslg *g, u32 index, f64 *x_out, f64 *y_out);
 
 u32 pslg_edge_add(pslg *g, u32 p, u32 q, i32 marker);
-u32 pslg_poly_add(pslg *g, const f64 *xs, const f64 *ys, u32 n, i32 marker);
-u32 pslg_poly_add_edges(pslg *g, const u32 *idxs, u32 n, i32 marker);
+void pslg_hole_add(pslg *g, f64 x, f64 y);
+void pslg_region_add(pslg *g, f64 x, f64 y, i32 marker, f64 max_area);
 
-void pslg_validate(const pslg *g); // planarity check
 void pslg_write(FILE *file, const pslg *g);
 
 #endif

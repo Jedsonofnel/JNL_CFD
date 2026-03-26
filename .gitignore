@@ -1,6 +1,11 @@
 .do
 *.wasm
-bin
+bin/
+build/
+
+*.d
+*.o
+.DS_STORE
 
 # asset copying for production
 web/assets.go

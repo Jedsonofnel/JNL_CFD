@@ -1,23 +1,5 @@
 [
   {
-    "file": "src/base/jnl_arena.c",
-    "arguments": [
-      "gcc",
-      "-g",
-      "-Wall",
-      "-pedantic",
-      "-MMD",
-      "-MP",
-      "-Iinclude",
-      "-c",
-      "-o",
-      "build/jnl_arena.o",
-      "src/base/jnl_arena.c"
-    ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/jnl_arena.o"
-  },
-  {
     "file": "src/main.c",
     "arguments": [
       "gcc",
@@ -27,6 +9,8 @@
       "-MMD",
       "-MP",
       "-Iinclude",
+      "-I/usr/include/guile/3.0",
+      "-I/usr",
       "-c",
       "-o",
       "build/main.o",
@@ -34,5 +18,44 @@
     ],
     "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
     "output": "build/main.o"
+  },
+  {
+    "file": "src/geo2d.c",
+    "arguments": [
+      "gcc",
+      "-g",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-I/usr/include/guile/3.0",
+      "-I/usr",
+      "-c",
+      "-o",
+      "build/geo2d.o",
+      "src/geo2d.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/geo2d.o"
+  },
+  {
+    "file": "src/bindings/geo2d_guile.c",
+    "arguments": [
+      "gcc",
+      "-g",
+      "-Wall",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-I/usr/include/guile/3.0",
+      "-I/usr",
+      "-c",
+      "-o",
+      "build/bindings/geo2d_guile.o",
+      "src/bindings/geo2d_guile.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/bindings/geo2d_guile.o"
   }
 ]

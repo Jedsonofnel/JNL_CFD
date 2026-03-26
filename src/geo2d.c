@@ -5,6 +5,8 @@
 #include "jn/types.h"
 
 #define NODECAP_INIT (256)
+#define HOLECAP_INIT (10)
+#define REGIONCAP_INIT (10)
 
 //
 // Nodes implementation
@@ -71,8 +73,8 @@ i32 node_array_find_nearest(node_array *ns, f64 x, f64 y)
 	return mindex;
 }
 
-u32 node_array_find_or_add(node_array *ns, f64 x, f64 y, f64 eps,
-			   i32 marker)
+u32 node_array_find_or_add(node_array *ns, f64 x, f64 y, i32 marker,
+			   f64 eps)
 {
 	i32 idx = node_array_find_nearest(ns, x, y);
 	if (idx >= GEO_OK) {
@@ -114,7 +116,17 @@ void pslg_init(pslg *g)
 	g->elen = 0;
 	g->ps = malloc(g->ecap * sizeof(*g->ps));
 	g->qs = malloc(g->ecap * sizeof(*g->qs));
-	g->markers = malloc(g->ecap * sizeof(*g->markers));
+	g->emarkers = malloc(g->ecap * sizeof(*g->emarkers));
+
+	g->hcap = HOLECAP_INIT;
+	g->hlen = 0;
+	g->holes = malloc(g->hcap * sizeof(*g->holes));
+
+	g->rcap = REGIONCAP_INIT;
+	g->rlen = 0;
+	g->rcoords = malloc(g->rcap * 2 * sizeof(*g->rcoords));
+	g->rmarkers = malloc(g->rcap * sizeof(*g->rmarkers));
+	g->rareas = malloc(g->rcap * sizeof(*g->rareas));
 
 	node_array_init(&g->nodes);
 }
@@ -123,7 +135,13 @@ void pslg_free(pslg *g)
 {
 	free(g->ps);
 	free(g->qs);
-	free(g->markers);
+	free(g->emarkers);
+
+	free(g->holes);
+
+	free(g->rcoords);
+	free(g->rmarkers);
+	free(g->rareas);
 
 	node_array_free(&g->nodes);
 }
@@ -138,7 +156,7 @@ i32 pslg_node_find_nearest(pslg *g, f64 x, f64 y)
 	return node_array_find_nearest(&g->nodes, x, y);
 }
 
-u32 pslg_node_find_or_add(pslg *g, f64 x, f64 y, f64 eps, i32 marker)
+u32 pslg_node_find_or_add(pslg *g, f64 x, f64 y, i32 marker, f64 eps)
 {
 	return node_array_find_or_add(&g->nodes, x, y, eps, marker);
 }
@@ -154,30 +172,48 @@ u32 pslg_edge_add(pslg *g, u32 p, u32 q, i32 marker)
 		g->ecap *= 2;
 		g->ps = realloc(g->ps, g->ecap * sizeof(*g->ps));
 		g->qs = realloc(g->qs, g->ecap * sizeof(*g->qs));
-		g->markers =
-		    realloc(g->markers, g->ecap * sizeof(*g->markers));
+		g->emarkers =
+		    realloc(g->emarkers, g->ecap * sizeof(*g->emarkers));
 	}
 
 	g->ps[g->elen] = p;
 	g->qs[g->elen] = q;
-	g->markers[g->elen] = marker;
+	g->emarkers[g->elen] = marker;
 
 	return g->elen++;
 }
 
-u32 pslg_poly_add(pslg *g, const f64 *xs, const f64 *ys, u32 n, i32 marker)
+void pslg_hole_add(pslg *g, f64 x, f64 y)
 {
-	return 0;
+	if (g->hlen >= g->hcap) {
+		g->hcap *= 2;
+		g->holes = realloc(g->holes, g->hcap * sizeof(*g->holes));
+	}
+
+	g->holes[g->hlen * 2] = x;
+	g->holes[g->hlen * 2 + 1] = y;
+
+	g->hlen++;
 }
 
-u32 pslg_poly_add_edges(pslg *g, const u32 *idxs, u32 n, i32 marker)
+void pslg_region_add(pslg *g, f64 x, f64 y, i32 marker, f64 max_area)
 {
-	return 0;
-}
+	if (g->rlen >= g->rcap) {
+		g->rcap *= 2;
+		g->rcoords =
+		    realloc(g->rcoords, g->rcap * sizeof(*g->rcoords));
+		g->rmarkers =
+		    realloc(g->rmarkers, g->rcap * sizeof(*g->rmarkers));
+		g->rareas =
+		    realloc(g->rareas, g->rcap * sizeof(*g->rareas));
+	}
 
-void pslg_validate(const pslg *g)
-{
-	return;
+	g->rcoords[g->rlen * 2] = x;
+	g->rcoords[g->rlen * 2 + 1] = y;
+	g->rmarkers[g->rlen] = marker;
+	g->rareas[g->rlen] = max_area;
+
+	g->rlen++;
 }
 
 void pslg_write(FILE *file, const pslg *g)
