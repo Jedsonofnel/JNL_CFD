@@ -103,7 +103,12 @@ i32 node_array_get(node_array *ns, u32 index, f64 *x_out, f64 *y_out)
 
 void node_array_write(FILE *file, const node_array *ns)
 {
-	printf("HELLO FROM NODE ARRAY\n");
+	fprintf(file, "# Node array\n");
+	fprintf(file, "%d 2 0 1\n", ns->len);
+	for (u32 i = 0; i < ns->len; i++) {
+		fprintf(file, "%d %f %f %d\n", i, ns->coords[i * 2],
+			ns->coords[i * 2 + 1], ns->markers[i]);
+	}
 }
 
 //
@@ -183,20 +188,21 @@ u32 pslg_edge_add(pslg *g, u32 p, u32 q, i32 marker)
 	return g->elen++;
 }
 
-void pslg_hole_add(pslg *g, f64 x, f64 y)
+u32 pslg_hole_add(pslg *g, f64 x, f64 y)
 {
 	if (g->hlen >= g->hcap) {
 		g->hcap *= 2;
-		g->holes = realloc(g->holes, g->hcap * sizeof(*g->holes));
+		g->holes =
+		    realloc(g->holes, g->hcap * 2 * sizeof(*g->holes));
 	}
 
 	g->holes[g->hlen * 2] = x;
 	g->holes[g->hlen * 2 + 1] = y;
 
-	g->hlen++;
+	return g->hlen++;
 }
 
-void pslg_region_add(pslg *g, f64 x, f64 y, i32 marker, f64 max_area)
+u32 pslg_region_add(pslg *g, f64 x, f64 y, i32 marker, f64 max_area)
 {
 	if (g->rlen >= g->rcap) {
 		g->rcap *= 2;
@@ -213,10 +219,36 @@ void pslg_region_add(pslg *g, f64 x, f64 y, i32 marker, f64 max_area)
 	g->rmarkers[g->rlen] = marker;
 	g->rareas[g->rlen] = max_area;
 
-	g->rlen++;
+	return g->rlen++;
 }
 
 void pslg_write(FILE *file, const pslg *g)
 {
-	fprintf(file, "HELLO FROM PSLG\n");
+	node_array_write(file, &g->nodes);
+
+	fprintf(file, "# PSLG edges (segments)\n");
+	fprintf(file, "%d 1\n", g->elen);
+	for (u32 i = 0; i < g->elen; i++) {
+		fprintf(file, "%d %d %d %d\n", i, g->ps[i], g->qs[i],
+			g->emarkers[i]);
+	}
+
+	fprintf(file, "# PSLG holes\n");
+	fprintf(file, "%d\n", g->hlen);
+	for (u32 i = 0; i < g->hlen; i++) {
+		fprintf(file, "%d %f %f\n", i, g->holes[i * 2],
+			g->holes[i * 2 + 1]);
+	}
+
+	if (g->rlen == 0) {
+		return;
+	}
+
+	fprintf(file, "# PSLG regions (optional)\n");
+	fprintf(file, "%d\n", g->rlen);
+	for (u32 i = 0; i < g->rlen; i++) {
+		fprintf(file, "%d %f %f %d %f\n", i, g->rcoords[i * 2],
+			g->rcoords[i * 2 + 1], g->rmarkers[i],
+			g->rareas[i]);
+	}
 }

@@ -54,6 +54,12 @@ static SCM scm_node_array_find_nearest(SCM obj, SCM x, SCM y)
 	i32 idx = node_array_find_nearest(ns, scm_to_double(x),
 					  scm_to_double(y));
 	scm_remember_upto_here_1(obj);
+
+	if (idx == GEO_NOT_FOUND) {
+		scm_misc_error("node-array-find-nearest",
+			       "node array is empty", SCM_EOL);
+	}
+
 	return scm_from_int32(idx);
 }
 
@@ -133,6 +139,30 @@ static pslg *scm_to_pslg(SCM obj)
 	return scm_foreign_object_ref(obj, 0);
 }
 
+static SCM scm_pslg_nodes_len(SCM obj)
+{
+	pslg *g = scm_to_pslg(obj);
+	return scm_from_uint32(g->nodes.len);
+}
+
+static SCM scm_pslg_edges_len(SCM obj)
+{
+	pslg *g = scm_to_pslg(obj);
+	return scm_from_uint32(g->elen);
+}
+
+static SCM scm_pslg_holes_len(SCM obj)
+{
+	pslg *g = scm_to_pslg(obj);
+	return scm_from_uint32(g->hlen);
+}
+
+static SCM scm_pslg_regions_len(SCM obj)
+{
+	pslg *g = scm_to_pslg(obj);
+	return scm_from_uint32(g->rlen);
+}
+
 static SCM scm_pslg_node_add(SCM obj, SCM x, SCM y, SCM marker)
 {
 	pslg *g = scm_to_pslg(obj);
@@ -143,6 +173,100 @@ static SCM scm_pslg_node_add(SCM obj, SCM x, SCM y, SCM marker)
 	return scm_from_uint32(idx);
 }
 
+static SCM scm_pslg_node_find_nearest(SCM obj, SCM x, SCM y)
+{
+	pslg *g = scm_to_pslg(obj);
+	i32 idx = pslg_node_find_nearest(g, scm_to_double(x),
+					 scm_to_double(y));
+	scm_remember_upto_here_1(obj);
+
+	if (idx == GEO_NOT_FOUND) {
+		scm_misc_error("pslg-node-find-nearest",
+			       "pslg nodes is empty", SCM_EOL);
+	}
+
+	return scm_from_int32(idx);
+}
+
+static SCM scm_pslg_node_find_or_add(SCM obj, SCM x, SCM y, SCM marker,
+				     SCM eps)
+{
+	pslg *g = scm_to_pslg(obj);
+	u32 idx = pslg_node_find_or_add(g, scm_to_double(x),
+					scm_to_double(y),
+					scm_to_int32(marker),
+					scm_to_double(eps));
+	scm_remember_upto_here_1(obj);
+	return scm_from_uint32(idx);
+}
+
+static SCM scm_pslg_node_get(SCM obj, SCM idx)
+{
+	pslg *g = scm_to_pslg(obj);
+	f64 nx, ny;
+	i32 result = pslg_node_get(g, scm_to_uint32(idx), &nx, &ny);
+
+	scm_remember_upto_here_1(obj);
+
+	if (result == GEO_OOB) {
+		scm_out_of_range("pslg-node-get", idx);
+	}
+
+	return scm_list_2(scm_from_double(nx), scm_from_double(ny));
+}
+
+static SCM scm_pslg_edge_add(SCM obj, SCM p, SCM q, SCM marker)
+{
+	pslg *g = scm_to_pslg(obj);
+	u32 idx = pslg_edge_add(g, scm_to_uint32(p),
+				scm_to_uint32(q),
+				scm_to_int32(marker));
+	scm_remember_upto_here_1(obj);
+	return scm_from_uint32(idx);
+}
+
+static SCM scm_pslg_hole_add(SCM obj, SCM x, SCM y)
+{
+	pslg *g = scm_to_pslg(obj);
+	u32 idx = pslg_hole_add(g, scm_to_double(x), scm_to_double(y));
+	scm_remember_upto_here_1(obj);
+	return scm_from_uint32(idx);
+}
+
+static SCM scm_pslg_region_add(SCM obj, SCM x, SCM y, SCM marker,
+			       SCM max_area)
+{
+	pslg *g = scm_to_pslg(obj);
+	u32 idx = pslg_region_add(g, scm_to_double(x),
+				  scm_to_double(y),
+				  scm_to_int32(marker),
+				  scm_to_double(max_area));
+	scm_remember_upto_here_1(obj);
+	return scm_from_uint32(idx);
+}
+
+static SCM scm_pslg_write(SCM obj, SCM port)
+{
+	if (SCM_UNBNDP(port)) {
+		port = scm_current_output_port();
+	}
+
+	scm_flush(port);
+
+	int fd = scm_to_int(scm_fileno(port));
+	FILE *f = fdopen(fd, "w");
+	if (!f) {
+		scm_syserror("node-array-write");
+	}
+
+	pslg *g = scm_to_pslg(obj);
+	pslg_write(f, g);
+
+	fflush(f);
+
+	scm_remember_upto_here_1(obj);
+	return SCM_UNSPECIFIED;
+}
 
 //
 // The single exported function
@@ -176,9 +300,23 @@ void geo2d_guile_init(void)
 	guile_pslg_type =
 	    scm_make_foreign_object_type(name, slots, finalizer);
 
-	scm_c_define_gsubr("make-pslg", 0, 0, 0, (void *) scm_make_pslg);
-	scm_c_define_gsubr("pslg-add-node", 4, 0, 0,
-			   (void *) scm_pslg_node_add);
+	scm_c_define_gsubr("make-pslg", 0, 0, 0, scm_make_pslg);
+	scm_c_define_gsubr("pslg-nodes-len", 0, 0, 0, scm_pslg_nodes_len);
+	scm_c_define_gsubr("pslg-edges-len", 0, 0, 0, scm_pslg_edges_len);
+	scm_c_define_gsubr("pslg-holes-len", 0, 0, 0, scm_pslg_holes_len);
+	scm_c_define_gsubr("pslg-regions-len", 0, 0, 0,
+			   scm_pslg_regions_len);
+	scm_c_define_gsubr("pslg-node-add", 4, 0, 0, scm_pslg_node_add);
+	scm_c_define_gsubr("pslg-node-find-nearest", 3, 0, 0,
+			   scm_pslg_node_find_nearest);
+	scm_c_define_gsubr("pslg-node-find-or-add", 5, 0, 0,
+			   scm_pslg_node_find_or_add);
+	scm_c_define_gsubr("pslg-node-get", 2, 0, 0, scm_pslg_node_get);
+	scm_c_define_gsubr("pslg-edge-add", 4, 0, 0, scm_pslg_edge_add);
+	scm_c_define_gsubr("pslg-hole-add", 3, 0, 0, scm_pslg_hole_add);
+	scm_c_define_gsubr("pslg-region-add", 5, 0, 0,
+			   scm_pslg_region_add);
+	scm_c_define_gsubr("pslg-write", 1, 1, 0, scm_pslg_write);
 
 	return;
 }

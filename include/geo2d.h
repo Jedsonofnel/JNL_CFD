@@ -59,8 +59,8 @@ u32 pslg_node_find_or_add(pslg *g, f64 x, f64 y, i32 marker, f64 eps);
 i32 pslg_node_get(pslg *g, u32 index, f64 *x_out, f64 *y_out);
 
 u32 pslg_edge_add(pslg *g, u32 p, u32 q, i32 marker);
-void pslg_hole_add(pslg *g, f64 x, f64 y);
-void pslg_region_add(pslg *g, f64 x, f64 y, i32 marker, f64 max_area);
+u32 pslg_hole_add(pslg *g, f64 x, f64 y);
+u32 pslg_region_add(pslg *g, f64 x, f64 y, i32 marker, f64 max_area);
 
 void pslg_write(FILE *file, const pslg *g);
 
