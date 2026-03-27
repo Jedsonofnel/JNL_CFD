@@ -9,6 +9,7 @@
       "-MMD",
       "-MP",
       "-Iinclude",
+      "-Ibuild",
       "-I/usr/include/guile/3.0",
       "-I/usr",
       "-c",
@@ -29,6 +30,7 @@
       "-MMD",
       "-MP",
       "-Iinclude",
+      "-Ibuild",
       "-I/usr/include/guile/3.0",
       "-I/usr",
       "-c",
@@ -40,6 +42,26 @@
     "output": "build/geo2d.o"
   },
   {
+    "file": "src/bindings/guile.c",
+    "arguments": [
+      "gcc",
+      "-g",
+      "-Wall",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ibuild",
+      "-I/usr/include/guile/3.0",
+      "-I/usr",
+      "-c",
+      "-o",
+      "build/bindings/guile.o",
+      "src/bindings/guile.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/bindings/guile.o"
+  },
+  {
     "file": "src/bindings/geo2d_guile.c",
     "arguments": [
       "gcc",
@@ -48,6 +70,7 @@
       "-MMD",
       "-MP",
       "-Iinclude",
+      "-Ibuild",
       "-I/usr/include/guile/3.0",
       "-I/usr",
       "-c",

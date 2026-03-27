@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-#include "jn/types.h"
+#include "jnl/types.h"
 
 #define GEO_NOT_FOUND (-1)
 #define GEO_OOB (-2)
@@ -13,29 +13,38 @@
 // Nodes API
 //
 
-typedef struct node_array {
+struct jnl_node_array {
   f64 *coords;
   i32 *markers;
   u32 len, cap;
-} node_array;
+};
 
-void node_array_init(node_array *ns);
-void node_array_free(node_array *ns);
+struct jnl_aabb {
+  f64 max_x, max_y;
+  f64 min_x, min_y;
+};
 
-u32 node_array_add(node_array *ns, f64 x, f64 y, i32 marker);
-i32 node_array_find_nearest(node_array *ns, f64 x, f64 y);
-u32 node_array_find_or_add(node_array *ns, f64 x, f64 y, i32 marker, f64 eps);
-i32 node_array_get(node_array *ns, u32 index, f64 *x_out, f64 *y_out);
+void jnl_node_array_init(struct jnl_node_array *ns);
+void jnl_node_array_free(struct jnl_node_array *ns);
 
-void node_array_write(FILE *file, const node_array *ns);
+u32 jnl_node_array_add(struct jnl_node_array *ns, f64 x, f64 y, i32 marker);
+i32 jnl_node_array_find_nearest(struct jnl_node_array *ns, f64 x, f64 y);
+u32 jnl_node_array_find_or_add(struct jnl_node_array *ns, f64 x, f64 y,
+                               i32 marker, f64 eps);
+i32 jnl_node_array_get(struct jnl_node_array *ns, u32 index, f64 *x_out,
+                       f64 *y_out);
+
+struct jnl_aabb jnl_node_array_bbox(const struct jnl_node_array *ns);
+
+void jnl_node_array_write(const struct jnl_node_array *ns, FILE *file);
 
 //
 // PSLG API
 //
 
-typedef struct pslg {
+struct jnl_pslg {
   // nodes
-  node_array nodes;
+  struct jnl_node_array nodes;
   // edges
   u32 *ps, *qs;
   i32 *emarkers;
@@ -48,20 +57,24 @@ typedef struct pslg {
   i32 *rmarkers;
   f64 *rareas;
   u32 rlen, rcap;
-} pslg;
+};
 
-void pslg_init(pslg *g);
-void pslg_free(pslg *g);
+void jnl_pslg_init(struct jnl_pslg *g);
+void jnl_pslg_free(struct jnl_pslg *g);
 
-u32 pslg_node_add(pslg *g, f64 x, f64 y, i32 marker);
-i32 pslg_node_find_nearest(pslg *g, f64 x, f64 y);
-u32 pslg_node_find_or_add(pslg *g, f64 x, f64 y, i32 marker, f64 eps);
-i32 pslg_node_get(pslg *g, u32 index, f64 *x_out, f64 *y_out);
+u32 jnl_pslg_node_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker);
+i32 jnl_pslg_node_find_nearest(struct jnl_pslg *g, f64 x, f64 y);
+u32 jnl_pslg_node_find_or_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
+                              f64 eps);
+i32 jnl_pslg_node_get(struct jnl_pslg *g, u32 index, f64 *x_out, f64 *y_out);
 
-u32 pslg_edge_add(pslg *g, u32 p, u32 q, i32 marker);
-u32 pslg_hole_add(pslg *g, f64 x, f64 y);
-u32 pslg_region_add(pslg *g, f64 x, f64 y, i32 marker, f64 max_area);
+u32 jnl_pslg_edge_add(struct jnl_pslg *g, u32 p, u32 q, i32 marker);
+u32 jnl_pslg_hole_add(struct jnl_pslg *g, f64 x, f64 y);
+u32 jnl_pslg_region_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
+                        f64 max_area);
 
-void pslg_write(FILE *file, const pslg *g);
+struct jnl_aabb jnl_pslg_bbox(const struct jnl_pslg *ns);
+
+void jnl_pslg_write(const struct jnl_pslg *g, FILE *file);
 
 #endif

@@ -1,5 +1,5 @@
-#ifndef JN_TYPES_H
-#define JN_TYPES_H
+#ifndef JNL_TYPES_H
+#define JNL_TYPES_H
 
 #include <stdbool.h>
 #include <stddef.h>
