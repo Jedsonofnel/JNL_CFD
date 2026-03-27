@@ -7,6 +7,7 @@
             node-array-find-nearest
             node-array-find-or-add
             node-array-get
+            node-array-bbox
             node-array-write
             ;; PSLG
             make-pslg
@@ -21,6 +22,7 @@
             pslg-edge-add
             pslg-hole-add
             pslg-region-add
+            pslg-bbox
             pslg-write))
 
 (define (my-fancy-helper)

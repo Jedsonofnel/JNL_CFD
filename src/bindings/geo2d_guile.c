@@ -92,6 +92,17 @@ static SCM scm_jnl_node_array_get(SCM obj, SCM idx)
 	return scm_list_2(scm_from_double(nx), scm_from_double(ny));
 }
 
+static SCM scm_jnl_node_array_bbox(SCM obj)
+{
+	struct jnl_node_array *ns = scm_to_jnl_node_array(obj);
+	struct jnl_aabb bbox = jnl_node_array_bbox(ns);
+	scm_remember_upto_here_1(obj);
+	return scm_list_2(scm_list_2(scm_from_double(bbox.min_x),
+				     scm_from_double(bbox.min_y)),
+			  scm_list_2(scm_from_double(bbox.max_x),
+				     scm_from_double(bbox.max_y)));
+}
+
 static SCM scm_jnl_node_array_write(SCM obj, SCM port)
 {
 	if (SCM_UNBNDP(port)) {
@@ -245,6 +256,17 @@ static SCM scm_jnl_pslg_region_add(SCM obj, SCM x, SCM y, SCM marker,
 	return scm_from_uint32(idx);
 }
 
+static SCM scm_jnl_pslg_bbox(SCM obj)
+{
+	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
+	struct jnl_aabb bbox = jnl_pslg_bbox(g);
+	scm_remember_upto_here_1(obj);
+	return scm_list_2(scm_list_2(scm_from_double(bbox.min_x),
+				     scm_from_double(bbox.min_y)),
+			  scm_list_2(scm_from_double(bbox.max_x),
+				     scm_from_double(bbox.max_y)));
+}
+
 static SCM scm_jnl_pslg_write(SCM obj, SCM port)
 {
 	if (SCM_UNBNDP(port)) {
@@ -293,6 +315,8 @@ void geo2d_guile_init(void)
 			   scm_jnl_node_array_find_or_add);
 	scm_c_define_gsubr("node-array-get", 2, 0, 0,
 			   scm_jnl_node_array_get);
+	scm_c_define_gsubr("node-array-bbox", 1, 0, 0,
+			   scm_jnl_node_array_bbox);
 	scm_c_define_gsubr("node-array-write", 1, 1, 0,
 			   scm_jnl_node_array_write);
 
@@ -303,30 +327,31 @@ void geo2d_guile_init(void)
 	guile_jnl_pslg_type =
 	    scm_make_foreign_object_type(name, slots, finalizer);
 
-	scm_c_define_gsubr("make-jnl_pslg", 0, 0, 0, scm_make_jnl_pslg);
-	scm_c_define_gsubr("jnl_pslg-nodes-len", 0, 0, 0,
+	scm_c_define_gsubr("make-pslg", 0, 0, 0, scm_make_jnl_pslg);
+	scm_c_define_gsubr("pslg-nodes-len", 0, 0, 0,
 			   scm_jnl_pslg_nodes_len);
-	scm_c_define_gsubr("jnl_pslg-edges-len", 0, 0, 0,
+	scm_c_define_gsubr("pslg-edges-len", 0, 0, 0,
 			   scm_jnl_pslg_edges_len);
-	scm_c_define_gsubr("jnl_pslg-holes-len", 0, 0, 0,
+	scm_c_define_gsubr("pslg-holes-len", 0, 0, 0,
 			   scm_jnl_pslg_holes_len);
-	scm_c_define_gsubr("jnl_pslg-regions-len", 0, 0, 0,
+	scm_c_define_gsubr("pslg-regions-len", 0, 0, 0,
 			   scm_jnl_pslg_regions_len);
-	scm_c_define_gsubr("jnl_pslg-node-add", 4, 0, 0,
+	scm_c_define_gsubr("pslg-node-add", 4, 0, 0,
 			   scm_jnl_pslg_node_add);
-	scm_c_define_gsubr("jnl_pslg-node-find-nearest", 3, 0, 0,
+	scm_c_define_gsubr("pslg-node-find-nearest", 3, 0, 0,
 			   scm_jnl_pslg_node_find_nearest);
-	scm_c_define_gsubr("jnl_pslg-node-find-or-add", 5, 0, 0,
+	scm_c_define_gsubr("pslg-node-find-or-add", 5, 0, 0,
 			   scm_jnl_pslg_node_find_or_add);
-	scm_c_define_gsubr("jnl_pslg-node-get", 2, 0, 0,
+	scm_c_define_gsubr("pslg-node-get", 2, 0, 0,
 			   scm_jnl_pslg_node_get);
-	scm_c_define_gsubr("jnl_pslg-edge-add", 4, 0, 0,
+	scm_c_define_gsubr("pslg-edge-add", 4, 0, 0,
 			   scm_jnl_pslg_edge_add);
-	scm_c_define_gsubr("jnl_pslg-hole-add", 3, 0, 0,
+	scm_c_define_gsubr("pslg-hole-add", 3, 0, 0,
 			   scm_jnl_pslg_hole_add);
-	scm_c_define_gsubr("jnl_pslg-region-add", 5, 0, 0,
+	scm_c_define_gsubr("pslg-region-add", 5, 0, 0,
 			   scm_jnl_pslg_region_add);
-	scm_c_define_gsubr("jnl_pslg-write", 1, 1, 0, scm_jnl_pslg_write);
+	scm_c_define_gsubr("pslg-bbox", 1, 0, 0, scm_jnl_pslg_bbox);
+	scm_c_define_gsubr("pslg-write", 1, 1, 0, scm_jnl_pslg_write);
 
 	return;
 }
