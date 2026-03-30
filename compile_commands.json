@@ -1,5 +1,26 @@
 [
   {
+    "file": "src/ui.c",
+    "arguments": [
+      "gcc",
+      "-g",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ibuild",
+      "-I/usr/include/guile/3.0",
+      "-I/usr",
+      "-c",
+      "-o",
+      "build/ui.o",
+      "src/ui.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/ui.o"
+  },
+  {
     "file": "src/main.c",
     "arguments": [
       "gcc",

@@ -9,7 +9,7 @@ CC = gcc
 CFLAGS := -g -Wall -pedantic -MMD -MP -I$(HDIR) -I$(OBJDIR) \
 			$(shell guile-config compile)
 CFLAGS_BINDINGS = $(filter-out -pedantic, $(CFLAGS))
-LDFLAGS := $(shell guile-config link)
+LDFLAGS := $(shell guile-config link) -lraylib
 
 # artefact vars
 BIN = $(BINDIR)/cli
