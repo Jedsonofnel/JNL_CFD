@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "geo2d.h"
 #include "jnl/types.h"
@@ -7,6 +8,53 @@
 #define NODECAP_INIT (256)
 #define HOLECAP_INIT (10)
 #define REGIONCAP_INIT (10)
+
+//
+// Vector Implementation
+//
+
+jnl_vec2d jnl_vec2d_add(jnl_vec2d a, jnl_vec2d b)
+{
+	return (jnl_vec2d){
+	    .x = a.x + b.x,
+	    .y = a.y + b.y,
+	};
+}
+
+jnl_vec2d jnl_vec2d_sub(jnl_vec2d a, jnl_vec2d b)
+{
+	return (jnl_vec2d){
+	    .x = a.x - b.x,
+	    .y = a.y - b.y,
+	};
+}
+
+jnl_vec2d jnl_vec2d_scale(jnl_vec2d a, f64 s)
+{
+	return (jnl_vec2d){
+	    .x = a.x * s,
+	    .y = a.y * s,
+	};
+}
+
+jnl_vec2d jnl_vec2d_normalise(jnl_vec2d a)
+{
+	return jnl_vec2d_scale(a, 1.0 / jnl_vec2d_len(a));
+}
+
+f64 jnl_vec2d_len(jnl_vec2d a) { return sqrt(jnl_vec2d_dist_sq(a)); }
+
+f64 jnl_vec2d_dist_sq(jnl_vec2d a) { return (a.x * a.x) + (a.y * a.y); }
+
+f64 jnl_vec2d_dot(jnl_vec2d a, jnl_vec2d b)
+{
+	return (a.x * b.x) + (b.x * b.y);
+}
+
+f64 jnl_vec2d_cross(jnl_vec2d a, jnl_vec2d b)
+{
+	return (a.x * b.y) - (a.y * b.x);
+}
 
 //
 // Nodes implementation
@@ -30,38 +78,36 @@ u32 jnl_node_array_add(struct jnl_node_array *ns, f64 x, f64 y, i32 marker)
 {
 	if (ns->len >= ns->cap) {
 		ns->cap *= 2;
-		ns->coords =
-		    realloc(ns->coords, ns->cap * 2 * sizeof(*ns->coords));
-		ns->markers =
-		    realloc(ns->markers, ns->cap * sizeof(*ns->markers));
+		ns->coords = realloc(ns->coords, ns->cap * sizeof(*ns->coords));
+		ns->markers = realloc(ns->markers, ns->cap * sizeof(*ns->markers));
 	}
 
-	ns->coords[ns->len * 2] = x;
-	ns->coords[ns->len * 2 + 1] = y;
+	ns->coords[ns->len].x = x;
+	ns->coords[ns->len].y = y;
 	ns->markers[ns->len] = marker;
 
 	return ns->len++;
 }
 
-i32 jnl_node_array_find_nearest(struct jnl_node_array *ns, f64 x, f64 y)
+i32 jnl_node_array_find_nearest(const struct jnl_node_array *ns, f64 x, f64 y)
 {
 	if (ns->len == 0) {
 		return GEO_NOT_FOUND;
 	} else if (ns->len == 1) {
-		return 0;	// ie the index of the first
+		return 0; // ie the index of the first
 	}
 
 	u32 mindex = 0;
 	f64 dist_sq, mindist_sq, dx, dy = 0.0;
 
 	// Using first node for initial minimum
-	dx = (ns->coords[0] - x), dy = (ns->coords[1] - y);
+	dx = (ns->coords[0].x - x), dy = (ns->coords[0].y - y);
 	mindist_sq = (dx * dx) + (dy * dy);
 
 	// Naive O(n) sweep
 	for (u32 i = 1; i < ns->len; i++) {
-		dx = (ns->coords[i * 2] - x);
-		dy = (ns->coords[i * 2 + 1] - y);
+		dx = (ns->coords[i].x - x);
+		dy = (ns->coords[i].y - y);
 
 		dist_sq = dx * dx + dy * dy;
 		if (dist_sq < mindist_sq) {
@@ -74,37 +120,36 @@ i32 jnl_node_array_find_nearest(struct jnl_node_array *ns, f64 x, f64 y)
 }
 
 u32 jnl_node_array_find_or_add(struct jnl_node_array *ns, f64 x, f64 y,
-			       i32 marker, f64 eps)
+                               i32 marker, f64 eps)
 {
 	i32 idx = jnl_node_array_find_nearest(ns, x, y);
 	if (idx >= GEO_OK) {
-		f64 nx, ny;
-		jnl_node_array_get(ns, (u32) idx, &nx, &ny);
-		f64 dx = nx - x, dy = ny - y;
+		jnl_vec2d out;
+		jnl_node_array_get(ns, (u32)idx, &out);
+		f64 dx = out.x - x, dy = out.y - y;
 		if (dx * dx + dy * dy <= eps * eps) {
-			return (u32) idx;
+			return (u32)idx;
 		}
 	}
 
 	return jnl_node_array_add(ns, x, y, marker);
 }
 
-i32 jnl_node_array_get(struct jnl_node_array *ns, u32 index, f64 *x_out,
-		       f64 *y_out)
+i32 jnl_node_array_get(const struct jnl_node_array *ns, u32 index,
+                       jnl_vec2d *out)
 {
 	if (index >= ns->len) {
 		return GEO_OOB;
 	}
 
-	*x_out = ns->coords[index * 2];
-	*y_out = ns->coords[index * 2 + 1];
+	*out = ns->coords[index];
 
 	return GEO_OK;
 }
 
 struct jnl_aabb jnl_node_array_bbox(const struct jnl_node_array *ns)
 {
-	struct jnl_aabb box = { 0 };
+	struct jnl_aabb box = {0};
 	if (ns->len == 0) {
 		return box;
 	}
@@ -112,18 +157,18 @@ struct jnl_aabb jnl_node_array_bbox(const struct jnl_node_array *ns)
 	u32 i = 0;
 
 	if (ns->len % 2 != 0) {
-		box.max_x = ns->coords[0], box.max_y = ns->coords[1];
-		box.min_x = ns->coords[0], box.min_y = ns->coords[1];
+		box.max_x = ns->coords[0].x, box.max_y = ns->coords[0].y;
+		box.min_x = ns->coords[0].x, box.min_y = ns->coords[0].y;
 		i++;
 	}
 
 	f64 x1, y1, x2, y2;
 
 	for (; i < ns->len; i += 2) {
-		x1 = ns->coords[i * 2];
-		x2 = ns->coords[(i + 1) * 2];
-		y1 = ns->coords[(i * 2) + 1];
-		y2 = ns->coords[((i + 1) * 2) + 1];
+		x1 = ns->coords[i].x;
+		x2 = ns->coords[i + 1].x;
+		y1 = ns->coords[i].y;
+		y2 = ns->coords[i + 1].y;
 
 		// x tournament
 		if (x1 > x2) {
@@ -157,10 +202,58 @@ void jnl_node_array_write(const struct jnl_node_array *ns, FILE *file)
 	}
 
 	for (u32 i = 0; i < ns->len; i++) {
-		fprintf(file, "%d %f %f %d\n", i, ns->coords[i * 2],
-			ns->coords[i * 2 + 1], ns->markers[i]);
+		fprintf(file, "%d %f %f %d\n", i, ns->coords[i].x, ns->coords[i].y,
+		        ns->markers[i]);
+	}
+}
+
+//
+// Edges API
+//
+
+void jnl_edge_array_init(struct jnl_edge_array *es)
+{
+	es->cap = NODECAP_INIT;
+	es->len = 0;
+	es->ps = malloc(es->cap * sizeof(*es->ps));
+	es->qs = malloc(es->cap * sizeof(*es->qs));
+	es->markers = malloc(es->cap * sizeof(*es->markers));
+}
+
+void jnl_edge_array_free(struct jnl_edge_array *es)
+{
+	free(es->ps);
+	free(es->qs);
+	free(es->markers);
+}
+
+u32 jnl_edge_array_add(struct jnl_edge_array *es, u32 p, u32 q, i32 marker)
+{
+	if (es->len >= es->cap) {
+		es->cap *= 2;
+		es->ps = realloc(es->ps, es->cap * sizeof(*es->ps));
+		es->qs = realloc(es->qs, es->cap * sizeof(*es->qs));
+		es->markers = realloc(es->markers, es->cap * sizeof(*es->markers));
 	}
 
+	es->ps[es->len] = p;
+	es->qs[es->len] = q;
+	es->markers[es->len] = marker;
+
+	return es->len++;
+}
+
+void jnl_edge_array_write(const struct jnl_edge_array *es, FILE *file)
+{
+	fprintf(file, "# Edges array (segments)\n");
+	fprintf(file, "%d 1\n", es->len);
+	for (u32 i = 0; i < es->len; i++) {
+		fprintf(file, "%d %d %d %d\n", i, es->ps[i], es->qs[i], es->markers[i]);
+	}
+
+	if (es->len == 0) {
+		fprintf(file, "# No edges present\n");
+	}
 }
 
 //
@@ -169,11 +262,8 @@ void jnl_node_array_write(const struct jnl_node_array *ns, FILE *file)
 
 void jnl_pslg_init(struct jnl_pslg *g)
 {
-	g->ecap = NODECAP_INIT;
-	g->elen = 0;
-	g->ps = malloc(g->ecap * sizeof(*g->ps));
-	g->qs = malloc(g->ecap * sizeof(*g->qs));
-	g->emarkers = malloc(g->ecap * sizeof(*g->emarkers));
+	jnl_node_array_init(&g->nodes);
+	jnl_edge_array_init(&g->edges);
 
 	g->hcap = HOLECAP_INIT;
 	g->hlen = 0;
@@ -181,19 +271,13 @@ void jnl_pslg_init(struct jnl_pslg *g)
 
 	g->rcap = REGIONCAP_INIT;
 	g->rlen = 0;
-	g->rcoords = malloc(g->rcap * 2 * sizeof(*g->rcoords));
+	g->rcoords = malloc(g->rcap * sizeof(*g->rcoords));
 	g->rmarkers = malloc(g->rcap * sizeof(*g->rmarkers));
 	g->rareas = malloc(g->rcap * sizeof(*g->rareas));
-
-	jnl_node_array_init(&g->nodes);
 }
 
 void jnl_pslg_free(struct jnl_pslg *g)
 {
-	free(g->ps);
-	free(g->qs);
-	free(g->emarkers);
-
 	free(g->holes);
 
 	free(g->rcoords);
@@ -208,69 +292,52 @@ u32 jnl_pslg_node_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker)
 	return jnl_node_array_add(&g->nodes, x, y, marker);
 }
 
-i32 jnl_pslg_node_find_nearest(struct jnl_pslg *g, f64 x, f64 y)
+i32 jnl_pslg_node_find_nearest(const struct jnl_pslg *g, f64 x, f64 y)
 {
 	return jnl_node_array_find_nearest(&g->nodes, x, y);
 }
 
 u32 jnl_pslg_node_find_or_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
-			      f64 eps)
+                              f64 eps)
 {
-	return jnl_node_array_find_or_add(&g->nodes, x, y, eps, marker);
+	return jnl_node_array_find_or_add(&g->nodes, x, y, marker, eps);
 }
 
-i32 jnl_pslg_node_get(struct jnl_pslg *g, u32 index, f64 *x_out,
-		      f64 *y_out)
+i32 jnl_pslg_node_get(const struct jnl_pslg *g, u32 index, jnl_vec2d *out)
 {
-	return jnl_node_array_get(&g->nodes, index, x_out, y_out);
+	return jnl_node_array_get(&g->nodes, index, out);
 }
 
 u32 jnl_pslg_edge_add(struct jnl_pslg *g, u32 p, u32 q, i32 marker)
 {
-	if (g->elen >= g->ecap) {
-		g->ecap *= 2;
-		g->ps = realloc(g->ps, g->ecap * sizeof(*g->ps));
-		g->qs = realloc(g->qs, g->ecap * sizeof(*g->qs));
-		g->emarkers =
-		    realloc(g->emarkers, g->ecap * sizeof(*g->emarkers));
-	}
-
-	g->ps[g->elen] = p;
-	g->qs[g->elen] = q;
-	g->emarkers[g->elen] = marker;
-
-	return g->elen++;
+	return jnl_edge_array_add(&g->edges, p, q, marker);
 }
 
 u32 jnl_pslg_hole_add(struct jnl_pslg *g, f64 x, f64 y)
 {
 	if (g->hlen >= g->hcap) {
 		g->hcap *= 2;
-		g->holes =
-		    realloc(g->holes, g->hcap * 2 * sizeof(*g->holes));
+		g->holes = realloc(g->holes, g->hcap * sizeof(*g->holes));
 	}
 
-	g->holes[g->hlen * 2] = x;
-	g->holes[g->hlen * 2 + 1] = y;
+	g->holes[g->hlen].x = x;
+	g->holes[g->hlen].y = y;
 
 	return g->hlen++;
 }
 
 u32 jnl_pslg_region_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
-			f64 max_area)
+                        f64 max_area)
 {
 	if (g->rlen >= g->rcap) {
 		g->rcap *= 2;
-		g->rcoords =
-		    realloc(g->rcoords, g->rcap * sizeof(*g->rcoords));
-		g->rmarkers =
-		    realloc(g->rmarkers, g->rcap * sizeof(*g->rmarkers));
-		g->rareas =
-		    realloc(g->rareas, g->rcap * sizeof(*g->rareas));
+		g->rcoords = realloc(g->rcoords, g->rcap * sizeof(*g->rcoords));
+		g->rmarkers = realloc(g->rmarkers, g->rcap * sizeof(*g->rmarkers));
+		g->rareas = realloc(g->rareas, g->rcap * sizeof(*g->rareas));
 	}
 
-	g->rcoords[g->rlen * 2] = x;
-	g->rcoords[g->rlen * 2 + 1] = y;
+	g->rcoords[g->rlen].x = x;
+	g->rcoords[g->rlen].y = y;
 	g->rmarkers[g->rlen] = marker;
 	g->rareas[g->rlen] = max_area;
 
@@ -286,25 +353,14 @@ void jnl_pslg_write(const struct jnl_pslg *g, FILE *file)
 {
 	jnl_node_array_write(&g->nodes, file);
 
-	fprintf(file, "# PSLG edges (segments)\n");
-	fprintf(file, "%d 1\n", g->elen);
-	for (u32 i = 0; i < g->elen; i++) {
-		fprintf(file, "%d %d %d %d\n", i, g->ps[i], g->qs[i],
-			g->emarkers[i]);
-	}
-
-	if (g->elen == 0) {
-		fprintf(file, "# No edges present\n");
-	}
-
 	fprintf(file, "# PSLG holes\n");
 	fprintf(file, "%d\n", g->hlen);
 	for (u32 i = 0; i < g->hlen; i++) {
-		fprintf(file, "%d %f %f\n", i, g->holes[i * 2],
-			g->holes[i * 2 + 1]);
+		jnl_vec2d vec = g->holes[i];
+		fprintf(file, "%d %f %f\n", i, vec.x, vec.y);
 	}
 
-	if (g->elen == 0) {
+	if (g->hlen == 0) {
 		fprintf(file, "# No holes present\n");
 	}
 
@@ -315,8 +371,8 @@ void jnl_pslg_write(const struct jnl_pslg *g, FILE *file)
 	fprintf(file, "# PSLG regions (optional)\n");
 	fprintf(file, "%d\n", g->rlen);
 	for (u32 i = 0; i < g->rlen; i++) {
-		fprintf(file, "%d %f %f %d %f\n", i, g->rcoords[i * 2],
-			g->rcoords[i * 2 + 1], g->rmarkers[i],
-			g->rareas[i]);
+		jnl_vec2d vec = g->holes[i];
+		fprintf(file, "%d %f %f %d %f\n", i, vec.x, vec.y, g->rmarkers[i],
+		        g->rareas[i]);
 	}
 }

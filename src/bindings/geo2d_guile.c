@@ -40,9 +40,8 @@ static SCM scm_jnl_node_array_len(SCM obj)
 static SCM scm_jnl_node_array_add(SCM obj, SCM x, SCM y, SCM marker)
 {
 	struct jnl_node_array *ns = scm_to_jnl_node_array(obj);
-	u32 idx = jnl_node_array_add(ns, scm_to_double(x),
-				     scm_to_double(y),
-				     scm_to_int32(marker));
+	u32 idx = jnl_node_array_add(ns, scm_to_double(x), scm_to_double(y),
+	                             scm_to_int32(marker));
 
 	scm_remember_upto_here_1(obj);
 	return scm_from_uint32(idx);
@@ -51,37 +50,35 @@ static SCM scm_jnl_node_array_add(SCM obj, SCM x, SCM y, SCM marker)
 static SCM scm_jnl_node_array_find_nearest(SCM obj, SCM x, SCM y)
 {
 	struct jnl_node_array *ns = scm_to_jnl_node_array(obj);
-	i32 idx = jnl_node_array_find_nearest(ns, scm_to_double(x),
-					      scm_to_double(y));
+	i32 idx =
+	    jnl_node_array_find_nearest(ns, scm_to_double(x), scm_to_double(y));
 	scm_remember_upto_here_1(obj);
 
 	if (idx == GEO_NOT_FOUND) {
-		scm_misc_error("node-array-find-nearest",
-			       "node array is empty", SCM_EOL);
+		scm_misc_error("node-array-find-nearest", "node array is empty",
+		               SCM_EOL);
 	}
 
 	return scm_from_int32(idx);
 }
 
-static SCM scm_jnl_node_array_find_or_add(SCM obj, SCM x, SCM y,
-					  SCM marker, SCM eps)
+static SCM scm_jnl_node_array_find_or_add(SCM obj, SCM x, SCM y, SCM marker,
+                                          SCM eps)
 {
 	struct jnl_node_array *ns = scm_to_jnl_node_array(obj);
-	u32 idx = jnl_node_array_find_or_add(ns, scm_to_double(x),
-					     scm_to_double(y),
-					     scm_to_int32(marker),
-					     scm_to_double(eps));
+	u32 idx =
+	    jnl_node_array_find_or_add(ns, scm_to_double(x), scm_to_double(y),
+	                               scm_to_int32(marker), scm_to_double(eps));
 
 	scm_remember_upto_here_1(obj);
 	return scm_from_uint32(idx);
-
 }
 
 static SCM scm_jnl_node_array_get(SCM obj, SCM idx)
 {
 	struct jnl_node_array *ns = scm_to_jnl_node_array(obj);
-	f64 nx, ny;
-	i32 result = jnl_node_array_get(ns, scm_to_uint32(idx), &nx, &ny);
+	jnl_vec2d out;
+	i32 result = jnl_node_array_get(ns, scm_to_uint32(idx), &out);
 
 	scm_remember_upto_here_1(obj);
 
@@ -89,7 +86,7 @@ static SCM scm_jnl_node_array_get(SCM obj, SCM idx)
 		scm_out_of_range("node-array-get", idx);
 	}
 
-	return scm_list_2(scm_from_double(nx), scm_from_double(ny));
+	return scm_list_2(scm_from_double(out.x), scm_from_double(out.y));
 }
 
 static SCM scm_jnl_node_array_bbox(SCM obj)
@@ -97,10 +94,9 @@ static SCM scm_jnl_node_array_bbox(SCM obj)
 	struct jnl_node_array *ns = scm_to_jnl_node_array(obj);
 	struct jnl_aabb bbox = jnl_node_array_bbox(ns);
 	scm_remember_upto_here_1(obj);
-	return scm_list_2(scm_list_2(scm_from_double(bbox.min_x),
-				     scm_from_double(bbox.min_y)),
-			  scm_list_2(scm_from_double(bbox.max_x),
-				     scm_from_double(bbox.max_y)));
+	return scm_list_2(
+	    scm_list_2(scm_from_double(bbox.min_x), scm_from_double(bbox.min_y)),
+	    scm_list_2(scm_from_double(bbox.max_x), scm_from_double(bbox.max_y)));
 }
 
 static SCM scm_jnl_node_array_write(SCM obj, SCM port)
@@ -156,12 +152,6 @@ static SCM scm_jnl_pslg_nodes_len(SCM obj)
 	return scm_from_uint32(g->nodes.len);
 }
 
-static SCM scm_jnl_pslg_edges_len(SCM obj)
-{
-	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
-	return scm_from_uint32(g->elen);
-}
-
 static SCM scm_jnl_pslg_holes_len(SCM obj)
 {
 	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
@@ -177,9 +167,8 @@ static SCM scm_jnl_pslg_regions_len(SCM obj)
 static SCM scm_jnl_pslg_node_add(SCM obj, SCM x, SCM y, SCM marker)
 {
 	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
-	u32 idx = jnl_pslg_node_add(g, scm_to_double(x),
-				    scm_to_double(y),
-				    scm_to_int32(marker));
+	u32 idx = jnl_pslg_node_add(g, scm_to_double(x), scm_to_double(y),
+	                            scm_to_int32(marker));
 	scm_remember_upto_here_1(obj);
 	return scm_from_uint32(idx);
 }
@@ -187,26 +176,24 @@ static SCM scm_jnl_pslg_node_add(SCM obj, SCM x, SCM y, SCM marker)
 static SCM scm_jnl_pslg_node_find_nearest(SCM obj, SCM x, SCM y)
 {
 	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
-	i32 idx = jnl_pslg_node_find_nearest(g, scm_to_double(x),
-					     scm_to_double(y));
+	i32 idx = jnl_pslg_node_find_nearest(g, scm_to_double(x), scm_to_double(y));
 	scm_remember_upto_here_1(obj);
 
 	if (idx == GEO_NOT_FOUND) {
-		scm_misc_error("jnl_pslg-node-find-nearest",
-			       "jnl_pslg nodes is empty", SCM_EOL);
+		scm_misc_error("jnl_pslg-node-find-nearest", "jnl_pslg nodes is empty",
+		               SCM_EOL);
 	}
 
 	return scm_from_int32(idx);
 }
 
 static SCM scm_jnl_pslg_node_find_or_add(SCM obj, SCM x, SCM y, SCM marker,
-					 SCM eps)
+                                         SCM eps)
 {
 	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
-	u32 idx = jnl_pslg_node_find_or_add(g, scm_to_double(x),
-					    scm_to_double(y),
-					    scm_to_int32(marker),
-					    scm_to_double(eps));
+	u32 idx =
+	    jnl_pslg_node_find_or_add(g, scm_to_double(x), scm_to_double(y),
+	                              scm_to_int32(marker), scm_to_double(eps));
 	scm_remember_upto_here_1(obj);
 	return scm_from_uint32(idx);
 }
@@ -214,8 +201,8 @@ static SCM scm_jnl_pslg_node_find_or_add(SCM obj, SCM x, SCM y, SCM marker,
 static SCM scm_jnl_pslg_node_get(SCM obj, SCM idx)
 {
 	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
-	f64 nx, ny;
-	i32 result = jnl_pslg_node_get(g, scm_to_uint32(idx), &nx, &ny);
+	jnl_vec2d out;
+	i32 result = jnl_pslg_node_get(g, scm_to_uint32(idx), &out);
 
 	scm_remember_upto_here_1(obj);
 
@@ -223,15 +210,14 @@ static SCM scm_jnl_pslg_node_get(SCM obj, SCM idx)
 		scm_out_of_range("jnl_pslg-node-get", idx);
 	}
 
-	return scm_list_2(scm_from_double(nx), scm_from_double(ny));
+	return scm_list_2(scm_from_double(out.x), scm_from_double(out.y));
 }
 
 static SCM scm_jnl_pslg_edge_add(SCM obj, SCM p, SCM q, SCM marker)
 {
 	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
-	u32 idx = jnl_pslg_edge_add(g, scm_to_uint32(p),
-				    scm_to_uint32(q),
-				    scm_to_int32(marker));
+	u32 idx = jnl_pslg_edge_add(g, scm_to_uint32(p), scm_to_uint32(q),
+	                            scm_to_int32(marker));
 	scm_remember_upto_here_1(obj);
 	return scm_from_uint32(idx);
 }
@@ -245,13 +231,12 @@ static SCM scm_jnl_pslg_hole_add(SCM obj, SCM x, SCM y)
 }
 
 static SCM scm_jnl_pslg_region_add(SCM obj, SCM x, SCM y, SCM marker,
-				   SCM max_area)
+                                   SCM max_area)
 {
 	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
-	u32 idx = jnl_pslg_region_add(g, scm_to_double(x),
-				      scm_to_double(y),
-				      scm_to_int32(marker),
-				      scm_to_double(max_area));
+	u32 idx =
+	    jnl_pslg_region_add(g, scm_to_double(x), scm_to_double(y),
+	                        scm_to_int32(marker), scm_to_double(max_area));
 	scm_remember_upto_here_1(obj);
 	return scm_from_uint32(idx);
 }
@@ -261,10 +246,9 @@ static SCM scm_jnl_pslg_bbox(SCM obj)
 	struct jnl_pslg *g = scm_to_jnl_pslg(obj);
 	struct jnl_aabb bbox = jnl_pslg_bbox(g);
 	scm_remember_upto_here_1(obj);
-	return scm_list_2(scm_list_2(scm_from_double(bbox.min_x),
-				     scm_from_double(bbox.min_y)),
-			  scm_list_2(scm_from_double(bbox.max_x),
-				     scm_from_double(bbox.max_y)));
+	return scm_list_2(
+	    scm_list_2(scm_from_double(bbox.min_x), scm_from_double(bbox.min_y)),
+	    scm_list_2(scm_from_double(bbox.max_x), scm_from_double(bbox.max_y)));
 }
 
 static SCM scm_jnl_pslg_write(SCM obj, SCM port)
@@ -294,6 +278,7 @@ static SCM scm_jnl_pslg_write(SCM obj, SCM port)
 // The single exported function
 //
 
+// TODO: add vec2d and edge array functionality
 void geo2d_guile_init(void)
 {
 	// Node array
@@ -303,53 +288,36 @@ void geo2d_guile_init(void)
 	guile_jnl_node_array_type =
 	    scm_make_foreign_object_type(name, slots, finalizer);
 
-	scm_c_define_gsubr("make-node-array", 0, 0, 0,
-			   scm_make_jnl_node_array);
-	scm_c_define_gsubr("node-array-len", 1, 0, 0,
-			   scm_jnl_node_array_len);
-	scm_c_define_gsubr("node-array-add", 4, 0, 0,
-			   scm_jnl_node_array_add);
+	scm_c_define_gsubr("make-node-array", 0, 0, 0, scm_make_jnl_node_array);
+	scm_c_define_gsubr("node-array-len", 1, 0, 0, scm_jnl_node_array_len);
+	scm_c_define_gsubr("node-array-add", 4, 0, 0, scm_jnl_node_array_add);
 	scm_c_define_gsubr("node-array-find-nearest", 3, 0, 0,
-			   scm_jnl_node_array_find_nearest);
+	                   scm_jnl_node_array_find_nearest);
 	scm_c_define_gsubr("node-array-find-or-add", 5, 0, 0,
-			   scm_jnl_node_array_find_or_add);
-	scm_c_define_gsubr("node-array-get", 2, 0, 0,
-			   scm_jnl_node_array_get);
-	scm_c_define_gsubr("node-array-bbox", 1, 0, 0,
-			   scm_jnl_node_array_bbox);
-	scm_c_define_gsubr("node-array-write", 1, 1, 0,
-			   scm_jnl_node_array_write);
+	                   scm_jnl_node_array_find_or_add);
+	scm_c_define_gsubr("node-array-get", 2, 0, 0, scm_jnl_node_array_get);
+	scm_c_define_gsubr("node-array-bbox", 1, 0, 0, scm_jnl_node_array_bbox);
+	scm_c_define_gsubr("node-array-write", 1, 1, 0, scm_jnl_node_array_write);
 
 	// PSLG
 	name = scm_from_utf8_symbol("geo2d-jnl_pslg");
 	slots = scm_list_1(scm_from_utf8_symbol("jnl_pslg"));
 	finalizer = jnl_pslg_finalizer;
-	guile_jnl_pslg_type =
-	    scm_make_foreign_object_type(name, slots, finalizer);
+	guile_jnl_pslg_type = scm_make_foreign_object_type(name, slots, finalizer);
 
 	scm_c_define_gsubr("make-pslg", 0, 0, 0, scm_make_jnl_pslg);
-	scm_c_define_gsubr("pslg-nodes-len", 0, 0, 0,
-			   scm_jnl_pslg_nodes_len);
-	scm_c_define_gsubr("pslg-edges-len", 0, 0, 0,
-			   scm_jnl_pslg_edges_len);
-	scm_c_define_gsubr("pslg-holes-len", 0, 0, 0,
-			   scm_jnl_pslg_holes_len);
-	scm_c_define_gsubr("pslg-regions-len", 0, 0, 0,
-			   scm_jnl_pslg_regions_len);
-	scm_c_define_gsubr("pslg-node-add", 4, 0, 0,
-			   scm_jnl_pslg_node_add);
+	scm_c_define_gsubr("pslg-nodes-len", 0, 0, 0, scm_jnl_pslg_nodes_len);
+	scm_c_define_gsubr("pslg-holes-len", 0, 0, 0, scm_jnl_pslg_holes_len);
+	scm_c_define_gsubr("pslg-regions-len", 0, 0, 0, scm_jnl_pslg_regions_len);
+	scm_c_define_gsubr("pslg-node-add", 4, 0, 0, scm_jnl_pslg_node_add);
 	scm_c_define_gsubr("pslg-node-find-nearest", 3, 0, 0,
-			   scm_jnl_pslg_node_find_nearest);
+	                   scm_jnl_pslg_node_find_nearest);
 	scm_c_define_gsubr("pslg-node-find-or-add", 5, 0, 0,
-			   scm_jnl_pslg_node_find_or_add);
-	scm_c_define_gsubr("pslg-node-get", 2, 0, 0,
-			   scm_jnl_pslg_node_get);
-	scm_c_define_gsubr("pslg-edge-add", 4, 0, 0,
-			   scm_jnl_pslg_edge_add);
-	scm_c_define_gsubr("pslg-hole-add", 3, 0, 0,
-			   scm_jnl_pslg_hole_add);
-	scm_c_define_gsubr("pslg-region-add", 5, 0, 0,
-			   scm_jnl_pslg_region_add);
+	                   scm_jnl_pslg_node_find_or_add);
+	scm_c_define_gsubr("pslg-node-get", 2, 0, 0, scm_jnl_pslg_node_get);
+	scm_c_define_gsubr("pslg-edge-add", 4, 0, 0, scm_jnl_pslg_edge_add);
+	scm_c_define_gsubr("pslg-hole-add", 3, 0, 0, scm_jnl_pslg_hole_add);
+	scm_c_define_gsubr("pslg-region-add", 5, 0, 0, scm_jnl_pslg_region_add);
 	scm_c_define_gsubr("pslg-bbox", 1, 0, 0, scm_jnl_pslg_bbox);
 	scm_c_define_gsubr("pslg-write", 1, 1, 0, scm_jnl_pslg_write);
 
