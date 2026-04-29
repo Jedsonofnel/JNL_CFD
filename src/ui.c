@@ -4,6 +4,7 @@
 
 #include "ui.h"
 
+// Nah this is stupid
 FILE *jnl_ui_spawn(void)
 {
 	FILE *output;
@@ -38,8 +39,8 @@ void jnl_ui_start(void)
 	while (!WindowShouldClose()) {
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
-		DrawText("Congrats, you created your first window!", 190,
-			 200, 20, DARKGRAY);
+		DrawText("Congrats, you created your first window!", 190, 200, 20,
+		         DARKGRAY);
 		EndDrawing();
 	}
 

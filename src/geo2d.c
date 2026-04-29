@@ -1,9 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 
 #include "geo2d.h"
-#include "jnl/types.h"
+#include "jnl/common.h"
+#include "jnl/arena.h"
 
 #define NODECAP_INIT (256)
 #define HOLECAP_INIT (10)
@@ -48,7 +50,7 @@ f64 jnl_vec2d_dist_sq(jnl_vec2d a) { return (a.x * a.x) + (a.y * a.y); }
 
 f64 jnl_vec2d_dot(jnl_vec2d a, jnl_vec2d b)
 {
-	return (a.x * b.x) + (b.x * b.y);
+	return (a.x * b.x) + (a.x * b.y);
 }
 
 f64 jnl_vec2d_cross(jnl_vec2d a, jnl_vec2d b)
@@ -72,6 +74,23 @@ void jnl_node_array_free(struct jnl_node_array *ns)
 {
 	free(ns->coords);
 	free(ns->markers);
+}
+
+struct jnl_node_array jnl_node_array_compact(const struct jnl_node_array *ns,
+                                             struct jnl_arena *arena)
+{
+	struct jnl_node_array out = {0};
+	out.len = out.cap = ns->len;
+
+	out.coords = ARENA_PUSH_ARRAY(arena, jnl_vec2d, ns->len);
+	out.markers = ARENA_PUSH_ARRAY(arena, i32, ns->len);
+	if (!out.coords || !out.markers) {
+		return (struct jnl_node_array){0}; // arena full
+	}
+
+	memcpy(out.coords, ns->coords, ns->len * sizeof(jnl_vec2d));
+	memcpy(out.markers, ns->markers, ns->len * sizeof(i32));
+	return out;
 }
 
 u32 jnl_node_array_add(struct jnl_node_array *ns, f64 x, f64 y, i32 marker)
@@ -227,6 +246,25 @@ void jnl_edge_array_free(struct jnl_edge_array *es)
 	free(es->markers);
 }
 
+struct jnl_edge_array jnl_edge_array_compact(const struct jnl_edge_array *es,
+                                             struct jnl_arena *arena)
+{
+	struct jnl_edge_array out = {0};
+	out.len = out.cap = es->len;
+
+	out.ps = ARENA_PUSH_ARRAY(arena, u32, es->len);
+	out.qs = ARENA_PUSH_ARRAY(arena, u32, es->len);
+	out.markers = ARENA_PUSH_ARRAY(arena, i32, es->len);
+	if (!out.ps || !out.qs || !out.markers) {
+		return (struct jnl_edge_array){0}; // arena full
+	}
+
+	memcpy(out.ps, es->ps, es->len * sizeof(u32));
+	memcpy(out.qs, es->qs, es->len * sizeof(u32));
+	memcpy(out.markers, es->markers, es->len * sizeof(i32));
+	return out;
+}
+
 u32 jnl_edge_array_add(struct jnl_edge_array *es, u32 p, u32 q, i32 marker)
 {
 	if (es->len >= es->cap) {
@@ -285,6 +323,35 @@ void jnl_pslg_free(struct jnl_pslg *g)
 	free(g->rareas);
 
 	jnl_node_array_free(&g->nodes);
+}
+
+struct jnl_pslg jnl_pslg_compact(const struct jnl_pslg *g,
+                                 struct jnl_arena *arena)
+{
+	struct jnl_pslg out = {0};
+	out.nodes = jnl_node_array_compact(&g->nodes, arena);
+	out.edges = jnl_edge_array_compact(&g->edges, arena);
+
+	out.hlen = out.hcap = g->hlen;
+	out.holes = ARENA_PUSH_ARRAY(arena, jnl_vec2d, g->hlen);
+	if (!out.holes) {
+		return (struct jnl_pslg){0};
+	}
+	memcpy(out.holes, g->holes, g->hlen * sizeof(jnl_vec2d));
+
+	out.rlen = out.rcap = g->rlen;
+	out.rcoords = ARENA_PUSH_ARRAY(arena, jnl_vec2d, g->rlen);
+	out.rmarkers = ARENA_PUSH_ARRAY(arena, i32, g->rlen);
+	out.rareas = ARENA_PUSH_ARRAY(arena, f64, g->rlen);
+	if (!out.rcoords || !out.rmarkers || !out.rareas) {
+		return (struct jnl_pslg){0};
+	}
+
+	memcpy(out.rcoords, g->rcoords, g->rlen * sizeof(jnl_vec2d));
+	memcpy(out.rmarkers, g->rmarkers, g->rlen * sizeof(i32));
+	memcpy(out.rareas, g->rareas, g->rlen * sizeof(f64));
+
+	return out;
 }
 
 u32 jnl_pslg_node_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker)
@@ -371,7 +438,7 @@ void jnl_pslg_write(const struct jnl_pslg *g, FILE *file)
 	fprintf(file, "# PSLG regions (optional)\n");
 	fprintf(file, "%d\n", g->rlen);
 	for (u32 i = 0; i < g->rlen; i++) {
-		jnl_vec2d vec = g->holes[i];
+		jnl_vec2d vec = g->rcoords[i];
 		fprintf(file, "%d %f %f %d %f\n", i, vec.x, vec.y, g->rmarkers[i],
 		        g->rareas[i]);
 	}

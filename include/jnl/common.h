@@ -1,5 +1,5 @@
-#ifndef JNL_TYPES_H
-#define JNL_TYPES_H
+#ifndef JNL_COMMON_H
+#define JNL_COMMON_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -17,5 +17,8 @@ typedef uint64_t u64;
 
 typedef float f32;
 typedef double f64;
+
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 #endif

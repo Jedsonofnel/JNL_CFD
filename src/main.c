@@ -7,6 +7,8 @@
 int main(int argc, char **argv)
 {
 	// mabye spawn here ?
-	guile_boot(argc, argv);	// launches repl
+	guile_boot(argc, argv); // launches repl
 	return EXIT_SUCCESS;
+
+	// TODO: manually setup a mesh and render with raylib
 }

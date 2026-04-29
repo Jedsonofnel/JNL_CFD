@@ -3,7 +3,8 @@
 
 #include <stdio.h>
 
-#include "jnl/types.h"
+#include "jnl/common.h"
+#include "jnl/arena.h"
 
 #define GEO_NOT_FOUND (-1)
 #define GEO_OOB (-2)
@@ -30,7 +31,6 @@ f64 jnl_vec2d_len(jnl_vec2d a);
 f64 jnl_vec2d_dot(jnl_vec2d a, jnl_vec2d b);
 f64 jnl_vec2d_cross(jnl_vec2d a, jnl_vec2d b);
 
-
 //
 // Nodes API
 //
@@ -48,6 +48,8 @@ struct jnl_aabb {
 
 void jnl_node_array_init(struct jnl_node_array *ns);
 void jnl_node_array_free(struct jnl_node_array *ns);
+struct jnl_node_array jnl_node_array_compact(const struct jnl_node_array *ns,
+                                             struct jnl_arena *arena);
 
 u32 jnl_node_array_add(struct jnl_node_array *ns, f64 x, f64 y, i32 marker);
 i32 jnl_node_array_find_nearest(const struct jnl_node_array *ns, f64 x, f64 y);
@@ -73,6 +75,9 @@ struct jnl_edge_array {
 void jnl_edge_array_init(struct jnl_edge_array *es);
 void jnl_edge_array_free(struct jnl_edge_array *es);
 
+struct jnl_edge_array jnl_edge_array_compact(const struct jnl_edge_array *es,
+                                             struct jnl_arena *arena);
+
 u32 jnl_edge_array_add(struct jnl_edge_array *es, u32 p, u32 q, i32 marker);
 
 void jnl_edge_array_write(const struct jnl_edge_array *es, FILE *file);
@@ -96,6 +101,9 @@ struct jnl_pslg {
 
 void jnl_pslg_init(struct jnl_pslg *g);
 void jnl_pslg_free(struct jnl_pslg *g);
+
+struct jnl_pslg jnl_pslg_compact(const struct jnl_pslg *g,
+                                 struct jnl_arena *arena);
 
 u32 jnl_pslg_node_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker);
 i32 jnl_pslg_node_find_nearest(const struct jnl_pslg *g, f64 x, f64 y);
