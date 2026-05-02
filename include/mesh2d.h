@@ -1,14 +1,15 @@
 #ifndef JNL_MESH2D_H
 #define JNL_MESH2D_H
 
-#include "jnl/types.h"
+#include "jnl/common.h"
+#include "jnl/arena.h"
 
 //
 // Topology
 //
 
 struct jnl_mesh_topo {
-	// points for boundaries
+	// points for polygons
 	i32 n_points;
 	f64 *px, *py;
 	// faces -> points (CSR)
@@ -56,8 +57,8 @@ struct jnl_mesh_interp {
 
 struct jnl_boundary {
 	char name[64];
-	i32 start_face;
-	i32 n_faces;
+	u32 start_face;
+	u32 n_faces;
 	i32 marker;
 };
 
@@ -92,6 +93,15 @@ struct jnl_mesh {
 	struct jnl_mesh_interp interp;
 	struct jnl_mesh_boundary boundary;
 	struct jnl_mesh_ifaces ifaces;
+
+	jnl_arena *arena;
 };
+
+//
+// Mesh generation and lifecycle
+//
+
+struct jnl_mesh *jnl_smesh_gen(f64 width, f64 height, u32 nx, u32 ny);
+void jnl_mesh_free(struct jnl_mesh *mesh);
 
 #endif

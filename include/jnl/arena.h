@@ -6,19 +6,21 @@
 #include "jnl/common.h"
 
 #define ALIGN_UP_POW2(n, p) (((u64)(n) + ((u64)(p) - 1)) & (~((u64)(p) - 1)))
-#define JNL_ARENA_BASE_POS (sizeof(struct jnl_arena))
+#define JNL_ARENA_BASE_POS (sizeof(jnl_arena))
 #define JNL_ARENA_ALIGN (sizeof(void *))
 
 struct jnl_arena {
 	u64 cap, pos;
 };
 
-struct jnl_arena *arena_create(u64 cap);
-void arena_destroy(struct jnl_arena *arena);
-void *arena_push(struct jnl_arena *arena, u64 size, bool zero);
-void arena_pop(struct jnl_arena *arena, u64 size);
-void arena_pop_to(struct jnl_arena *arena, u64 pos);
-void arena_clear(struct jnl_arena *arena);
+typedef struct jnl_arena jnl_arena;
+
+jnl_arena *arena_create(u64 cap);
+void arena_destroy(jnl_arena *arena);
+void *arena_push(jnl_arena *arena, u64 size, bool zero);
+void arena_pop(jnl_arena *arena, u64 size);
+void arena_pop_to(jnl_arena *arena, u64 pos);
+void arena_clear(jnl_arena *arena);
 
 #define ARENA_PUSH_STRUCT(arena, T) (T *)arena_push((arena), sizeof(T), false)
 #define ARENA_PUSH_STRUCT_Z(arena, T) (T *)arena_push((arena), sizeof(T), true)

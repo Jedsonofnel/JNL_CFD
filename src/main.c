@@ -1,14 +1,18 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 
-#include "ui.h"
-#include "bindings/guile.h"
+#include "mesh2d.h"
+#include "jnl/common.h"
 
 int main(int argc, char **argv)
 {
-	// mabye spawn here ?
-	guile_boot(argc, argv); // launches repl
-	return EXIT_SUCCESS;
+	struct jnl_mesh *mesh = jnl_smesh_gen(100, 100, 10, 10);
 
-	// TODO: manually setup a mesh and render with raylib
+	for (u32 i = 0; i < 121; i++) {
+		struct jnl_mesh_topo topo = mesh->topo;
+		printf("point %d: [%.1f, %.1f]\n", i + 1, topo.px[i], topo.py[i]);
+	}
+
+	return EXIT_SUCCESS;
 }

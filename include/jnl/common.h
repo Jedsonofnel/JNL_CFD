@@ -21,4 +21,8 @@ typedef double f64;
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
+#define KB(n) ((u64)(n) * 1024ULL)
+#define MB(n) ((u64)(n) * 1024ULL * 1024ULL)
+#define GB(n) ((u64)(n) * 1024ULL * 1024ULL * 1024ULL)
+
 #endif

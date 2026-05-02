@@ -13,7 +13,13 @@ struct jnl_arena *arena_create(u64 cap)
 	return arena;
 }
 
-void arena_destroy(struct jnl_arena *arena) { free(arena); }
+void arena_destroy(struct jnl_arena *arena)
+{
+	if (!arena)
+		return;
+
+	free(arena);
+}
 
 void *arena_push(struct jnl_arena *arena, u64 size, bool zero)
 {
