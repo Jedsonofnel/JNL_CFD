@@ -15,15 +15,14 @@ struct jnl_mesh_topo {
 	// faces -> points (CSR)
 	i32 n_faces;
 	i32 n_internal_faces;
-	i32 *face_start;
-	i32 *face_point;
+	i32 *face_point; // face points are at [f*2] and [(f*2)+1]
 	// face -> cell
 	i32 *owner;
 	i32 *neighbour;
 	// cell -> face (CSR, optional)
 	i32 n_cells;
 	i32 *cell_face_start;
-	i32 *cell_face;
+	i32 *cell_face_point;
 };
 
 //
@@ -57,8 +56,8 @@ struct jnl_mesh_interp {
 
 struct jnl_boundary {
 	char name[64];
-	u32 start_face;
-	u32 n_faces;
+	i32 start_face;
+	i32 n_faces;
 	i32 marker;
 };
 
