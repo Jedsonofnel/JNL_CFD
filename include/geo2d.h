@@ -105,6 +105,7 @@ void jnl_pslg_free(struct jnl_pslg *g);
 struct jnl_pslg jnl_pslg_compact(const struct jnl_pslg *g,
                                  struct jnl_arena *arena);
 
+// TODO consider a "V" variant for lots of these to take vectors (like raylib)
 u32 jnl_pslg_node_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker);
 i32 jnl_pslg_node_find_nearest(const struct jnl_pslg *g, f64 x, f64 y);
 u32 jnl_pslg_node_find_or_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
