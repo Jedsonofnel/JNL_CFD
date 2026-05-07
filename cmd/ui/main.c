@@ -27,15 +27,21 @@ int main(void)
 	jnl_pslg_node_add(&pslg, 10, 300, 0);
 	jnl_pslg_node_add(&pslg, 200, 200, 0);
 	jnl_pslg_node_add(&pslg, 200, 10, 0);
+	jnl_pslg_node_add(&pslg, 100, 96, 0);
+	jnl_pslg_node_add(&pslg, 500, 96, 0);
 
 	jnl_pslg_edge_add(&pslg, 0, 1, 0);
 	jnl_pslg_edge_add(&pslg, 1, 2, 0);
 	jnl_pslg_edge_add(&pslg, 2, 3, 0);
 	jnl_pslg_edge_add(&pslg, 3, 0, 0);
+	jnl_pslg_edge_add(&pslg, 3, 4, 0);
+	jnl_pslg_edge_add(&pslg, 3, 5, 0);
 
 	struct jnl_view2D view = {
-	    .width = 600,
-	    .height = 400,
+	    .centre = {0.0, 0.0},
+	    .zoom = 1.0,
+	    .width = screen_width,
+	    .height = screen_height - 50,
 	};
 
 	Texture2D tex = pslg_gen_texture(&pslg, view);
@@ -43,11 +49,16 @@ int main(void)
 
 	SetTargetFPS(60);
 
+	char buf[100];
+	sprintf(buf, "PSLG display: %d nodes, %d edges", pslg.nodes.len,
+	        pslg.edges.len);
+
 	while (!WindowShouldClose()) {
 		BeginDrawing();
-		ClearBackground(RAYWHITE);
+		ClearBackground(WHITE);
 		DrawTextureV(tex, texloc, WHITE);
-		DrawText("Test display of a PSLG", 190, 200, 20, LIGHTGRAY);
+
+		DrawText(buf, 10, screen_height - 35, 20, BLACK);
 		EndDrawing();
 	}
 
@@ -71,20 +82,16 @@ Texture2D pslg_gen_texture(struct jnl_pslg *pslg, struct jnl_view2D view)
 	struct jnl_aabb bbox = jnl_pslg_bbox(pslg);
 	f64 bbw = bbox.max_x - bbox.min_x, bbh = bbox.max_y - bbox.min_y;
 
-	f64 scale = width / bbw;
+	f64 scale = view.zoom * width / bbw;
 	if (scale * bbh > height) {
 		scale = height / bbh;
 	}
 
-	// printf("bbox = [%f, %f], outer = [%d, %d], scale = %f\n", bbw, bbh,
-	//        view.width, view.height, scale);
+	f64 dx = ((1 + view.centre.x) * width - (bbw * scale)) / 2;
+	f64 dy = ((bbh * scale) - (1 + view.centre.y) * height) / 2;
 
-#define TX(x) (padding + scale * ((x) - bbox.min_x))
-#define TY(y) (padding + height - (scale * (y - bbox.min_y)))
-
-	// Use bbox, aspect ratio, centre and zoom level
-	// to determine
-	// transformation from PSLG coords to display coords
+#define TX(x) (padding + dx + scale * ((x) - bbox.min_x))
+#define TY(y) (padding + dy + height - (scale * (y - bbox.min_y)))
 
 	struct jnl_node_array nodes = pslg->nodes;
 	struct jnl_edge_array edges = pslg->edges;
@@ -93,20 +100,20 @@ Texture2D pslg_gen_texture(struct jnl_pslg *pslg, struct jnl_view2D view)
 		jnl_vec2d p1 = nodes.coords[edges.ps[i]];
 		jnl_vec2d p2 = nodes.coords[edges.qs[i]];
 		Vector2 v1 = {TX(p1.x), TY(p1.y)}, v2 = {TX(p2.x), TY(p2.y)};
-		ImageDrawLineEx(&img, v1, v2, 1, BLUE);
+		ImageDrawLineEx(&img, v1, v2, 2, BLUE);
 	}
 
 	for (u32 i = 0; i < nodes.len; i++) {
 		jnl_vec2d point = nodes.coords[i];
 		Vector2 vec = {TX(point.x), TY(point.y)};
-		ImageDrawCircleV(&img, vec, 3, BLACK);
+		ImageDrawCircleV(&img, vec, 4, BLACK);
 	}
-
-	Texture2D tex = LoadTextureFromImage(img);
-	UnloadImage(img);
 
 #undef TX
 #undef TY
+
+	Texture2D tex = LoadTextureFromImage(img);
+	UnloadImage(img);
 
 	return tex;
 }
