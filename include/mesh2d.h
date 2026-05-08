@@ -1,3 +1,75 @@
+/*
+ * jnlcfd mesh2d - mesh representation and conventions
+ *
+ * TOPOLOGY CONVENTIONS
+ * ====================
+ *
+ * Faces are stored in two contiguous blocks:
+ *   [0, n_internal_faces]                        - internal faces
+ *   [n_internal_faces, n_internal_faces
+ *                       + n_baffle_faces]        - baffle faces
+ *   [n_internal_faces + n_baffle_faces, n_faces] - boundary faces
+ *
+ * Internal faces:  neighbour >= 0  (cell index, fluid-fluid interface)
+ * Baffle faces:    neighbour >= 0  (cell index, internal wall)
+ *                  identity determined by index range, not encoding
+ * Patch faces:     neighbour <  0  (encoded: ~patch.marker)
+ *   Decode:        marker = ~neighbour*
+ *
+ * Face normals (face_nx, face_ny) point from owner toward neighbour.
+ * For patch faces the normal points outward from the domain.
+ *
+ * cell_face_list / cell_face_start form a CSR structure mapping each
+ * cell to its adjacent face indices (both internal and boundary faces).
+ *
+ * cell_marker[c]: region marker for cell c.  Assigned by mesh generator.
+ *
+ * PATCHES
+ * =======
+ *
+ * patches.data[i].start_face: first face index for patch i
+ * patches.data[i].marker:     logical patch ID.
+ * Encoded neighbour value:    ~marker (always negative).
+ * Populated by topo_sort_faces().
+ *
+ * BAFFLES
+ * =======
+ *
+ * baffles.data[i].start_cell: first face index for baffle i.
+ * baffles.data[i].marker:     user-assigned tag, unrelated to patch marker.
+ * Neighbour is a valid cell index - use index range to identify baffle faces.
+ * Populated by topo_sort_faces().
+ *
+ * REGIONS
+ * =======
+ *
+ * regions.data[i].start_cell: first cell index for region i.
+ * regions.data[i].marker:     user-assigned material tag.
+ * populated by topo_sort_cells().
+ * After sorting, owner[] and neighbour[] reflect the new cell ordering.
+ * Call build_cell_faces() after topo_sort_cells().
+ *
+ * GEOMETRY
+ * ========
+ *
+ * cell_vol holds the 2D cell area (always positive).
+ * face_area holds the edge length.  So called to be consistent with 3D
+ * literature.
+ *
+ * INTERPOLATION
+ * =============
+ *
+ * weight[f]:       linear interpolation factor.  phi_f = w*phi_N + (1-w)*phi_0
+ *                  For boundary faces, weight == 1.0 (value from owner only).
+ * delta_coeff[f]:  1 / (d . n_hat), the inverse projected cell-centre distance.
+ *                  Used as the diffusion coefficient denominator.
+ * corr[f]:         Non-orthogonality correction vector (d - (d.n)n).
+ *                  Zero for orthogonal meshes.
+ * skew[f]:         Skewness vector from interpolated O-N point to face centre.
+ *                  Used in Rhie-Chow MWI.  Zero for non-skewed meshes.
+ *
+ */
+
 #ifndef JNL_MESH2D_H
 #define JNL_MESH2D_H
 
@@ -21,8 +93,9 @@ struct jnl_mesh_topo {
 	i32 *neighbour;
 	// cell -> face (CSR, optional)
 	i32 n_cells;
+	i32 *cell_marker;
 	i32 *cell_face_start;
-	i32 *cell_face_point;
+	i32 *cell_face_list; // length cell_face_start[n_cells]
 };
 
 //
@@ -54,32 +127,49 @@ struct jnl_mesh_interp {
 // Boundaries
 //
 
-struct jnl_boundary {
+struct jnl_patch {
 	char name[64];
 	i32 start_face;
 	i32 n_faces;
 	i32 marker;
 };
 
-struct jnl_mesh_boundary {
-	i32 n_boundaries;
-	struct jnl_boundary *boundaries;
+struct jnl_patches {
+	i32 n_patches;
+	struct jnl_patch *data;
 };
 
 //
-// Internal interfaces (baffles)
+// Regions
 //
 
-struct jnl_iface {
+struct jnl_region {
+	char name[64];
+	i32 start_cell;
+	i32 n_cells;
+	i32 marker;
+};
+
+struct jnl_regions {
+	i32 n_regions;
+	struct jnl_region *data;
+};
+
+//
+// Baffles for internal interfaces
+//
+
+struct jnl_baffle {
 	char name[64];
 	i32 start_face;
 	i32 n_faces;
+	i32 marker;
 };
 
-struct jnl_mesh_ifaces {
-	i32 n_ifaces;
-	i32 n_iface_faces;
-	struct jnl_iface *ifaces;
+struct jnl_baffles {
+	i32 n_baffles;
+	i32 n_baffle_faces; // sum of all baffle faces
+	struct jnl_baffle *data;
 };
 
 //
@@ -90,8 +180,9 @@ struct jnl_mesh {
 	struct jnl_mesh_topo topo;
 	struct jnl_mesh_geom geom;
 	struct jnl_mesh_interp interp;
-	struct jnl_mesh_boundary boundary;
-	struct jnl_mesh_ifaces ifaces;
+	struct jnl_patches patches;
+	struct jnl_regions regions;
+	struct jnl_baffles baffles;
 
 	jnl_arena *arena;
 };
@@ -99,6 +190,13 @@ struct jnl_mesh {
 //
 // Mesh generation and lifecycle
 //
+
+enum jnl_mesh_err {
+	JNL_MESH_OK = 0,
+	JNL_MESH_ERR_UNKNOWN_PATCH = 1,
+	JNL_MESH_ERR_UNKNOWN_BAFFLE = 2,
+	JNL_MESH_ERR_UNKNOWN_REGION = 3,
+};
 
 struct jnl_mesh *jnl_smesh_gen(f64 width, f64 height, u32 nx, u32 ny);
 void jnl_mesh_free(struct jnl_mesh *mesh);

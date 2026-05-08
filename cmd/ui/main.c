@@ -18,7 +18,7 @@ int main(void)
 	i32 screen_width = 800;
 	i32 screen_height = 450;
 
-	InitWindow(screen_width, screen_height, "raylib demo");
+	InitWindow(screen_width, screen_height, "JNLCFD Visualiser");
 
 	struct jnl_pslg pslg = {0};
 	jnl_pslg_init(&pslg);
