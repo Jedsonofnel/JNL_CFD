@@ -108,6 +108,11 @@ u32 jnl_node_array_add(struct jnl_node_array *ns, f64 x, f64 y, i32 marker)
 	return ns->len++;
 }
 
+u32 jnl_node_array_add_v(struct jnl_node_array *ns, jnl_vec2d v, i32 marker)
+{
+	return jnl_node_array_add(ns, v.x, v.y, marker);
+}
+
 i32 jnl_node_array_find_nearest(const struct jnl_node_array *ns, f64 x, f64 y)
 {
 	if (ns->len == 0) {
@@ -138,6 +143,11 @@ i32 jnl_node_array_find_nearest(const struct jnl_node_array *ns, f64 x, f64 y)
 	return mindex;
 }
 
+i32 jnl_node_array_find_nearest_v(const struct jnl_node_array *ns, jnl_vec2d v)
+{
+	return jnl_node_array_find_nearest(ns, v.x, v.y);
+}
+
 u32 jnl_node_array_find_or_add(struct jnl_node_array *ns, f64 x, f64 y,
                                i32 marker, f64 eps)
 {
@@ -152,6 +162,12 @@ u32 jnl_node_array_find_or_add(struct jnl_node_array *ns, f64 x, f64 y,
 	}
 
 	return jnl_node_array_add(ns, x, y, marker);
+}
+
+u32 jnl_node_array_find_or_add_v(struct jnl_node_array *ns, jnl_vec2d v,
+                                 i32 marker, f64 eps)
+{
+	return jnl_node_array_find_or_add(ns, v.x, v.y, marker, eps);
 }
 
 i32 jnl_node_array_get(const struct jnl_node_array *ns, u32 index,
@@ -359,15 +375,31 @@ u32 jnl_pslg_node_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker)
 	return jnl_node_array_add(&g->nodes, x, y, marker);
 }
 
+u32 jnl_pslg_node_add_v(struct jnl_pslg *g, jnl_vec2d v, i32 marker)
+{
+	return jnl_node_array_add(&g->nodes, v.x, v.y, marker);
+}
+
 i32 jnl_pslg_node_find_nearest(const struct jnl_pslg *g, f64 x, f64 y)
 {
 	return jnl_node_array_find_nearest(&g->nodes, x, y);
+}
+
+i32 jnl_pslg_node_find_nearest_v(const struct jnl_pslg *g, jnl_vec2d v)
+{
+	return jnl_node_array_find_nearest_v(&g->nodes, v);
 }
 
 u32 jnl_pslg_node_find_or_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
                               f64 eps)
 {
 	return jnl_node_array_find_or_add(&g->nodes, x, y, marker, eps);
+}
+
+u32 jnl_pslg_node_find_or_add_v(struct jnl_pslg *g, jnl_vec2d v, i32 marker,
+                                f64 eps)
+{
+	return jnl_pslg_node_find_or_add(g, v.x, v.y, marker, eps);
 }
 
 i32 jnl_pslg_node_get(const struct jnl_pslg *g, u32 index, jnl_vec2d *out)
@@ -393,6 +425,11 @@ u32 jnl_pslg_hole_add(struct jnl_pslg *g, f64 x, f64 y)
 	return g->hlen++;
 }
 
+u32 jnl_pslg_hole_add_v(struct jnl_pslg *g, jnl_vec2d v)
+{
+	return jnl_pslg_hole_add(g, v.x, v.y);
+}
+
 u32 jnl_pslg_region_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
                         f64 max_area)
 {
@@ -409,6 +446,12 @@ u32 jnl_pslg_region_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
 	g->rareas[g->rlen] = max_area;
 
 	return g->rlen++;
+}
+
+u32 jnl_pslg_region_add_v(struct jnl_pslg *g, jnl_vec2d v, i32 marker,
+                          f64 max_area)
+{
+	return jnl_pslg_region_add(g, v.x, v.y, marker, max_area);
 }
 
 struct jnl_aabb jnl_pslg_bbox(const struct jnl_pslg *g)

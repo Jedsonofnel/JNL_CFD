@@ -52,9 +52,13 @@ struct jnl_node_array jnl_node_array_compact(const struct jnl_node_array *ns,
                                              struct jnl_arena *arena);
 
 u32 jnl_node_array_add(struct jnl_node_array *ns, f64 x, f64 y, i32 marker);
+u32 jnl_node_array_add_v(struct jnl_node_array *ns, jnl_vec2d v, i32 marker);
 i32 jnl_node_array_find_nearest(const struct jnl_node_array *ns, f64 x, f64 y);
+i32 jnl_node_array_find_nearest_v(const struct jnl_node_array *ns, jnl_vec2d v);
 u32 jnl_node_array_find_or_add(struct jnl_node_array *ns, f64 x, f64 y,
                                i32 marker, f64 eps);
+u32 jnl_node_array_find_or_add_v(struct jnl_node_array *ns, jnl_vec2d v,
+                                 i32 marker, f64 eps);
 i32 jnl_node_array_get(const struct jnl_node_array *ns, u32 index,
                        jnl_vec2d *out);
 
@@ -105,17 +109,23 @@ void jnl_pslg_free(struct jnl_pslg *g);
 struct jnl_pslg jnl_pslg_compact(const struct jnl_pslg *g,
                                  struct jnl_arena *arena);
 
-// TODO consider a "V" variant for lots of these to take vectors (like raylib)
 u32 jnl_pslg_node_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker);
+u32 jnl_pslg_node_add_v(struct jnl_pslg *g, jnl_vec2d v, i32 marker);
 i32 jnl_pslg_node_find_nearest(const struct jnl_pslg *g, f64 x, f64 y);
+i32 jnl_pslg_node_find_nearest_v(const struct jnl_pslg *g, jnl_vec2d v);
 u32 jnl_pslg_node_find_or_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
                               f64 eps);
+u32 jnl_pslg_node_find_or_add_v(struct jnl_pslg *g, jnl_vec2d v, i32 marker,
+                                f64 eps);
 i32 jnl_pslg_node_get(const struct jnl_pslg *g, u32 index, jnl_vec2d *out);
 
 u32 jnl_pslg_edge_add(struct jnl_pslg *g, u32 p, u32 q, i32 marker);
 u32 jnl_pslg_hole_add(struct jnl_pslg *g, f64 x, f64 y);
+u32 jnl_pslg_hole_add_v(struct jnl_pslg *g, jnl_vec2d v);
 u32 jnl_pslg_region_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker,
                         f64 max_area);
+u32 jnl_pslg_region_add_v(struct jnl_pslg *g, jnl_vec2d v, i32 marker,
+                          f64 max_area);
 
 struct jnl_aabb jnl_pslg_bbox(const struct jnl_pslg *g);
 
