@@ -19,8 +19,8 @@
  * Face normals (face_nx, face_ny) point from owner toward neighbour.
  * For patch faces the normal points outward from the domain.
  *
- * cell_face_list / cell_face_start form a CSR structure mapping each
- * cell to its adjacent face indices (both internal and boundary faces).
+ * cell_vertex_list / cell_vertex_start form a CSR structure mapping each
+ * cell to its polygon's vertices (in CCW winding)
  *
  * cell_marker[c]: region marker for cell c.  Assigned by mesh generator.
  *
@@ -47,7 +47,7 @@
  * regions.data[i].marker:     user-assigned material tag.
  * populated by topo_sort_cells().
  * After sorting, owner[] and neighbour[] reflect the new cell ordering.
- * Call build_cell_faces() after topo_sort_cells().
+ * Call build_cell_vertices() after topo_sort_cells().
  *
  * GEOMETRY
  * ========
@@ -81,21 +81,21 @@
 //
 
 struct jnl_mesh_topo {
-	// points for polygons
-	i32 n_points;
-	f64 *px, *py;
-	// faces -> points (CSR)
+	// vertices for polygons
+	i32 n_vertices;
+	f64 *vx, *vy;
+	// faces -> vertex pairs
 	i32 n_faces;
 	i32 n_internal_faces;
-	i32 *face_point; // face points are at [f*2] and [(f*2)+1]
+	i32 *face_vertex; // face vertices are at [f*2] and [(f*2)+1]
 	// face -> cell
 	i32 *owner;
 	i32 *neighbour;
 	// cell -> face (CSR, optional)
 	i32 n_cells;
 	i32 *cell_marker;
-	i32 *cell_face_start;
-	i32 *cell_face_list; // length cell_face_start[n_cells]
+	i32 *cell_vertex_start;
+	i32 *cell_vertex_list;
 };
 
 //

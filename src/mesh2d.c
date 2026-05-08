@@ -18,7 +18,7 @@ static enum jnl_mesh_err topo_sort_faces(struct jnl_mesh_topo *,
 static enum jnl_mesh_err topo_sort_cells(struct jnl_mesh_topo *,
                                          struct jnl_regions *, jnl_arena *);
 
-static void build_cell_faces(struct jnl_mesh_topo *, jnl_arena *);
+static void build_cell_vertices(struct jnl_mesh_topo *, jnl_arena *);
 
 // generators for the rest
 
@@ -62,7 +62,7 @@ struct jnl_mesh *jnl_smesh_gen(f64 width, f64 height, u32 nx, u32 ny)
 	mesh->topo = smesh_topo_gen(arena, width, height, nx, ny);
 	topo_sort_faces(&mesh->topo, &mesh->patches, arena);
 	topo_sort_cells(&mesh->topo, &mesh->regions, arena);
-	build_cell_faces(&mesh->topo, arena);
+	build_cell_vertices(&mesh->topo, arena);
 
 	// 3) Then generate geometry and interpolation coefficinets (general)
 	mesh->geom = geom_gen(arena, mesh->topo);
@@ -89,8 +89,8 @@ static u64 smesh_size(u32 nx, u32 ny)
 	size += 1 * n_faces * sizeof(i32);   // owner
 	size += 1 * n_faces * sizeof(i32);   // neighbour
 	size += n_cells * sizeof(i32);       // cell_markers
-	size += (n_cells + 1) * sizeof(i32); // cell_face_start;
-	size += (4 * n_cells) * sizeof(i32); // cell_face_list;
+	size += (n_cells + 1) * sizeof(i32); // cell_vertex_start;
+	size += (4 * n_cells) * sizeof(i32); // cell_vertex_list;
 
 	// geometry
 	size += 5 * n_faces * sizeof(f64);
@@ -141,26 +141,25 @@ static struct jnl_patches smesh_patches(jnl_arena *arena, u32 nx, u32 ny)
 static struct jnl_mesh_topo smesh_topo_gen(jnl_arena *arena, f64 width,
                                            f64 height, u32 nx, u32 ny)
 {
-	u32 n_points = (nx + 1) * (ny + 1);
+	u32 n_vertices = (nx + 1) * (ny + 1);
 	u32 n_cells = nx * ny;
 	u32 n_faces = (nx + 1) * ny + nx * (ny + 1);
 	u32 n_bfaces = (2 * nx) + (2 * ny);
 	u32 n_ifaces = n_faces - n_bfaces;
 
 	struct jnl_mesh_topo topo = {
-	    .n_points = n_points,
+	    .n_vertices = n_vertices,
 	    .n_cells = n_cells,
 	    .n_faces = n_faces,
 	    .n_internal_faces = n_ifaces,
 
-	    .px = ARENA_PUSH_ARRAY_Z(arena, f64, n_points),
-	    .py = ARENA_PUSH_ARRAY_Z(arena, f64, n_points),
-	    .face_point = ARENA_PUSH_ARRAY_Z(arena, i32, n_faces * 2),
+	    .vx = ARENA_PUSH_ARRAY_Z(arena, f64, n_vertices),
+	    .vy = ARENA_PUSH_ARRAY_Z(arena, f64, n_vertices),
+	    .face_vertex = ARENA_PUSH_ARRAY_Z(arena, i32, n_faces * 2),
 	    .owner = ARENA_PUSH_ARRAY_Z(arena, i32, n_faces),
 	    .neighbour = ARENA_PUSH_ARRAY_Z(arena, i32, n_faces),
 
 	    .cell_marker = ARENA_PUSH_ARRAY_Z(arena, i32, n_cells),
-	    // cell_face_* stuff handled by build_cell_faces()
 	};
 
 	f64 dx = width / (f64)nx, dy = height / (f64)ny;
@@ -171,8 +170,8 @@ static struct jnl_mesh_topo smesh_topo_gen(jnl_arena *arena, f64 width,
 	for (u32 j = 0; j <= ny; j++) {
 		for (u32 i = 0; i <= nx; i++) {
 			u32 p = PT(i, j);
-			topo.px[p] = i * dx;
-			topo.py[p] = j * dy;
+			topo.vx[p] = i * dx;
+			topo.vy[p] = j * dy;
 		}
 	}
 
@@ -180,18 +179,18 @@ static struct jnl_mesh_topo smesh_topo_gen(jnl_arena *arena, f64 width,
 	u32 f = 0;
 	for (u32 j = 1; j < ny; j++) {
 		for (u32 i = 0; i < nx; i++) {
-			topo.face_point[f * 2] = PT(i, j);
-			topo.face_point[(f * 2) + 1] = PT(i + 1, j);
-			topo.owner[f] = CELL(i, j);
-			topo.neighbour[f] = CELL(i, j + 1);
+			topo.face_vertex[f * 2] = PT(i, j);
+			topo.face_vertex[(f * 2) + 1] = PT(i + 1, j);
+			topo.owner[f] = CELL(i, j - 1);
+			topo.neighbour[f] = CELL(i, j);
 			f++;
 		}
 	}
 
 	for (u32 i = 1; i < nx; i++) {
 		for (u32 j = 0; j < ny; j++) {
-			topo.face_point[f * 2] = PT(i, j);
-			topo.face_point[(f * 2) + 1] = PT(i, j + 1);
+			topo.face_vertex[f * 2] = PT(i, j);
+			topo.face_vertex[(f * 2) + 1] = PT(i, j + 1);
 			topo.owner[f] = CELL(i - 1, j);
 			topo.neighbour[f] = CELL(i, j);
 			f++;
@@ -200,32 +199,32 @@ static struct jnl_mesh_topo smesh_topo_gen(jnl_arena *arena, f64 width,
 
 	// external faces (north -> east -> south -> west)
 	for (u32 i = 0; i < nx; i++) { // NORTH (j=ny)
-		topo.face_point[f * 2] = PT(i, ny);
-		topo.face_point[(f * 2) + 1] = PT(i + 1, ny);
+		topo.face_vertex[f * 2] = PT(i, ny);
+		topo.face_vertex[(f * 2) + 1] = PT(i + 1, ny);
 		topo.owner[f] = CELL(i, ny - 1);
 		topo.neighbour[f] = PNORTH;
 		f++;
 	}
 
 	for (u32 j = 0; j < ny; j++) { // EAST
-		topo.face_point[f * 2] = PT(nx, j);
-		topo.face_point[(f * 2) + 1] = PT(nx, j + 1);
+		topo.face_vertex[f * 2] = PT(nx, j);
+		topo.face_vertex[(f * 2) + 1] = PT(nx, j + 1);
 		topo.owner[f] = CELL(nx - 1, j);
 		topo.neighbour[f] = PEAST;
 		f++;
 	}
 
 	for (u32 i = 0; i < nx; i++) { // SOUTH (j=0)
-		topo.face_point[f * 2] = PT(i, 0);
-		topo.face_point[(f * 2) + 1] = PT(i + 1, 0);
+		topo.face_vertex[f * 2] = PT(i, 0);
+		topo.face_vertex[(f * 2) + 1] = PT(i + 1, 0);
 		topo.owner[f] = CELL(i, 0);
 		topo.neighbour[f] = PSOUTH;
 		f++;
 	}
 
 	for (u32 j = 0; j < ny; j++) { // WEST
-		topo.face_point[f * 2] = PT(0, j);
-		topo.face_point[(f * 2) + 1] = PT(0, j + 1);
+		topo.face_vertex[f * 2] = PT(0, j);
+		topo.face_vertex[(f * 2) + 1] = PT(0, j + 1);
 		topo.owner[f] = CELL(0, j);
 		topo.neighbour[f] = PWEST;
 		f++;
@@ -254,10 +253,10 @@ static enum jnl_mesh_err topo_sort_faces(struct jnl_mesh_topo *topo,
 
 	// Build permutation
 	u64 scratch_pos = arena->pos;
-	i32 *perm = ARENA_PUSH_ARRAY(arena, i32, n);
-	i32 *tmp_fp = ARENA_PUSH_ARRAY(arena, i32, n * 2);
-	i32 *tmp_own = ARENA_PUSH_ARRAY(arena, i32, n);
-	i32 *tmp_nb = ARENA_PUSH_ARRAY(arena, i32, n);
+	i32 *perm = ARENA_PUSH_ARRAY_Z(arena, i32, n);
+	i32 *tmp_fp = ARENA_PUSH_ARRAY_Z(arena, i32, n * 2);
+	i32 *tmp_own = ARENA_PUSH_ARRAY_Z(arena, i32, n);
+	i32 *tmp_nb = ARENA_PUSH_ARRAY_Z(arena, i32, n);
 
 	// Partition: internal first, then boundary sorted by ~neighbour (marker)
 	i32 ipos = 0;
@@ -311,12 +310,12 @@ static enum jnl_mesh_err topo_sort_faces(struct jnl_mesh_topo *topo,
 	// Apply permutation to face-parallel arrays
 	for (i32 f = 0; f < n; f++) {
 		i32 src = perm[f];
-		tmp_fp[f * 2] = topo->face_point[src * 2];
-		tmp_fp[f * 2 + 1] = topo->face_point[src * 2 + 1];
+		tmp_fp[f * 2] = topo->face_vertex[src * 2];
+		tmp_fp[f * 2 + 1] = topo->face_vertex[src * 2 + 1];
 		tmp_own[f] = topo->owner[src];
 		tmp_nb[f] = topo->neighbour[src];
 	}
-	memcpy(topo->face_point, tmp_fp, n * 2 * sizeof(i32));
+	memcpy(topo->face_vertex, tmp_fp, n * 2 * sizeof(i32));
 	memcpy(topo->owner, tmp_own, n * sizeof(i32));
 	memcpy(topo->neighbour, tmp_nb, n * sizeof(i32));
 
@@ -361,7 +360,7 @@ static enum jnl_mesh_err topo_sort_cells(struct jnl_mesh_topo *topo,
 	}
 
 	u64 scratch_pos = arena->pos;
-	i32 *new_index = ARENA_PUSH_ARRAY(arena, i32, n_cells);
+	i32 *new_index = ARENA_PUSH_ARRAY_Z(arena, i32, n_cells);
 	i32 *cursor = ARENA_PUSH_ARRAY_Z(arena, i32, regions->n_regions);
 
 	// Count cells per region
@@ -396,7 +395,7 @@ static enum jnl_mesh_err topo_sort_cells(struct jnl_mesh_topo *topo,
 	}
 
 	// Permute cell_marker to match new ordering (scratch on top)
-	i32 *tmp_marker = ARENA_PUSH_ARRAY(arena, i32, n_cells);
+	i32 *tmp_marker = ARENA_PUSH_ARRAY_Z(arena, i32, n_cells);
 	for (i32 c = 0; c < n_cells; c++)
 		tmp_marker[new_index[c]] = topo->cell_marker[c];
 	memcpy(topo->cell_marker, tmp_marker, n_cells * sizeof(i32));
@@ -408,48 +407,217 @@ static enum jnl_mesh_err topo_sort_cells(struct jnl_mesh_topo *topo,
 			topo->neighbour[f] = new_index[topo->neighbour[f]];
 	}
 
-	// cell_face_start/list are now stale
-	topo->cell_face_start = NULL;
-	topo->cell_face_list = NULL;
-
 	arena_pop_to(arena, scratch_pos);
 	return JNL_MESH_OK;
 }
 
-static void build_cell_faces(struct jnl_mesh_topo *topo, jnl_arena *arena)
+// TODO this doesn't work and needs to be looked at
+static void build_cell_vertices(struct jnl_mesh_topo *topo, jnl_arena *arena)
 {
 	i32 n_cells = topo->n_cells;
 	i32 n_faces = topo->n_faces;
 
-	// count faces per cell
+	//
+	// Pass 1:
+	// Build temporary cell -> face adjacency
+	//
+
+	u64 base = arena->pos;
+
 	i32 *count = ARENA_PUSH_ARRAY_Z(arena, i32, n_cells);
+
 	for (i32 f = 0; f < n_faces; f++) {
 		count[topo->owner[f]]++;
+
 		if (topo->neighbour[f] >= 0) {
 			count[topo->neighbour[f]]++;
 		}
 	}
 
-	// build CSR cell_face_start array
-	topo->cell_face_start = ARENA_PUSH_ARRAY(arena, i32, n_cells + 1);
-	topo->cell_face_start[0] = 0;
+	i32 *face_start = ARENA_PUSH_ARRAY(arena, i32, n_cells + 1);
+
+	face_start[0] = 0;
+
 	for (i32 c = 0; c < n_cells; c++) {
-		topo->cell_face_start[c + 1] = topo->cell_face_start[c] + count[c];
+		face_start[c + 1] = face_start[c] + count[c];
 	}
 
-	// Fill face list and reset count to use as cursor
-	i32 total = topo->cell_face_start[n_cells];
-	topo->cell_face_list = ARENA_PUSH_ARRAY(arena, i32, total);
+	i32 total_refs = face_start[n_cells];
+
+	i32 *cell_faces = ARENA_PUSH_ARRAY(arena, i32, total_refs);
+
 	memset(count, 0, n_cells * sizeof(i32));
 
 	for (i32 f = 0; f < n_faces; f++) {
+
 		i32 o = topo->owner[f];
-		topo->cell_face_list[topo->cell_face_start[o] + count[o]++] = f;
+
+		cell_faces[face_start[o] + count[o]++] = f;
+
 		if (topo->neighbour[f] >= 0) {
-			i32 nb = topo->neighbour[f];
-			topo->cell_face_list[topo->cell_face_start[nb] + count[nb]++] = f;
+
+			i32 n = topo->neighbour[f];
+
+			cell_faces[face_start[n] + count[n]++] = f;
 		}
 	}
+
+	//
+	// Allocate FINAL persistent CSR storage
+	//
+
+	topo->cell_vertex_start = ARENA_PUSH_ARRAY(arena, i32, n_cells + 1);
+
+	topo->cell_vertex_start[0] = 0;
+
+	for (i32 c = 0; c < n_cells; c++) {
+
+		i32 nf = face_start[c + 1] - face_start[c];
+
+		topo->cell_vertex_start[c + 1] = topo->cell_vertex_start[c] + nf;
+	}
+
+	i32 total_vertices = topo->cell_vertex_start[n_cells];
+
+	topo->cell_vertex_list = ARENA_PUSH_ARRAY(arena, i32, total_vertices);
+
+	//
+	// NOW create scratch region for polygon reconstruction only
+	//
+
+	u64 scratch = arena->pos;
+
+	//
+	// Build ordered polygon loop for each cell
+	//
+
+	for (i32 c = 0; c < n_cells; c++) {
+
+		i32 fstart = face_start[c];
+		i32 fend = face_start[c + 1];
+
+		i32 nf = fend - fstart;
+
+		i32 *faces = cell_faces + fstart;
+
+		//
+		// Dynamic scratch arrays
+		//
+
+		i32 *va = ARENA_PUSH_ARRAY(arena, i32, nf);
+		i32 *vb = ARENA_PUSH_ARRAY(arena, i32, nf);
+		bool *used = ARENA_PUSH_ARRAY_Z(arena, bool, nf);
+		i32 *poly = ARENA_PUSH_ARRAY(arena, i32, nf);
+
+		for (i32 i = 0; i < nf; i++) {
+
+			i32 f = faces[i];
+
+			va[i] = topo->face_vertex[f * 2];
+			vb[i] = topo->face_vertex[f * 2 + 1];
+		}
+
+		//
+		// Chain edges into polygon loop
+		//
+
+		used[0] = true;
+
+		poly[0] = va[0];
+
+		i32 current = vb[0];
+
+		for (i32 k = 1; k < nf; k++) {
+
+			poly[k] = current;
+
+			bool found = false;
+
+			for (i32 i = 1; i < nf; i++) {
+
+				if (used[i]) {
+					continue;
+				}
+
+				if (va[i] == current) {
+
+					current = vb[i];
+					used[i] = true;
+					found = true;
+					break;
+				}
+
+				if (vb[i] == current) {
+
+					current = va[i];
+					used[i] = true;
+					found = true;
+					break;
+				}
+			}
+
+			//
+			// Non-manifold or disconnected polygon
+			//
+
+			if (!found) {
+				arena_pop_to(arena, scratch);
+				arena_pop_to(arena, base);
+				return;
+			}
+		}
+
+		//
+		// Ensure CCW winding
+		//
+
+		f64 twice_area = 0.0;
+
+		for (i32 i = 0; i < nf; i++) {
+
+			i32 a = poly[i];
+			i32 b = poly[(i + 1) % nf];
+
+			f64 x0 = topo->vx[a];
+			f64 y0 = topo->vy[a];
+
+			f64 x1 = topo->vx[b];
+			f64 y1 = topo->vy[b];
+
+			twice_area += x0 * y1 - x1 * y0;
+		}
+
+		if (twice_area < 0.0) {
+
+			for (i32 i = 0; i < nf / 2; i++) {
+
+				i32 tmp = poly[i];
+
+				poly[i] = poly[nf - 1 - i];
+				poly[nf - 1 - i] = tmp;
+			}
+		}
+
+		//
+		// Write final polygon
+		//
+
+		i32 dst = topo->cell_vertex_start[c];
+
+		memcpy(topo->cell_vertex_list + dst, poly, nf * sizeof(i32));
+
+		//
+		// Reset per-cell scratch
+		//
+
+		arena_pop_to(arena, scratch);
+	}
+
+	//
+	// Free adjacency scratch
+	//
+
+	arena_pop_to(arena, base);
 }
 
 static struct jnl_mesh_geom geom_gen(jnl_arena *arena,
@@ -463,17 +631,17 @@ static struct jnl_mesh_geom geom_gen(jnl_arena *arena,
 	    .face_cy = ARENA_PUSH_ARRAY_Z(arena, f64, n_faces),
 	    .face_nx = ARENA_PUSH_ARRAY_Z(arena, f64, n_faces),
 	    .face_ny = ARENA_PUSH_ARRAY_Z(arena, f64, n_faces),
-	    .face_area = ARENA_PUSH_ARRAY(arena, f64, n_faces),
-	    .cell_cx = ARENA_PUSH_ARRAY(arena, f64, n_cells),
-	    .cell_cy = ARENA_PUSH_ARRAY(arena, f64, n_cells),
-	    .cell_vol = ARENA_PUSH_ARRAY(arena, f64, n_cells),
+	    .face_area = ARENA_PUSH_ARRAY_Z(arena, f64, n_faces),
+	    .cell_cx = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells),
+	    .cell_cy = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells),
+	    .cell_vol = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells),
 	};
 
 	for (u32 f = 0; f < n_faces; f++) {
-		i32 p0 = topo.face_point[f * 2];
-		i32 p1 = topo.face_point[f * 2 + 1];
-		f64 x0 = topo.px[p0], y0 = topo.py[p0];
-		f64 x1 = topo.px[p1], y1 = topo.py[p1];
+		i32 p0 = topo.face_vertex[f * 2];
+		i32 p1 = topo.face_vertex[f * 2 + 1];
+		f64 x0 = topo.vx[p0], y0 = topo.vy[p0];
+		f64 x1 = topo.vx[p1], y1 = topo.vy[p1];
 
 		geom.face_cx[f] = 0.5 * (x0 + x1);
 		geom.face_cy[f] = 0.5 * (y0 + y1);
@@ -487,65 +655,44 @@ static struct jnl_mesh_geom geom_gen(jnl_arena *arena,
 		geom.face_ny[f] = -dx / len;
 	}
 
-	// Cell quantities via shoelace over faces
-	u64 scratch_pos = arena->pos;
-	f64 *sum_cx = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells); // scratch
-	f64 *sum_cy = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells);
-
-	for (i32 f = 0; f < n_faces; f++) {
-		i32 p0 = topo.face_point[f * 2];
-		i32 p1 = topo.face_point[f * 2 + 1];
-		f64 x0 = topo.px[p0], y0 = topo.py[p0];
-		f64 x1 = topo.px[p1], y1 = topo.py[p1];
-
-		// Shoelace cross term and centroid weight for p0->p1
-		f64 cross = x0 * y1 - x1 * y0;
-		f64 wx = (x0 + x1) * cross;
-		f64 wy = (y0 + y1) * cross;
-
-		// Owner: p0->p1 (positive contribution)
-		i32 o = topo.owner[f];
-		geom.cell_vol[o] += cross;
-		sum_cx[o] += wx;
-		sum_cy[o] += wy;
-
-		// Neighbour: p1->p0 (negated — reverse winding)
-		i32 nb = topo.neighbour[f];
-		if (nb >= 0) {
-			geom.cell_vol[nb] -= cross;
-			sum_cx[nb] -= wx;
-			sum_cy[nb] -= wy;
-		}
-	}
-
+	// cell geometry - shoelace for "volume"
 	for (i32 c = 0; c < n_cells; c++) {
-		for (i32 c = 0; c < n_cells; c++) {
-			f64 signed_2a = geom.cell_vol[c];
-			assert(signed_2a > 0.0 &&
-			       "cell faces must be wound CCW around owner");
-			geom.cell_vol[c] =
-			    0.5 * signed_2a; // no fabs needed if assert holds
-			f64 inv = 1.0 / (3.0 * signed_2a);
-			geom.cell_cx[c] = sum_cx[c] * inv;
-			geom.cell_cy[c] = sum_cy[c] * inv;
+		i32 start = topo.cell_vertex_start[c];
+		i32 end = topo.cell_vertex_start[c + 1];
+
+		f64 twice_area = 0.0;
+		f64 cx_sum = 0.0;
+		f64 cy_sum = 0.0;
+
+		for (i32 i = start; i < end; i++) {
+
+			i32 ia = topo.cell_vertex_list[i];
+
+			i32 ib = topo.cell_vertex_list[(i + 1 < end) ? (i + 1) : start];
+
+			f64 x0 = topo.vx[ia];
+			f64 y0 = topo.vy[ia];
+
+			f64 x1 = topo.vx[ib];
+			f64 y1 = topo.vy[ib];
+
+			f64 cross = x0 * y1 - x1 * y0;
+
+			twice_area += cross;
+
+			cx_sum += (x0 + x1) * cross;
+			cy_sum += (y0 + y1) * cross;
 		}
+
+		assert(fabs(twice_area) > 1e-14);
+
+		geom.cell_vol[c] = 0.5 * fabs(twice_area);
+
+		f64 inv = 1.0 / (3.0 * twice_area);
+
+		geom.cell_cx[c] = cx_sum * inv;
+		geom.cell_cy[c] = cy_sum * inv;
 	}
-
-	// Fix face normal signs to point owner->neighbour
-	for (i32 f = 0; f < n_faces; f++) {
-		i32 o = topo.owner[f];
-		f64 dfx = geom.face_cx[f] - geom.cell_cx[o];
-		f64 dfy = geom.face_cy[f] - geom.cell_cy[o];
-
-		// If normal points away from owner centre, flip it
-		if (dfx * geom.face_nx[f] + dfy * geom.face_ny[f] < 0.0) {
-			geom.face_nx[f] = -geom.face_nx[f];
-			geom.face_ny[f] = -geom.face_ny[f];
-		}
-	}
-
-	// remove scratch arrays
-	arena_pop_to(arena, scratch_pos);
 
 	return geom;
 }
