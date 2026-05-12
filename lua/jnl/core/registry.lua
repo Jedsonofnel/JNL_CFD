@@ -8,56 +8,33 @@ local E = require("core.expr")
 local G = require("display.glyphs")
 local V = require("core.validation")
 
--- contract: equations hold terms and belong to fields
-function R.is_eq(v)
-	return type(v) == "table" and v._type == "eq"
-end
-
--- contract: terms belong to equations
-function R.is_term(v)
-	return type(v) == "table" and v._type == "term"
-end
-
 --
 -- Types of things that go into registry
 --
 
--- everything is a symbol (so can stash helpers on it)
-local Symbol = {}
-Symbol.__index = Symbol
-
-function Symbol:is_prognostic()
-	return self.prognostic or false
-end
-
-function Symbol:is_intermediate()
-	return self.kind == "intermediate"
-end
-
-local Constant = setmetatable({}, Symbol)
+local Constant = {}
 Constant.__index = Constant
 
-function Constant:pretty_str()
+function Constant:_pretty()
 	return string.format("%-12s %g", self.name, self.value)
 end
 
-local Expression = setmetatable({}, Symbol)
+local Expression = {}
 Expression.__index = Expression
 
-function Expression:pretty_str()
+function Expression:_pretty()
 	return string.format("%-12s %s", self.name, E.pretty(self.expr))
 end
 
-local Field = setmetatable({}, Symbol)
+local Field = {}
 Field.__index = Field
 
-function Field:pretty_str()
+function Field:_pretty()
 	local lines = {}
 	local function line(s) lines[#lines + 1] = s end
 
 	-- header
 	local flags = {}
-	if self.prognostic then flags[#flags + 1] = "prognostic" end
 	if self.region then flags[#flags + 1] = "region:" .. self.region end
 	local flag_str = #flags > 0 and ("  [" .. table.concat(flags, ", ") .. "]") or ""
 	line(self.name .. flag_str)
@@ -70,9 +47,8 @@ function Field:pretty_str()
 	-- solver properties
 	if self.eq then
 		local props = {
-			{ "solver",  self.eq.solver or "?" },
-			{ "relax",   self.eq.relax and string.format("%g", self.eq.relax) or "none" },
-			{ "backend", self.eq._backend or "?" },
+			{ "solver", self.eq.solver or "?" },
+			{ "relax",  self.eq.relax and string.format("%g", self.eq.relax) or "none" },
 		}
 		if self.bcs then props[#props + 1] = { "bcs", "<bc-table>" } end
 		if self.region then props[#props + 1] = { "region", self.region } end
@@ -127,34 +103,24 @@ function R:expression(name, expr)
 	}, Expression)
 end
 
-function R:field(name, eq_or_spec)
+function R:field(name, spec)
 	V.identifier(name, "field name")
-
-	local eq, spec
-	if R.is_eq(eq_or_spec) then
-		eq   = eq_or_spec
-		spec = {}
-	elseif type(eq_or_spec) == "table" and R.is_eq(eq_or_spec.eq) then
-		eq   = eq_or_spec.eq
-		spec = eq_or_spec
-	else
-		error(string.format(
-			"field '%s': expected FVM.eq(...) result or {eq=FVM.eq(...), ...}",
-			name), 2)
-	end
 
 	if spec.region ~= nil then
 		V.typeof(spec.region, "string", "field '" .. name .. "' region")
 	end
 
+	if spec.eq == nil then
+		error("R:field expects an equation field", 2)
+	end
+
 	self.syms[name] = setmetatable({
 		kind = "field",
-		prognostic = true,
 		name = name,
+		initial = spec.initial or 0.0,
 		bcs = spec.bcs,
 		region = spec.region,
-		initial = spec.initial or 0.0,
-		eq = eq,
+		eq = spec.eq,
 		_type = "sym",
 	}, Field)
 end
@@ -164,8 +130,81 @@ end
 --  TODOOOOOO (complex)
 -- end
 
+--
+-- Helpers
+--
+
 function R:query(name)
 	return self.syms[name]
+end
+
+function R:expect(name)
+	local sym = self.syms[name]
+	assert(sym, "registry: unknown symbol '" .. name .. "'")
+	return sym
+end
+
+function R:listing()
+	local parts = {}
+	local names = {}
+	for name in pairs(self.syms) do names[#names + 1] = name end
+	table.sort(names)
+	for _, name in ipairs(names) do
+		parts[#parts + 1] = self.syms[name]:_pretty()
+	end
+	return table.concat(parts, "\n")
+end
+
+function R:deps_of(name)
+	local sym = self:expect(name)
+	local into = {}
+
+	if sym.kind == "constant" then
+		return {}
+	elseif sym.kind == "expression" then
+		local names = E.deps(sym.expr)
+		for _, n in ipairs(names) do into[n] = true end
+	elseif sym.kind == "field" and sym.eq then
+		for n in pairs(sym.eq._deps or {}) do into[n] = true end
+	elseif sym.kind == "intermediate" then
+		for _, n in ipairs(sym._deps or {}) do into[n] = true end
+	end
+
+	local result = {}
+	for n in pairs(into) do result[#result + 1] = n end
+	table.sort(result)
+	return result
+end
+
+function R:depends_on(name)
+	local result = {}
+	for other_name in pairs(self.syms) do
+		local deps = self:deps_of(other_name)
+		for _, d in ipairs(deps) do
+			if d == name then
+				result[#result + 1] = other_name
+				break
+			end
+		end
+	end
+
+	table.sort(result)
+	return result
+end
+
+function R:dep_listing()
+	local lines = {}
+	local names = {}
+	for name in pairs(self.syms) do names[#names + 1] = name end
+	table.sort(names)
+
+	for _, name in ipairs(names) do
+		local deps = self:deps_of(name)
+		local dep_str = #deps > 0 and table.concat(deps, ", ") or "-"
+		lines[#lines + 1] = string.format("%-12s -> { %s }", name, dep_str)
+	end
+
+	return table.concat(lines, "\n")
 end
 
 return R

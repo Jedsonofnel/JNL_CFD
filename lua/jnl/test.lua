@@ -33,10 +33,11 @@ reg:field("T", {
 	),
 })
 
+print(reg:listing())
 
-for _, sym in pairs(reg.syms) do
-	print(sym:pretty_str())
-end
+print("\nDeps:\n")
+
+print(reg:dep_listing())
 
 local alg = A.new()
 

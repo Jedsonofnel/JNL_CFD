@@ -6,8 +6,17 @@ local FVM = {}
 -- deps
 local E = require("core.expr")
 local V = require("core.validation")
-local R = require("core.registry")
 local G = require("display.glyphs")
+
+-- contract: equations hold terms and belong to fields
+function E.is_eq(v)
+	return type(v) == "table" and v._type == "eq"
+end
+
+-- contract: terms belong to equations
+function E.is_term(v)
+	return type(v) == "table" and v._type == "term"
+end
 
 --
 -- Canonical name manglers for FMV intermediate fields
@@ -27,6 +36,10 @@ end
 
 local function prev_name(field)
 	return "__prev_" .. field
+end
+
+local function expl_name(field)
+	return "__expl_" .. field
 end
 
 local function diag_name(field, i)
@@ -54,6 +67,10 @@ local function is_prev(name)
 	return name:match("^__prev_(.+)$")
 end
 
+local function is_expl(name)
+	return name:match("^__expl_(.+)$")
+end
+
 local function is_diag(name)
 	local comp, field = name:match("^__diag_([xy])_(.+)$")
 	if field then return field, comp end
@@ -78,6 +95,22 @@ local function pop_config(args)
 		return table.remove(args)
 	end
 	return {}
+end
+
+--- Collect dependencies of an FVM term
+--- @param expr table|nil Every term will have an expression coefficient
+--- @param ... string Any other dependencies
+local function term_deps(expr, ...)
+	local rest = { ... }
+	local into = {}
+
+	if expr then E.collect_deps(expr, into) end
+	for _, v in ipairs(rest) do
+		if type(v) == "string" then
+			into[v] = true
+		end
+	end
+	return into
 end
 
 local dt_scms = {
@@ -107,6 +140,7 @@ function Op.dt(...)
 		scheme   = scheme,
 		_type    = "term",
 		_backend = "fvm",
+		_deps    = term_deps(coeff, phi, prev_name(phi)),
 		_pretty  = function()
 			local inner = coeff
 				and E.pretty(E.mul(coeff, phi))
@@ -121,7 +155,6 @@ local div_scms = {
 	CDS = true,
 }
 
--- TODO: convert to config table form
 function Op.div(...)
 	local args = { ... }
 	if #args == 0 then
@@ -142,6 +175,7 @@ function Op.div(...)
 		phi      = E.from(phi),
 		scheme   = scheme,
 		_type    = "term",
+		_deps    = term_deps(coeff, phi),
 		_backend = "fvm",
 		_pretty  = function()
 			local inner = coeff
@@ -172,6 +206,7 @@ function Op.lap(...)
 		coeff    = coeff,
 		phi      = E.from(phi),
 		_type    = "term",
+		_deps    = term_deps(coeff, phi),
 		_backend = "fvm",
 		_pretty  = function()
 			local inner = coeff
@@ -193,6 +228,7 @@ function Op.su(...)
 		kind     = "su",
 		expr     = combined,
 		_type    = "term",
+		_deps    = term_deps(combined),
 		_backend = "fvm",
 		_pretty  = function()
 			return E.pretty(combined)
@@ -205,6 +241,7 @@ function Op.sp(coeff)
 	return {
 		kind     = "sp",
 		expr     = expr,
+		_deps    = term_deps(expr),
 		_type    = "term",
 		_backend = "fvm",
 		_pretty  = function(field)
@@ -224,17 +261,19 @@ FVM.Expr = Expr
 
 function Expr.grad(field, i)
 	V.identifier(field, "E.grad field")
-	assert(i == "x" or i == "y",
-		"E.grad component must be 'x' or 'y'")
+	assert(i == "x" or i == "y", "E.grad component must be 'x' or 'y'")
 	return {
 		kind = "grad",
 		field = field,
 		component = i,
 		_type = "expr",
+		_intermed = E.intermediate(
+			grad_name(field, i),
+			{ face_name(field) }
+		),
 		_pretty = function()
 			return G.grad .. i .. G.lparen .. field .. G.rparen
 		end,
-		_refs = { grad_name(field, i) },
 	}
 end
 
@@ -244,10 +283,19 @@ function Expr.prev(field)
 		kind = "prev",
 		field = field,
 		_type = "expr",
-		_pretty = function()
-			return field .. G.prev
-		end,
-		_refs = { prev_name(field) },
+		_intermed = E.intermediate(prev_name(field)),
+		_pretty = function() return field .. G.prev end,
+	}
+end
+
+function Expr.expl(field)
+	V.identifier(field, "E.expl field")
+	return {
+		kind = "expl",
+		field = field,
+		_type = "expr",
+		_intermed = E.intermediate(expl_name(field)),
+		_pretty = function() return field .. G.expl end,
 	}
 end
 
@@ -256,7 +304,6 @@ function Expr.diag(field, i)
 	assert(i == nil or i == "x" or i == "y",
 		"Expr.diag: component (i) must be nil or 'x' or 'y'")
 
-	local mangled = diag_name(field, i)
 	local display = i and (field .. "." .. i) or field
 
 	return {
@@ -264,10 +311,10 @@ function Expr.diag(field, i)
 		field = field,
 		component = i,
 		_type = "expr",
+		_intermed = E.intermediate(diag_name(field, i)),
 		_pretty = function()
 			return "<diag:" .. display .. ">"
 		end,
-		_refs = { mangled },
 	}
 end
 
@@ -279,10 +326,13 @@ function Expr.mwi(U_name, p_name)
 		U = U_name,
 		p = p_name,
 		_type = "expr",
+		_intermed = E.intermediate(
+			mwi_name(U_name, p_name),
+			{ face_name(U_name), face_name(p_name) }
+		),
 		_pretty = function()
 			return "<mwi:" .. U_name .. "," .. p_name .. ">"
 		end,
-		_refs = {} -- TODO
 	}
 end
 
@@ -319,7 +369,7 @@ function FVM.eq(...)
 
 	local terms = {}
 	for i, v in ipairs(args) do
-		if R.is_term(v) then
+		if E.is_term(v) then
 			terms[#terms + 1] = v
 		elseif E.is_expr(v) or type(v) == "number" then
 			terms[#terms + 1] = Op.su(v) -- coerce bare expr to Su
@@ -338,10 +388,18 @@ function FVM.eq(...)
 
 	local solver = V.in_enum(eq_solvers, config.solver or "bicgstab", "FVM.eq solver")
 
+	local deps = {}
+	for _, term in ipairs(terms) do
+		for name in pairs(term._deps or {}) do
+			deps[name] = true
+		end
+	end
+
 	return {
 		terms = terms,
 		relax = config.relax,
 		solver = solver,
+		_deps = deps,
 		_type = "eq",
 		_backend = "fvm",
 		_pretty = eq_pretty,

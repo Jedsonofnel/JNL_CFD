@@ -7,37 +7,85 @@ local V = require("core.validation")
 local G = require("display.glyphs")
 
 -- contract: _type = "expr"
-function E.is_expr(v)
+local function is_expr(v)
 	return type(v) == "table" and v._type == "expr"
 end
 
+E.is_expr = is_expr
+
 -- expression constructor/validator
-function E.from(v)
+local function from(v)
 	if type(v) == "number" then
 		return { kind = "const", value = v, _type = "expr" }
 	elseif type(v) == "string" then
 		assert(not v:match("^__"),
 			"symbol names starting with '__' are reserved: " .. v)
 		return { kind = "sym", name = v, _type = "expr" }
-	elseif E.is_expr(v) then
+	elseif is_expr(v) then
 		return v
 	else
 		error("E.from: cannot coerce to expr: " .. tostring(v), 3)
 	end
 end
 
+E.from = from
+
+-- dependency/reference counting helper for construction
+local function collect_deps(e, into)
+	into = into or {}
+	if type(e) ~= "table" then return into end
+
+	if e.kind == "sym" then
+		into[e.name] = true
+		return into
+	end
+
+	if e.kind == "intermediate" then
+		into[e.name] = true
+		return into
+	end
+
+	-- recurse
+	collect_deps(e.a, into)
+	collect_deps(e.b, into)
+	collect_deps(e.base, into)
+	collect_deps(e.exp, into)
+	collect_deps(e.value, into) -- negation
+	collect_deps(e._intermed, into)
+
+	-- variadic
+	if e.addends then
+		for _, child in ipairs(e.addends) do collect_deps(child, into) end
+	end
+	if e.factors then
+		for _, child in ipairs(e.factors) do collect_deps(child, into) end
+	end
+
+	return into
+end
+
+E.collect_deps = collect_deps
+
 --
 -- Expr constructors
 --
 
+local function make_expr(t)
+	t._type = "expr"
+	t._deps = collect_deps(t)
+	return t
+end
+
+E.make_expr = make_expr
+
 function E.sym(name)
 	V.identifier(name, "E.sym")
-	return { kind = "sym", name = name, _type = "expr" }
+	return make_expr { kind = "sym", name = name }
 end
 
 function E.const(value)
 	V.typeof(value, "number", "E.const")
-	return { kind = "const", value = value, _type = "expr" }
+	return make_expr { kind = "const", value = value }
 end
 
 -- Arithmetic
@@ -45,83 +93,88 @@ end
 function E.add(...)
 	local args = { ... }
 	if #args == 1 then
-		return E.from(args[1])
+		return from(args[1])
 	elseif #args == 2 then
-		return {
-			kind = "add",
-			a = E.from(args[1]),
-			b = E.from(args[2]),
-			_type = "expr",
-		}
+		local a, b = from(args[1]), from(args[2])
+		return make_expr { kind = "add", a = a, b = b }
 	end
 
 	-- variadic add (ignoring zeros, the identity)
 	local addends = {}
 	for _, v in ipairs(args) do
-		local addend = E.from(v)
+		local addend = from(v)
 		if not (addend.kind == "const" and addend.value == 0) then
 			addends[#addends + 1] = addend
 		end
 	end
-	return {
-		kind = "addv",
-		addends = addends,
-		_type = "expr",
-	}
+	return make_expr { kind = "addv", addends = addends }
 end
 
 function E.sub(a, b)
-	return { kind = "sub", a = E.from(a), b = E.from(b), _type = "expr" }
+	return make_expr { kind = "sub", a = from(a), b = from(b) }
 end
 
 function E.mul(...)
 	local args = { ... }
 	if #args == 1 then
-		return E.from(args[1])
+		return from(args[1])
 	elseif #args == 2 then
-		return {
-			kind = "mul",
-			a = E.from(args[1]),
-			b = E.from(args[2]),
-			_type = "expr",
-		}
+		local a, b = from(args[1]), from(args[2])
+		return make_expr { kind = "mul", a = a, b = b }
 	end
 
 	-- variadic mul
 	local factors = {}
 	for _, v in ipairs(args) do
-		local factor = E.from(v)
+		local factor = from(v)
 		if not (factor.kind == "const" and factor.value == 1) then
 			factors[#factors + 1] = factor
 		end
 	end
-	return { kind = "mulv", factors = factors, _type = "expr" }
+	return make_expr { kind = "mulv", factors = factors }
 end
 
 function E.div(a, b)
-	return { kind = "div", a = E.from(a), b = E.from(b), _type = "expr" }
+	a, b = from(a), from(b)
+	return make_expr { kind = "div", a = a, b = b }
 end
 
 function E.neg(a)
-	return { kind = "neg", value = E.from(a), _type = "expr" }
+	a = from(a)
+	return make_expr { kind = "neg", value = a }
 end
 
 function E.pow(base, exp)
-	return { kind = "pow", base = E.from(base), exp = E.from(exp), _type = "expr" }
+	base, exp = from(base), from(exp)
+	return make_expr { kind = "pow", base = base, exp = exp }
 end
 
 -- Mesh access
 
 function E.cx()
-	return { kind = "cell_x", _type = "expr" }
+	return make_expr { kind = "cell_x" }
 end
 
 function E.cy()
-	return { kind = "cell_y", _type = "expr" }
+	return make_expr { kind = "cell_y" }
 end
 
 function E.cV()
-	return { kind = "cell_vol", _type = "expr" }
+	return make_expr { kind = "cell_vol" }
+end
+
+-- Intermediate expressions for use by the compiler
+
+function E.intermediate(name, deps)
+	assert(type(name) == "string" and name:match("^__"),
+		"E.intermediate: name must start with '__', got: " .. tostring(name))
+	assert(deps == nil or type(deps) == "table",
+		"E.intermediate: deps must be a table or nil")
+	return make_expr {
+		kind  = "intermediate",
+		name  = name,
+		_deps = deps or {},
+	}
 end
 
 --
@@ -259,6 +312,21 @@ function E.pretty(e, parent_prec, is_right_child)
 	end
 
 	return "<?:" .. tostring(k) .. ">" -- fallback
+end
+
+--
+-- Dependency handling
+--
+
+function E.deps(e)
+	assert(is_expr(e), "E.deps: expected expr")
+	local set = e._deps or collect_deps(e, {})
+	local names = {}
+	for name in pairs(set) do
+		names[#names + 1] = name
+	end
+	table.sort(names)
+	return names
 end
 
 return E
