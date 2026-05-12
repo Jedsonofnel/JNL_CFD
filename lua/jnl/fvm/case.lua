@@ -85,7 +85,6 @@ end
 
 local Case = {}
 Case.__index = Case
-fvm.Case = Case
 
 -- TODO: add mesh and bcs
 function Case.new(registry, algorithm)
@@ -247,3 +246,5 @@ local function compile_field(field)
 	end
 	return instrs
 end
+
+return Case

@@ -1,5 +1,5 @@
 -- test.lua - exercise the jnl physics layer
--- <jed@nelson.ac. // 2026-05-11
+-- <jed@nelson.ac> // 2026-05-11
 
 local FVM = require("fvm")
 local Op = FVM.Op

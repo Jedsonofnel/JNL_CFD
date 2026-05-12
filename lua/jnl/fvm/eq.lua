@@ -1,7 +1,7 @@
 -- jnl/fvm.lua - FVM constructors for jnl physics description layer
 -- <jed@nelson.ac> // 2026-05-08
 
-local FVM = {}
+local M = {} -- internal module, re-exported by init.lua
 
 -- deps
 local E = require("core.expr")
@@ -85,7 +85,7 @@ end
 --
 
 local Op = {}
-FVM.Op = Op
+M.Op = Op
 
 -- helper for getting configs
 local function pop_config(args)
@@ -257,7 +257,7 @@ end
 --
 
 local Expr = {}
-FVM.Expr = Expr
+M.Expr = Expr
 
 function Expr.grad(field, i)
 	V.identifier(field, "E.grad field")
@@ -363,7 +363,7 @@ local function eq_pretty(self, field_name, indent)
 end
 
 
-function FVM.eq(...)
+local function eq(...)
 	local args = { ... }
 	local config = pop_config(args)
 
@@ -406,4 +406,6 @@ function FVM.eq(...)
 	}
 end
 
-return FVM
+M.Eq = eq
+
+return M
