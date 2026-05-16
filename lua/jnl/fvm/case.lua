@@ -1,5 +1,5 @@
--- case.lua - physics case that gets compiled
--- <jed@nelson.ac> // 2026-05-11
+-- fvm/case.lua - physics case that gets compiled
+-- <jed@nelson.ac> // 2026-05-12
 
 --
 -- Instruction storage
@@ -27,56 +27,20 @@ function Inst:tostring()
 	return self.op .. "(" .. argstr .. ")"
 end
 
---
--- Compiler internals
---
+-- Helper for copying registry
 
-local function refs_in_term(term)
-	if term._raw_refs ~= nil then
-		return term._raw_refs
+local function deepcopy(src, seen)
+	seen = seen or {}
+	if seen[src] then return seen[src] end
+
+	local copy = {}
+	seen[src] = copy
+	for k, v in pairs(src) do
+		local ck = type(k) == "table" and deepcopy(k, seen) or k
+		local cv = type(v) == "table" and deepcopy(v, seen) or v
+		copy[ck] = cv
 	end
-
-	-- Uncover refs
-end
-
-local function expand_intermediates(syms)
-	local changed = true
-
-	-- iterates to fixpoint as intermediates might add more intermediates
-	repeat
-		for name, sym in pairs(syms) do
-			for ref, _ in pairs(sym._raw_refs or {}) do
-			end
-		end
-	until not changed
-
-	return {}
-end
-
-local function build_prognostics_dep_graph(syms)
-	local graph = {}
-	local prognostics = {}
-
-	for name, sym in pairs(syms) do
-		if sym.prognostic then
-			prognostics[name] = sym
-		end
-	end
-
-	for name, sym in pairs(prognostics) do
-		graph[name] = {}
-		for _, term in ipairs(sym.eq or {}) do
-			local refs = refs_in_term(term)
-			for ref, _ in pairs(refs) do
-				-- only track deps on other prognostics (not self)
-				if prognostics[ref] and ref ~= name then
-					graph[name][ref] = true
-				end
-			end
-		end
-	end
-
-	return graph, prognostics
+	return copy
 end
 
 --
@@ -88,9 +52,12 @@ Case.__index = Case
 
 -- TODO: add mesh and bcs
 function Case.new(registry, algorithm)
-	local instance = {
-		registry = registry,
-		algorithm = algorithm,
+	local reg_clone = deepcopy(registry)
+	local alg_clone = deepcopy(algorithm)
+
+	local instance = setmetatable({
+		registry = reg_clone,
+		algorithm = alg_clone,
 		-- mesh = mesh
 		-- bcs = config.bcs or {}
 
@@ -98,12 +65,9 @@ function Case.new(registry, algorithm)
 		instructions = {}, -- flat compiled instruction list
 		hooks = {},  -- functions
 		warnings = {},
-	}
-
-	instance = setmetatable(instance, Case)
+	}, Case)
 
 	instance:_compile()
-
 	return instance
 end
 
@@ -114,6 +78,22 @@ end
 function Case:_emit(inst)
 	self.instructions[#self.instructions + 1] = inst
 end
+
+function Case:listing()
+	local str = "Case: " .. (self.name or "") .. "\n"
+	for _, inst in ipairs(self.instructions) do
+		str = str .. inst:tostring() .. "\n"
+	end
+	return str .. "END"
+end
+
+function Case:print_listing()
+	print(self:listing())
+end
+
+--
+-- Compiler internals!
+--
 
 function Case:_collect_explicit()
 	local syms = self.registry.syms
@@ -138,11 +118,11 @@ function Case:_collect_explicit()
 			self._explicit_steps[#self._explicit_steps + 1] = step
 
 			if not self._explicit_set[name] then
-				self._explicit_set[name]       = true
+				self._explicit_set[name] = true
 				self._explicit_first_pos[name] = pos
 			end
 
-			if syms[name].prognostic and not prog_seen[name] then
+			if syms[name].kind == "field" and not prog_seen[name] then
 				prog_seen[name] = true
 				self._explicit_prognostics[#self._explicit_prognostics + 1] = name
 			end
@@ -151,14 +131,13 @@ function Case:_collect_explicit()
 		end
 	end
 
-	-- validate: at least one solve
-	if #self._explicit_steps == 0 or
-		not (function()
-			for _, s in ipairs(self._explicit_steps) do
-				if s.op == "solve" then return true end
-			end
-		end)()
-	then
+	-- look for an explicit solve for validation
+	local is_explicit_solve = false
+	for _, s in ipairs(self._explicit_steps) do
+		if s.op == "solve" then return true end
+	end
+
+	if not is_explicit_solve then
 		local progs = {}
 		for name, sym in pairs(syms) do
 			if sym.prognostic then table.insert(progs, name) end
@@ -173,78 +152,57 @@ function Case:_collect_explicit()
 	end
 end
 
-function Case:_build_dep_graph()
+function Case:_build_prog_dep_graph()
 	local syms = self.registry.syms
+	local progs = {} -- list of strings
 
-	-- expand intermediates (eg __grad_x_* gains dep on __face_*)
-	local new_intermediates = expand_intermediates(syms)
-	for k, v in pairs(new_intermediates) do syms[k] = v end
+	if self._dep_graph == nil then self._dep_graph = {} end
 
-	local graph, all_prognostics = build_prognostics_dep_graph(syms)
-
-	local diagnostics = {}
-
-	for name, sym in pairs(syms) do
-		if not sym.prognostic then
-			diagnostics[name] = true
+	for name, value in pairs(syms) do
+		if value.kind == "field" then
+			progs[#progs + 1] = name
+			self._dep_graph[name] = value._deps
 		end
 	end
 
-	self._all_prognostics = all_prognostics
-
-	-- TODO add build_prognostics_dep_graph(syms)
-	self._all_diagnostics = diagnostics
+	self._prognostics = progs
 end
+
+--- Constructs internal _prognostic_order table based on a topological sort
+-- of prognostis and the order in which they are specified.
+function Case:_resolve_prognostic_order()
+	-- construct _prognostic_order table
+end
+
+--[[
+
+COMPILATION
+===========
+
+Actually:
+1) Collect prognostic
+
+1) Collect all prognostics from registry
+2) Build prognostic dependency graph
+3) Topologically sort prognostics with cycle breaking
+	- Explicit first (in user order)
+	- Implicit dependencies prepended
+	- Unreachable appended (after main loop)
+4) Expand intermediate diagnostics
+5) Build diagnostic dependency graph
+6) Walk prognostic solves and chase diagnostics with freshness analysis
+7) Emit instructions to resolve each symbol in the specified order
+
+--]]
 
 function Case:_compile()
-	-- 1) Collect all prognostics from registry
-	-- 2) Build prognostic dep graph
-	-- 3) Topo sort prognostics with cycle breaking
-	--      - explicit first (in user order)
-	--      - implicit prepended
-	--      - unreachable appended
-	-- 4) Walk explicit solves and chase diagnostics
-
 	self:_collect_explicit()
-	self:_build_dep_graph()
+	self:_build_prog_dep_graph()
 	self:_resolve_prognostic_order()
+
+	-- TODO: expand diagnostics and build diagnostic dependency graph
+
 	self:_emit_instructions()
-
-	-- Just to get some output
-	if self.algorithm.op == "loop" then
-		self.instructions[#self.instructions + 1] = Inst.comment("Loop")
-	end
-end
-
-function Case:listing()
-	local str = "Case: " .. (self.name or "") .. "\n"
-	for _, inst in ipairs(self.instructions) do
-		str = str .. inst:tostring() .. "\n"
-	end
-	return str .. "END"
-end
-
-function Case:print_listing()
-	print(self:listing())
-end
-
--- This needs to go away
-local function compile_field(field)
-	local instrs = {}
-	for _, term in ipairs(field.eq) do
-		if term.fvkind == "lap" then
-			table.insert(instrs, Inst.new("laplacian"))
-		elseif term.fvkind == "div" then
-			table.insert(instrs, Inst.new("div"))
-		elseif term.fvkind == "div" then
-			table.insert(instrs, Inst.new("dt"))
-		elseif term.fvkind == "sp" then
-			table.insert(instrs, Inst.new("su"))
-		elseif term.fvkind == "su" then
-			table.insert(instrs, Inst.new("sp"))
-		end
-	end
-	return instrs
 end
 
 return Case

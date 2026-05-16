@@ -113,20 +113,20 @@ local function term_deps(expr, ...)
 	return into
 end
 
-local dt_scms = {
+local ddt_scms = {
 	IMPLICIT = true,
 	EXPLICIT = true,
 	CRANK_NICHOLSON = true,
 }
 
-function Op.dt(...)
+function Op.ddt(...)
 	local args = { ... }
 	if #args == 0 then
-		error("Op.dt: requires at least a field name", 2)
+		error("Op.ddt: requires at least a field name", 2)
 	end
 
 	local config = pop_config(args)
-	local scheme = V.in_enum(dt_scms, config.scheme or "implicit", "Op.dt scheme")
+	local scheme = V.in_enum(ddt_scms, config.scheme or "implicit", "Op.ddt scheme")
 
 	local phi = table.remove(args)
 	V.identifier(phi)
@@ -134,7 +134,7 @@ function Op.dt(...)
 	local coeff = #args > 0 and E.mul(table.unpack(args)) or nil
 
 	return {
-		kind     = "dt",
+		kind     = "ddt",
 		coeff    = coeff,
 		phi      = E.from(phi),
 		scheme   = scheme,
@@ -145,7 +145,7 @@ function Op.dt(...)
 			local inner = coeff
 				and E.pretty(E.mul(coeff, phi))
 				or E.pretty(phi)
-			return string.format("%s[%s]", G.dt, inner)
+			return string.format("%s[%s]", G.ddt, inner)
 		end,
 	}
 end

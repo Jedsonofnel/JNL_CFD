@@ -1,16 +1,17 @@
 -- algorithm.lua - storage for algorithmic steps for a solver
 -- <jed@nelson.ac> // 2026-05-11
 
-local A = {}
-
 -- deps
 local V = require("core.validation")
 
+local A = {}
 A.__index = A
 
 function A.new()
 	return setmetatable({}, A)
 end
+
+-- constructors
 
 function A:linear(cb)
 	self.op = "linear"
@@ -55,6 +56,26 @@ function A:loop(cb, config)
 	self.op = "loop"
 	self.max_iters = config.max_iters or 1000
 	self.go_until = config.go_until
+end
+
+-- helpers
+
+function A:push(step)
+	self[#self + 1] = step
+end
+
+function A:prepend(step)
+	table.insert(self, 1, step)
+end
+
+function A:insert_before(name, step)
+	for i, s in ipairs(self) do
+		if s.field == name then
+			table.insert(self, i, step)
+			return
+		end
+	end
+	error("algorithm: no step found for field '" .. name .. "'")
 end
 
 return A

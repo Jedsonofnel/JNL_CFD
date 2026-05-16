@@ -2,7 +2,7 @@
 -- <jed@nelson.ac> // 2026-05-11
 
 local glyphs_unicode = {
-	dt       = "∂/∂t",
+	ddt      = "∂/∂t",
 	div      = "∇·",
 	lap      = "∇²",
 	grad     = "∇",
@@ -25,7 +25,7 @@ local glyphs_unicode = {
 }
 
 local glyphs_ascii = {
-	dt       = "d/dt",
+	ddt      = "d/dt",
 	div      = "div",
 	lap      = "lap",
 	grad     = "grad",

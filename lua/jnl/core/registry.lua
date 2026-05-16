@@ -1,8 +1,6 @@
 -- registry.lua - registry of symbols for physics problems
 -- <jed@nelson.ac> // 2026-05-11
 
-local R = {}
-
 -- deps
 local E = require("core.expr")
 local G = require("display.glyphs")
@@ -67,24 +65,27 @@ function Field:_pretty()
 end
 
 --
--- Registry: Putting it all together
+-- Registry: just a table of syms
 --
 
+local R = {}
 R.__index = R
 
 function R.new()
-	return setmetatable({ syms = {} }, R)
+	return setmetatable({}, R)
+end
+
+function R:define(name, sym, proto)
+	proto = proto or {}
+	sym._type = "sym"
+	sym.name = name
+	self[name] = setmetatable(sym, proto)
 end
 
 function R:constant(name, value)
 	V.identifier(name, "constant name")
 	V.typeof(value, "number", "constant value")
-	self.syms[name] = setmetatable({
-		name = name,
-		kind = "constant",
-		value = value,
-		_type = "sym",
-	}, Constant)
+	self:define(name, { kind = "constant", value = value }, Constant)
 end
 
 -- TODO: figure out the interface
@@ -95,12 +96,7 @@ end
 
 function R:expression(name, expr)
 	V.identifier(name, "expression name")
-	self.syms[name] = setmetatable({
-		name = name,
-		kind = "expression",
-		expr = expr,
-		_type = "sym",
-	}, Expression)
+	self:define(name, { kind = "expression", expr = expr }, Expression)
 end
 
 function R:field(name, spec)
@@ -114,14 +110,12 @@ function R:field(name, spec)
 		error("R:field expects an equation field", 2)
 	end
 
-	self.syms[name] = setmetatable({
+	self:define(name, {
 		kind = "field",
-		name = name,
 		initial = spec.initial or 0.0,
 		bcs = spec.bcs,
 		region = spec.region,
 		eq = spec.eq,
-		_type = "sym",
 	}, Field)
 end
 
@@ -135,11 +129,11 @@ end
 --
 
 function R:query(name)
-	return self.syms[name]
+	return self[name]
 end
 
 function R:expect(name)
-	local sym = self.syms[name]
+	local sym = self[name]
 	assert(sym, "registry: unknown symbol '" .. name .. "'")
 	return sym
 end
@@ -147,10 +141,10 @@ end
 function R:listing()
 	local parts = {}
 	local names = {}
-	for name in pairs(self.syms) do names[#names + 1] = name end
+	for name in pairs(self) do names[#names + 1] = name end
 	table.sort(names)
 	for _, name in ipairs(names) do
-		parts[#parts + 1] = self.syms[name]:_pretty()
+		parts[#parts + 1] = self[name]:_pretty()
 	end
 	return table.concat(parts, "\n")
 end
@@ -178,7 +172,7 @@ end
 
 function R:depends_on(name)
 	local result = {}
-	for other_name in pairs(self.syms) do
+	for other_name in pairs(self) do
 		local deps = self:deps_of(other_name)
 		for _, d in ipairs(deps) do
 			if d == name then
@@ -195,7 +189,7 @@ end
 function R:dep_listing()
 	local lines = {}
 	local names = {}
-	for name in pairs(self.syms) do names[#names + 1] = name end
+	for name in pairs(self) do names[#names + 1] = name end
 	table.sort(names)
 
 	for _, name in ipairs(names) do
