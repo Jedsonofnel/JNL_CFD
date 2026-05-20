@@ -329,4 +329,19 @@ function E.deps(e)
 	return names
 end
 
+function E.walk(e, visitor)
+	if type(e) ~= "table" then return end
+	visitor(e)
+	if e._walk then
+		e._walk(e, visitor)
+	else
+		for _, child in ipairs({ e.a, e.b, e.base, e.exp, e.value }) do
+			E.walk(child, visitor)
+		end
+		for _, key in ipairs({ "addends", "factors" }) do
+			for _, child in ipairs(e[key] or {}) do E.walk(child, visitor) end
+		end
+	end
+end
+
 return E

@@ -34,6 +34,11 @@ function V.identifier(s, label)
 	end
 end
 
+function V.internal_identifier(name, context)
+	assert(type(name) == "string" and #name > 0,
+		(context or "identifier") .. ": must be a non-empty string")
+end
+
 function V.keys(t)
 	local ks = {}
 	for k in pairs(t) do ks[#ks + 1] = k end

@@ -1,6 +1,9 @@
 -- fvm/case.lua - physics case that gets compiled
 -- <jed@nelson.ac> // 2026-05-12
 
+-- deps
+local E = require("core.expr")
+
 --
 -- Instruction storage
 --
@@ -40,6 +43,7 @@ local function deepcopy(src, seen)
 		local cv = type(v) == "table" and deepcopy(v, seen) or v
 		copy[ck] = cv
 	end
+	setmetatable(copy, getmetatable(src))
 	return copy
 end
 
@@ -92,86 +96,115 @@ function Case:print_listing()
 end
 
 --
--- Compiler internals!
+-- Compiler: expanding intermediate fields
 --
 
-function Case:_collect_explicit()
-	local syms = self.registry.syms
-	local steps = self.algorithm.steps or {}
-
-	self.explicit_steps = {}
-	self.explicit_set = {}
-	self.explicit_first_pos = {}
-	self.explicit_prognostics = {}
-
-	local prog_seen = {}
-	local pos = 0
-
-	for _, step in ipairs(steps) do
-		if step.op == "solve" then
-			local name = step.field
-			if not syms[name] then
-				error(string.format("algorithm: solve '%s' — field not registered", name))
-			end
-
-			pos = pos + 1
-			self._explicit_steps[#self._explicit_steps + 1] = step
-
-			if not self._explicit_set[name] then
-				self._explicit_set[name] = true
-				self._explicit_first_pos[name] = pos
-			end
-
-			if syms[name].kind == "field" and not prog_seen[name] then
-				prog_seen[name] = true
-				self._explicit_prognostics[#self._explicit_prognostics + 1] = name
-			end
-		elseif step.op == "clip" or step.op == "hook" or step.op == "inner" then
-			self._explicit_steps[#self._explicit_steps + 1] = step
-		end
-	end
-
-	-- look for an explicit solve for validation
-	local is_explicit_solve = false
-	for _, s in ipairs(self._explicit_steps) do
-		if s.op == "solve" then return true end
-	end
-
-	if not is_explicit_solve then
-		local progs = {}
-		for name, sym in pairs(syms) do
-			if sym.prognostic then table.insert(progs, name) end
-		end
-		table.sort(progs)
-		error(string.format(
-			"algorithm: no solve steps declared.\n"
-			.. "Registered prognostic fields: %s\n"
-			.. "Add at least one: target:solve(\"<field>\")",
-			table.concat(progs or { "none" }, ", ")
-		))
-	end
+local function walk_term(term, visitor)
+	E.walk(term.coeff, visitor)
+	E.walk(term.phi, visitor)
+	E.walk(term.expr, visitor)
 end
 
-function Case:_build_prog_dep_graph()
-	local syms = self.registry.syms
-	local progs = {} -- list of strings
+local function seed_intermediates(reg)
+	local queued, pending = {}, {}
 
-	if self._dep_graph == nil then self._dep_graph = {} end
-
-	for name, value in pairs(syms) do
-		if value.kind == "field" then
-			progs[#progs + 1] = name
-			self._dep_graph[name] = value._deps
+	for _, sym in pairs(reg) do
+		if type(sym) == "table" and sym.kind == "field" and sym.eq then
+			for _, term in ipairs(sym.eq.terms or {}) do
+				walk_term(term, function(e)
+					if e._intermed and not queued[e._intermed.name] then
+						local name = e._intermed.name
+						queued[name] = true
+						pending[#pending + 1] = name
+					end
+				end)
+			end
 		end
 	end
 
-	self._prognostics = progs
+	return pending, queued
 end
 
---- Constructs internal _prognostic_order table based on a topological sort
--- of prognostis and the order in which they are specified.
-function Case:_resolve_prognostic_order()
-	-- construct _prognostic_order table
+--- Resolve a vector or scalar name to its scalar component list.
+local function scalars_of(reg, name)
+	local sym = reg[name]
+	if sym and sym.kind == "vector" then return sym.components end
+	return { name }
+end
+
+--- Returns itype and deps list, given an intermediate name.
+-- Also returns any new intermediate names that should be enqueued.
+local function elaborate(reg, name)
+	do
+		local comp, field = name:match("^__grad_([xy])_(.+)$")
+		if comp then
+			local face = "__face_" .. field
+			return "grad_" .. comp, { face }, { face }
+		end
+	end
+	do
+		local field = name:match("^__face_(.+)$")
+		if field then
+			local comps = scalars_of(reg, field)
+			if #comps == 1 then
+				assert(reg[comps[1]],
+					"intermediate '" .. name .. "': unregistered field '" .. comps[1] .. "'")
+				return "face", comps, {}
+			else
+				local face_deps, to_enqueue = {}, {}
+				for _, c in ipairs(comps) do
+					local cf = "__face_" .. c
+					face_deps[#face_deps + 1] = cf
+					to_enqueue[#to_enqueue + 1] = cf
+				end
+				return "face_vector", face_deps, to_enqueue
+			end
+		end
+	end
+	do
+		local U, p = name:match("^__mwi_(.+)_(.+)$")
+		if U then
+			local deps, to_enqueue = {}, {}
+			for _, uc in ipairs(scalars_of(reg, U)) do
+				for _, d in ipairs({ "__face_" .. uc, "__diag_" .. uc }) do
+					deps[#deps + 1] = d
+					to_enqueue[#to_enqueue + 1] = d
+				end
+			end
+			local fp = "__face_" .. p
+			deps[#deps + 1] = fp
+			to_enqueue[#to_enqueue + 1] = fp
+			return "mwi", deps, to_enqueue
+		end
+	end
+	do
+		local field = name:match("^__diag_(.+)$")
+		if field then return "diag", scalars_of(reg, field), {} end
+	end
+	do
+		local field = name:match("^__prev_(.+)$")
+		if field then return "prev", { field }, {} end
+	end
+	error("_expand_intermediates: unrecognised intermediate: " .. name)
+end
+
+function Case:_expand_intermediates()
+	local reg = self.registry
+	local pending, queued = seed_intermediates(reg)
+
+	while #pending > 0 do
+		local name = table.remove(pending, 1)
+		if not reg[name] then
+			local itype, deps, to_enqueue = elaborate(reg, name)
+			reg:intermediate(name, itype, deps)
+			for _, d in ipairs(to_enqueue) do
+				if not queued[d] then
+					queued[d] = true
+					pending[#pending + 1] = d
+				end
+			end
+		end
+	end
 end
 
 --[[
@@ -179,30 +212,23 @@ end
 COMPILATION
 ===========
 
-Actually:
-1) Collect prognostic
-
-1) Collect all prognostics from registry
-2) Build prognostic dependency graph
-3) Topologically sort prognostics with cycle breaking
-	- Explicit first (in user order)
+1) Expand intermediate fields to complete registry
+2) Create _prognostics and _diagnostic sets on registry (for easy checking later)
+3) Topologically sort prognostics onto algorithm with cycle breaking
+	- Explicit first (in user order, allow explicit non-prognostics and duplicates)
 	- Implicit dependencies prepended
 	- Unreachable appended (after main loop)
-4) Expand intermediate diagnostics
-5) Build diagnostic dependency graph
-6) Walk prognostic solves and chase diagnostics with freshness analysis
-7) Emit instructions to resolve each symbol in the specified order
+4) Walking through prognostics prepend diagnostic solves accordingly (with freshness analysis)
+5) With complete algorithm, emit instructions for solve
 
 --]]
 
 function Case:_compile()
-	self:_collect_explicit()
-	self:_build_prog_dep_graph()
-	self:_resolve_prognostic_order()
+	self:_expand_intermediates()
 
 	-- TODO: expand diagnostics and build diagnostic dependency graph
 
-	self:_emit_instructions()
+	-- self:_emit_instructions()
 end
 
 return Case

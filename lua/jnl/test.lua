@@ -73,11 +73,7 @@ reg:field("eps", {
 	)
 })
 
-print(reg:listing())
-
-print("\nDeps:\n")
-
-print(reg:dep_listing())
+reg:vector("U", { "Ux", "Uy" })
 
 local alg = A.new()
 
@@ -87,5 +83,7 @@ alg:loop(function(a)
 	a:solve("T")
 end, {})
 
--- local case = Case.new(reg, alg)
--- print(case:listing())
+local Case = FVM.Case
+local case = Case.new(reg, alg)
+print("\nCase registry after expansion:\n")
+print(case.registry:listing())

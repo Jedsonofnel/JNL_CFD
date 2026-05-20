@@ -64,6 +64,24 @@ function Field:_pretty()
 	return table.concat(lines, "\n")
 end
 
+local Vector = {}
+Vector.__index = Vector
+
+function Vector:_pretty()
+	return string.format("%-12s vector(%s)", self.name,
+		table.concat(self.components, ", "))
+end
+
+local Intermediate = {}
+Intermediate.__index = Intermediate
+
+function Intermediate:_pretty()
+	local dep_str = #self.deps > 0
+		and table.concat(self.deps, ", ") or "-"
+	return string.format("%-12s [synthetic: %s] <- %s",
+		self.name, self.itype, dep_str)
+end
+
 --
 -- Registry: just a table of syms
 --
@@ -83,7 +101,7 @@ function R:define(name, sym, proto)
 end
 
 function R:constant(name, value)
-	V.identifier(name, "constant name")
+	V.identifier(name, "R:constant name")
 	V.typeof(value, "number", "constant value")
 	self:define(name, { kind = "constant", value = value }, Constant)
 end
@@ -95,12 +113,12 @@ end
 -- end
 
 function R:expression(name, expr)
-	V.identifier(name, "expression name")
+	V.identifier(name, "R:expression name")
 	self:define(name, { kind = "expression", expr = expr }, Expression)
 end
 
 function R:field(name, spec)
-	V.identifier(name, "field name")
+	V.identifier(name, "R:field name")
 
 	if spec.region ~= nil then
 		V.typeof(spec.region, "string", "field '" .. name .. "' region")
@@ -119,10 +137,26 @@ function R:field(name, spec)
 	}, Field)
 end
 
--- no such thing as a vector - just desugars to two scalars?
--- function R:vector(sym, spec)
---  TODOOOOOO (complex)
--- end
+function R:vector(name, components)
+	V.identifier(name, "R:vector name")
+	assert(type(components) == "table" and #components >= 2,
+		"R:vector components: must be a list of at least 2 field names")
+	for _, c in ipairs(components) do
+		assert(self[c],
+			"R:vector '" .. name .. "': component '" .. c .. "' not yet registered")
+	end
+	self:define(name, { kind = "vector", components = components }, Vector)
+end
+
+--- Add an Intermediate to registry, for use by compiler backend.
+function R:intermediate(name, itype, deps)
+	V.internal_identifier(name, "R:intermediate name")
+	self:define(name, {
+		kind = "intermediate",
+		itype = itype,
+		deps = deps,
+	}, Intermediate)
+end
 
 --
 -- Helpers
