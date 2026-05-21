@@ -1,7 +1,7 @@
 #include "lua_bindings.h"
 #include "geo2d.h"
 
-#define PSLG_MT "jnl.pslg" // metatable registry key
+#define PSLG_MT "jnl.geo2d.pslg"
 
 //
 // PSLG API

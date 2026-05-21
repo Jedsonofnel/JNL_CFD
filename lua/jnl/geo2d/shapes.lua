@@ -2,7 +2,7 @@
 -- <jed@nelson.ac> // 2026-05-11
 
 ---@type { pslg_new: fun(): PSLG }
-local geo2d = require("geo2d_internal")
+local geo2d = require("jnl.geo2d_internal")
 
 local M = {}
 

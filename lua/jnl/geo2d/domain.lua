@@ -1,8 +1,8 @@
 -- geo2d/domain.lua - 2D domain library for concentric shapes
 -- <jed@nelson.ac> // 2026-05-21
 
-local shapes = require("jnl.geo2d.shapes")
-local geo2d = require("geo2d_internal")
+-- local shapes = require("jnl.geo2d.shapes")
+local geo2d = require("jnl.geo2d_internal")
 
 local M = {}
 

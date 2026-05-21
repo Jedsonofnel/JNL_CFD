@@ -1,7 +1,7 @@
 -- ui/init.lua - initialisation for UI helpers in lua
 -- <jed@nelson.ac> // 2026-05-21
 
-local ui_internal = require("ui_internal")
+local ui_internal = require("jnl.ui_internal")
 
 local M = {}
 
@@ -24,12 +24,12 @@ end
 
 function M.display_pslg(g, handle)
 	local h = handle or M.default()
-	return h:send_pslg(g)
+	return h:focus() and h:send_pslg(g)
 end
 
 function M.display_mesh(mesh, handle)
 	local h = handle or M.default()
-	return h:send_mesh(mesh)
+	return h:focus() and h:send_mesh(mesh)
 end
 
 function M.close(handle)

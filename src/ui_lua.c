@@ -19,7 +19,7 @@ static int l_ui_spawn(lua_State *L)
 static int l_ui_send_pslg(lua_State *L)
 {
 	jnl_ui_handle *h = check_ui(L, 1);
-	struct jnl_pslg *g = luaL_checkudata(L, 2, "jnl.pslg");
+	struct jnl_pslg *g = luaL_checkudata(L, 2, "jnl.geo2d.pslg");
 	lua_pushboolean(L, jnl_ui_send_pslg(h, g) == 0);
 	return 1;
 }
@@ -27,7 +27,8 @@ static int l_ui_send_pslg(lua_State *L)
 static int l_ui_send_mesh(lua_State *L)
 {
 	jnl_ui_handle *h = check_ui(L, 1);
-	struct jnl_mesh *m = luaL_checkudata(L, 2, "jnl.mesh");
+	struct jnl_mesh *m =
+	    *(struct jnl_mesh **)luaL_checkudata(L, 2, "jnl.mesh2d.mesh");
 	lua_pushboolean(L, jnl_ui_send_mesh(h, m) == 0);
 	return 1;
 }
@@ -48,9 +49,12 @@ static int l_ui_close(lua_State *L)
 
 static int l_ui_gc(lua_State *L)
 {
-	jnl_ui_handle *h = check_ui(L, 1);
-	jnl_ui_close(h);
-	jnl_ui_free(h);
+	jnl_ui_handle **hp = luaL_checkudata(L, 1, UI_MT);
+	if (*hp) {
+		jnl_ui_close(*hp);
+		jnl_ui_free(*hp);
+		*hp = NULL;
+	}
 	return 0;
 }
 

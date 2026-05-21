@@ -13,4 +13,7 @@ if not ok then
 end
 
 local g = d:build()
-ui.display_pslg(g)
+
+mesh = require("jnl.mesh2d").new_smesh(20, 10, 20, 10)
+ui.display_mesh(mesh)
+
