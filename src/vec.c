@@ -1,5 +1,19 @@
 #include <math.h>
-#include "field.h"
+
+#include "jnl/common.h"
+#include "vec.h"
+
+f64 jnl_vec_dot(const f64 *a, const f64 *b, i32 n)
+{
+	f64 sum = 0.0;
+	for (i32 i = 0; i < n; i++)
+		sum += a[i] * b[i];
+	return sum;
+}
+
+//
+// Norms
+//
 
 f64 jnl_field_norm_l1(const f64 *f, i32 n)
 {

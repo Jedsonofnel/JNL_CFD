@@ -2,7 +2,8 @@
 #include <assert.h>
 #include <math.h>
 
-#include "linalg.h"
+#include "fvm/linalg.h"
+#include "vec.h"
 
 //
 // Global solver context
@@ -189,18 +190,6 @@ struct jnl_solver_ctx *jnl_solver_ctx_new(i32 n_cells_max, jnl_arena *arena)
 }
 
 //
-// Linear algebra helpers (internal)
-//
-
-static f64 dot(const f64 *a, const f64 *b, i32 n)
-{
-	f64 sum = 0.0;
-	for (i32 i = 0; i < n; i++)
-		sum += a[i] * b[i];
-	return sum;
-}
-
-//
 // Solvers
 //
 
@@ -229,7 +218,7 @@ i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 		d[i] = r[i] / A->diag[i];
 	}
 
-	f64 rDotr = dot(r, d, n);
+	f64 rDotr = jnl_vec_dot(r, d, n);
 	f64 threshold = tolerance * tolerance * rDotr;
 
 	const i32 recompute_interval = 50;
@@ -237,7 +226,7 @@ i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 
 	for (; iter < max_iters && rDotr > threshold; iter++) {
 		jnl_ldu_matvec(A, d, Ad);
-		f64 dDotAd = dot(d, Ad, n);
+		f64 dDotAd = jnl_vec_dot(d, Ad, n);
 		f64 alpha = rDotr / dDotAd;
 
 		for (i32 i = 0; i < n; i++)
@@ -256,7 +245,7 @@ i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 			z[i] = r[i] / A->diag[i];
 
 		f64 rDotrOld = rDotr;
-		rDotr = dot(r, z, n);
+		rDotr = jnl_vec_dot(r, z, n);
 		f64 beta = rDotr / rDotrOld;
 
 		for (i32 i = 0; i < n; i++)
@@ -296,8 +285,8 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 	memcpy(rhat, r, n * sizeof(f64)); // rhat = r (arbitrary, just != 0)
 	memcpy(p, r, n * sizeof(f64));    // p_0 = r_0
 
-	f64 rho = dot(rhat, r, n);
-	f64 threshold_sq = tolerance * tolerance * dot(r, r, n);
+	f64 rho = jnl_vec_dot(rhat, r, n);
+	f64 threshold_sq = tolerance * tolerance * jnl_vec_dot(r, r, n);
 
 	i32 iter = 0;
 	for (; iter < max_iters; iter++) {
@@ -308,7 +297,7 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 		// v = Ay
 		jnl_ldu_matvec(A, y, v);
 
-		f64 rhat_dot_v = dot(rhat, v, n);
+		f64 rhat_dot_v = jnl_vec_dot(rhat, v, n);
 		if (fabs(rhat_dot_v) < 1e-30)
 			break; // breakdown
 
@@ -320,7 +309,7 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 			s[i] = r[i] - alpha * v[i];
 		}
 
-		if (dot(s, s, n) < threshold_sq)
+		if (jnl_vec_dot(s, s, n) < threshold_sq)
 			return iter;
 
 		// z = s / diag
@@ -330,8 +319,8 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 		// t = Az
 		jnl_ldu_matvec(A, z, t);
 
-		f64 tDotS = dot(t, s, n);
-		f64 tDotT = dot(t, t, n);
+		f64 tDotS = jnl_vec_dot(t, s, n);
+		f64 tDotT = jnl_vec_dot(t, t, n);
 		if (fabs(tDotT) < 1e-30)
 			break; // breakdown
 
@@ -343,12 +332,12 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 			r[i] = s[i] - omega * t[i];
 		}
 
-		if (dot(r, r, n) < threshold_sq) {
+		if (jnl_vec_dot(r, r, n) < threshold_sq) {
 			iter++;
 			return iter;
 		}
 
-		f64 rho_new = dot(rhat, r, n);
+		f64 rho_new = jnl_vec_dot(rhat, r, n);
 
 		if (fabs(rho) < 1e-30 || fabs(omega) < 1e-30)
 			break; // breakdown

@@ -33,7 +33,8 @@ DEPS     += $(CMD_OBJS:.o=.d)
 TEST_SRCS     := $(wildcard $(TESTDIR)/*.c)
 TEST_BINS     := $(patsubst $(TESTDIR)/%.c, $(BINDIR)/test/%, $(TEST_SRCS))
 TEST_OBJS     := $(patsubst $(TESTDIR)/%.c, $(OBJDIR)/test/%.o, $(TEST_SRCS))
-TEST_LIB_OBJS := $(filter-out $(OBJDIR)/ui.o, $(OBJS))
+TEST_LIB_SRCS := $(filter-out %_lua.c $(SRCDIR)/ui.c $(SRCDIR)/ui_%.c, $(SRCS))
+TEST_LIB_OBJS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(TEST_LIB_SRCS))
 DEPS          += $(TEST_OBJS:.o=.d)
 
 .PHONY: all clean test
