@@ -1,4 +1,4 @@
--- expr.lua - arbitrary arithmetic expression graphs
+-- core/expr.lua - arbitrary arithmetic expression graphs
 -- <jed@nelson.ac> // 2026-05-11
 
 local E = {}
@@ -45,13 +45,17 @@ local function collect_deps(e, into)
 		return into
 	end
 
+	if e._dep_name then
+		into[e._dep_name] = true
+		return into
+	end
+
 	-- recurse
 	collect_deps(e.a, into)
 	collect_deps(e.b, into)
 	collect_deps(e.base, into)
 	collect_deps(e.exp, into)
 	collect_deps(e.value, into) -- negation
-	collect_deps(e._intermed, into)
 
 	-- variadic
 	if e.addends then
@@ -161,20 +165,6 @@ end
 
 function E.cV()
 	return make_expr { kind = "cell_vol" }
-end
-
--- Intermediate expressions for use by the compiler
-
-function E.intermediate(name, deps)
-	assert(type(name) == "string" and name:match("^__"),
-		"E.intermediate: name must start with '__', got: " .. tostring(name))
-	assert(deps == nil or type(deps) == "table",
-		"E.intermediate: deps must be a table or nil")
-	return make_expr {
-		kind  = "intermediate",
-		name  = name,
-		_deps = deps or {},
-	}
 end
 
 --

@@ -1,4 +1,4 @@
--- jnl/fvm.lua - FVM constructors for jnl physics description layer
+-- fvm/eq.lua - FVM constructors for jnl physics description layer
 -- <jed@nelson.ac> // 2026-05-08
 
 local M = {} -- internal module, re-exported by init.lua
@@ -79,6 +79,21 @@ local function is_diag(name)
 	if field then return field, nil end
 	return nil, nil
 end
+
+M.names = {
+	grad = grad_name,
+	face = face_name,
+	mwi = mwi_name,
+	prev = prev_name,
+	expl = expl_name,
+	diag = diag_name,
+	is_grad = is_grad,
+	is_face = is_face,
+	is_mwi = is_mwi,
+	is_prev = is_prev,
+	is_expl = is_expl,
+	is_diag = is_diag,
+}
 
 --
 -- FVM: Differential operators etc
@@ -267,10 +282,7 @@ function Expr.grad(field, i)
 		field = field,
 		component = i,
 		_type = "expr",
-		_intermed = E.intermediate(
-			grad_name(field, i),
-			{ face_name(field) }
-		),
+		_dep_name = grad_name(field, i),
 		_pretty = function()
 			return G.grad .. i .. G.lparen .. field .. G.rparen
 		end,
@@ -283,7 +295,7 @@ function Expr.prev(field)
 		kind = "prev",
 		field = field,
 		_type = "expr",
-		_intermed = E.intermediate(prev_name(field)),
+		_dep_name = prev_name(field),
 		_pretty = function() return field .. G.prev end,
 	}
 end
@@ -294,7 +306,7 @@ function Expr.expl(field)
 		kind = "expl",
 		field = field,
 		_type = "expr",
-		_intermed = E.intermediate(expl_name(field)),
+		_dep_name = expl_name(field),
 		_pretty = function() return field .. G.expl end,
 	}
 end
@@ -311,7 +323,7 @@ function Expr.diag(field, i)
 		field = field,
 		component = i,
 		_type = "expr",
-		_intermed = E.intermediate(diag_name(field, i)),
+		_dep_name = diag_name(field, i),
 		_pretty = function()
 			return "<diag:" .. display .. ">"
 		end,
@@ -326,10 +338,7 @@ function Expr.mwi(U_name, p_name)
 		U = U_name,
 		p = p_name,
 		_type = "expr",
-		_intermed = E.intermediate(
-			mwi_name(U_name, p_name),
-			{ face_name(U_name), face_name(p_name) }
-		),
+		_dep_name = mwi_name(U_name, p_name),
 		_pretty = function()
 			return "<mwi:" .. U_name .. "," .. p_name .. ">"
 		end,

@@ -235,4 +235,27 @@ function R:dep_listing()
 	return table.concat(lines, "\n")
 end
 
+--- Validates that all symbols in the registry are correctly accounted for.
+function R:validate()
+	local errors = {}
+
+	for name, sym in pairs(self) do
+		if type(sym) ~= "table" then goto continue end
+
+		local deps = self:deps_of(name)
+		for _, dep in ipairs(deps) do
+			if not self[dep] then
+				errors[#errors + 1] = string.format(
+					"  '%s' depends on unregistered symbol '%s'", name, dep)
+			end
+		end
+
+		::continue::
+	end
+
+	if #errors > 0 then
+		error("registry validation failed:\n" .. table.concat(errors, "\n"), 2)
+	end
+end
+
 return R

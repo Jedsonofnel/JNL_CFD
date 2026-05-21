@@ -3,6 +3,8 @@
 
 -- deps
 local E = require("core.expr")
+local FVMeq = require("fvm.eq")
+local names = FVMeq.names
 
 --
 -- Instruction storage
@@ -99,27 +101,32 @@ end
 -- Compiler: expanding intermediate fields
 --
 
-local function walk_term(term, visitor)
-	E.walk(term.coeff, visitor)
-	E.walk(term.phi, visitor)
-	E.walk(term.expr, visitor)
-end
-
 local function seed_intermediates(reg)
 	local queued, pending = {}, {}
 
-	for _, sym in pairs(reg) do
-		if type(sym) == "table" and sym.kind == "field" and sym.eq then
-			for _, term in ipairs(sym.eq.terms or {}) do
-				walk_term(term, function(e)
-					if e._intermed and not queued[e._intermed.name] then
-						local name = e._intermed.name
-						queued[name] = true
-						pending[#pending + 1] = name
-					end
-				end)
-			end
+	local function enqueue(name)
+		if not queued[name] then
+			queued[name] = true
+			pending[#pending + 1] = name
 		end
+	end
+
+	local function sweep(deps)
+		for name in pairs(deps or {}) do
+			if name:match("^__") then enqueue(name) end
+		end
+	end
+
+	for _, sym in pairs(reg) do
+		if type(sym) ~= "table" then goto continue end
+
+		if sym.kind == "field" and sym.eq then
+			sweep(sym.eq._deps)
+		elseif sym.kind == "expression" and sym.expr then
+			sweep(sym.expr._deps)
+		end
+
+		::continue::
 	end
 
 	return pending, queued
@@ -225,6 +232,7 @@ COMPILATION
 
 function Case:_compile()
 	self:_expand_intermediates()
+	self.registry:validate()
 
 	-- TODO: expand diagnostics and build diagnostic dependency graph
 
