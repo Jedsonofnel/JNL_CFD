@@ -11,7 +11,7 @@ int main(int argc, char **argv)
 
 	for (u32 i = 0; i < 121; i++) {
 		struct jnl_mesh_topo topo = mesh->topo;
-		printf("point %d: [%.1f, %.1f]\n", i + 1, topo.px[i], topo.py[i]);
+		printf("point %d: [%.1f, %.1f]\n", i + 1, topo.vx[i], topo.vy[i]);
 	}
 
 	return EXIT_SUCCESS;
