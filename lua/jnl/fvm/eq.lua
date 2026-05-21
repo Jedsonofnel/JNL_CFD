@@ -4,9 +4,9 @@
 local M = {} -- internal module, re-exported by init.lua
 
 -- deps
-local E = require("core.expr")
-local V = require("core.validation")
-local G = require("display.glyphs")
+local E = require("jnl.core.expr")
+local V = require("jnl.core.validation")
+local G = require("jnl.core.glyphs")
 
 -- contract: equations hold terms and belong to fields
 function E.is_eq(v)

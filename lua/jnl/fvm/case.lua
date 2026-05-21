@@ -2,8 +2,8 @@
 -- <jed@nelson.ac> // 2026-05-12
 
 -- deps
-local E = require("core.expr")
-local FVMeq = require("fvm.eq")
+local E = require("jnl.core.expr")
+local FVMeq = require("jnl.fvm.eq")
 local names = FVMeq.names
 
 --

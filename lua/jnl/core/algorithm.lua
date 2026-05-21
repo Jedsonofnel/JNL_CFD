@@ -2,8 +2,8 @@
 -- <jed@nelson.ac> // 2026-05-11
 
 -- deps
-local V = require("core.validation")
-local E = require("core.expr")
+local V = require("jnl.core.validation")
+local E = require("jnl.core.expr")
 
 local A = {}
 A.__index = A

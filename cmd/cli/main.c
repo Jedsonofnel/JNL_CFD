@@ -17,15 +17,6 @@ static void set_lua_path(lua_State *L)
 	lua_pop(L, 1);
 }
 
-static void register_preloaders(lua_State *L)
-{
-	lua_getglobal(L, "package");
-	lua_getfield(L, -1, "preload");
-	lua_pushcfunction(L, luaopen_geo2d_internal);
-	lua_setfield(L, -2, "geo2d_internal");
-	lua_pop(L, 2);
-}
-
 int main(int argc, char **argv)
 {
 	lua_State *L = luaL_newstate();

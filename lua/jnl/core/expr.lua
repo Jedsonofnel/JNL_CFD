@@ -3,8 +3,8 @@
 
 local E = {}
 
-local V = require("core.validation")
-local G = require("display.glyphs")
+local V = require("jnl.core.validation")
+local G = require("jnl.core.glyphs")
 
 -- contract: _type = "expr"
 local function is_expr(v)

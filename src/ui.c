@@ -6,6 +6,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/prctl.h>
 
 #include <raylib.h>
 
@@ -27,11 +28,13 @@ struct jnl_ui_handle {
 #define MSG_PSLG 0x01
 #define MSG_CLOSE 0x02
 #define MSG_MESH 0x03
+#define MSG_FOCUS 0x04
 
 /*
- * MSG_CLOSE  — 1 byte, just the type
+ * MSG_CLOSE  - 1 byte, just the type
+ * MSG_FOCUS  - ditto
  *
- * MSG_PSLG   — 21 bytes of header, then blob:
+ * MSG_PSLG   - 21 bytes of header, then blob:
  *   u8   type       (1)
  *   u32  blob_len   (4)
  *   u32  nn         (4)
@@ -187,10 +190,15 @@ int ui_recv_msg(int fd, struct jnl_pslg *pslg_out, struct jnl_ui_mesh *mesh_out,
                 jnl_arena **pslg_arena_out, jnl_arena **mesh_arena_out)
 {
 	u8 type;
-	if (recv_all(fd, &type, 1) < 0)
+	if (recv_all(fd, &type, 1) < 0) {
 		return -1;
-	if (type == MSG_CLOSE)
+	}
+	if (type == MSG_CLOSE) {
 		return MSG_CLOSE;
+	}
+	if (type == MSG_FOCUS) {
+		return MSG_FOCUS;
+	}
 
 	if (type == MSG_PSLG) {
 		u8 hdr[20];
@@ -326,12 +334,6 @@ static Texture2D pslg_gen_texture(struct jnl_pslg *pslg, struct jnl_view2D view)
 		ImageDrawLineEx(&img, v1, v2, 2, BLUE);
 	}
 
-	for (u32 i = 0; i < nodes.len; i++) {
-		jnl_vec2d point = nodes.coords[i];
-		Vector2 vec = {TX(point.x), TY(point.y)};
-		ImageDrawCircleV(&img, vec, 4, BLACK);
-	}
-
 #undef TX
 #undef TY
 
@@ -428,6 +430,7 @@ void ui_window_run(int sock_fd)
 	i32 screen_width = 800;
 	i32 screen_height = 450;
 
+	SetTraceLogLevel(LOG_WARNING);
 	InitWindow(screen_width, screen_height, "JNLCFD Visualiser");
 	SetTargetFPS(60);
 
@@ -475,6 +478,9 @@ void ui_window_run(int sock_fd)
 		case -1:
 		case MSG_CLOSE:
 			g_quit = 1;
+			break;
+		case MSG_FOCUS:
+			SetWindowFocused();
 			break;
 		case MSG_PSLG:
 			if (has_pslg_tex) {
@@ -581,6 +587,9 @@ jnl_ui_handle *jnl_ui_spawn(void)
 
 	if (pid == 0) {
 		close(sv[0]);
+#ifdef __linux__
+		prctl(PR_SET_PDEATHSIG, SIGTERM);
+#endif
 		ui_window_run(sv[1]);
 		// never returns
 	}
@@ -624,6 +633,15 @@ void jnl_ui_close(jnl_ui_handle *h)
 	}
 	close(h->sock_fd);
 	waitpid(h->pid, NULL, 0);
+}
+
+int jnl_ui_focus(jnl_ui_handle *h)
+{
+	if (!h || g_child_died) {
+		return -1;
+	}
+	u8 b = MSG_FOCUS;
+	return send_all(h->sock_fd, &b, 1);
 }
 
 void jnl_ui_free(jnl_ui_handle *h) { free(h); }

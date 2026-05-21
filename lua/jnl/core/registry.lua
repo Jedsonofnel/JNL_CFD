@@ -2,9 +2,9 @@
 -- <jed@nelson.ac> // 2026-05-11
 
 -- deps
-local E = require("core.expr")
-local G = require("display.glyphs")
-local V = require("core.validation")
+local E = require("jnl.core.expr")
+local G = require("jnl.core.glyphs")
+local V = require("jnl.core.validation")
 
 --
 -- Types of things that go into registry
