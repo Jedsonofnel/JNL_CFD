@@ -5,12 +5,17 @@ SRCDIR  = src
 OBJDIR  = build
 HDIR    = include
 TESTDIR = test
+LUADIR  = lua
 
 # compiler vars
 CC = gcc
-CFLAGS := -g -Wall -pedantic -MMD -MP -I$(HDIR)
-LDFLAGS := -lraylib -lm
+CFLAGS_LUA := $(shell pkg-config --cflags lua5.5) \
+				-DLUA_ASSET_PATH='"$(LUADIR)"'
+CFLAGS := -g -Wall -pedantic -MMD -MP -I$(HDIR) $(CFLAGS_LUA)
+
+LDFLAGS_LUA := $(shell pkg-config --libs lua5.5)
 LDFLAGS_TEST := -lm
+LDFLAGS := -lraylib -lm $(LDFLAGS_LUA)
 
 # src/ vars
 SRCS := $(shell find $(SRCDIR) -name '*.c')
