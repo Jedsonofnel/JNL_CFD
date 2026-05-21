@@ -1,6 +1,10 @@
 -- fvm/case.lua - physics case that gets compiled
 -- <jed@nelson.ac> // 2026-05-12
 
+-- deps
+local E = require("core.expr")
+local FVMeq = require("fvm.eq")
+local names = FVMeq.names
 
 --
 -- Instruction storage
@@ -93,6 +97,14 @@ function Case:print_listing()
 	print(self:listing())
 end
 
+function Case:print_registry()
+	self.registry:print()
+end
+
+function Case:print_algorithm()
+	self.algorithm:print()
+end
+
 --
 -- Compiler: expanding intermediate fields
 --
@@ -120,6 +132,8 @@ local function seed_intermediates(reg)
 			sweep(sym.eq._deps)
 		elseif sym.kind == "expression" and sym.expr then
 			sweep(sym.expr._deps)
+		elseif sym.kind == "correction" and sym.expr then
+			sweep(sym.expr._deps)
 		end
 
 		::continue::
@@ -135,59 +149,85 @@ local function scalars_of(reg, name)
 	return { name }
 end
 
---- Returns itype and deps list, given an intermediate name.
--- Also returns any new intermediate names that should be enqueued.
+local function elaborate_grad_component(_, _, _, field)
+	local parent = "__grad_" .. field
+	return "grad_component", { parent }, { parent }, true, nil
+end
+
+local function elaborate_grad_parent(_, _, field)
+	local face = "__face_" .. field
+	local comps = { "__grad_x_" .. field, "__grad_y_" .. field }
+	return "grad", { face }, { face }, false, comps
+end
+
+local function elaborate_face(reg, name, field)
+	local comps = scalars_of(reg, field)
+	if #comps == 1 then
+		assert(reg[comps[1]],
+			"intermediate '" .. name .. "': unregistered field '" .. comps[1] .. "'")
+		return "face", comps, {}, false, nil
+	end
+	local face_deps, to_enqueue = {}, {}
+	for _, c in ipairs(comps) do
+		local cf = "__face_" .. c
+		face_deps[#face_deps + 1] = cf
+		to_enqueue[#to_enqueue + 1] = cf
+	end
+	return "face_vector", face_deps, to_enqueue, false, nil
+end
+
+local function elaborate_mwi(reg, _, U, p)
+	local deps, to_enqueue = {}, {}
+	for _, uc in ipairs(scalars_of(reg, U)) do
+		for _, d in ipairs({ "__face_" .. uc, "__diag_" .. uc }) do
+			deps[#deps + 1] = d
+			to_enqueue[#to_enqueue + 1] = d
+		end
+	end
+	for _, d in ipairs({ "__face_" .. p, "__grad_" .. p }) do
+		deps[#deps + 1] = d
+		to_enqueue[#to_enqueue + 1] = d
+	end
+	return "mwi", deps, to_enqueue, false, nil
+end
+
+local function elaborate_diag(reg, _, field, comp)
+	local deps = comp and { field .. "." .. comp } or scalars_of(reg, field)
+	return "diag", deps, {}, true, nil
+end
+
+local function elaborate_prev(_, _, field)
+	return "prev", { field }, {}, true, nil
+end
+
+local function elaborate_expl(_, _, field)
+	return "expl", { field }, {}, true, nil
+end
+
 local function elaborate(reg, name)
-	do
-		local comp, field = name:match("^__grad_([xy])_(.+)$")
-		if comp then
-			local face = "__face_" .. field
-			return "grad_" .. comp, { face }, { face }, false
-		end
-	end
-	do
-		local field = name:match("^__face_(.+)$")
-		if field then
-			local comps = scalars_of(reg, field)
-			if #comps == 1 then
-				assert(reg[comps[1]],
-					"intermediate '" .. name .. "': unregistered field '" .. comps[1] .. "'")
-				return "face", comps, {}, false
-			else
-				local face_deps, to_enqueue = {}, {}
-				for _, c in ipairs(comps) do
-					local cf = "__face_" .. c
-					face_deps[#face_deps + 1] = cf
-					to_enqueue[#to_enqueue + 1] = cf
-				end
-				return "face_vector", face_deps, to_enqueue, false
-			end
-		end
-	end
-	do
-		local U, p = name:match("^__mwi_(.+)_(.+)$")
-		if U then
-			local deps, to_enqueue = {}, {}
-			for _, uc in ipairs(scalars_of(reg, U)) do
-				for _, d in ipairs({ "__face_" .. uc, "__diag_" .. uc }) do
-					deps[#deps + 1] = d
-					to_enqueue[#to_enqueue + 1] = d
-				end
-			end
-			local fp = "__face_" .. p
-			deps[#deps + 1] = fp
-			to_enqueue[#to_enqueue + 1] = fp
-			return "mwi", deps, to_enqueue, false
-		end
-	end
-	do
-		local field = name:match("^__diag_(.+)$")
-		if field then return "diag", scalars_of(reg, field), {}, true end
-	end
-	do
-		local field = name:match("^__prev_(.+)$")
-		if field then return "prev", { field }, {}, true end
-	end
+	local comp, field
+
+	field = names.is_grad_parent(name)
+	if field then return elaborate_grad_parent(reg, name, field) end
+
+	comp, field = names.is_grad(name)
+	if comp then return elaborate_grad_component(reg, name, comp, field) end
+
+	field = names.is_face(name)
+	if field then return elaborate_face(reg, name, field) end
+
+	comp, field = names.is_mwi(name)
+	if comp then return elaborate_mwi(reg, name, comp, field) end
+
+	field, comp = names.is_diag(name)
+	if field then return elaborate_diag(reg, name, field, comp) end
+
+	field = E.is_prev(name)
+	if field then return elaborate_prev(reg, name, field) end
+
+	field = E.is_expl(name)
+	if field then return elaborate_expl(reg, name, field) end
+
 	error("_expand_intermediates: unrecognised intermediate: " .. name)
 end
 
@@ -198,8 +238,18 @@ function Case:_expand_intermediates()
 	while #pending > 0 do
 		local name = table.remove(pending, 1)
 		if not reg[name] then
-			local itype, deps, to_enqueue, accessor = elaborate(reg, name)
+			local itype, deps, to_enqueue, accessor, components = elaborate(reg, name)
+
+			if components then
+				for _, c in ipairs(components) do
+					if not reg[c] then
+						reg:intermediate(c, "grad_component", { name }, { accessor = true })
+					end
+				end
+			end
+
 			reg:intermediate(name, itype, deps, { accessor = accessor })
+
 			for _, d in ipairs(to_enqueue) do
 				if not queued[d] then
 					queued[d] = true
@@ -234,10 +284,6 @@ function Case:_compile()
 	-- TODO: expand diagnostics and build diagnostic dependency graph
 
 	-- self:_emit_instructions()
-end
-
-function Case:print_algorithm()
-	self.algorithm:print()
 end
 
 return Case

@@ -23,7 +23,10 @@ end
 --
 
 local function grad_name(field, component)
-	return "__grad_" .. component .. "_" .. field
+	if component ~= nil then
+		return "__grad_" .. component .. "_" .. field
+	end
+	return "__grad_" .. field
 end
 
 local function face_name(field)
@@ -32,14 +35,6 @@ end
 
 local function mwi_name(U, p)
 	return "__mwi_" .. U .. "_" .. p
-end
-
-local function prev_name(field)
-	return "__prev_" .. field
-end
-
-local function expl_name(field)
-	return "__expl_" .. field
 end
 
 local function diag_name(field, i)
@@ -54,6 +49,11 @@ local function is_grad(name)
 	return comp, field
 end
 
+local function is_grad_parent(name)
+	if name:match("^__grad_[xy]_") then return nil end
+	return name:match("^__grad_(.+)$")
+end
+
 local function is_face(name)
 	return name:match("^__face_(.+)$")
 end
@@ -61,14 +61,6 @@ end
 local function is_mwi(name)
 	local U, p = name:match("^__mwi_(.+)_(.+)$")
 	return U, p
-end
-
-local function is_prev(name)
-	return name:match("^__prev_(.+)$")
-end
-
-local function is_expl(name)
-	return name:match("^__expl_(.+)$")
 end
 
 local function is_diag(name)
@@ -84,16 +76,48 @@ M.names = {
 	grad = grad_name,
 	face = face_name,
 	mwi = mwi_name,
-	prev = prev_name,
-	expl = expl_name,
 	diag = diag_name,
 	is_grad = is_grad,
+	is_grad_parent = is_grad_parent,
 	is_face = is_face,
 	is_mwi = is_mwi,
-	is_prev = is_prev,
-	is_expl = is_expl,
 	is_diag = is_diag,
 }
+
+E.pretty_sym_fallback = function(name)
+	do
+		local comp, field = is_grad(name)
+		if comp then
+			return G.grad .. comp .. G.lparen .. E.pretty_sym(field) .. G.rparen
+		end
+	end
+	do
+		local field = is_grad_parent(name)
+		if field then
+			return G.grad .. "(" .. E.pretty_sym(field) .. ")"
+		end
+	end
+	do
+		local field = is_face(name)
+		if field then
+			return "<" .. "f:" .. E.pretty_sym(field) .. ">"
+		end
+	end
+	do
+		local U, p = is_mwi(name)
+		if U then
+			return "<" .. "mwi:" .. E.pretty_sym(U) .. "," .. E.pretty_sym(p) .. ">"
+		end
+	end
+	do
+		local field, comp = is_diag(name)
+		if field then
+			local inner = E.pretty_sym(field)
+			if comp then inner = inner .. "." .. comp end
+			return "<" .. "d:" .. inner .. ">"
+		end
+	end
+end
 
 --
 -- FVM: Differential operators etc
@@ -144,7 +168,6 @@ function Op.ddt(...)
 	local scheme = V.in_enum(ddt_scms, config.scheme or "implicit", "Op.ddt scheme")
 
 	local phi = table.remove(args)
-	V.identifier(phi)
 
 	local coeff = #args > 0 and E.mul(table.unpack(args)) or nil
 
@@ -155,7 +178,7 @@ function Op.ddt(...)
 		scheme   = scheme,
 		_type    = "term",
 		_backend = "fvm",
-		_deps    = term_deps(coeff, phi, prev_name(phi)),
+		_deps    = term_deps(coeff, phi, E.prev_name(phi)),
 		_pretty  = function()
 			local inner = coeff
 				and E.pretty(E.mul(coeff, phi))
@@ -180,7 +203,6 @@ function Op.div(...)
 	local scheme = V.in_enum(div_scms, config.scheme or "uds", "Op.div scheme")
 
 	local phi = table.remove(args)
-	V.identifier(phi)
 
 	local coeff = #args > 0 and E.mul(table.unpack(args)) or nil
 
@@ -201,7 +223,11 @@ function Op.div(...)
 	}
 end
 
--- TODO scheme selection (linear or harmonic gamma interp?)
+local lap_gamma_schemes = {
+	LINEAR   = true,
+	HARMONIC = true,
+}
+
 function Op.lap(...)
 	local args = { ... }
 	if #args == 0 then
@@ -209,25 +235,45 @@ function Op.lap(...)
 	end
 
 	local config = pop_config(args)
-	-- TODO: get lap scheme (linear/harmonic gamma interp)
+	local gamma_scheme = V.in_enum(
+		lap_gamma_schemes,
+		config.gamma_scheme or "linear",
+		"Op.lap gamma_scheme")
+	local non_ortho = config.non_ortho or false
 
 	local phi = table.remove(args)
-	V.identifier(phi)
 
 	local coeff = #args > 0 and E.mul(table.unpack(args)) or nil
 
+	local deps = term_deps(coeff, phi)
+	if non_ortho then
+		deps[grad_name(phi)] = true
+	end
+
 	return {
-		kind     = "lap",
-		coeff    = coeff,
-		phi      = E.from(phi),
-		_type    = "term",
-		_deps    = term_deps(coeff, phi),
-		_backend = "fvm",
-		_pretty  = function()
+		kind         = "lap",
+		coeff        = coeff,
+		phi          = E.from(phi),
+		gamma_scheme = gamma_scheme,
+		non_ortho    = non_ortho,
+		_type        = "term",
+		_deps        = deps,
+		_backend     = "fvm",
+		_pretty      = function()
 			local inner = coeff
 				and E.pretty(E.mul(coeff, phi))
-				or E.pretty(phi)
-			return string.format("%s[%s]", G.lap, inner)
+				or phi
+			local flags = {}
+			if gamma_scheme ~= "LINEAR" then
+				flags[#flags + 1] = gamma_scheme:lower()
+			end
+			if non_ortho then
+				flags[#flags + 1] = "non-ortho"
+			end
+			local flag_str = #flags > 0
+				and ("[" .. table.concat(flags, ",") .. "]")
+				or ""
+			return string.format("%s%s[%s]", G.lap, flag_str, inner)
 		end,
 	}
 end
@@ -275,44 +321,22 @@ local Expr = {}
 M.Expr = Expr
 
 function Expr.grad(field, i)
-	V.identifier(field, "E.grad field")
+	V.field_name(field, "E.grad field")
 	assert(i == "x" or i == "y", "E.grad component must be 'x' or 'y'")
 	return {
 		kind = "grad",
 		field = field,
 		component = i,
 		_type = "expr",
-		_dep_name = grad_name(field, i),
+		_dep_name = grad_name(field), -- parent, not component
 		_pretty = function()
 			return G.grad .. i .. G.lparen .. field .. G.rparen
 		end,
 	}
 end
 
-function Expr.prev(field)
-	V.identifier(field, "E.prev field")
-	return {
-		kind = "prev",
-		field = field,
-		_type = "expr",
-		_dep_name = prev_name(field),
-		_pretty = function() return field .. G.prev end,
-	}
-end
-
-function Expr.expl(field)
-	V.identifier(field, "E.expl field")
-	return {
-		kind = "expl",
-		field = field,
-		_type = "expr",
-		_dep_name = expl_name(field),
-		_pretty = function() return field .. G.expl end,
-	}
-end
-
 function Expr.diag(field, i)
-	V.identifier(field, "E.diag field")
+	V.field_name(field, "E.diag field")
 	assert(i == nil or i == "x" or i == "y",
 		"Expr.diag: component (i) must be nil or 'x' or 'y'")
 
@@ -331,8 +355,8 @@ function Expr.diag(field, i)
 end
 
 function Expr.mwi(U_name, p_name)
-	V.identifier(U_name, "E.mwi U")
-	V.identifier(p_name, "E.mwi p")
+	V.field_name(U_name, "E.mwi U")
+	V.field_name(p_name, "E.mwi p")
 	return {
 		kind = "mwi",
 		U = U_name,

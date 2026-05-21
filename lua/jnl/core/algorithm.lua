@@ -3,6 +3,7 @@
 
 -- deps
 local V = require("core.validation")
+local E = require("core.expr")
 
 local A = {}
 A.__index = A
@@ -15,8 +16,8 @@ local function step_solve(field, implicit)
 	return { op = "solve", field = field, implicit = implicit or false }
 end
 
-local function step_evaluate(name, implicit)
-	return { op = "evaluate", name = name, implicit = implicit or false }
+local function step_evaluate(field, implicit)
+	return { op = "evaluate", field = field, implicit = implicit or false }
 end
 
 local function step_correct(field, implicit)
@@ -61,13 +62,19 @@ function Builder.new(alg)
 end
 
 function Builder:solve(field)
-	V.identifier(field, "alg:solve field")
+	V.field_name(field, "alg:solve field")
 	self._alg:_push(step_solve(field, false))
 	return self
 end
 
+function Builder:correct(field)
+	V.field_name(field, "alg:correct field")
+	self._alg:_push(step_correct(field, false))
+	return self
+end
+
 function Builder:clip(field, lo, hi)
-	V.identifier(field, "alg:clip field")
+	V.field_name(field, "alg:clip field")
 	V.typeof(lo, "number", "alg:clip lo")
 	V.typeof(hi, "number", "alg:clip hi")
 	self._alg:_push(step_clip(field, lo, hi))
@@ -107,27 +114,42 @@ end
 
 --- Returns the set of all dep names reachable from `name` in registry,
 -- including `name` itself.  Stops at cycle.
-local function transitive_deps(reg, name, seen)
+local function transitive_deps(reg, name, seen, ignore_accessors, explicit_set, root, stop_at_fields)
 	seen = seen or {}
 	if seen[name] then return seen end
 	seen[name] = true
+
 	local sym = reg[name]
 	if not sym or type(sym) ~= "table" then return seen end
+
+	if ignore_accessors and sym.kind == "intermediate" and sym.accessor then
+		return seen
+	end
+
+	if explicit_set and name ~= root and explicit_set[name] then
+		return seen
+	end
+
+	if stop_at_fields and name ~= root and sym.kind == "field" then
+		return seen
+	end
 
 	local deps
 	if sym.kind == "field" and sym.eq then
 		deps = sym.eq._deps
 	elseif sym.kind == "expression" and sym.expr then
 		deps = sym.expr._deps
+	elseif sym.kind == "correction" and sym.expr then
+		deps = sym.expr._deps
 	elseif sym.kind == "intermediate" then
 		for _, d in ipairs(sym.deps or {}) do
-			transitive_deps(reg, d, seen)
+			transitive_deps(reg, d, seen, ignore_accessors, explicit_set, root, stop_at_fields)
 		end
 		return seen
 	end
 
 	for dep in pairs(deps or {}) do
-		transitive_deps(reg, dep, seen)
+		transitive_deps(reg, dep, seen, ignore_accessors, explicit_set, root, stop_at_fields)
 	end
 	return seen
 end
@@ -141,7 +163,7 @@ local function topo_sort(reg, names)
 	local allowed = {}
 	for _, n in ipairs(names) do allowed[n] = true end
 
-	local function visit(name)
+	local function visit(name, emit)
 		if not allowed[name] then return end
 		if visited[name] or visiting[name] then return end
 		visiting[name] = true
@@ -154,22 +176,34 @@ local function topo_sort(reg, names)
 				deps = sym.eq._deps
 			elseif sym.kind == "expression" then
 				deps = sym.expr and sym.expr._deps or {}
+			elseif sym.kind == "correction" then
+				deps = sym.expr and sym.expr._deps or {}
 			elseif sym.kind == "intermediate" then
 				deps = {}
 				for _, d in ipairs(sym.deps or {}) do deps[d] = true end
 			end
 			for dep in pairs(deps or {}) do
-				visit(dep)
+				visit(dep, false)
 			end
 		end
 
 		visiting[name] = false
 		visited[name] = true
-		result[#result + 1] = name
+		if emit then result[#result + 1] = name end
 	end
 
-	for _, name in ipairs(names) do visit(name) end
+	for _, name in ipairs(names) do visit(name, true) end
 	return result
+end
+
+local function invalidate_dependents(reg, field, fresh, inserted)
+	for name in pairs(fresh) do
+		local tdeps = transitive_deps(reg, name, {}, false, nil, nil, true)
+		if tdeps[field] then
+			fresh[name] = nil
+			inserted[name] = nil
+		end
+	end
 end
 
 local function classify(reg, explicit_set)
@@ -177,7 +211,9 @@ local function classify(reg, explicit_set)
 
 	local ex_tdeps = {}
 	for ex in pairs(explicit_set) do
-		transitive_deps(reg, ex, ex_tdeps)
+		local this_walk = {}
+		transitive_deps(reg, ex, this_walk, true, explicit_set, ex)
+		for k in pairs(this_walk) do ex_tdeps[k] = true end
 	end
 	for ex in pairs(explicit_set) do
 		ex_tdeps[ex] = nil
@@ -197,6 +233,9 @@ local function classify(reg, explicit_set)
 		::continue::
 	end
 
+	table.sort(main_names)
+	table.sort(post_names)
+
 	return main_names, post_names
 end
 
@@ -207,19 +246,25 @@ local function emit_implicit(name, reg, inserted, fresh, expanded)
 
 	local sym = reg[name]
 	if not sym then return end
+
+	-- accessor: mark fresh but emit nothing
 	if sym.kind == "intermediate" and sym.accessor then return end
 
 	if sym.kind == "field" then
 		expanded:_push(step_solve(name, true))
+		fresh[name] = true
+		invalidate_dependents(reg, name, fresh, inserted)
 		if sym.correction then expanded:_push(step_correct(name, true)) end
 		if sym.clip then expanded:_push(step_clip(name, sym.clip[1], sym.clip[2], true)) end
 	elseif sym.kind == "expression" or sym.kind == "intermediate" then
 		expanded:_push(step_evaluate(name, true))
+	elseif sym.kind == "correction" then
+		expanded:_push(step_correct(sym.target, true))
 	end
 end
 
-local function emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded)
-	local tdeps = transitive_deps(reg, field, {})
+local function emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded, explicit_set)
+	local tdeps = transitive_deps(reg, field, {}, false, explicit_set, field)
 	for _, name in ipairs(sorted_main) do
 		if tdeps[name] and not fresh[name] then
 			emit_implicit(name, reg, inserted, fresh, expanded)
@@ -237,6 +282,8 @@ local function emit_post(post_names, reg, expanded)
 			if sym.correction then expanded:_push_post(step_correct(name, true)) end
 		elseif sym.kind == "expression" or sym.kind == "intermediate" then
 			expanded:_push_post(step_evaluate(name, true))
+		elseif sym.kind == "correction" then
+			expanded:_push_post(step_correct(sym.target, true))
 		end
 		::continue::
 	end
@@ -254,44 +301,41 @@ the registry dependency graph.
 Rules:
 
 1. VECTOR EXPANSION
-	Any explicit solve of a vector field (e.g. "U") is expanded to its scalar
-	components ("Ux", "Uy") in order. All components are treated as anchors.
+   Any explicit solve or correct of a vector field (e.g. "U") expands to its
+   scalar components ("Ux", "Uy") in registration order.
 
 2. EXPLICIT SET
-	The anchors and their components form the explicit set. These are never
-	auto-inserted as implicit steps elsewhere.
+   All anchors (solve and correct targets, including vector components) form
+   the explicit set and are never auto-inserted as implicit steps.
+   Correction anchors are registered as "__correct_<field>" in the explicit
+   set so their deps are pulled in correctly without double-emission.
 
 3. CLASSIFICATION
-	Every non-constant, non-vector, non-explicit registry symbol is classified:
-	- reaches_explicit: appears in the transitive deps of any anchor
-		-> goes into the main loop as an implicit step
-	- otherwise: purely driven, not needed by any anchor
-		-> goes into post-loop, solved/evaluated once after the main loop
+   Every non-constant, non-vector, non-explicit, non-accessor registry symbol
+   is classified by whether it appears in the transitive deps of any anchor:
+   - yes -> main loop (implicit step, ordered before the anchor that needs it)
+   - no  -> post-loop (evaluated once after the main loop converges)
 
 4. MAIN LOOP ORDERING
-	Implicit main-loop symbols are topo-sorted (leaves first). For each anchor
-	in user order, any implicit it transitively needs that isn't yet "fresh" is
-	emitted immediately before it. Once emitted, a symbol is marked fresh and
-	never emitted again in the same expansion (freshness is shared with any
-	nested inner-loop expansions).
+   Implicit main-loop symbols are topo-sorted (leaves first). For each anchor
+   in user order, any not-yet-fresh implicit dep is emitted immediately before
+   it. Freshness is shared with nested inner loops to prevent re-emission.
 
 5. CORRECTIONS
-	If a field has a `correction` registered, a CORRECT step is emitted
-	immediately after its SOLVE, for both explicit and implicit fields.
+   a:correct("f") expands to the scalar components of f, emits deps for
+   "__correct_<f>" (face values, gradients of p' etc.), then emits a CORRECT
+   step. The correction expression lives in the registry as kind="correction"
+   with a target field and a full RHS expression whose deps are tracked
+   normally through the dependency graph.
 
 6. POST-LOOP
-	Purely driven symbols are topo-sorted and appended to the post-loop block.
-	These run once per timestep after the main iteration converges.
+   Purely driven symbols (diagnostics, derived properties) are topo-sorted
+   and appended after the main loop. They run once per timestep after
+   convergence.
 
 7. NESTED LOOPS (PISO etc.)
-	expand() accepts optional `inserted` and `fresh` tables so an inner loop
-	inherits outer freshness state and doesn't re-emit already-resolved deps.
-
-The result is that a SIMPLE skeleton:
-	a:solve("U"); a:solve("p")
-automatically acquires turbulence model evaluations, face interpolations,
-diagonal extractions, and Rhie-Chow intermediates in the correct order,
-and decoupled fields like T are deferred to post-loop without user intervention.
+   expand() accepts optional `inserted` and `fresh` tables so an inner loop
+   inherits outer freshness state and does not re-emit already-resolved deps.
 
 --]]
 
@@ -313,6 +357,13 @@ function A:expand(reg, inserted, fresh)
 			else
 				explicit_set[step.field] = true
 			end
+		elseif step.op == "correct" then -- add this
+			local sym = reg[step.field]
+			local fields = (sym and sym.kind == "vector")
+				and sym.components or { step.field }
+			for _, field in ipairs(fields) do
+				explicit_set["__correct_" .. field] = true
+			end
 		end
 	end
 
@@ -327,17 +378,29 @@ function A:expand(reg, inserted, fresh)
 				and sym.components or { step.field }
 
 			for _, field in ipairs(fields) do
-				emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded)
+				emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded, explicit_set)
 
 				if not fresh[field] then
 					expanded:_push(step_solve(field, false))
 					fresh[field] = true
+					invalidate_dependents(reg, field, fresh, inserted)
 
 					local fsym = reg[field]
 					if fsym and fsym.correction then
 						expanded:_push(step_correct(field, false))
 					end
 				end
+			end
+		elseif step.op == "correct" then
+			local sym    = reg[step.field]
+			local fields = (sym and sym.kind == "vector")
+				and sym.components or { step.field }
+
+			for _, field in ipairs(fields) do
+				local cname = "__correct_" .. field
+				emit_deps_for(cname, sorted_main, reg, inserted, fresh, expanded, explicit_set)
+				expanded:_push(step_correct(field, false))
+				fresh[cname] = true
 			end
 		elseif step.op == "inner" then
 			local expanded_inner = step.inner:expand(reg, inserted, fresh)
@@ -357,17 +420,21 @@ end
 
 local function fmt_step(s)
 	if s.op == "solve" then
-		return string.format("  %s SOLVE %s", s.implicit and "~" or "*", s.field)
+		local sym = E.pretty_sym(s.field)
+		return string.format("  %s SOLVE %s", s.implicit and "~" or "*", sym)
 	elseif s.op == "evaluate" then
-		return string.format("  %s EVAL  %s", s.implicit and "~" or "*", s.name)
+		local sym = E.pretty_sym(s.field)
+		return string.format("  %s EVAL  %s", s.implicit and "~" or "*", sym)
 	elseif s.op == "correct" then
-		return string.format("  %s CORRECT %s", s.implicit and "~" or "*", s.field)
+		local sym = E.pretty_sym(s.field)
+		return string.format("  %s CORRECT %s", s.implicit and "~" or "*", sym)
 	elseif s.op == "hook" then
 		return string.format("    HOOK  %s", s.name)
 	elseif s.op == "clip" then
+		local sym = E.pretty_sym(s.field)
 		local hi = s.hi == math.huge and "inf" or string.format("%g", s.hi)
 		return string.format("  %s CLIP  %s [%g %s]",
-			s.implicit and "~" or "*", s.field, s.lo, hi)
+			s.implicit and "~" or "*", sym, s.lo, hi)
 	elseif s.op == "inner" then
 		return s.inner:_pretty("\n>>INNER", "<<END\n") -- don't care about indentation
 	end

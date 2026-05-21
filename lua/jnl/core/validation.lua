@@ -34,6 +34,17 @@ function V.identifier(s, label)
 	end
 end
 
+function V.field_name(name, label)
+	assert(type(name) == "string",
+		label .. ": expected string, got " .. type(name))
+	local internal = name:match("^__prime_")
+		or name:match("^__expl_")
+		or name:match("^__prev_")
+	if not internal then
+		V.identifier(name, label)
+	end
+end
+
 function V.internal_identifier(name, context)
 	assert(type(name) == "string" and #name > 0,
 		(context or "identifier") .. ": must be a non-empty string")

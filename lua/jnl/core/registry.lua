@@ -24,6 +24,16 @@ function Expression:_pretty()
 	return string.format("%-12s %s", self.name, E.pretty(self.expr))
 end
 
+local Correction = {}
+Correction.__index = Correction
+
+function Correction:_pretty()
+	return string.format("%-12s [correction] %s <- %s",
+		"__correct_" .. self.target,
+		self.target,
+		E.pretty(self.expr))
+end
+
 local Field = {}
 Field.__index = Field
 
@@ -117,8 +127,20 @@ function R:expression(name, expr)
 	self:define(name, { kind = "expression", expr = expr }, Expression)
 end
 
+function R:correction(name, expr)
+	V.identifier(name, "R:correction target")
+	assert(E.is_expr(expr),
+		"R:correction: expected an expression for '" .. name .. "'")
+	local sym_name = "__correct_" .. name
+	self:define(sym_name, {
+		kind   = "correction",
+		target = name,
+		expr   = expr,
+	}, Correction)
+end
+
 function R:field(name, spec)
-	V.identifier(name, "R:field name")
+	V.field_name(name, "R:field name")
 
 	if spec.region ~= nil then
 		V.typeof(spec.region, "string", "field '" .. name .. "' region")
@@ -134,13 +156,12 @@ function R:field(name, spec)
 		bcs = spec.bcs,
 		region = spec.region,
 		eq = spec.eq,
-		correction = spec.correction,
 		clip = spec.clip,
 	}, Field)
 end
 
 function R:vector(name, components)
-	V.identifier(name, "R:vector name")
+	V.field_name(name, "R:vector name")
 	assert(type(components) == "table" and #components >= 2,
 		"R:vector components: must be a list of at least 2 field names")
 	for _, c in ipairs(components) do
@@ -187,6 +208,10 @@ function R:listing()
 	return table.concat(parts, "\n")
 end
 
+function R:print()
+	print(self:listing())
+end
+
 function R:deps_of(name)
 	local sym = self:expect(name)
 	local into = {}
@@ -194,6 +219,9 @@ function R:deps_of(name)
 	if sym.kind == "constant" then
 		return {}
 	elseif sym.kind == "expression" then
+		local names = E.deps(sym.expr)
+		for _, n in ipairs(names) do into[n] = true end
+	elseif sym.kind == "correction" then
 		local names = E.deps(sym.expr)
 		for _, n in ipairs(names) do into[n] = true end
 	elseif sym.kind == "field" and sym.eq then
@@ -251,6 +279,19 @@ function R:validate()
 			if not self[dep] then
 				errors[#errors + 1] = string.format(
 					"  '%s' depends on unregistered symbol '%s'", name, dep)
+			end
+		end
+
+		if sym.kind == "correction" then
+			local target = self[sym.target]
+			if not target then
+				errors[#errors + 1] = string.format(
+					"  correction '%s' targets unregistered field '%s'",
+					name, sym.target)
+			elseif target.kind ~= "field" then
+				errors[#errors + 1] = string.format(
+					"  correction '%s' targets '%s' which is a %s, not a field",
+					name, sym.target, target.kind)
 			end
 		end
 

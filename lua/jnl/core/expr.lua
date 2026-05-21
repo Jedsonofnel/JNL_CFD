@@ -168,10 +168,75 @@ function E.cV()
 end
 
 --
+-- Internal name manglers
+--
+
+local function prime_sym(field) return "__prime_" .. field end
+local function expl_sym(field) return "__expl_" .. field end
+local function prev_sym(field) return "__prev_" .. field end
+
+local function is_prime(name) return name:match("^__prime_(.+)$") end
+local function is_expl(name) return name:match("^__expl_(.+)$") end
+local function is_prev(name) return name:match("^__prev_(.+)$") end
+
+-- for overwriting
+E.pretty_sym_fallback = nil
+
+local function pretty_sym(name)
+	local b
+	b = is_prime(name); if b then return b .. G.prime end
+	b = is_expl(name); if b then return b .. G.expl end
+	b = is_prev(name); if b then return b .. G.prev end
+	if E.pretty_sym_fallback then
+		local r = E.pretty_sym_fallback(name)
+		if r then return r end
+	end
+	return name
+end
+
+E.prime_name = prime_sym
+E.expl_name  = expl_sym
+E.prev_name  = prev_sym
+E.is_prime   = is_prime
+E.is_expl    = is_expl
+E.is_prev    = is_prev
+E.pretty_sym = pretty_sym
+
+function E.prime(field)
+	V.identifier(field, "E.prime")
+	return make_expr {
+		kind      = "prime",
+		field     = field,
+		_dep_name = prime_sym(field),
+		_pretty   = function() return field .. G.prime end,
+	}
+end
+
+function E.expl(field)
+	V.identifier(field, "E.expl")
+	return make_expr {
+		kind      = "expl",
+		field     = field,
+		_dep_name = expl_sym(field),
+		_pretty   = function() return field .. G.expl end,
+	}
+end
+
+function E.prev(field)
+	V.identifier(field, "E.prev")
+	return make_expr {
+		kind      = "prev",
+		field     = field,
+		_dep_name = prev_sym(field),
+		_pretty   = function() return field .. G.prev end,
+	}
+end
+
+--
 -- Expression printing (surprisingly involved)
 --
 
-local PREC = {
+local PREC  = {
 	add = 1,
 	sub = 1,
 	mul = 2,
@@ -294,6 +359,10 @@ function E.pretty(e, parent_prec, is_right_child)
 			parts[#parts + 1] = (i == 1 and "" or sep) .. s
 		end
 		return wrap(table.concat(parts, ""))
+
+		-- name manglers added for explicitness
+	elseif k == "prime" or k == "expl" or k == "prev" then
+		return e._pretty()
 	end
 
 	-- for externally defined expressions
