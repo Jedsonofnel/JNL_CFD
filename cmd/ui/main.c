@@ -4,6 +4,7 @@
 #include <signal.h>
 #include "jnl/common.h"
 #include "geo2d.h"
+#include "mesh2d.h"
 #include "ui.h"
 
 static jnl_ui_handle *g_ui = NULL;
@@ -24,7 +25,6 @@ int main(void)
 	signal(SIGINT, cleanup);
 	signal(SIGTERM, cleanup);
 
-	// Build a PSLG
 	struct jnl_pslg pslg = {0};
 	jnl_pslg_init(&pslg);
 	jnl_pslg_node_add(&pslg, 10, 10, 0);
@@ -40,22 +40,33 @@ int main(void)
 	jnl_pslg_edge_add(&pslg, 3, 4, 0);
 	jnl_pslg_edge_add(&pslg, 3, 5, 0);
 
-	// Spawn window process
+	struct jnl_mesh *mesh = jnl_smesh_gen(500.0, 300.0, 20, 12);
+	if (!mesh) {
+		fprintf(stderr, "Failed to generate mesh\n");
+		return 1;
+	}
+
 	g_ui = jnl_ui_spawn();
 	if (!g_ui) {
 		fprintf(stderr, "Failed to spawn UI\n");
 		return 1;
 	}
 
-	// Give raylib a moment
-	usleep(200000); // 200ms
-	if (jnl_ui_send_pslg(g_ui, &pslg) < 0) {
-		fprintf(stderr, "Failed to send PSLG\n");
-	} else {
-		printf("PSLG sent\n");
-	}
+	usleep(200000);
 
-	// wait 10 seconds then close
+	if (jnl_ui_send_pslg(g_ui, &pslg) < 0)
+		fprintf(stderr, "Failed to send PSLG\n");
+	else
+		printf("PSLG sent\n");
+
+	sleep(10);
+
+	if (jnl_ui_send_mesh(g_ui, mesh) < 0)
+		fprintf(stderr, "Failed to send mesh\n");
+	else
+		printf("Mesh sent (%d vertices, %d faces)\n", mesh->topo.n_vertices,
+		       mesh->topo.n_faces);
+
 	sleep(10);
 
 	printf("Closing window...\n");
@@ -64,5 +75,6 @@ int main(void)
 	g_ui = NULL;
 
 	jnl_pslg_free(&pslg);
+	jnl_mesh_free(mesh);
 	return 0;
 }
