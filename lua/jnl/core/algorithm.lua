@@ -160,18 +160,25 @@ local function topo_sort(reg, names)
 	local result = {}
 	local visited = {}
 	local visiting = {}
+	local emitted = {}
 	local allowed = {}
 	for _, n in ipairs(names) do allowed[n] = true end
 
 	local function visit(name, emit)
 		if not allowed[name] then return end
-		if visited[name] or visiting[name] then return end
+		if visiting[name] then return end
+		if visited[name] then
+			if emit and not emitted[name] then
+				emitted[name] = true
+				result[#result + 1] = name
+			end
+			return
+		end
 		visiting[name] = true
 
 		local sym = reg[name]
 		if sym and type(sym) == "table" then
 			local deps
-
 			if sym.kind == "field" and sym.eq then
 				deps = sym.eq._deps
 			elseif sym.kind == "expression" then
@@ -189,7 +196,10 @@ local function topo_sort(reg, names)
 
 		visiting[name] = false
 		visited[name] = true
-		if emit then result[#result + 1] = name end
+		if emit and not emitted[name] then
+			emitted[name] = true
+			result[#result + 1] = name
+		end
 	end
 
 	for _, name in ipairs(names) do visit(name, true) end
@@ -264,7 +274,7 @@ local function emit_implicit(name, reg, inserted, fresh, expanded)
 end
 
 local function emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded, explicit_set)
-	local tdeps = transitive_deps(reg, field, {}, false, explicit_set, field)
+	local tdeps = transitive_deps(reg, field, {}, false, explicit_set, field, true)
 	for _, name in ipairs(sorted_main) do
 		if tdeps[name] and not fresh[name] then
 			emit_implicit(name, reg, inserted, fresh, expanded)
@@ -368,7 +378,6 @@ function A:expand(reg, inserted, fresh)
 	end
 
 	local main_names, post_names = classify(reg, explicit_set)
-
 	local sorted_main = topo_sort(reg, main_names)
 
 	for _, step in ipairs(self.steps) do

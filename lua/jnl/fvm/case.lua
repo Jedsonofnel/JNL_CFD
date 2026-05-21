@@ -150,13 +150,13 @@ local function scalars_of(reg, name)
 end
 
 local function elaborate_grad_component(_, _, _, field)
-	local parent = "__grad_" .. field
+	local parent = names.grad(field)
 	return "grad_component", { parent }, { parent }, true, nil
 end
 
 local function elaborate_grad_parent(_, _, field)
-	local face = "__face_" .. field
-	local comps = { "__grad_x_" .. field, "__grad_y_" .. field }
+	local face = names.face(field)
+	local comps = { names.grad(field, "x"), names.grad(field, "y") }
 	return "grad", { face }, { face }, false, comps
 end
 
@@ -169,7 +169,7 @@ local function elaborate_face(reg, name, field)
 	end
 	local face_deps, to_enqueue = {}, {}
 	for _, c in ipairs(comps) do
-		local cf = "__face_" .. c
+		local cf = names.face(c)
 		face_deps[#face_deps + 1] = cf
 		to_enqueue[#to_enqueue + 1] = cf
 	end
@@ -179,12 +179,12 @@ end
 local function elaborate_mwi(reg, _, U, p)
 	local deps, to_enqueue = {}, {}
 	for _, uc in ipairs(scalars_of(reg, U)) do
-		for _, d in ipairs({ "__face_" .. uc, "__diag_" .. uc }) do
+		for _, d in ipairs({ names.face(uc), names.diag(uc) }) do
 			deps[#deps + 1] = d
 			to_enqueue[#to_enqueue + 1] = d
 		end
 	end
-	for _, d in ipairs({ "__face_" .. p, "__grad_" .. p }) do
+	for _, d in ipairs({ names.face(p), names.grad(p) }) do
 		deps[#deps + 1] = d
 		to_enqueue[#to_enqueue + 1] = d
 	end
@@ -194,6 +194,20 @@ end
 local function elaborate_diag(reg, _, field, comp)
 	local deps = comp and { field .. "." .. comp } or scalars_of(reg, field)
 	return "diag", deps, {}, true, nil
+end
+
+local function elaborate_div(reg, _, field)
+	local comps = scalars_of(reg, field)
+	local face_deps = {}
+	for _, c in ipairs(comps) do
+		face_deps[#face_deps + 1] = names.face(c)
+	end
+	return "div", face_deps, face_deps, false, nil
+end
+
+local function elaborate_div_mwi(_, _, U, p)
+	local dep = names.mwi(U, p)
+	return "div_mwi", { dep }, { dep }, false, nil
 end
 
 local function elaborate_prev(_, _, field)
@@ -221,6 +235,12 @@ local function elaborate(reg, name)
 
 	field, comp = names.is_diag(name)
 	if field then return elaborate_diag(reg, name, field, comp) end
+
+	local U, p = names.is_div_mwi(name)
+	if U then return elaborate_div_mwi(reg, name, U, p) end
+
+	field = names.is_div(name)
+	if field then return elaborate_div(reg, name, field) end
 
 	field = E.is_prev(name)
 	if field then return elaborate_prev(reg, name, field) end

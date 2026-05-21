@@ -48,10 +48,11 @@ reg:field("p", {
 	),
 })
 
--- pressure correction field
+-- pressure correction
 reg:field(E.prime_name("p"), {
 	eq = FVM.eq(
 		Op.lap("inv_d", E.prime("p")),
+		Op.su(E.neg(FVMe.div_mwi("U", "p"))),
 		{ solver = "cg" }
 	),
 })
