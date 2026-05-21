@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "lua_bindings.h"
 
@@ -34,6 +35,25 @@ int main(int argc, char **argv)
 	register_preloaders(L);
 
 	const char *repl_path = LUA_ASSET_PATH "/jnl/repl.lua";
+
+	if (argc > 1) {
+		const char *script = argv[1];
+		const char *ext = strrchr(script, '.');
+		if (!ext || strcmp(ext, ".lua") != 0) {
+			fprintf(stderr, "Error: script must be a .lua file\n");
+			lua_close(L);
+			return 1;
+		}
+
+		if (luaL_dofile(L, script) != LUA_OK) {
+			fprintf(stderr, "Error running script: %s\n", lua_tostring(L, -1));
+			lua_close(L);
+			return 1;
+		}
+
+		lua_pushstring(L, script);
+		lua_setglobal(L, "_script");
+	}
 
 	if (luaL_dofile(L, repl_path) != LUA_OK) {
 		fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
