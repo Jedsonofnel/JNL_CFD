@@ -134,6 +134,8 @@ function R:field(name, spec)
 		bcs = spec.bcs,
 		region = spec.region,
 		eq = spec.eq,
+		correction = spec.correction,
+		clip = spec.clip,
 	}, Field)
 end
 
@@ -149,12 +151,14 @@ function R:vector(name, components)
 end
 
 --- Add an Intermediate to registry, for use by compiler backend.
-function R:intermediate(name, itype, deps)
+function R:intermediate(name, itype, deps, opts)
 	V.internal_identifier(name, "R:intermediate name")
+	opts = opts or {}
 	self:define(name, {
 		kind = "intermediate",
 		itype = itype,
 		deps = deps,
+		accessor = opts.accessor or false, -- accessor means "invisible to algorithm" eg diag
 	}, Intermediate)
 end
 

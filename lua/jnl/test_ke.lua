@@ -1,5 +1,5 @@
--- test.lua - exercise the jnl physics layer
--- <jed@nelson.ac> // 2026-05-11
+-- test_ke.lua - k-epsilon SIMPLE case
+-- <jed@nelson.ac> // 2026-05-21
 
 local FVM = require("fvm")
 local Op = FVM.Op
@@ -11,50 +11,37 @@ local A = require("core.algorithm")
 
 local reg = R.new()
 
+-- fluid properties
 reg:constant("rho", 1025.0)
 reg:constant("Cp", 4182.0)
 reg:constant("mu", 0.001)
 reg:constant("k", 0.598)
 reg:constant("Q_dot", 0.0)
 
--- k-epsilon properties
+-- k-epsilon constants
 reg:constant("C_mu", 0.09)
 reg:constant("C1", 1.44)
 reg:constant("C2", 1.92)
 reg:constant("sigma_k", 1.0)
 reg:constant("sigma_eps", 1.3)
 
-reg:expression("nu", E.div("mu", "rho"))
-reg:expression("alpha", E.div("k", E.mul("rho", "Cp")))
-reg:expression("Pr", E.div(E.mul("mu", "Cp"), "k"))
-
+-- turbulent viscosity and effective diffusivities
 reg:expression("mu_t",
 	E.mul("rho", "C_mu", E.div(E.pow("k_turb", 2), "eps")))
-
--- effective diffusivities
 reg:expression("Gamma_k",
 	E.add("mu", E.div("mu_t", "sigma_k")))
 reg:expression("Gamma_eps",
 	E.add("mu", E.div("mu_t", "sigma_eps")))
 
-local dUx_dx = FVMe.grad("Ux", "x")
-local dUx_dy = FVMe.grad("Ux", "y")
-local dUy_dx = FVMe.grad("Uy", "x")
-local dUy_dy = FVMe.grad("Uy", "y")
-
--- Strain rate squared
-reg:expression("S2",
-	E.add(
-		E.mul(2, E.pow(dUx_dx, 2)),
-		E.mul(2, E.pow(dUy_dy, 2)),
-		E.pow(E.add(dUx_dy, dUy_dx), 2)
-	))
-
--- production term
+-- strain rate invariant and turbulence production
+reg:expression("S2", E.add(
+	E.mul(2, E.pow(FVMe.grad("Ux", "x"), 2)),
+	E.mul(2, E.pow(FVMe.grad("Uy", "y"), 2)),
+	E.pow(E.add(FVMe.grad("Ux", "y"), FVMe.grad("Uy", "x")), 2)
+))
 reg:expression("Pk", E.mul("mu_t", "S2"))
 
--- fields
-
+-- momentum
 reg:field("Ux", {
 	eq = FVM.eq(
 		Op.ddt("rho", "Ux"),
@@ -64,7 +51,6 @@ reg:field("Ux", {
 		{ relax = 0.7, solver = "bicgstab" }
 	),
 })
-
 reg:field("Uy", {
 	eq = FVM.eq(
 		Op.ddt("rho", "Uy"),
@@ -74,19 +60,19 @@ reg:field("Uy", {
 		{ relax = 0.7, solver = "bicgstab" }
 	),
 })
+reg:vector("U", { "Ux", "Uy" })
 
--- inverse diagonal for pressure correction
+-- pressure (inv_d is the Rhie-Chow volume/diagonal coefficient)
 reg:expression("inv_d",
-	E.mul(E.cV(), E.div(2,
-		E.add(FVMe.diag("Ux"), FVMe.diag("Uy")))))
-
+	E.mul(E.cV(), E.div(2, E.add(FVMe.diag("Ux"), FVMe.diag("Uy")))))
 reg:field("p", {
 	eq = FVM.eq(
 		Op.lap("inv_d", "p"),
 		{ relax = 0.3, solver = "cg" }
-	)
+	),
 })
 
+-- temperature
 reg:field("T", {
 	initial = 300.0,
 	eq = FVM.eq(
@@ -97,6 +83,7 @@ reg:field("T", {
 		{ relax = 0.9, solver = "bicgstab" }
 	),
 })
+
 -- turbulent kinetic energy
 reg:field("k_turb", {
 	initial = 1e-4,
@@ -123,17 +110,14 @@ reg:field("eps", {
 	),
 })
 
-reg:vector("U", { "Ux", "Uy" })
-
 local alg = A.new()
 
+-- SIMPLE
 alg:loop(function(a)
 	a:solve("U")
 	a:solve("p")
-	a:solve("T")
 end, {})
 
 local Case = FVM.Case
 local case = Case.new(reg, alg)
-print("\nCase registry after expansion:\n")
-print(case.registry:listing())
+case:print_algorithm()

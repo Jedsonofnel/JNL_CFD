@@ -1,10 +1,6 @@
 -- fvm/case.lua - physics case that gets compiled
 -- <jed@nelson.ac> // 2026-05-12
 
--- deps
-local E = require("core.expr")
-local FVMeq = require("fvm.eq")
-local names = FVMeq.names
 
 --
 -- Instruction storage
@@ -146,7 +142,7 @@ local function elaborate(reg, name)
 		local comp, field = name:match("^__grad_([xy])_(.+)$")
 		if comp then
 			local face = "__face_" .. field
-			return "grad_" .. comp, { face }, { face }
+			return "grad_" .. comp, { face }, { face }, false
 		end
 	end
 	do
@@ -156,7 +152,7 @@ local function elaborate(reg, name)
 			if #comps == 1 then
 				assert(reg[comps[1]],
 					"intermediate '" .. name .. "': unregistered field '" .. comps[1] .. "'")
-				return "face", comps, {}
+				return "face", comps, {}, false
 			else
 				local face_deps, to_enqueue = {}, {}
 				for _, c in ipairs(comps) do
@@ -164,7 +160,7 @@ local function elaborate(reg, name)
 					face_deps[#face_deps + 1] = cf
 					to_enqueue[#to_enqueue + 1] = cf
 				end
-				return "face_vector", face_deps, to_enqueue
+				return "face_vector", face_deps, to_enqueue, false
 			end
 		end
 	end
@@ -181,16 +177,16 @@ local function elaborate(reg, name)
 			local fp = "__face_" .. p
 			deps[#deps + 1] = fp
 			to_enqueue[#to_enqueue + 1] = fp
-			return "mwi", deps, to_enqueue
+			return "mwi", deps, to_enqueue, false
 		end
 	end
 	do
 		local field = name:match("^__diag_(.+)$")
-		if field then return "diag", scalars_of(reg, field), {} end
+		if field then return "diag", scalars_of(reg, field), {}, true end
 	end
 	do
 		local field = name:match("^__prev_(.+)$")
-		if field then return "prev", { field }, {} end
+		if field then return "prev", { field }, {}, true end
 	end
 	error("_expand_intermediates: unrecognised intermediate: " .. name)
 end
@@ -202,8 +198,8 @@ function Case:_expand_intermediates()
 	while #pending > 0 do
 		local name = table.remove(pending, 1)
 		if not reg[name] then
-			local itype, deps, to_enqueue = elaborate(reg, name)
-			reg:intermediate(name, itype, deps)
+			local itype, deps, to_enqueue, accessor = elaborate(reg, name)
+			reg:intermediate(name, itype, deps, { accessor = accessor })
 			for _, d in ipairs(to_enqueue) do
 				if not queued[d] then
 					queued[d] = true
@@ -233,10 +229,15 @@ COMPILATION
 function Case:_compile()
 	self:_expand_intermediates()
 	self.registry:validate()
+	self.algorithm = self.algorithm:expand(self.registry)
 
 	-- TODO: expand diagnostics and build diagnostic dependency graph
 
 	-- self:_emit_instructions()
+end
+
+function Case:print_algorithm()
+	self.algorithm:print()
 end
 
 return Case

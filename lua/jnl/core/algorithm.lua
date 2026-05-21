@@ -7,104 +7,399 @@ local V = require("core.validation")
 local A = {}
 A.__index = A
 
-function A.new()
-	return setmetatable({ _final = {} }, A)
+--
+-- Constructors - internal
+--
+
+local function step_solve(field, implicit)
+	return { op = "solve", field = field, implicit = implicit or false }
 end
 
--- constructors
+local function step_evaluate(name, implicit)
+	return { op = "evaluate", name = name, implicit = implicit or false }
+end
+
+local function step_correct(field, implicit)
+	return { op = "correct", field = field, implicit = implicit or false }
+end
+
+local function step_clip(field, lo, hi, implicit)
+	return { op = "clip", field = field, lo = lo, hi = hi, implicit = implicit or false }
+end
+
+local function step_hook(fn, name)
+	return { op = "hook", fn = fn, name = name or "<fn>" }
+end
+
+local function step_inner(alg)
+	return { op = "inner", inner = alg }
+end
+
+--
+-- Construction
+--
+
+function A.new()
+	return setmetatable({ steps = {}, post = {}, op = "linear" }, A)
+end
+
+function A:_push(step)
+	self.steps[#self.steps + 1] = step
+end
+
+function A:_push_post(step)
+	self.post[#self.post + 1] = step
+end
+
+-- User-facing builder DSL
+
+local Builder = {}
+Builder.__index = Builder
+
+function Builder.new(alg)
+	return setmetatable({ _alg = alg }, Builder)
+end
+
+function Builder:solve(field)
+	V.identifier(field, "alg:solve field")
+	self._alg:_push(step_solve(field, false))
+	return self
+end
+
+function Builder:clip(field, lo, hi)
+	V.identifier(field, "alg:clip field")
+	V.typeof(lo, "number", "alg:clip lo")
+	V.typeof(hi, "number", "alg:clip hi")
+	self._alg:_push(step_clip(field, lo, hi))
+	return self
+end
+
+function Builder:hook(fn, name)
+	V.typeof(fn, "function", "alg:hook fn")
+	self._alg:_push(step_hook(fn, name))
+	return self
+end
+
+function Builder:inner(cb, config)
+	config = config or {}
+	local inner_alg = A.new()
+	inner_alg:loop(cb, config)
+	self._alg:_push(step_inner(inner_alg))
+	return self
+end
 
 function A:linear(cb)
 	self.op = "linear"
-	local target = {}
-
-	function target:solve(field)
-		V.identifier(field, "alg:solve field")
-		self[#self + 1] = { op = "solve", field = field }
-		return self
-	end
-
-	function target:clip(field, lo, hi)
-		V.identifier(field, "alg:clip field")
-		V.typeof(lo, "number", "alg:clip lo")
-		V.typeof(hi, "number", "alg:clip hi")
-		self[#self + 1] = { op = "clip", field = field, lo = lo, hi = hi }
-		return self
-	end
-
-	function target:hook(fn, name)
-		V.typeof(fn, "function", "alg:hook fn")
-		self[#self + 1] = { op = "hook", fn = fn, name = name or "<fn>" }
-		return self
-	end
-
-	function target:inner(fn, config)
-		V.typeof(fn, "function", "alg:inner fn")
-		V.typeof(fn, "table", "alg:inner config")
-		local inner_alg = A.new()
-		inner_alg:loop(fn, config)
-		self[#self + 1] = { op = "inner", inner = inner_alg }
-		return self
-	end
-
-	cb(target)
+	cb(Builder.new(self))
 end
 
 function A:loop(cb, config)
-	A:linear(cb)
 	self.op = "loop"
+	config = config or {}
 	self.max_iters = config.max_iters or 1000
 	self.go_until = config.go_until
+	cb(Builder.new(self))
 end
 
--- helpers
+--
+-- Dependency helpers
+--
 
-function A:push(step)
-	self[#self + 1] = step
+--- Returns the set of all dep names reachable from `name` in registry,
+-- including `name` itself.  Stops at cycle.
+local function transitive_deps(reg, name, seen)
+	seen = seen or {}
+	if seen[name] then return seen end
+	seen[name] = true
+	local sym = reg[name]
+	if not sym or type(sym) ~= "table" then return seen end
+
+	local deps
+	if sym.kind == "field" and sym.eq then
+		deps = sym.eq._deps
+	elseif sym.kind == "expression" and sym.expr then
+		deps = sym.expr._deps
+	elseif sym.kind == "intermediate" then
+		for _, d in ipairs(sym.deps or {}) do
+			transitive_deps(reg, d, seen)
+		end
+		return seen
+	end
+
+	for dep in pairs(deps or {}) do
+		transitive_deps(reg, dep, seen)
+	end
+	return seen
 end
 
-function A:prepend(step)
-	table.insert(self, 1, step)
+--- Topo-sort a set of names from registry.  Returns ordered list,
+-- leaves first.  Cycles are broken by skipping already-visited nodes.
+local function topo_sort(reg, names)
+	local result = {}
+	local visited = {}
+	local visiting = {}
+	local allowed = {}
+	for _, n in ipairs(names) do allowed[n] = true end
+
+	local function visit(name)
+		if not allowed[name] then return end
+		if visited[name] or visiting[name] then return end
+		visiting[name] = true
+
+		local sym = reg[name]
+		if sym and type(sym) == "table" then
+			local deps
+
+			if sym.kind == "field" and sym.eq then
+				deps = sym.eq._deps
+			elseif sym.kind == "expression" then
+				deps = sym.expr and sym.expr._deps or {}
+			elseif sym.kind == "intermediate" then
+				deps = {}
+				for _, d in ipairs(sym.deps or {}) do deps[d] = true end
+			end
+			for dep in pairs(deps or {}) do
+				visit(dep)
+			end
+		end
+
+		visiting[name] = false
+		visited[name] = true
+		result[#result + 1] = name
+	end
+
+	for _, name in ipairs(names) do visit(name) end
+	return result
 end
 
-function A:insert_before(name, step)
-	for i, s in ipairs(self) do
-		if s.field == name then
-			table.insert(self, i, step)
-			return
+local function classify(reg, explicit_set)
+	local main_names, post_names = {}, {}
+
+	local ex_tdeps = {}
+	for ex in pairs(explicit_set) do
+		transitive_deps(reg, ex, ex_tdeps)
+	end
+	for ex in pairs(explicit_set) do
+		ex_tdeps[ex] = nil
+	end
+
+	for name, sym in pairs(reg) do
+		if type(sym) ~= "table" then goto continue end
+		if explicit_set[name] then goto continue end
+		if sym.kind == "constant" or sym.kind == "vector" then goto continue end
+		if sym.kind == "intermediate" and sym.accessor then goto continue end
+
+		if ex_tdeps[name] then
+			main_names[#main_names + 1] = name
+		else
+			post_names[#post_names + 1] = name
+		end
+		::continue::
+	end
+
+	return main_names, post_names
+end
+
+local function emit_implicit(name, reg, inserted, fresh, expanded)
+	if inserted[name] then return end
+	inserted[name] = true
+	fresh[name] = true
+
+	local sym = reg[name]
+	if not sym then return end
+	if sym.kind == "intermediate" and sym.accessor then return end
+
+	if sym.kind == "field" then
+		expanded:_push(step_solve(name, true))
+		if sym.correction then expanded:_push(step_correct(name, true)) end
+		if sym.clip then expanded:_push(step_clip(name, sym.clip[1], sym.clip[2], true)) end
+	elseif sym.kind == "expression" or sym.kind == "intermediate" then
+		expanded:_push(step_evaluate(name, true))
+	end
+end
+
+local function emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded)
+	local tdeps = transitive_deps(reg, field, {})
+	for _, name in ipairs(sorted_main) do
+		if tdeps[name] and not fresh[name] then
+			emit_implicit(name, reg, inserted, fresh, expanded)
 		end
 	end
-	error("algorithm: no step found for field '" .. name .. "'")
 end
 
---- Push step onto _final array for steps to be ran after the main solve loop.
-function A:push_final(step)
-	self._final[#self._final + 1] = step
+local function emit_post(post_names, reg, expanded)
+	local sorted = topo_sort(reg, post_names)
+	for _, name in ipairs(sorted) do
+		local sym = reg[name]
+		if not sym then goto continue end
+		if sym.kind == "field" then
+			expanded:_push_post(step_solve(name, true))
+			if sym.correction then expanded:_push_post(step_correct(name, true)) end
+		elseif sym.kind == "expression" or sym.kind == "intermediate" then
+			expanded:_push_post(step_evaluate(name, true))
+		end
+		::continue::
+	end
+end
+
+--[[
+
+ALGORITHM EXPANSION
+===================
+
+The user specifies a skeleton algorithm naming only the fields they care about
+ordering explicitly (the "anchors"). Expansion fills in everything else from
+the registry dependency graph.
+
+Rules:
+
+1. VECTOR EXPANSION
+	Any explicit solve of a vector field (e.g. "U") is expanded to its scalar
+	components ("Ux", "Uy") in order. All components are treated as anchors.
+
+2. EXPLICIT SET
+	The anchors and their components form the explicit set. These are never
+	auto-inserted as implicit steps elsewhere.
+
+3. CLASSIFICATION
+	Every non-constant, non-vector, non-explicit registry symbol is classified:
+	- reaches_explicit: appears in the transitive deps of any anchor
+		-> goes into the main loop as an implicit step
+	- otherwise: purely driven, not needed by any anchor
+		-> goes into post-loop, solved/evaluated once after the main loop
+
+4. MAIN LOOP ORDERING
+	Implicit main-loop symbols are topo-sorted (leaves first). For each anchor
+	in user order, any implicit it transitively needs that isn't yet "fresh" is
+	emitted immediately before it. Once emitted, a symbol is marked fresh and
+	never emitted again in the same expansion (freshness is shared with any
+	nested inner-loop expansions).
+
+5. CORRECTIONS
+	If a field has a `correction` registered, a CORRECT step is emitted
+	immediately after its SOLVE, for both explicit and implicit fields.
+
+6. POST-LOOP
+	Purely driven symbols are topo-sorted and appended to the post-loop block.
+	These run once per timestep after the main iteration converges.
+
+7. NESTED LOOPS (PISO etc.)
+	expand() accepts optional `inserted` and `fresh` tables so an inner loop
+	inherits outer freshness state and doesn't re-emit already-resolved deps.
+
+The result is that a SIMPLE skeleton:
+	a:solve("U"); a:solve("p")
+automatically acquires turbulence model evaluations, face interpolations,
+diagonal extractions, and Rhie-Chow intermediates in the correct order,
+and decoupled fields like T are deferred to post-loop without user intervention.
+
+--]]
+
+function A:expand(reg, inserted, fresh)
+	inserted = inserted or {}
+	fresh = fresh or {}
+
+	local expanded = A.new()
+	expanded.op = self.op
+	expanded.max_iters = self.max_iters
+	expanded.go_until = self.go_until
+
+	local explicit_set = {}
+	for _, step in ipairs(self.steps) do
+		if step.op == "solve" then
+			local sym = reg[step.field]
+			if sym and sym.kind == "vector" then
+				for _, c in ipairs(sym.components) do explicit_set[c] = true end
+			else
+				explicit_set[step.field] = true
+			end
+		end
+	end
+
+	local main_names, post_names = classify(reg, explicit_set)
+
+	local sorted_main = topo_sort(reg, main_names)
+
+	for _, step in ipairs(self.steps) do
+		if step.op == "solve" then
+			local sym    = reg[step.field]
+			local fields = (sym and sym.kind == "vector")
+				and sym.components or { step.field }
+
+			for _, field in ipairs(fields) do
+				emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded)
+
+				if not fresh[field] then
+					expanded:_push(step_solve(field, false))
+					fresh[field] = true
+
+					local fsym = reg[field]
+					if fsym and fsym.correction then
+						expanded:_push(step_correct(field, false))
+					end
+				end
+			end
+		elseif step.op == "inner" then
+			local expanded_inner = step.inner:expand(reg, inserted, fresh)
+			expanded:_push(step_inner(expanded_inner))
+		else
+			expanded:_push(step)
+		end
+	end
+
+	emit_post(post_names, reg, expanded)
+	return expanded
 end
 
 --
 -- Pretty printing
 --
 
---- Returns a pretty string depicting the algorithm
-function A:_pretty(heading, ending)
-	local lines = {}
-	lines[1] = heading or self.op == "loop" and ".LOOP:" or ".LINEAR:"
+local function fmt_step(s)
+	if s.op == "solve" then
+		return string.format("  %s SOLVE %s", s.implicit and "~" or "*", s.field)
+	elseif s.op == "evaluate" then
+		return string.format("  %s EVAL  %s", s.implicit and "~" or "*", s.name)
+	elseif s.op == "correct" then
+		return string.format("  %s CORRECT %s", s.implicit and "~" or "*", s.field)
+	elseif s.op == "hook" then
+		return string.format("    HOOK  %s", s.name)
+	elseif s.op == "clip" then
+		local hi = s.hi == math.huge and "inf" or string.format("%g", s.hi)
+		return string.format("  %s CLIP  %s [%g %s]",
+			s.implicit and "~" or "*", s.field, s.lo, hi)
+	elseif s.op == "inner" then
+		return s.inner:_pretty("\n>>INNER", "<<END\n") -- don't care about indentation
+	end
+	return "  ?"
+end
 
-	for _, inst in ipairs(self) do
-		if inst.op == "solve" then
-			lines[#lines + 1] = "  SOLVE " .. inst.field
-		elseif inst.op == "clip" then
-			lines[#lines + 1] = string.format("  CLIP %s %g %g", inst.field, inst.lo, inst.hi)
-		elseif inst.op == "hook" then
-			lines[#lines + 1] = string.format("  HOOK %s", inst.name)
-		elseif inst.op == "inner" then
-			lines[#lines + 1] = inst.inner:pretty("\n>>INNER", "<<END\n")
+--- Returns a pretty string depicting the algorithm
+function A:_pretty(heading, ending) -- TOOD use heading and ending for nested algorithm loops
+	local lines = {}
+	lines[#lines + 1] = heading or (
+		self.op == "loop"
+		and string.format(".LOOP (max=%d):", self.max_iters)
+		or ".LINEAR:"
+	)
+
+	for _, s in ipairs(self.steps) do
+		lines[#lines + 1] = fmt_step(s)
+	end
+
+	if #self.post > 0 then
+		lines[#lines + 1] = ".POST:"
+		for _, s in ipairs(self.post) do
+			lines[#lines + 1] = fmt_step(s)
 		end
 	end
 
 	lines[#lines + 1] = ending or ".END"
-
 	return table.concat(lines, "\n")
+end
+
+function A:print()
+	print(self:_pretty())
 end
 
 return A
