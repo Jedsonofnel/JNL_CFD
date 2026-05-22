@@ -3,6 +3,7 @@
 
 #include "jnl/common.h"
 #include "jnl/arena.h"
+#include "scratch.h"
 
 //
 // LDU Matrix
@@ -36,8 +37,6 @@ enum jnl_singularity {
 // FV Linear System
 //
 
-#define JNL_FVSYS_N_SCRATCH 8 // sufficient for BiCGSTAB
-
 struct jnl_fvsys {
 	struct jnl_ldu_matrix matrix;
 	f64 *rhs; // [n_cells]
@@ -58,27 +57,15 @@ void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
                          f64 value);
 
 //
-// Solver context
-//
-
-#define JNL_SOLVER_N_SCRATCH 8 // sufficient for BiCGSTAB
-
-struct jnl_solver_ctx {
-	f64 *scratch[JNL_SOLVER_N_SCRATCH]; // [n_cells_max] each
-	i32 n_cells_max;
-};
-
-struct jnl_solver_ctx *jnl_solver_ctx_new(i32 n_cells_max, jnl_arena *arena);
-
-//
 // Solvers
 //
 
-i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
+i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
                        f64 *x, f64 tolerance, i32 max_iters);
 
-i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
-                             f64 *x, f64 tolerance, i32 max_iters);
+i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
+                             struct jnl_scratch_pool *pool, f64 *x,
+                             f64 tolerance, i32 max_iters);
 
 //
 // Useful diagnostics
@@ -95,8 +82,5 @@ f64 jnl_fvsys_max_asymmetry(const struct jnl_fvsys *sys);
 
 // Bytes needed for one fvsys
 u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_conns);
-
-// Bytes needed for one solver ctx with given max cell count.
-u64 jnl_solver_ctx_arena_size(i32 n_cells_max);
 
 #endif

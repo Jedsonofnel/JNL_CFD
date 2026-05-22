@@ -4,6 +4,7 @@
 
 #include "fvm/linalg.h"
 #include "vec.h"
+#include "scratch.h"
 
 //
 // LDU Matrix
@@ -116,13 +117,13 @@ void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
 //
 
 static f64 fvsys_max_row_sum_ratio(const struct jnl_fvsys *sys,
-                                   struct jnl_solver_ctx *ctx)
+                                   struct jnl_scratch_pool *pool)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
 	i32 n = m->n_cells;
 
-	assert(ctx->n_cells_max >= n);
-	f64 *row_sums = ctx->scratch[0]; // borrow scratch[0] temporarily
+	assert(pool->len >= n);
+	f64 *row_sums = jnl_scratch_acquire(pool);
 
 	memcpy(row_sums, m->diag, n * sizeof(f64));
 
@@ -145,11 +146,13 @@ static f64 fvsys_max_row_sum_ratio(const struct jnl_fvsys *sys,
 
 	if (max_diag < 1e-30)
 		return 0.0;
+
+	jnl_scratch_release(pool, row_sums);
 	return max_sum / max_diag;
 }
 
 static void fvsys_ensure_nonsingular(struct jnl_fvsys *sys,
-                                     struct jnl_solver_ctx *ctx)
+                                     struct jnl_scratch_pool *pool)
 {
 	switch (sys->singularity) {
 	case JNL_SING_NONSINGULAR:
@@ -161,7 +164,7 @@ static void fvsys_ensure_nonsingular(struct jnl_fvsys *sys,
 		break;
 	}
 
-	if (fvsys_max_row_sum_ratio(sys, ctx) < 1e-10) {
+	if (fvsys_max_row_sum_ratio(sys, pool) < 1e-10) {
 		sys->singularity = JNL_SING_NEEDS_PIN;
 		jnl_fvsys_pin_cell(sys, 0, 0.0);
 	} else {
@@ -170,28 +173,15 @@ static void fvsys_ensure_nonsingular(struct jnl_fvsys *sys,
 }
 
 //
-// Solver context
-//
-
-struct jnl_solver_ctx *jnl_solver_ctx_new(i32 n_cells_max, jnl_arena *arena)
-{
-	struct jnl_solver_ctx *ctx =
-	    ARENA_PUSH_STRUCT_Z(arena, struct jnl_solver_ctx);
-	ctx->n_cells_max = n_cells_max;
-	for (i32 i = 0; i < JNL_SOLVER_N_SCRATCH; i++)
-		ctx->scratch[i] = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells_max);
-	return ctx;
-}
-
-//
 // Solvers
 //
 
-i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
+i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
                        f64 *x, f64 tolerance, i32 max_iters)
 {
-	assert(ctx->n_cells_max >= sys->matrix.n_cells);
-	fvsys_ensure_nonsingular(sys, ctx);
+	jnl_scratch_reset(pool);
+	assert(pool->len >= sys->matrix.n_cells);
+	fvsys_ensure_nonsingular(sys, pool);
 
 	const struct jnl_ldu_matrix *A = &sys->matrix;
 	const f64 *b = sys->rhs;
@@ -200,10 +190,10 @@ i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 	if (max_iters <= 0)
 		max_iters = n < 1000 ? n : 1000;
 
-	f64 *r = ctx->scratch[0];
-	f64 *d = ctx->scratch[1];
-	f64 *Ad = ctx->scratch[2];
-	f64 *z = ctx->scratch[3];
+	f64 *r = jnl_scratch_acquire(pool);
+	f64 *d = jnl_scratch_acquire(pool);
+	f64 *Ad = jnl_scratch_acquire(pool);
+	f64 *z = jnl_scratch_acquire(pool);
 
 	// r = b - Ax, d = M^-1 r (Jacobi: M^-1 = 1/diag)
 	jnl_ldu_matvec(A, x, r);
@@ -249,11 +239,13 @@ i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 	return iter;
 }
 
-i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
-                             f64 *x, f64 tolerance, i32 max_iters)
+i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
+                             struct jnl_scratch_pool *pool, f64 *x,
+                             f64 tolerance, i32 max_iters)
 {
-	assert(ctx->n_cells_max >= sys->matrix.n_cells);
-	fvsys_ensure_nonsingular(sys, ctx);
+	jnl_scratch_reset(pool);
+	assert(pool->len >= sys->matrix.n_cells);
+	fvsys_ensure_nonsingular(sys, pool);
 
 	const struct jnl_ldu_matrix *A = &sys->matrix;
 	const f64 *b = sys->rhs;
@@ -262,14 +254,14 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 	if (max_iters <= 0)
 		max_iters = n < 1000 ? n : 1000;
 
-	f64 *r = ctx->scratch[0];
-	f64 *rhat = ctx->scratch[1];
-	f64 *p = ctx->scratch[2];
-	f64 *v = ctx->scratch[3];
-	f64 *s = ctx->scratch[4];
-	f64 *t = ctx->scratch[5];
-	f64 *y = ctx->scratch[6];
-	f64 *z = ctx->scratch[7];
+	f64 *r = jnl_scratch_acquire(pool);
+	f64 *rhat = jnl_scratch_acquire(pool);
+	f64 *p = jnl_scratch_acquire(pool);
+	f64 *v = jnl_scratch_acquire(pool);
+	f64 *s = jnl_scratch_acquire(pool);
+	f64 *t = jnl_scratch_acquire(pool);
+	f64 *y = jnl_scratch_acquire(pool);
+	f64 *z = jnl_scratch_acquire(pool);
 
 	// r = b - Ax
 	jnl_ldu_matvec(A, x, r);
@@ -354,17 +346,9 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys, struct jnl_solver_ctx *ctx,
 
 u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_conns)
 {
-	return sizeof(struct jnl_fvsys) + (u64)(n_cells    // diag
-	                                        + n_conns  // lower
-	                                        + n_conns  // upper
-	                                        + n_cells) // rhs
-	                                      * sizeof(f64);
-}
-
-u64 jnl_solver_ctx_arena_size(i32 n_cells_max)
-{
-	return sizeof(struct jnl_solver_ctx) +
-	       (u64)JNL_SOLVER_N_SCRATCH * n_cells_max * sizeof(f64);
+	return ARENA_SIZE(struct jnl_fvsys, 1) + ARENA_SIZE(f64, n_cells) +
+	       ARENA_SIZE(f64, n_conns) + ARENA_SIZE(f64, n_conns) +
+	       ARENA_SIZE(f64, n_cells);
 }
 
 //

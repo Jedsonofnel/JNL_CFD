@@ -1,22 +1,34 @@
 -- fvm/init.lua - re-exports from other fvm files
 -- <jed@nelson.ac> // 2026-05-12
 
-local FVM                    = {}
+local FVM  = {}
 
 -- compiler/equation DSL
-local eq                     = require("jnl.fvm.eq")
-FVM.Op                       = eq.Op
-FVM.Expr                     = eq.Expr
-FVM.eq                       = eq.Eq -- lower case as it's a function NOT a module
+local eq   = require("jnl.fvm.eq")
+FVM.Op     = eq.Op
+FVM.Expr   = eq.Expr
+FVM.eq     = eq.Eq -- lower case as it's a function NOT a module
 
-local case                   = require("jnl.fvm.case")
-FVM.Case                     = case
+local case = require("jnl.fvm.case")
+FVM.Case   = case
 
 -- C bindings, split by concern
-local b                      = require("jnl.fvm_internal")
+local b    = require("jnl.fvm_internal")
+
+
 
 -- context + field + fvsys construction
-FVM.ctx_new                  = b.ctx_new
+
+-- defaults: 8 cell scratch (sufficient for BiCGSTAB), 4 face scratch
+local DEFAULT_CELL_SCRATCH = 8
+local DEFAULT_FACE_SCRATCH = 4
+
+function FVM.ctx_new(mesh, n_fields, n_face_fields, n_systems, opts)
+	opts = opts or {}
+	local ncs = opts.cell_scratch or DEFAULT_CELL_SCRATCH
+	local nfs = opts.face_scratch or DEFAULT_FACE_SCRATCH
+	return b.ctx_new(mesh, n_fields, n_face_fields, n_systems, ncs, nfs)
+end
 
 -- operators: assembled into the linear system
 FVM.laplacian_const          = b.laplacian_const

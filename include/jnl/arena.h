@@ -32,4 +32,15 @@ void arena_clear(jnl_arena *arena);
 
 #define ARENA_ALLOC_SIZE(T, n) (sizeof(T) * (n) + JNL_ARENA_ALIGN)
 
+//
+// Size helper
+//
+
+static inline u64 arena_push_size(u64 size)
+{
+	return ALIGN_UP_POW2(size + JNL_ARENA_ALIGN - 1, JNL_ARENA_ALIGN);
+}
+
+#define ARENA_SIZE(T, n) arena_push_size(sizeof(T) * (u64)(n))
+
 #endif

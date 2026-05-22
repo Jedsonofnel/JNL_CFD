@@ -21,11 +21,11 @@ local mesh = mesh2d.new_smesh(L, 1.0, N, 1)
 
 local ctx  = fvm.ctx_new(mesh, 3, 3, 1)
 
-local sys  = ctx:fvsys()
+local sys = ctx:fvsys()
 
-local T    = ctx:field()
-local Ux   = ctx:field()
-local Uy   = ctx:field()
+local T   = ctx:field()
+local Ux  = ctx:field()
+local Uy  = ctx:field()
 
 T:fill(0.0)
 Ux:fill(u)

@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <assert.h>
 #include <string.h>
 
 #include "jnl/arena.h"
@@ -25,6 +26,8 @@ void *arena_push(struct jnl_arena *arena, u64 size, bool zero)
 {
 	u64 pos_aligned = ALIGN_UP_POW2(arena->pos, JNL_ARENA_ALIGN);
 	u64 new_pos = pos_aligned + size;
+
+	assert(new_pos <= arena->cap && "arena overflow — increase size estimate");
 
 	if (new_pos > arena->cap) {
 		return NULL; // TODO maybe exit out and throw an error?

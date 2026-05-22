@@ -1,3 +1,4 @@
+#include <lauxlib.h>
 #include <string.h>
 #include <math.h>
 
@@ -124,7 +125,7 @@ static const luaL_Reg field_mt[] = {
 
 typedef struct {
 	struct jnl_fvsys *sys;
-	struct jnl_solver_ctx *solver;
+	struct jnl_scratch_pool *pool; // borrowed from ctx
 	int ctx_ref;
 } lua_fvsys;
 
@@ -180,7 +181,7 @@ static int l_fvsys_solve_cg(lua_State *L)
 	f64 tol = luaL_optnumber(L, 3, 1e-6);
 	i32 max_iters = (i32)luaL_optinteger(L, 4, 1000);
 
-	i32 iters = jnl_fvsys_solve_cg(s->sys, s->solver, x->data, tol, max_iters);
+	i32 iters = jnl_fvsys_solve_cg(s->sys, s->pool, x->data, tol, max_iters);
 	lua_pushinteger(L, iters);
 	return 1;
 }
@@ -193,7 +194,7 @@ static int l_fvsys_solve_bicgstab(lua_State *L)
 	i32 max_iters = (i32)luaL_optinteger(L, 4, 1000);
 
 	i32 iters =
-	    jnl_fvsys_solve_bicgstab(s->sys, s->solver, x->data, tol, max_iters);
+	    jnl_fvsys_solve_bicgstab(s->sys, s->pool, x->data, tol, max_iters);
 	lua_pushinteger(L, iters);
 	return 1;
 }
@@ -254,7 +255,7 @@ static int l_ctx_fvsys(lua_State *L)
 	lua_fvm_ctx_ud *lc = check_ctx(L, 1);
 	lua_fvsys *ls = lua_newuserdata(L, sizeof(lua_fvsys));
 	ls->sys = jnl_fvm_ctx_alloc_fvsys(lc->ctx);
-	ls->solver = lc->ctx->solver;
+	ls->pool = lc->ctx->cell_pool;
 	ls->ctx_ref = anchor_ctx(L, 1);
 	luaL_setmetatable(L, FVSYS_MT);
 	return 1;
@@ -562,9 +563,12 @@ static int l_ctx_new(lua_State *L)
 	i32 n_fields = (i32)luaL_checkinteger(L, 2);
 	i32 n_face_fields = (i32)luaL_checkinteger(L, 3);
 	i32 n_systems = (i32)luaL_checkinteger(L, 4);
+	i32 n_cell_scratch = (i32)luaL_optinteger(L, 5, 8);
+	i32 n_face_scratch = (i32)luaL_optinteger(L, 6, 4);
 
 	lua_fvm_ctx_ud *lc = lua_newuserdata(L, sizeof(lua_fvm_ctx_ud));
-	lc->ctx = jnl_fvm_ctx_new(mesh, n_fields, n_face_fields, n_systems);
+	lc->ctx = jnl_fvm_ctx_new(mesh, n_fields, n_face_fields, n_systems,
+	                          n_cell_scratch, n_face_scratch);
 	if (!lc->ctx) {
 		return luaL_error(L, "fvm_ctx allocation failed");
 	}
