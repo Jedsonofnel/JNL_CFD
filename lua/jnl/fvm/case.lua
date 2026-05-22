@@ -4,32 +4,7 @@
 -- deps
 local E = require("jnl.core.expr")
 local names = require("jnl.fvm.expr").names
-
---
--- Instruction storage
---
-
-local Inst = {}
-Inst.__index = Inst
-
-function Inst.new(op, args)
-	local inst = { op = op, args = args }
-	return setmetatable(inst, Inst)
-end
-
-function Inst.comment(message)
-	local inst = { op = "comment", message = message }
-	return setmetatable(inst, Inst)
-end
-
-function Inst:tostring()
-	if self.op == "comment" then
-		return "; " .. self.message
-	end
-
-	local argstr = table.concat(self.args or {}, ", ")
-	return self.op .. "(" .. argstr .. ")"
-end
+local compile = require("jnl.fvm.compile")
 
 -- Helper for copying registry
 
@@ -63,12 +38,7 @@ function Case.new(registry, algorithm)
 	local instance = setmetatable({
 		registry = reg_clone,
 		algorithm = alg_clone,
-		-- mesh = mesh
-		-- bcs = config.bcs or {}
-
-		-- Compilation output
-		instructions = {}, -- flat compiled instruction list
-		hooks = {},  -- functions
+		hooks = {},
 		warnings = {},
 	}, Case)
 
@@ -80,28 +50,20 @@ function Case:_warn(msg)
 	self.warnings[#self.warnings + 1] = msg
 end
 
-function Case:_emit(inst)
-	self.instructions[#self.instructions + 1] = inst
-end
-
-function Case:listing()
-	local str = "Case: " .. (self.name or "") .. "\n"
-	for _, inst in ipairs(self.instructions) do
-		str = str .. inst:tostring() .. "\n"
-	end
-	return str .. "END"
-end
-
-function Case:print_listing()
-	print(self:listing())
-end
-
 function Case:print_registry()
 	self.registry:print()
 end
 
 function Case:print_algorithm()
 	self.algorithm:print()
+end
+
+function Case:print_instructions()
+	print(compile.instruction_listing(self.instructions, self.post_instructions))
+end
+
+function Case:print_resources()
+	print(compile.resource_listing(self.resources))
 end
 
 --
@@ -279,30 +241,17 @@ function Case:_expand_intermediates()
 	end
 end
 
---[[
-
-COMPILATION
-===========
-
-1) Expand intermediate fields to complete registry
-2) Create _prognostics and _diagnostic sets on registry (for easy checking later)
-3) Topologically sort prognostics onto algorithm with cycle breaking
-	- Explicit first (in user order, allow explicit non-prognostics and duplicates)
-	- Implicit dependencies prepended
-	- Unreachable appended (after main loop)
-4) Walking through prognostics prepend diagnostic solves accordingly (with freshness analysis)
-5) With complete algorithm, emit instructions for solve
-
---]]
+--
+-- Main compilation itself
+--
 
 function Case:_compile()
 	self:_expand_intermediates()
 	self.registry:validate()
 	self.algorithm = self.algorithm:expand(self.registry)
-
-	-- TODO: expand diagnostics and build diagnostic dependency graph
-
-	-- self:_emit_instructions()
+	self.resources = compile.count_resources(self.registry)
+	self.instructions, self.post_instructions =
+		compile.emit_instructions(self.registry, self.algorithm)
 end
 
 return Case

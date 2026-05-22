@@ -48,6 +48,23 @@ void jnl_div_uds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
                        const f64 *rho, const f64 *u_normal);
 
 //
+// TVD deferred correction
+//
+
+void jnl_div_tvd_correction_minmod(struct jnl_fvsys *sys,
+                                   const struct jnl_mesh *mesh, const f64 *phi,
+                                   const f64 *grad_x, const f64 *grad_y,
+                                   const f64 *un_face);
+void jnl_div_tvd_correction_van_leer(struct jnl_fvsys *sys,
+                                     const struct jnl_mesh *mesh,
+                                     const f64 *phi, const f64 *grad_x,
+                                     const f64 *grad_y, const f64 *un_face);
+void jnl_div_tvd_correction_superbee(struct jnl_fvsys *sys,
+                                     const struct jnl_mesh *mesh,
+                                     const f64 *phi, const f64 *grad_x,
+                                     const f64 *grad_y, const f64 *un_face);
+
+//
 // Source term Su
 //
 

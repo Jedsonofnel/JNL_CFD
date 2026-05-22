@@ -285,6 +285,94 @@ void jnl_div_uds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 }
 
 //
+// TVD limiter functions
+//
+
+static inline f64 limiter_minmod(f64 r)
+{
+	return r > 0.0 ? (r < 1.0 ? r : 1.0) : 0.0;
+}
+
+static inline f64 limiter_van_leer(f64 r)
+{
+	return r > 0.0 ? 2.0 * r / (1.0 + r) : 0.0;
+}
+
+static inline f64 limiter_superbee(f64 r)
+{
+	if (r <= 0.0)
+		return 0.0;
+	f64 a = r < 1.0 ? 2.0 * r : 2.0;
+	f64 b = r < 2.0 ? r : 2.0;
+	return a > b ? a : b;
+}
+
+typedef f64 (*jnl_limiter_fn)(f64);
+
+static void jnl_div_tvd_correction(struct jnl_fvsys *sys,
+                                   const struct jnl_mesh *mesh, const f64 *phi,
+                                   const f64 *grad_x, const f64 *grad_y,
+                                   const f64 *un_face, jnl_limiter_fn limiter)
+{
+	const struct jnl_mesh_topo *topo = &mesh->topo;
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
+		i32 o = topo->owner[f];
+		i32 nb = topo->neighbour[f];
+
+		f64 F = un_face[f] * geom->face_area[f];
+
+		// upwind donor/acceptor
+		i32 up = F >= 0.0 ? o : nb;
+		i32 dn = F >= 0.0 ? nb : o;
+		f64 sign = F >= 0.0 ? 1.0 : -1.0;
+
+		f64 dx = geom->cell_cx[dn] - geom->cell_cx[up];
+		f64 dy = geom->cell_cy[dn] - geom->cell_cy[up];
+
+		f64 delta_up = grad_x[up] * dx + grad_y[up] * dy; // 2 * upwind gradient
+		f64 delta_dn = phi[dn] - phi[up];                 // across face
+
+		f64 r =
+		    (delta_up > 1e-14 || delta_up < -1e-14) ? delta_dn / delta_up : 0.0;
+
+		// correction = (CDS - UDS) * limiter = 0.5*(phi_N - phi_O) * psi(r)
+		f64 correction = 0.5 * limiter(r) * delta_dn * F * sign;
+
+		sys->rhs[o] -= correction;
+		sys->rhs[nb] += correction;
+	}
+}
+
+void jnl_div_tvd_correction_minmod(struct jnl_fvsys *sys,
+                                   const struct jnl_mesh *mesh, const f64 *phi,
+                                   const f64 *grad_x, const f64 *grad_y,
+                                   const f64 *un_face)
+{
+	jnl_div_tvd_correction(sys, mesh, phi, grad_x, grad_y, un_face,
+	                       limiter_minmod);
+}
+
+void jnl_div_tvd_correction_van_leer(struct jnl_fvsys *sys,
+                                     const struct jnl_mesh *mesh,
+                                     const f64 *phi, const f64 *grad_x,
+                                     const f64 *grad_y, const f64 *un_face)
+{
+	jnl_div_tvd_correction(sys, mesh, phi, grad_x, grad_y, un_face,
+	                       limiter_van_leer);
+}
+
+void jnl_div_tvd_correction_superbee(struct jnl_fvsys *sys,
+                                     const struct jnl_mesh *mesh,
+                                     const f64 *phi, const f64 *grad_x,
+                                     const f64 *grad_y, const f64 *un_face)
+{
+	jnl_div_tvd_correction(sys, mesh, phi, grad_x, grad_y, un_face,
+	                       limiter_superbee);
+}
+
+//
 // Su
 //
 

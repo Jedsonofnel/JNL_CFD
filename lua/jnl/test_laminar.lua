@@ -1,4 +1,4 @@
--- test_laminar.lua - laminar incompressible SIMPLE
+-- test_laminar.lua - laminar steady incompressible SIMPLE
 -- <jed@nelson.ac> // 2026-05-21
 
 local FVM  = require("jnl.fvm")
@@ -17,8 +17,7 @@ reg:constant("alpha_p", 0.3)
 -- momentum
 reg:field("Ux", {
 	eq = FVM.eq(
-		Op.ddt("rho", "Ux"),
-		Op.div(FVMe.mwi("U", "p"), "Ux"),
+		Op.div(FVMe.mwi("U", "p"), "Ux", { scheme = "SUPERBEE" }),
 		Op.lap("mu", "Ux", { non_ortho = true }),
 		Op.su(E.neg(FVMe.grad("p", "x"))),
 		{ relax = 0.7, solver = "bicgstab" }
@@ -26,8 +25,7 @@ reg:field("Ux", {
 })
 reg:field("Uy", {
 	eq = FVM.eq(
-		Op.ddt("rho", "Uy"),
-		Op.div(FVMe.mwi("U", "p"), "Uy"),
+		Op.div(FVMe.mwi("U", "p"), "Uy", { scheme = "VAN-LEER" }),
 		Op.lap("mu", "Uy", { non_ortho = true }),
 		Op.su(E.neg(FVMe.grad("p", "y"))),
 		{ relax = 0.7, solver = "bicgstab" }
@@ -88,4 +86,5 @@ end)
 
 local case = FVM.Case.new(reg, alg)
 
-case:print_algorithm()
+case:print_resources()
+case:print_instructions()

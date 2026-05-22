@@ -1,5 +1,10 @@
-#include "fvm/interp.h"
+#include "fvm/field.h"
 #include "jnl/common.h"
+#include "mesh2d.h"
+
+//
+// Face interpolation
+//
 
 void jnl_face_interp_cds(const struct jnl_mesh *mesh, const f64 *field,
                          f64 *face_field)
@@ -80,5 +85,67 @@ void jnl_rhie_chow(const struct jnl_mesh *mesh, const f64 *ux, const f64 *uy,
 		                  interp->corr_y[f] * gp_y_face;
 
 		un_face[f] = un_interp - d_normal * (gp_n_direct - gp_n_interp);
+	}
+}
+
+//
+// Gradient Reconstruction
+//
+
+void jnl_grad_green_gauss(const struct jnl_mesh *mesh, const f64 *face_field,
+                          f64 *grad_x, f64 *grad_y)
+{
+	const struct jnl_mesh_topo *topo = &mesh->topo;
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+	for (i32 c = 0; c < topo->n_cells; c++) {
+		grad_x[c] = grad_y[c] = 0.0;
+	}
+	for (i32 f = 0; f < topo->n_faces; f++) {
+		i32 owner = topo->owner[f];
+		i32 neigh = topo->neighbour[f];
+		f64 flux = face_field[f] * geom->face_area[f];
+		grad_x[owner] += flux * geom->face_nx[f];
+		grad_y[owner] += flux * geom->face_ny[f];
+		if (neigh >= 0) {
+			grad_x[neigh] -= flux * geom->face_nx[f];
+			grad_y[neigh] -= flux * geom->face_ny[f];
+		}
+	}
+	for (i32 c = 0; c < topo->n_cells; c++) {
+		f64 inv_vol = 1.0 / geom->cell_vol[c];
+		grad_x[c] *= inv_vol;
+		grad_y[c] *= inv_vol;
+	}
+}
+
+//
+// Misc
+//
+
+void jnl_divergence(const struct jnl_mesh *mesh, const f64 *un_face, f64 *div)
+{
+	const struct jnl_mesh_topo *topo = &mesh->topo;
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+	for (i32 c = 0; c < topo->n_cells; c++) {
+		div[c] = 0.0;
+	}
+	for (i32 f = 0; f < topo->n_faces; f++) {
+		i32 owner = topo->owner[f];
+		i32 neigh = topo->neighbour[f];
+		f64 flux = un_face[f] * geom->face_area[f];
+		div[owner] += flux;
+		if (neigh >= 0)
+			div[neigh] -= flux;
+	}
+	for (i32 c = 0; c < topo->n_cells; c++) {
+		div[c] /= geom->cell_vol[c];
+	}
+}
+
+void jnl_vorticity_2d(const struct jnl_mesh *mesh, const f64 *grad_vy_x,
+                      const f64 *grad_ux_y, f64 *omega)
+{
+	for (i32 c = 0; c < mesh->topo.n_cells; c++) {
+		omega[c] = grad_vy_x[c] - grad_ux_y[c];
 	}
 }

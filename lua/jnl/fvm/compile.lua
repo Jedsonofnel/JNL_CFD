@@ -1,0 +1,492 @@
+-- fvm/compile.lua - resource counting and instruction emission
+-- <jed@nelson.ac> // 2026-05-22
+
+local E      = require("jnl.core.expr")
+local FVMe   = require("jnl.fvm.expr")
+local names  = FVMe.names
+
+local M      = {}
+
+--
+-- Instruction object
+--
+
+local Inst   = {}
+Inst.__index = Inst
+
+function Inst.new(op, fields)
+	return setmetatable({ op = op, fields = fields or {} }, Inst)
+end
+
+function Inst.comment(message)
+	return Inst.new("comment", { message = message })
+end
+
+function Inst:__index(k)
+	-- transparent field access: inst.field, inst.solver etc
+	if Inst[k] then return Inst[k] end
+	return self.fields[k]
+end
+
+local fmt = function(n) return require("jnl.core.expr").pretty_sym(n) end
+
+local printers = {
+	comment = function(f)
+		return "\n  ; " .. f.message
+	end,
+	face_interp_cds = function(f)
+		return string.format("FACE_INTERP   %s  ->  %s", fmt(f.field), fmt(f.out))
+	end,
+	grad_green_gauss = function(f)
+		return string.format("GRAD_GG       %s  ->  (%s, %s)",
+			fmt(f.face_field), fmt(f.out_x), fmt(f.out_y))
+	end,
+	rhie_chow = function(f)
+		return string.format("RHIE_CHOW     (%s,%s) p=%s  ->  %s",
+			fmt(f.Ux), fmt(f.Uy), fmt(f.p), fmt(f.out))
+	end,
+	divergence = function(f)
+		return string.format("DIVERGENCE    %s  ->  %s", fmt(f.un_face), fmt(f.out))
+	end,
+	eval_expr = function(f)
+		return string.format("EVAL_EXPR     %s  =  %s", fmt(f.name), tostring(f.expr))
+	end,
+	assemble = function(f)
+		local relax = f.relax and string.format(" [relax=%g]", f.relax) or ""
+		return string.format("ASSEMBLE      %s%s", fmt(f.field), relax)
+	end,
+	solve = function(f)
+		return string.format("SOLVE         %s  [%s tol=%g iters=%d]",
+			fmt(f.field), f.solver, f.tol, f.max_iters)
+	end,
+	apply_bcs = function(f)
+		return string.format("APPLY_BCS     %s", fmt(f.field))
+	end,
+	sys_reset = function(f)
+		return string.format("SYS_RESET     %s", fmt(f.field))
+	end,
+	laplacian_const = function(f)
+		return string.format("LAP_CONST     %s  gamma=%g", fmt(f.field), f.gamma)
+	end,
+	laplacian_field = function(f)
+		return string.format("LAP_FIELD     %s  gamma=%s", fmt(f.field), fmt(f.gamma))
+	end,
+	laplacian_field_harmonic = function(f)
+		return string.format("LAP_HARMONIC  %s  gamma=%s", fmt(f.field), fmt(f.gamma))
+	end,
+	laplacian_nonorth_const = function(f)
+		return string.format("LAP_NONORTH   %s  gamma=%g  grad=(%s,%s)",
+			fmt(f.field), f.gamma, fmt(f.grad_x), fmt(f.grad_y))
+	end,
+	laplacian_nonorth_field = function(f)
+		return string.format("LAP_NONORTH   %s  gamma=%s  grad=(%s,%s)",
+			fmt(f.field), fmt(f.gamma), fmt(f.grad_x), fmt(f.grad_y))
+	end,
+	div_uds_const = function(f)
+		return string.format("DIV_UDS_CONST %s  rho=%g  flux=%s",
+			fmt(f.field), f.rho, fmt(f.un_face))
+	end,
+	div_uds_field = function(f)
+		return string.format("DIV_UDS_FIELD %s  rho=%s  flux=%s",
+			fmt(f.field), fmt(f.rho), fmt(f.un_face))
+	end,
+	div_cds_const = function(f)
+		return string.format("DIV_CDS_CONST %s  rho=%g  flux=%s",
+			fmt(f.field), f.rho, fmt(f.un_face))
+	end,
+	div_cds_field = function(f)
+		return string.format("DIV_CDS_FIELD %s  rho=%s  flux=%s",
+			fmt(f.field), fmt(f.rho), fmt(f.un_face))
+	end,
+	div_tvd_minmod = function(f)
+		return string.format("DIV_TVD_MM    %s  flux=%s", fmt(f.field), fmt(f.un_face))
+	end,
+	div_tvd_van_leer = function(f)
+		return string.format("DIV_TVD_VL    %s  flux=%s", fmt(f.field), fmt(f.un_face))
+	end,
+	div_tvd_superbee = function(f)
+		return string.format("DIV_TVD_SB    %s  flux=%s", fmt(f.field), fmt(f.un_face))
+	end,
+	su_integrated = function(f)
+		local src = f.expr and tostring(f.expr) or fmt(f.src)
+		return string.format("SU            %s  src=%s", fmt(f.field), src)
+	end,
+	sp_integrated = function(f)
+		local src = f.expr and tostring(f.expr) or fmt(f.src)
+		return string.format("SP            %s  src=%s", fmt(f.field), src)
+	end,
+	under_relax = function(f)
+		return string.format("UNDER_RELAX   %s  alpha=%g", fmt(f.field), f.alpha)
+	end,
+	apply_correction = function(f)
+		return string.format("CORRECT       %s  =  %s", fmt(f.field), tostring(f.expr))
+	end,
+	clip = function(f)
+		local hi = f.hi == math.huge and "inf" or string.format("%g", f.hi)
+		return string.format("CLIP          %s  [%g, %s]", fmt(f.field), f.lo, hi)
+	end,
+	hook = function(f)
+		return string.format("HOOK          %s", f.name)
+	end,
+	inner_loop = function(f, indent)
+		local lines = { string.format(">>INNER (max=%d):", f.max_iters) }
+		for _, sub in ipairs(f.body) do
+			lines[#lines + 1] = "  " .. sub:tostring(indent .. "  ")
+		end
+		lines[#lines + 1] = "<<END"
+		return table.concat(lines, "\n" .. indent)
+	end,
+}
+
+function Inst:tostring(indent)
+	indent = indent or "  "
+	local printer = printers[self.op]
+	if printer then
+		return indent .. printer(self.fields, indent)
+	end
+	return indent .. "?" .. self.op
+end
+
+--
+-- Resource counting
+--
+
+function M.count_resources(reg)
+	local n_fields         = 0
+	local n_face_fields    = 0
+	local n_systems        = 0
+	local max_expr_scratch = 0
+	local field_list       = {} -- { name, tag, face }
+
+	local function record(name, tag, is_face)
+		field_list[#field_list + 1] = { name = name, tag = tag, face = is_face or false }
+		if is_face then
+			n_face_fields = n_face_fields + 1
+		else
+			n_fields = n_fields + 1
+		end
+	end
+
+	for name, sym in pairs(reg) do
+		if type(sym) ~= "table" then goto continue end
+
+		if sym.kind == "field" then
+			record(name, "field", false)
+			n_systems = n_systems + 1
+			if sym.eq and sym.eq._deps then
+				for dep in pairs(sym.eq._deps) do
+					if E.is_prev(dep) or E.is_expl(dep) then
+						record(dep, "prev", false)
+					elseif E.is_expl(dep) then
+						record(dep, "expl", false)
+					end
+				end
+			end
+		elseif sym.kind == "expression" then
+			record(name, "expression", false)
+			if sym.expr then
+				local d = sym.expr:scratch_depth()
+				if d > max_expr_scratch then max_expr_scratch = d end
+			end
+		elseif sym.kind == "intermediate" then
+			local itype = sym.itype
+			if itype == "face" or itype == "face_vector" then
+				record(name, "face_interp", true)
+			elseif itype == "grad_component" then
+				record(name, "grad", false)
+			elseif itype == "mwi" then
+				record(name, "mwi", true)
+			elseif itype == "div" or itype == "div_mwi" then
+				record(name, "div", false)
+			end
+		end
+
+		::continue::
+	end
+
+	table.sort(field_list, function(a, b)
+		if a.face ~= b.face then return b.face end -- cell first
+		return a.name < b.name
+	end)
+
+	return {
+		n_fields       = n_fields,
+		n_face_fields  = n_face_fields,
+		n_systems      = n_systems,
+		n_cell_scratch = math.max(8, max_expr_scratch + 2),
+		n_face_scratch = 4,
+		fields         = field_list,
+	}
+end
+
+--
+-- Instruction emission
+--
+
+local function emit_eval(reg, name, out)
+	local sym = reg[name]
+	if not sym then return end
+	local itype = sym.itype or sym.kind
+
+	if itype == "mwi" then
+		out[#out + 1] = Inst.comment("rhie-chow face flux  " .. E.pretty_sym(name))
+	elseif itype == "div_mwi" or itype == "div" then
+		out[#out + 1] = Inst.comment("divergence  " .. E.pretty_sym(name))
+	end
+
+	if itype == "face" then
+		out[#out + 1] = Inst.new("face_interp_cds", {
+			field = names.is_face(name), out = name })
+	elseif itype == "grad" then
+		local field = names.is_grad_parent(name) or ""
+		out[#out + 1] = Inst.new("grad_green_gauss", {
+			face_field = names.face(field),
+			out_x      = names.grad(field, "x"),
+			out_y      = names.grad(field, "y")
+		})
+	elseif itype == "mwi" then
+		local U, p  = names.is_mwi(name)
+		local reg_U = reg[U]
+		assert(reg_U and reg_U.kind == "vector",
+			"mwi: expected vector for U, got " .. tostring(U))
+		local Ux, Uy = reg_U.components[1], reg_U.components[2]
+		out[#out + 1] = Inst.new("rhie_chow", {
+			Ux = Ux,
+			Uy = Uy,
+			p = p,
+			grad_px = names.grad(p, "x"),
+			grad_py = names.grad(p, "y"),
+			ap_x = names.diag(Ux),
+			ap_y = names.diag(Uy),
+			out = name
+		})
+	elseif itype == "div_mwi" then
+		local U, p = names.is_div_mwi(name)
+		out[#out + 1] = Inst.new("divergence", {
+			un_face = names.mwi(U, p), out = name })
+	elseif itype == "div" then
+		local field = names.is_div(name) or ""
+		out[#out + 1] = Inst.new("divergence", {
+			un_face = names.face(field), out = name })
+	elseif sym.kind == "expression" then
+		out[#out + 1] = Inst.new("eval_expr", { name = name, expr = sym.expr })
+	end
+end
+
+local function gamma_of(coeff)
+	if not coeff then return 1.0 end
+	if coeff.kind == "const" then return coeff.value end
+	if coeff.kind == "sym" then return coeff.name end
+	return (coeff._dep_name or tostring(coeff))
+end
+
+local function emit_term(field, term, out)
+	local kind = term.kind -- not term.op
+
+	if kind == "lap" then
+		local gamma = gamma_of(term.coeff)
+		local harmonic = term.gamma_scheme == "HARMONIC"
+
+		if type(gamma) == "number" then
+			out[#out + 1] = Inst.new("laplacian_const", {
+				field = field, gamma = gamma })
+		else
+			local scheme = harmonic and "laplacian_field_harmonic"
+				or "laplacian_field"
+			out[#out + 1] = Inst.new(scheme, {
+				field = field, gamma = gamma })
+		end
+		if term.non_ortho then
+			local gx = names.grad(field, "x")
+			local gy = names.grad(field, "y")
+			if type(gamma) == "number" then
+				out[#out + 1] = Inst.new("laplacian_nonorth_const", {
+					field = field,
+					gamma = gamma,
+					grad_x = gx,
+					grad_y = gy
+				})
+			else
+				out[#out + 1] = Inst.new("laplacian_nonorth_field", {
+					field = field,
+					gamma = gamma,
+					grad_x = gx,
+					grad_y = gy
+				})
+			end
+		end
+	elseif kind == "div" then
+		-- coeff is the flux expr (mwi, face, etc.)
+		-- phi is the convected field
+		local flux = term.coeff
+		local flux_name
+		if flux and flux.kind == "mwi" then
+			flux_name = names.mwi(flux.U, flux.p)
+		elseif flux and flux._dep_name then
+			flux_name = flux._dep_name
+		else
+			flux_name = tostring(flux)
+		end
+
+		local scheme = (term.scheme or "UDS"):lower()
+
+		out[#out + 1] = Inst.new("div_" .. scheme .. "_const", {
+			field   = field,
+			rho     = 1.0,
+			un_face = flux_name
+		})
+
+		if term.tvd then
+			local limiter_op = term.tvd:lower():gsub("-", "_")
+
+			out[#out + 1] = Inst.new("div_tvd_" .. limiter_op, {
+				field   = field,
+				phi     = field,
+				grad_x  = names.grad(field, "x"),
+				grad_y  = names.grad(field, "y"),
+				un_face = flux_name
+			})
+		end
+	elseif kind == "su" then
+		out[#out + 1] = Inst.new("su_integrated", { field = field, expr = term.expr })
+	elseif kind == "sp" then
+		out[#out + 1] = Inst.new("sp_integrated", { field = field, expr = term.expr })
+	elseif kind == "ddt" then
+		-- skipped for steady state; will need Su/Sp pair when DDT is reintroduced
+	end
+end
+
+local function emit_solve(reg, name, out)
+	local sym = reg[name]
+	assert(sym and sym.kind == "field", "emit_solve: not a field: " .. name)
+	local eq = sym.eq
+
+	out[#out + 1] = Inst.comment("solve " .. E.pretty_sym(name)
+		.. "  [" .. (eq.solver or "bicgstab") .. "]")
+	out[#out + 1] = Inst.new("sys_reset", { field = name })
+
+	for _, term in ipairs(eq.terms) do
+		emit_term(name, term, out)
+	end
+
+	if sym.bcs then
+		out[#out + 1] = Inst.new("apply_bcs", { field = name, bcs = sym.bcs })
+	end
+
+	if eq.relax then
+		out[#out + 1] = Inst.new("under_relax", { field = name, alpha = eq.relax })
+	end
+
+	out[#out + 1] = Inst.new("solve", {
+		field     = name,
+		solver    = (eq.solver or "BICGSTAB"):lower(),
+		tol       = eq.tol or 1e-6,
+		max_iters = eq.max_iters or 1000
+	})
+end
+
+local function emit_correct(reg, name, out)
+	out[#out + 1] = Inst.comment("correct " .. E.pretty_sym(name))
+	local cname   = "__correct_" .. name
+	local csym    = reg[cname]
+	assert(csym and csym.kind == "correction",
+		"emit_correct: no correction for " .. name)
+	out[#out + 1] = Inst.new("apply_correction", { field = name, expr = csym.expr })
+end
+
+local function walk_steps(reg, steps, out)
+	for _, step in ipairs(steps) do
+		if step.op == "evaluate" then
+			emit_eval(reg, step.field, out)
+		elseif step.op == "solve" then
+			emit_solve(reg, step.field, out)
+		elseif step.op == "correct" then
+			emit_correct(reg, step.field, out)
+		elseif step.op == "clip" then
+			out[#out + 1] = {
+				op = "clip",
+				field = step.field,
+				lo = step.lo,
+				hi = step.hi
+			}
+		elseif step.op == "hook" then
+			out[#out + 1] = { op = "hook", fn = step.fn, name = step.name }
+		elseif step.op == "inner" then
+			local body = {}
+			walk_steps(reg, step.inner.steps, body)
+			out[#out + 1] = {
+				op        = "inner_loop",
+				max_iters = step.inner.max_iters,
+				go_until  = step.inner.go_until,
+				body      = body
+			}
+		end
+	end
+end
+
+function M.emit_instructions(reg, expanded_alg)
+	local main, post = {}, {}
+	walk_steps(reg, expanded_alg.steps, main)
+	if expanded_alg.post and #expanded_alg.post > 0 then
+		walk_steps(reg, expanded_alg.post, post)
+	end
+	return main, post
+end
+
+--
+-- Listings
+--
+
+function M.instruction_listing(main, post)
+	local lines = { ".INSTRUCTIONS:" }
+	for _, inst in ipairs(main) do
+		lines[#lines + 1] = inst:tostring()
+	end
+	if post and #post > 0 then
+		lines[#lines + 1] = ".POST:"
+		for _, inst in ipairs(post) do
+			lines[#lines + 1] = inst:tostring()
+		end
+	end
+	lines[#lines + 1] = ".END"
+	return table.concat(lines, "\n")
+end
+
+function M.resource_listing(res)
+	local lines = {
+		".RESOURCES:",
+		string.format("  fields       %d", res.n_fields),
+		string.format("  face_fields  %d", res.n_face_fields),
+		string.format("  systems      %d", res.n_systems),
+		string.format("  cell_scratch %d", res.n_cell_scratch),
+		string.format("  face_scratch %d", res.n_face_scratch),
+	}
+
+	local function format_line(name, tag, target_width)
+		local str = E.pretty_sym(name)
+		local display_len = utf8.len(str) or #str
+		local padding = math.max(0, target_width - display_len)
+		return string.format("    %s%s  [%s]", str, string.rep(" ", padding), tag)
+	end
+
+	if res.fields and #res.fields > 0 then
+		lines[#lines + 1] = ""
+		lines[#lines + 1] = "  .cell_fields:"
+		for _, f in ipairs(res.fields) do
+			if not f.face then
+				lines[#lines + 1] = format_line(f.name, f.tag, 24)
+			end
+		end
+		lines[#lines + 1] = "  .face_fields:"
+		for _, f in ipairs(res.fields) do
+			if f.face then
+				lines[#lines + 1] = format_line(f.name, f.tag, 24)
+			end
+		end
+	end
+
+	lines[#lines + 1] = ".END"
+	return table.concat(lines, "\n")
+end
+
+return M

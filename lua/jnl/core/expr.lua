@@ -361,7 +361,7 @@ function M.pretty(e, parent_prec, is_right_child)
 	local k = e.kind
 
 	if k == "sym" then
-		return e.name
+		return pretty_sym(e.name)
 	elseif k == "const" then
 		local n = e.value
 		if n < 0 then

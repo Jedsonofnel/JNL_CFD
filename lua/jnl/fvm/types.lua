@@ -56,6 +56,7 @@ function FvSys:solve_bicgstab(x, tol, max_iters) end
 
 ---@class FvmDivTerm : Term
 ---@field scheme  string  "UDS"|"CDS"
+---@field tvd string "MINMOD"|"VAN-LEER"|"SUPERBEE"
 
 ---@class FvmLapTerm : Term
 ---@field gamma_scheme  string   "LINEAR"|"HARMONIC"

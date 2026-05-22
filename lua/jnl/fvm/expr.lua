@@ -26,44 +26,61 @@ local function face_name(field)
 	return "__face_" .. field
 end
 
+---@param U string
+---@param p string
 local function mwi_name(U, p)
 	return "__mwi_" .. U .. ":" .. p
 end
 
+---@param field string
+---@param i string?
 local function diag_name(field, i)
 	if i then return "__diag_" .. i .. ":" .. field end
 	return "__diag_" .. field
 end
 
+---@param field string
 local function div_name(field)
 	return "__div_" .. field
 end
 
+---@param U string
+---@param p string
 local function div_mwi_name(U, p)
 	return "__div_mwi_" .. U .. ":" .. p
 end
 
 -- Decoders return nil if name doesn't match pattern
 
+---@param name string
+---@return string, string
 local function is_grad(name)
 	local comp, field = name:match("^__grad_([xy]):(.+)$")
 	return comp, field
 end
 
+---@param name string
+---@return string?
 local function is_grad_parent(name)
 	if name:match("^__grad_[xy]:") then return nil end
 	return name:match("^__grad_(.+)$")
 end
 
+---@param name string
+---@return string
 local function is_face(name)
 	return name:match("^__face_(.+)$")
 end
 
+---@param name string
+---@return string, string
 local function is_mwi(name)
 	local U, p = name:match("^__mwi_(.+):(.+)$")
 	return U, p
 end
 
+---@param name string
+---@return string?, string?
 local function is_diag(name)
 	local comp, field = name:match("^__diag_([xy]):(.+)$")
 	if field then return field, comp end
@@ -73,6 +90,8 @@ local function is_diag(name)
 	return nil, nil
 end
 
+---@param name string
+---@return string?
 local function is_div(name)
 	if name:match("^__div_mwi_") then return nil end
 	return name:match("^__div_(.+)$")

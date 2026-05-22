@@ -41,6 +41,9 @@ FVM.div_cds_const            = b.div_cds_const
 FVM.div_cds_field            = b.div_cds_field
 FVM.div_uds_const            = b.div_uds_const
 FVM.div_uds_field            = b.div_uds_field
+FVM.div_tvd_minmod           = b.div_tvd_minmod
+FVM.div_tvd_van_leer         = b.div_tvd_van_leer
+FVM.div_tvd_superbee         = b.div_tvd_superbee
 FVM.su_const                 = b.su_const
 FVM.su_field                 = b.su_field
 FVM.su_integrated            = b.su_integrated
@@ -61,5 +64,10 @@ FVM.bc_neumann_face_normal   = b.bc_neumann_face_normal
 FVM.face_interp_cds          = b.face_interp_cds
 FVM.face_normal_component    = b.face_normal_component
 FVM.rhie_chow                = b.rhie_chow
+
+-- grad
+FVM.grad_green_gauss         = b.grad_green_gauss
+FVM.divergence               = b.divergence
+FVM.vorticity_2d             = b.vorticity_2d
 
 return FVM

@@ -55,6 +55,9 @@ end
 local div_scms = {
 	UDS = true,
 	CDS = true,
+	MINMOD = true,
+	SUPERBEE = true,
+	["VAN-LEER"] = true,
 }
 
 ---@return FvmDivTerm
@@ -63,11 +66,21 @@ function Op.div(...)
 	if #args == 0 then error("Op.div: requires at least a field name", 2) end
 
 	local config = pop_config(args)
-	local scheme = V.in_enum(div_scms, config.scheme or "uds", "Op.div scheme")
+	local raw_scheme = (config.scheme or "uds"):upper()
+	local scheme = V.in_enum(div_scms, raw_scheme, "Op.div scheme")
 
 	local phi = E.from(table.remove(args))
-
 	local coeff = #args > 0 and E.mul(table.unpack(args)) or nil
+
+	local deps = term_deps(coeff, phi.name)
+
+	local tvd_limiter = nil
+	if scheme == "MINMOD" or scheme == "SUPERBEE" or scheme == "VAN-LEER" then
+		tvd_limiter = scheme
+		scheme = "UDS"
+
+		deps[names.grad(phi.name)] = true
+	end
 
 	---@type FvmDivTerm
 	return make_term({
@@ -75,7 +88,8 @@ function Op.div(...)
 		coeff    = coeff,
 		phi      = E.from(phi),
 		scheme   = scheme,
-		_deps    = term_deps(coeff, phi.name),
+		tvd      = tvd_limiter,
+		_deps    = deps,
 		_backend = "fvm",
 	})
 end
@@ -162,10 +176,12 @@ CEq.register_pretty("ddt", function(self)
 end)
 
 CEq.register_pretty("div", function(self)
+	---@cast self FvmDivTerm
 	local inner = self.coeff
 		and E.pretty(E.mul(self.coeff, self.phi))
 		or E.pretty(self.phi)
-	return string.format("%s[%s]", G.div, inner)
+	local scheme_str = self.tvd and ("[" .. self.tvd:lower() .. "]") or ""
+	return string.format("%s%s[%s]", G.div, scheme_str, inner)
 end)
 
 CEq.register_pretty("lap", function(self)

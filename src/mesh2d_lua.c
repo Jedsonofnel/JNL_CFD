@@ -166,6 +166,35 @@ static int l_mesh_face_normal(lua_State *L)
 	return 2;
 }
 
+//
+// Bulk accessors
+//
+
+static int l_mesh_cell_cx_vec(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	push_owned_vec(L, m->geom.cell_cx, m->topo.n_cells, 1);
+	return 1;
+}
+
+static int l_mesh_cell_cy_vec(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	push_owned_vec(L, m->geom.cell_cy, m->topo.n_cells, 1);
+	return 1;
+}
+
+static int l_mesh_cell_vol_vec(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	push_owned_vec(L, m->geom.cell_vol, m->topo.n_cells, 1);
+	return 1;
+}
+
+//
+// Module registration
+//
+
 static const luaL_Reg mesh2d_methods[] = {
     {"n_cells", l_mesh_n_cells},
     {"n_faces", l_mesh_n_faces},
@@ -177,6 +206,9 @@ static const luaL_Reg mesh2d_methods[] = {
     {"cell_vol", l_mesh_cell_vol},
     {"face_centre", l_mesh_face_centre},
     {"face_normal", l_mesh_face_normal},
+    {"cell_cx_vec", l_mesh_cell_cx_vec},
+    {"cell_cy_vec", l_mesh_cell_cy_vec},
+    {"cell_vol_vec", l_mesh_cell_vol_vec},
     {"__tostring", l_mesh_tostring},
     {"__gc", l_mesh_gc},
     {NULL, NULL},

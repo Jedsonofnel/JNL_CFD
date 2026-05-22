@@ -7,7 +7,7 @@
 #include "fvm/ctx.h"
 #include "fvm/operators.h"
 #include "fvm/bc.h"
-#include "fvm/interp.h"
+#include "fvm/field.h"
 
 #define CTX_MT "jnl.fvm.ctx"
 #define FVSYS_MT "jnl.fvm.fvsys"
@@ -92,21 +92,25 @@ static int l_fvsys_solve_bicgstab(lua_State *L)
 	return 1;
 }
 
+static int l_fvsys_diag_vec(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	push_owned_vec(L, s->sys->matrix.diag, s->sys->matrix.n_cells, 1);
+	return 1;
+}
+
 static int l_fvsys_gc(lua_State *L)
 {
 	luaL_unref(L, LUA_REGISTRYINDEX, check_fvsys(L, 1)->ctx_ref);
 	return 0;
 }
 
-static const luaL_Reg fvsys_mt[] = {{"reset", l_fvsys_reset},
-                                    {"under_relax", l_fvsys_under_relax},
-                                    {"pin_cell", l_fvsys_pin_cell},
-                                    {"residual_norm", l_fvsys_residual_norm},
-                                    {"solve_cg", l_fvsys_solve_cg},
-                                    {"solve_bicgstab", l_fvsys_solve_bicgstab},
-                                    {"__tostring", l_fvsys_tostring},
-                                    {"__gc", l_fvsys_gc},
-                                    {NULL, NULL}};
+static const luaL_Reg fvsys_mt[] = {
+    {"reset", l_fvsys_reset},       {"under_relax", l_fvsys_under_relax},
+    {"pin_cell", l_fvsys_pin_cell}, {"residual_norm", l_fvsys_residual_norm},
+    {"solve_cg", l_fvsys_solve_cg}, {"solve_bicgstab", l_fvsys_solve_bicgstab},
+    {"diag_vec", l_fvsys_diag_vec}, {"__tostring", l_fvsys_tostring},
+    {"__gc", l_fvsys_gc},           {NULL, NULL}};
 
 //
 // Ctx userdata
@@ -298,6 +302,45 @@ static int l_div_uds_field(lua_State *L)
 	return 0;
 }
 
+static int l_div_tvd_minmod(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	lua_vec *phi = check_vec(L, 3);
+	lua_vec *gx = check_vec(L, 4);
+	lua_vec *gy = check_vec(L, 5);
+	lua_vec *un = check_vec(L, 6);
+	jnl_div_tvd_correction_minmod(s->sys, m, phi->data, gx->data, gy->data,
+	                              un->data);
+	return 0;
+}
+
+static int l_div_tvd_van_leer(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	lua_vec *phi = check_vec(L, 3);
+	lua_vec *gx = check_vec(L, 4);
+	lua_vec *gy = check_vec(L, 5);
+	lua_vec *un = check_vec(L, 6);
+	jnl_div_tvd_correction_van_leer(s->sys, m, phi->data, gx->data, gy->data,
+	                                un->data);
+	return 0;
+}
+
+static int l_div_tvd_superbee(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	lua_vec *phi = check_vec(L, 3);
+	lua_vec *gx = check_vec(L, 4);
+	lua_vec *gy = check_vec(L, 5);
+	lua_vec *un = check_vec(L, 6);
+	jnl_div_tvd_correction_superbee(s->sys, m, phi->data, gx->data, gy->data,
+	                                un->data);
+	return 0;
+}
+
 static int l_su_const(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
@@ -472,6 +515,43 @@ static int l_rhie_chow(lua_State *L)
 }
 
 //
+// Gradient reconstruction
+//
+
+static int l_grad_green_gauss(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	lua_vec *face_field = check_vec(L, 2);
+	lua_vec *grad_x = check_vec(L, 3);
+	lua_vec *grad_y = check_vec(L, 4);
+	jnl_grad_green_gauss(m, face_field->data, grad_x->data, grad_y->data);
+	return 0;
+}
+
+//
+// Misc
+//
+
+static int l_divergence(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	lua_vec *un_face = check_vec(L, 2);
+	lua_vec *div = check_vec(L, 3);
+	jnl_divergence(m, un_face->data, div->data);
+	return 0;
+}
+
+static int l_vorticity_2d(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	lua_vec *grad_vy_x = check_vec(L, 2);
+	lua_vec *grad_ux_y = check_vec(L, 3);
+	lua_vec *omega = check_vec(L, 4);
+	jnl_vorticity_2d(m, grad_vy_x->data, grad_ux_y->data, omega->data);
+	return 0;
+}
+
+//
 // Module Open
 //
 
@@ -507,6 +587,9 @@ static const luaL_Reg fvm_funcs[] = {
     {"div_cds_field", l_div_cds_field},
     {"div_uds_const", l_div_uds_const},
     {"div_uds_field", l_div_uds_field},
+    {"div_tvd_minmod", l_div_tvd_minmod},
+    {"div_tvd_van_leer", l_div_tvd_van_leer},
+    {"div_tvd_superbee", l_div_tvd_superbee},
     {"su_const", l_su_const},
     {"su_field", l_su_field},
     {"su_integrated", l_su_integrated},
@@ -525,6 +608,11 @@ static const luaL_Reg fvm_funcs[] = {
     {"face_interp_cds", l_face_interp_cds},
     {"face_normal_component", l_face_normal_component},
     {"rhie_chow", l_rhie_chow},
+    // grad
+    {"grad_green_gauss", l_grad_green_gauss},
+    // misc
+    {"divergence", l_divergence},
+    {"vorticity_2d", l_vorticity_2d},
     {NULL, NULL}};
 
 int luaopen_fvm_internal(lua_State *L)
