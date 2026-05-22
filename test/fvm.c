@@ -8,6 +8,8 @@
 #include "fvm/linalg.h"
 #include "fvm/operators.h"
 #include "fvm/bc.h"
+#include "fvm/ctx.h"
+#include "fvm/interp.h"
 
 // Mesh: thin 1D bar — 1 cell tall, nx cells wide
 // Width L=1, height=1/nx so cells are square-ish
@@ -158,11 +160,13 @@ static void test_diffusion_source(void)
 // Analytical: T(x) = (exp(Pe*x/L) - 1) / (exp(Pe) - 1)  [normalised 0->1]
 // then shifted: T(x) = 1 - (exp(Pe*x/L)-1)/(exp(Pe)-1)  for T_W=1,T_E=0
 // ============================================================
+
 static void test_conv_diff_cds(void)
 {
-	const f64 gamma = 1.0;
-	const f64 rho_u = 1.0;
-	const f64 Pe = rho_u * L / gamma;
+	const f64 gamma = 0.1;
+	const f64 rho = 1.0;
+	const f64 u = 1.0;
+	const f64 Pe = rho * u * L / gamma;
 	const f64 exp_Pe = exp(Pe);
 
 	f64 errors[2];
@@ -173,52 +177,68 @@ static void test_conv_diff_cds(void)
 		f64 h = L / nx;
 
 		struct jnl_mesh *mesh = jnl_smesh_gen(L, h, nx, NY);
+		struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(mesh, 2, 3, 1);
+		struct jnl_fvsys *sys = jnl_fvm_ctx_alloc_fvsys(ctx);
+		f64 *Ux = jnl_fvm_ctx_alloc_field(ctx);
+		f64 *Uy = jnl_fvm_ctx_alloc_field(ctx);
+		f64 *ux_face = jnl_fvm_ctx_alloc_face_field(ctx);
+		f64 *uy_face = jnl_fvm_ctx_alloc_face_field(ctx);
+		f64 *un_face = jnl_fvm_ctx_alloc_face_field(ctx);
 		i32 n = mesh->topo.n_cells;
-		i32 n_conn = mesh->topo.n_faces;
-
-		jnl_arena *fa = arena_create(jnl_fvsys_arena_size(n, n_conn) +
-		                             jnl_solver_ctx_arena_size(n) +
-		                             (u64)n_conn * sizeof(f64));
-		struct jnl_fvsys *sys = jnl_fvsys_new(n, n_conn, mesh->topo.owner,
-		                                      mesh->topo.neighbour, fa);
-		struct jnl_solver_ctx *ctx = jnl_solver_ctx_new(n, fa);
-
-		f64 *u_normal = ARENA_PUSH_ARRAY_Z(fa, f64, n_conn);
-		for (i32 f = 0; f < n_conn; f++)
-			u_normal[f] = rho_u * mesh->geom.face_nx[f];
-
-		jnl_laplacian_const(sys, mesh, gamma);
-		jnl_div_cds_const(sys, mesh, 1.0, u_normal);
-		jnl_bc_dirichlet_const(sys, mesh, "west", 1.0);
-		jnl_bc_dirichlet_const(sys, mesh, "east", 0.0);
-
 		f64 *T = cell_field(n);
 
-		jnl_fvsys_solve_bicgstab(sys, ctx, T, 1e-12, 0);
+		// -- exact mirror of Lua --
+		for (i32 i = 0; i < n; i++) {
+			Ux[i] = u;
+			Uy[i] = 0.0;
+		}
 
-		// L2 error over all cells
+		jnl_face_interp_cds(mesh, Ux, ux_face);
+		jnl_face_interp_cds(mesh, Uy, uy_face);
+
+		jnl_bc_dirichlet_face_const(mesh, ux_face, "west", u);
+		jnl_bc_dirichlet_face_const(mesh, ux_face, "east", u);
+		jnl_bc_dirichlet_face_const(mesh, ux_face, "north", 0.0);
+		jnl_bc_dirichlet_face_const(mesh, ux_face, "south", 0.0);
+		jnl_bc_dirichlet_face_const(mesh, uy_face, "west", 0.0);
+		jnl_bc_dirichlet_face_const(mesh, uy_face, "east", 0.0);
+		jnl_bc_dirichlet_face_const(mesh, uy_face, "north", 0.0);
+		jnl_bc_dirichlet_face_const(mesh, uy_face, "south", 0.0);
+
+		jnl_face_normal_component(mesh, ux_face, uy_face, un_face);
+
+		jnl_fvsys_reset(sys);
+		jnl_laplacian_const(sys, mesh, gamma);
+		jnl_div_cds_const(sys, mesh, rho, un_face);
+		jnl_bc_dirichlet_const(sys, mesh, "west", 0.0);
+		jnl_bc_dirichlet_const(sys, mesh, "east", 1.0);
+		jnl_bc_neumann_const(sys, mesh, "north", 0.0);
+		jnl_bc_neumann_const(sys, mesh, "south", 0.0);
+
+		jnl_fvsys_solve_bicgstab(sys, ctx->solver, T, 1e-12, 500);
+
+		// Pe=10, layer near east — analytical: T(x) =
+		// (exp(Pe*x/L)-1)/(exp(Pe)-1)
 		f64 sum = 0.0;
 		for (i32 i = 0; i < n; i++) {
 			f64 x = mesh->geom.cell_cx[i];
-			f64 T_exact = 1.0 - (exp(Pe * x / L) - 1.0) / (exp_Pe - 1.0);
+			f64 T_exact = (exp(Pe * x / L) - 1.0) / (exp_Pe - 1.0);
 			f64 e = T[i] - T_exact;
 			sum += e * e * mesh->geom.cell_vol[i];
 		}
 		errors[run] = sqrt(sum);
 
 		free(T);
-		arena_destroy(fa);
+		jnl_fvm_ctx_free(ctx);
 		jnl_mesh_free(mesh);
 	}
 
-	// CDS is second-order: halving h should reduce L2 error by ~4
 	f64 rate = log(errors[0] / errors[1]) / log(2.0);
 	TEST_ASSERT_MSG(
 	    rate > 1.8,
 	    "conv_diff_cds: convergence rate %.2f < 1.8 (expected ~2.0) "
 	    "errors: coarse=%.2e fine=%.2e",
 	    rate, errors[0], errors[1]);
-
 	printf("PASS test_conv_diff_cds (rate=%.2f, errors: %.2e -> %.2e)\n", rate,
 	       errors[0], errors[1]);
 }
