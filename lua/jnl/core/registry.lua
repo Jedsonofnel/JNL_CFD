@@ -21,7 +21,7 @@ local Expression = {}
 Expression.__index = Expression
 
 function Expression:_pretty()
-	return string.format("%-12s %s", self.name, E.pretty(self.expr))
+	return string.format("%-12s %s", self.name, self.expr)
 end
 
 local Correction = {}
@@ -31,7 +31,7 @@ function Correction:_pretty()
 	return string.format("%-12s [correction] %s <- %s",
 		"__correct_" .. self.target,
 		self.target,
-		E.pretty(self.expr))
+		self.expr)
 end
 
 local Field = {}
@@ -219,10 +219,10 @@ function R:deps_of(name)
 	if sym.kind == "constant" then
 		return {}
 	elseif sym.kind == "expression" then
-		local names = E.deps(sym.expr)
+		local names = sym.expr:deps()
 		for _, n in ipairs(names) do into[n] = true end
 	elseif sym.kind == "correction" then
-		local names = E.deps(sym.expr)
+		local names = sym.expr:deps()
 		for _, n in ipairs(names) do into[n] = true end
 	elseif sym.kind == "field" and sym.eq then
 		for n in pairs(sym.eq._deps or {}) do into[n] = true end

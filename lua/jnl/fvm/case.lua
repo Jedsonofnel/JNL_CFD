@@ -3,8 +3,7 @@
 
 -- deps
 local E = require("jnl.core.expr")
-local FVMeq = require("jnl.fvm.eq")
-local names = FVMeq.names
+local names = require("jnl.fvm.expr").names
 
 --
 -- Instruction storage

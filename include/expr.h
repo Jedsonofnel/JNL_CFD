@@ -50,12 +50,6 @@ jnl_expr *jnl_expr_neg(jnl_arena *a, jnl_expr *operand);
 jnl_expr *jnl_expr_pow(jnl_arena *a, jnl_expr *base, jnl_expr *exp);
 
 //
-// Static analysis
-//
-
-i32 jnl_expr_scratch_depth(const jnl_expr *e);
-
-//
 // Evaluation
 //
 

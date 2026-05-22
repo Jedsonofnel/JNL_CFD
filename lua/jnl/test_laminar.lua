@@ -1,12 +1,12 @@
 -- test_laminar.lua - laminar incompressible SIMPLE
 -- <jed@nelson.ac> // 2026-05-21
 
-local FVM  = require("fvm")
+local FVM  = require("jnl.fvm")
 local Op   = FVM.Op
 local FVMe = FVM.Expr
-local E    = require("core.expr")
-local R    = require("core.registry")
-local A    = require("core.algorithm")
+local E    = require("jnl.core.expr")
+local R    = require("jnl.core.registry")
+local A    = require("jnl.core.algorithm")
 
 local reg  = R.new()
 

@@ -148,6 +148,32 @@ static int l_ctx_fvsys(lua_State *L)
 	return 1;
 }
 
+static int l_ctx_cell_pool(lua_State *L)
+{
+	lua_fvm_ctx_ud *lc = check_ctx(L, 1);
+	push_borrowed_pool(L, lc->ctx->cell_pool, 1);
+	return 1;
+}
+
+static int l_ctx_face_pool(lua_State *L)
+{
+	lua_fvm_ctx_ud *lc = check_ctx(L, 1);
+	push_borrowed_pool(L, lc->ctx->face_pool, 1);
+	return 1;
+}
+
+static int l_ctx_n_cells(lua_State *L)
+{
+	lua_pushinteger(L, check_ctx(L, 1)->ctx->n_cells);
+	return 1;
+}
+
+static int l_ctx_n_faces(lua_State *L)
+{
+	lua_pushinteger(L, check_ctx(L, 1)->ctx->n_faces);
+	return 1;
+}
+
 static int l_ctx_tostring(lua_State *L)
 {
 	struct jnl_fvm_ctx *c = check_ctx(L, 1)->ctx;
@@ -162,10 +188,16 @@ static int l_ctx_gc(lua_State *L)
 	return 0;
 }
 
-static const luaL_Reg ctx_mt[] = {
-    {"field", l_ctx_field}, {"face_field", l_ctx_face_field},
-    {"fvsys", l_ctx_fvsys}, {"__tostring", l_ctx_tostring},
-    {"__gc", l_ctx_gc},     {NULL, NULL}};
+static const luaL_Reg ctx_mt[] = {{"field", l_ctx_field},
+                                  {"face_field", l_ctx_face_field},
+                                  {"cell_pool", l_ctx_cell_pool},
+                                  {"n_cells", l_ctx_n_cells},
+                                  {"n_faces", l_ctx_n_faces},
+                                  {"face_pool", l_ctx_face_pool},
+                                  {"fvsys", l_ctx_fvsys},
+                                  {"__tostring", l_ctx_tostring},
+                                  {"__gc", l_ctx_gc},
+                                  {NULL, NULL}};
 
 //
 // Operators
@@ -499,6 +531,10 @@ int luaopen_fvm_internal(lua_State *L)
 {
 	// Ensure VEC_MT is registered - idempotent
 	luaL_requiref(L, "jnl.vec_internal", luaopen_vec_internal, 0);
+	lua_pop(L, 1);
+
+	// Ensure POOL_MT is registered - ditto
+	luaL_requiref(L, "jnl.scratch_internal", luaopen_scratch_internal, 0);
 	lua_pop(L, 1);
 
 	// FVSYS_MT

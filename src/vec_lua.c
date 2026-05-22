@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "lua_bindings.h"
+#include "vec.h"
 
 //
 // Metamethods
@@ -86,13 +87,83 @@ static int l_vec_norm(lua_State *L)
 	return 1;
 }
 
+static int l_vec_max(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	lua_pushnumber(L, jnl_vec_max(v->data, v->len));
+	return 1;
+}
+
+static int l_vec_min(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	lua_pushnumber(L, jnl_vec_min(v->data, v->len));
+	return 1;
+}
+
+static int l_vec_sum(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	lua_pushnumber(L, jnl_vec_sum(v->data, v->len));
+	return 1;
+}
+
+static int l_vec_mean(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	lua_pushnumber(L, jnl_vec_mean(v->data, v->len));
+	return 1;
+}
+
+static int l_vec_scale(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	f64 alpha = luaL_checknumber(L, 2);
+	jnl_vec_scale(v->data, alpha, v->len);
+	return 0;
+}
+
+// v:axpy(alpha, w)  =>  v += alpha * w
+static int l_vec_axpy(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	f64 alpha = luaL_checknumber(L, 2);
+	lua_vec *w = check_vec(L, 3);
+	luaL_argcheck(L, v->len == w->len, 3, "vec size mismatch");
+	jnl_vec_axpy(v->data, alpha, w->data, v->len);
+	return 0;
+}
+
+static int l_vec_clamp(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	f64 lo = luaL_checknumber(L, 2);
+	f64 hi = luaL_checknumber(L, 3);
+	luaL_argcheck(L, lo <= hi, 3, "clamp: lo must be <= hi");
+	jnl_vec_clamp(v->data, lo, hi, v->len);
+	return 0;
+}
+
+static int l_vec_dot(lua_State *L)
+{
+	lua_vec *a = check_vec(L, 1);
+	lua_vec *b = check_vec(L, 2);
+	luaL_argcheck(L, a->len == b->len, 2, "vec size mismatch");
+	lua_pushnumber(L, jnl_vec_dot(a->data, b->data, a->len));
+	return 1;
+}
+
 //
 // Registration
 //
 
 static const luaL_Reg vec_mt[] = {
     {"fill", l_vec_fill}, {"copy_from", l_vec_copy_from},
-    {"norm", l_vec_norm}, {"__newindex", l_vec_newindex},
+    {"norm", l_vec_norm}, {"max", l_vec_max},
+    {"min", l_vec_min},   {"sum", l_vec_sum},
+    {"mean", l_vec_mean}, {"scale", l_vec_scale},
+    {"axpy", l_vec_axpy}, {"clamp", l_vec_clamp},
+    {"dot", l_vec_dot},   {"__newindex", l_vec_newindex},
     {"__len", l_vec_len}, {"__tostring", l_vec_tostring},
     {"__gc", l_vec_gc},   {NULL, NULL}};
 
@@ -107,5 +178,3 @@ int luaopen_vec_internal(lua_State *L)
 	lua_newtable(L);
 	return 1;
 }
-
-

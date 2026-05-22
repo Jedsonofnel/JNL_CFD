@@ -73,31 +73,6 @@ jnl_expr *jnl_expr_neg(jnl_arena *a, jnl_expr *operand)
 }
 
 //
-// Static analysis (Sethi-Ullman)
-//
-
-i32 jnl_expr_scratch_depth(const jnl_expr *e)
-{
-	switch (e->kind) {
-	case EXPR_ARRAY:
-		return 0;
-	case EXPR_CONST:
-		return 1;
-	case EXPR_NEG: {
-		i32 d = jnl_expr_scratch_depth(e->un.operand);
-		return d + 1;
-	}
-	default: {
-		i32 da = jnl_expr_scratch_depth(e->bin.a);
-		i32 db = jnl_expr_scratch_depth(e->bin.b);
-		// Sethi-Ullman: evaluate heavier side first
-		i32 combined = (da >= db) ? da : db + 1;
-		return combined + 1;
-	}
-	}
-}
-
-//
 // Evaluation
 //
 

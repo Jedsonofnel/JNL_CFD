@@ -6,15 +6,16 @@ local FVM  = {}
 -- compiler/equation DSL
 local eq   = require("jnl.fvm.eq")
 FVM.Op     = eq.Op
-FVM.Expr   = eq.Expr
 FVM.eq     = eq.Eq -- lower case as it's a function NOT a module
+
+local expr = require("jnl.fvm.expr")
+FVM.Expr   = expr
 
 local case = require("jnl.fvm.case")
 FVM.Case   = case
 
 -- C bindings, split by concern
 local b    = require("jnl.fvm_internal")
-
 
 
 -- context + field + fvsys construction
