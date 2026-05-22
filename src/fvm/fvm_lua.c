@@ -1,6 +1,5 @@
 #include <lauxlib.h>
 #include <string.h>
-#include <math.h>
 
 #include "lua_bindings.h"
 #include "mesh2d.h"
@@ -11,113 +10,7 @@
 #include "fvm/interp.h"
 
 #define CTX_MT "jnl.fvm.ctx"
-#define FIELD_MT "jnl.fvm.field"
 #define FVSYS_MT "jnl.fvm.fvsys"
-
-//
-// Anchor helper for child GC
-//
-
-static int anchor_ctx(lua_State *L, int ctx_idx)
-{
-	lua_pushvalue(L, ctx_idx);
-	return luaL_ref(L, LUA_REGISTRYINDEX);
-}
-
-//
-// Field userdata
-//
-
-typedef struct {
-	f64 *data;
-	i32 len;
-	int ctx_ref;
-} lua_field;
-
-static lua_field *check_field(lua_State *L, int idx)
-{
-	return (lua_field *)luaL_checkudata(L, idx, FIELD_MT);
-}
-
-static int l_field_index(lua_State *L)
-{
-	if (lua_type(L, 2) == LUA_TNUMBER) {
-		lua_field *f = check_field(L, 1);
-		i32 i = (i32)lua_tointeger(L, 2) - 1;
-		luaL_argcheck(L, i >= 0 && i < f->len, 2, "field index out of range");
-		lua_pushnumber(L, f->data[i]);
-		return 1;
-	}
-	// fall through to method table
-	luaL_getmetatable(L, FIELD_MT);
-	lua_pushvalue(L, 2);
-	lua_rawget(L, -2);
-	return 1;
-}
-
-static int l_field_newindex(lua_State *L)
-{
-	lua_field *f = check_field(L, 1);
-	i32 i = (i32)luaL_checkinteger(L, 2) - 1;
-	luaL_argcheck(L, i >= 0 && i < f->len, 2, "field index out of range");
-	f->data[i] = luaL_checknumber(L, 3);
-	return 0;
-}
-
-static int l_field_len(lua_State *L)
-{
-	lua_pushinteger(L, check_field(L, 1)->len);
-	return 1;
-}
-
-static int l_field_tostring(lua_State *L)
-{
-	lua_field *f = check_field(L, 1);
-	lua_pushfstring(L, "field(len=%d, data=%p)", f->len, f->data);
-	return 1;
-}
-
-static int l_field_fill(lua_State *L)
-{
-	lua_field *f = check_field(L, 1);
-	f64 val = luaL_checknumber(L, 2);
-	for (i32 i = 0; i < f->len; i++)
-		f->data[i] = val;
-	return 0;
-}
-
-static int l_field_copy_from(lua_State *L)
-{
-	lua_field *dst = check_field(L, 1);
-	lua_field *src = check_field(L, 2);
-	luaL_argcheck(L, dst->len == src->len, 2, "field size mismatch");
-	memcpy(dst->data, src->data, dst->len * sizeof(f64));
-	return 0;
-}
-
-static int l_field_norm(lua_State *L)
-{
-	lua_field *f = check_field(L, 1);
-	f64 s = 0.0;
-	for (i32 i = 0; i < f->len; i++)
-		s += f->data[i] * f->data[i];
-	lua_pushnumber(L, sqrt(s));
-	return 1;
-}
-
-static int l_field_gc(lua_State *L)
-{
-	lua_field *f = check_field(L, 1);
-	luaL_unref(L, LUA_REGISTRYINDEX, f->ctx_ref);
-	return 0;
-}
-
-// all methods + metamethods in one table; __index handled separately below
-static const luaL_Reg field_mt[] = {
-    {"fill", l_field_fill}, {"copy_from", l_field_copy_from},
-    {"norm", l_field_norm}, {"__newindex", l_field_newindex},
-    {"__len", l_field_len}, {"__tostring", l_field_tostring},
-    {"__gc", l_field_gc},   {NULL, NULL}};
 
 //
 // FVSys userdata
@@ -151,9 +44,9 @@ static int l_fvsys_reset(lua_State *L)
 static int l_fvsys_under_relax(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
-	lua_field *f = check_field(L, 2);
+	lua_vec *v = check_vec(L, 2);
 	f64 alpha = luaL_checknumber(L, 3);
-	jnl_fvsys_under_relax(s->sys, f->data, alpha);
+	jnl_fvsys_under_relax(s->sys, v->data, alpha);
 	return 0;
 }
 
@@ -169,7 +62,7 @@ static int l_fvsys_pin_cell(lua_State *L)
 static int l_fvsys_residual_norm(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
-	lua_field *x = check_field(L, 2);
+	lua_vec *x = check_vec(L, 2);
 	lua_pushnumber(L, jnl_fvsys_residual_norm(s->sys, x->data));
 	return 1;
 }
@@ -177,7 +70,7 @@ static int l_fvsys_residual_norm(lua_State *L)
 static int l_fvsys_solve_cg(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
-	lua_field *x = check_field(L, 2);
+	lua_vec *x = check_vec(L, 2);
 	f64 tol = luaL_optnumber(L, 3, 1e-6);
 	i32 max_iters = (i32)luaL_optinteger(L, 4, 1000);
 
@@ -189,7 +82,7 @@ static int l_fvsys_solve_cg(lua_State *L)
 static int l_fvsys_solve_bicgstab(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
-	lua_field *x = check_field(L, 2);
+	lua_vec *x = check_vec(L, 2);
 	f64 tol = luaL_optnumber(L, 3, 1e-6);
 	i32 max_iters = (i32)luaL_optinteger(L, 4, 1000);
 
@@ -231,22 +124,15 @@ static lua_fvm_ctx_ud *check_ctx(lua_State *L, int idx)
 static int l_ctx_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_ctx(L, 1);
-	lua_field *lf = lua_newuserdata(L, sizeof(lua_field));
-	lf->data = jnl_fvm_ctx_alloc_field(lc->ctx);
-	lf->len = lc->ctx->n_cells;
-	lf->ctx_ref = anchor_ctx(L, 1);
-	luaL_setmetatable(L, FIELD_MT);
+	push_owned_vec(L, jnl_fvm_ctx_alloc_field(lc->ctx), lc->ctx->n_cells, 1);
 	return 1;
 }
 
 static int l_ctx_face_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_ctx(L, 1);
-	lua_field *lf = lua_newuserdata(L, sizeof(lua_field));
-	lf->data = jnl_fvm_ctx_alloc_face_field(lc->ctx);
-	lf->len = lc->ctx->n_faces;
-	lf->ctx_ref = anchor_ctx(L, 1);
-	luaL_setmetatable(L, FIELD_MT);
+	push_owned_vec(L, jnl_fvm_ctx_alloc_face_field(lc->ctx), lc->ctx->n_faces,
+	               1);
 	return 1;
 }
 
@@ -256,7 +142,8 @@ static int l_ctx_fvsys(lua_State *L)
 	lua_fvsys *ls = lua_newuserdata(L, sizeof(lua_fvsys));
 	ls->sys = jnl_fvm_ctx_alloc_fvsys(lc->ctx);
 	ls->pool = lc->ctx->cell_pool;
-	ls->ctx_ref = anchor_ctx(L, 1);
+	lua_pushvalue(L, 1);
+	ls->ctx_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	luaL_setmetatable(L, FVSYS_MT);
 	return 1;
 }
@@ -303,7 +190,7 @@ static int l_laplacian_field(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *gamma = check_field(L, 3);
+	lua_vec *gamma = check_vec(L, 3);
 	jnl_laplacian_field(s->sys, m, gamma->data);
 	return 0;
 }
@@ -312,7 +199,7 @@ static int l_laplacian_field_harmonic(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *gamma = check_field(L, 3);
+	lua_vec *gamma = check_vec(L, 3);
 	jnl_laplacian_field_harmonic(s->sys, m, gamma->data);
 	return 0;
 }
@@ -322,8 +209,8 @@ static int l_laplacian_nonorth_const(lua_State *L)
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	f64 gamma = luaL_checknumber(L, 3);
-	lua_field *gx = check_field(L, 4);
-	lua_field *gy = check_field(L, 5);
+	lua_vec *gx = check_vec(L, 4);
+	lua_vec *gy = check_vec(L, 5);
 	jnl_laplacian_nonorth_const(s->sys, m, gamma, gx->data, gy->data);
 	return 0;
 }
@@ -332,9 +219,9 @@ static int l_laplacian_nonorth_field(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *gamma = check_field(L, 3);
-	lua_field *gx = check_field(L, 4);
-	lua_field *gy = check_field(L, 5);
+	lua_vec *gamma = check_vec(L, 3);
+	lua_vec *gx = check_vec(L, 4);
+	lua_vec *gy = check_vec(L, 5);
 	jnl_laplacian_nonorth_field(s->sys, m, gamma->data, gx->data, gy->data);
 	return 0;
 }
@@ -344,7 +231,7 @@ static int l_div_cds_const(lua_State *L)
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	f64 rho = luaL_checknumber(L, 3);
-	lua_field *un = check_field(L, 4);
+	lua_vec *un = check_vec(L, 4);
 	jnl_div_cds_const(s->sys, m, rho, un->data);
 	return 0;
 }
@@ -353,8 +240,8 @@ static int l_div_cds_field(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *rho = check_field(L, 3);
-	lua_field *un = check_field(L, 4);
+	lua_vec *rho = check_vec(L, 3);
+	lua_vec *un = check_vec(L, 4);
 	jnl_div_cds_field(s->sys, m, rho->data, un->data);
 	return 0;
 }
@@ -364,7 +251,7 @@ static int l_div_uds_const(lua_State *L)
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	f64 rho = luaL_checknumber(L, 3);
-	lua_field *un = check_field(L, 4);
+	lua_vec *un = check_vec(L, 4);
 	jnl_div_uds_const(s->sys, m, rho, un->data);
 	return 0;
 }
@@ -373,8 +260,8 @@ static int l_div_uds_field(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *rho = check_field(L, 3);
-	lua_field *un = check_field(L, 4);
+	lua_vec *rho = check_vec(L, 3);
+	lua_vec *un = check_vec(L, 4);
 	jnl_div_uds_field(s->sys, m, rho->data, un->data);
 	return 0;
 }
@@ -392,7 +279,7 @@ static int l_su_field(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *f = check_field(L, 3);
+	lua_vec *f = check_vec(L, 3);
 	jnl_su_field(s->sys, m, f->data);
 	return 0;
 }
@@ -401,7 +288,7 @@ static int l_su_integrated(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *f = check_field(L, 3);
+	lua_vec *f = check_vec(L, 3);
 	jnl_su_integrated(s->sys, m, f->data);
 	return 0;
 }
@@ -411,7 +298,7 @@ static int l_su_field_scaled(lua_State *L)
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	f64 coeff = luaL_checknumber(L, 3);
-	lua_field *f = check_field(L, 4);
+	lua_vec *f = check_vec(L, 4);
 	jnl_su_field_scaled(s->sys, m, coeff, f->data);
 	return 0;
 }
@@ -429,7 +316,7 @@ static int l_sp_field(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *f = check_field(L, 3);
+	lua_vec *f = check_vec(L, 3);
 	jnl_sp_field(s->sys, m, f->data);
 	return 0;
 }
@@ -438,7 +325,7 @@ static int l_sp_integrated(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
-	lua_field *f = check_field(L, 3);
+	lua_vec *f = check_vec(L, 3);
 	jnl_sp_integrated(s->sys, m, f->data);
 	return 0;
 }
@@ -470,7 +357,7 @@ static int l_bc_neumann_const(lua_State *L)
 static int l_bc_dirichlet_face_const(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
-	lua_field *face_f = check_field(L, 2);
+	lua_vec *face_f = check_vec(L, 2);
 	const char *patch = luaL_checkstring(L, 3);
 	f64 val = luaL_checknumber(L, 4);
 	jnl_bc_dirichlet_face_const(m, face_f->data, patch, val);
@@ -480,8 +367,8 @@ static int l_bc_dirichlet_face_const(lua_State *L)
 static int l_bc_neumann_face_const(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
-	lua_field *field = check_field(L, 2);
-	lua_field *face_f = check_field(L, 3);
+	lua_vec *field = check_vec(L, 2);
+	lua_vec *face_f = check_vec(L, 3);
 	const char *patch = luaL_checkstring(L, 4);
 	f64 flux = luaL_checknumber(L, 5);
 	jnl_bc_neumann_face_const(m, field->data, face_f->data, patch, flux);
@@ -491,7 +378,7 @@ static int l_bc_neumann_face_const(lua_State *L)
 static int l_bc_dirichlet_face_normal(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
-	lua_field *un = check_field(L, 2);
+	lua_vec *un = check_vec(L, 2);
 	const char *patch = luaL_checkstring(L, 3);
 	f64 ux = luaL_checknumber(L, 4);
 	f64 uy = luaL_checknumber(L, 5);
@@ -502,9 +389,9 @@ static int l_bc_dirichlet_face_normal(lua_State *L)
 static int l_bc_neumann_face_normal(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
-	lua_field *ux_f = check_field(L, 2);
-	lua_field *uy_f = check_field(L, 3);
-	lua_field *un = check_field(L, 4);
+	lua_vec *ux_f = check_vec(L, 2);
+	lua_vec *uy_f = check_vec(L, 3);
+	lua_vec *un = check_vec(L, 4);
 	const char *patch = luaL_checkstring(L, 5);
 	f64 ux_flux = luaL_checknumber(L, 6);
 	f64 uy_flux = luaL_checknumber(L, 7);
@@ -520,8 +407,8 @@ static int l_bc_neumann_face_normal(lua_State *L)
 static int l_face_interp_cds(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
-	lua_field *field = check_field(L, 2);
-	lua_field *face_field = check_field(L, 3);
+	lua_vec *field = check_vec(L, 2);
+	lua_vec *face_field = check_vec(L, 3);
 	jnl_face_interp_cds(m, field->data, face_field->data);
 	return 0;
 }
@@ -529,9 +416,9 @@ static int l_face_interp_cds(lua_State *L)
 static int l_face_normal_component(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
-	lua_field *ux_face = check_field(L, 2);
-	lua_field *uy_face = check_field(L, 3);
-	lua_field *un_face = check_field(L, 4);
+	lua_vec *ux_face = check_vec(L, 2);
+	lua_vec *uy_face = check_vec(L, 3);
+	lua_vec *un_face = check_vec(L, 4);
 	jnl_face_normal_component(m, ux_face->data, uy_face->data, un_face->data);
 	return 0;
 }
@@ -539,14 +426,14 @@ static int l_face_normal_component(lua_State *L)
 static int l_rhie_chow(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
-	lua_field *ux = check_field(L, 2);
-	lua_field *uy = check_field(L, 3);
-	lua_field *p = check_field(L, 4);
-	lua_field *grad_px = check_field(L, 5);
-	lua_field *grad_py = check_field(L, 6);
-	lua_field *ap_x = check_field(L, 7);
-	lua_field *ap_y = check_field(L, 8);
-	lua_field *un_face = check_field(L, 9);
+	lua_vec *ux = check_vec(L, 2);
+	lua_vec *uy = check_vec(L, 3);
+	lua_vec *p = check_vec(L, 4);
+	lua_vec *grad_px = check_vec(L, 5);
+	lua_vec *grad_py = check_vec(L, 6);
+	lua_vec *ap_x = check_vec(L, 7);
+	lua_vec *ap_y = check_vec(L, 8);
+	lua_vec *un_face = check_vec(L, 9);
 	jnl_rhie_chow(m, ux->data, uy->data, p->data, grad_px->data, grad_py->data,
 	              ap_x->data, ap_y->data, un_face->data);
 	return 0;
@@ -608,27 +495,25 @@ static const luaL_Reg fvm_funcs[] = {
     {"rhie_chow", l_rhie_chow},
     {NULL, NULL}};
 
-static void register_mt(lua_State *L, const char *name, const luaL_Reg *methods,
-                        lua_CFunction index_fn)
-{
-	luaL_newmetatable(L, name);
-	luaL_setfuncs(L, methods, 0);
-	if (index_fn) {
-		lua_pushcfunction(L, index_fn);
-		lua_setfield(L, -2, "__index");
-	} else {
-		// simple __index = self
-		lua_pushvalue(L, -1);
-		lua_setfield(L, -2, "__index");
-	}
-	lua_pop(L, 1);
-}
-
 int luaopen_fvm_internal(lua_State *L)
 {
-	register_mt(L, FIELD_MT, field_mt, l_field_index); // custom dispatch
-	register_mt(L, FVSYS_MT, fvsys_mt, NULL);          // __index = self
-	register_mt(L, CTX_MT, ctx_mt, NULL);              // __index = self
+	// Ensure VEC_MT is registered - idempotent
+	luaL_requiref(L, "jnl.vec_internal", luaopen_vec_internal, 0);
+	lua_pop(L, 1);
+
+	// FVSYS_MT
+	luaL_newmetatable(L, FVSYS_MT);
+	luaL_setfuncs(L, fvsys_mt, 0);
+	lua_pushvalue(L, -1);
+	lua_setfield(L, -2, "__index");
+	lua_pop(L, 1);
+
+	// CTX_MT
+	luaL_newmetatable(L, CTX_MT);
+	luaL_setfuncs(L, ctx_mt, 0);
+	lua_pushvalue(L, -1);
+	lua_setfield(L, -2, "__index");
+	lua_pop(L, 1);
 
 	luaL_newlib(L, fvm_funcs);
 	return 1;
