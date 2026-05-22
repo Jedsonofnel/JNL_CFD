@@ -6,9 +6,12 @@ local M = {}
 local V = require("jnl.core.validation")
 local G = require("jnl.core.glyphs")
 
+---@class Expr
 local Expr = {}
 Expr.__index = Expr
 
+---@param v any
+---@return boolean
 local function is_expr(v)
 	return type(v) == "table" and getmetatable(v) == Expr
 end
@@ -16,10 +19,12 @@ end
 M.is_expr = is_expr
 
 --
--- Expr constructors
+-- Dependency constructors
 --
 
--- dependency/reference counting helper for construction
+---@param e Expr|any
+---@param into table<string,true>?
+---@return table<string,true>
 local function collect_deps(e, into)
 	into = into or {}
 	if type(e) ~= "table" then return into end
@@ -59,6 +64,8 @@ end
 
 M.collect_deps = collect_deps
 
+---@param t table
+---@return Expr
 local function make_expr(t)
 	t._deps = collect_deps(t)
 	return setmetatable(t, Expr)
@@ -66,7 +73,13 @@ end
 
 M.make_expr = make_expr
 
--- expression constructor/validator
+--
+-- Coercion
+--
+
+---Coerce a number, string, or Expr to an Expr.
+---@param v number|string|Expr
+---@return Expr
 local function from(v)
 	if type(v) == "number" then
 		return make_expr { kind = "const", value = v, _type = "expr" }
@@ -83,12 +96,19 @@ end
 
 M.from = from
 
+--
+-- Constructors
+--
 
+---@param name string
+---@return Expr
 function M.sym(name)
 	V.identifier(name, "E.sym")
 	return make_expr { kind = "sym", name = name }
 end
 
+---@param value number
+---@return Expr
 function M.const(value)
 	V.typeof(value, "number", "E.const")
 	return make_expr { kind = "const", value = value }
@@ -96,6 +116,9 @@ end
 
 -- Arithmetic
 
+
+---@param ... number|string|Expr
+---@return Expr
 function M.add(...)
 	local args = { ... }
 	if #args == 1 then
@@ -116,10 +139,15 @@ function M.add(...)
 	return make_expr { kind = "addv", addends = addends }
 end
 
+---@param a number|string|Expr
+---@param b number|string|Expr
+---@return Expr
 function M.sub(a, b)
 	return make_expr { kind = "sub", a = from(a), b = from(b) }
 end
 
+---@param ... number|string|Expr
+---@return Expr
 function M.mul(...)
 	local args = { ... }
 	if #args == 1 then
@@ -140,16 +168,24 @@ function M.mul(...)
 	return make_expr { kind = "mulv", factors = factors }
 end
 
+---@param a number|string|Expr
+---@param b number|string|Expr
+---@return Expr
 function M.div(a, b)
 	a, b = from(a), from(b)
 	return make_expr { kind = "div", a = a, b = b }
 end
 
+---@param a number|string|Expr
+---@return Expr
 function M.neg(a)
 	a = from(a)
 	return make_expr { kind = "neg", value = a }
 end
 
+---@param base number|string|Expr
+---@param exp  number|string|Expr
+---@return Expr
 function M.pow(base, exp)
 	base, exp = from(base), from(exp)
 	return make_expr { kind = "pow", base = base, exp = exp }
@@ -157,14 +193,20 @@ end
 
 -- Mesh access
 
+---Cell centre x coordinate.
+---@return Expr
 function M.cx()
 	return make_expr { kind = "cell_x" }
 end
 
+---Cell centre y coordinate.
+---@return Expr
 function M.cy()
 	return make_expr { kind = "cell_y" }
 end
 
+---Cell volume
+---@return Expr
 function M.cV()
 	return make_expr { kind = "cell_vol" }
 end
@@ -173,12 +215,18 @@ end
 -- Internal name manglers
 --
 
+---@param field string
 local function prime_sym(field) return "__prime_" .. field end
+---@param field string
 local function expl_sym(field) return "__expl_" .. field end
+---@param field string
 local function prev_sym(field) return "__prev_" .. field end
 
+---@param name string
 local function is_prime(name) return name:match("^__prime_(.+)$") end
+---@param name string
 local function is_expl(name) return name:match("^__expl_(.+)$") end
+---@param name string
 local function is_prev(name) return name:match("^__prev_(.+)$") end
 
 -- for overwriting
@@ -204,6 +252,9 @@ M.is_expl    = is_expl
 M.is_prev    = is_prev
 M.pretty_sym = pretty_sym
 
+---Explicit (linearised) value of field at the previous outer iteration.
+---@param field string
+---@return Expr
 function M.prime(field)
 	V.identifier(field, "E.prime")
 	return make_expr {
@@ -214,6 +265,9 @@ function M.prime(field)
 	}
 end
 
+---Explicit (lagged) value of field, held fixed during inner iterations.
+---@param field string
+---@return Expr
 function M.expl(field)
 	V.identifier(field, "E.expl")
 	return make_expr {
@@ -224,6 +278,9 @@ function M.expl(field)
 	}
 end
 
+---Value of field from the previous time step.
+---@param field string
+---@return Expr
 function M.prev(field)
 	V.identifier(field, "E.prev")
 	return make_expr {
@@ -277,6 +334,13 @@ local function pretty_pow(base_str, exp_node)
 	return base_str .. G.pow .. M.pretty(exp_node, PREC.pow + 1, false)
 end
 
+---Render an expression to a human-readable string.
+---Exposed as both M.pretty(e) and Expr:pretty() — the free function form is
+---used internally for recursive calls with explicit precedence arguments.
+---@param e Expr|number
+---@param parent_prec  integer|nil
+---@param is_right_child boolean|nil
+---@return string
 function M.pretty(e, parent_prec, is_right_child)
 	parent_prec = parent_prec or 0
 	is_right_child = is_right_child or false
@@ -379,6 +443,11 @@ end
 -- Scratch depth (Sethi-Ullman)
 --
 
+---Compute the number of scratch buffers needed to evaluate this expression,
+---using the Sethi-Ullman register allocation algorithm.  Call before
+---allocating a scratch pool to ensure sufficient capacity.
+---@param e Expr|any
+---@return integer
 local function scratch_depth(e)
 	if type(e) ~= "table" then return 1 end -- bare number -> CONST
 	local k = e.kind
@@ -420,16 +489,21 @@ M.scratch_depth = scratch_depth
 -- Metatable methods
 --
 
+---@return integer
 function Expr:scratch_depth()
 	return scratch_depth(self)
 end
 
+---@return string
 function Expr:pretty()
 	return M.pretty(self)
 end
 
-Expr.__tostring = Expr:pretty()
+Expr.__tostring = Expr.pretty
 
+
+---Return a sorted list of field names this expression depends on.
+---@return string[]
 function Expr:deps()
 	local set = self._deps or collect_deps(self, {})
 	local names = {}
@@ -440,6 +514,8 @@ function Expr:deps()
 	return names
 end
 
+---Walk every node in the expression tree, calling visitor(node) on each.
+---@param visitor fun(node: Expr)
 local function walk(e, visitor)
 	if type(e) ~= "table" then return end
 	visitor(e)
@@ -544,11 +620,19 @@ local function compile(expr_table, bindings)
 	return ud
 end
 
+---Compile this expression against a bindings table, caching the result.
+---Must be called before eval(). Safe to call again to recompile with new bindings.
+---@param bindings table<string, userdata>  Maps symbol names to vec objects
+---@return Expr self  (for chaining)
 function Expr:compile(bindings)
 	self._ud = compile(self, bindings)
 	return self
 end
 
+---Evaluate the compiled expression over n elements using the given scratch pool.
+---@param pool ScratchPool  Scratch pool (from ctx:cell_pool() or ctx:face_pool())
+---@param n    integer   Number of elements to evaluate over
+---@return VecUD      Result vec
 function Expr:eval(pool, n)
 	assert(self._ud, "expr:eval called before expr:compile")
 	return self._ud:eval(pool, n)

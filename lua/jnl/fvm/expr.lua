@@ -12,6 +12,8 @@ local G = require("jnl.core.glyphs")
 -- Name manglers
 --
 
+---@param field string
+---@param component string?
 local function grad_name(field, component)
 	if component ~= nil then
 		return "__grad_" .. component .. ":" .. field
@@ -19,6 +21,7 @@ local function grad_name(field, component)
 	return "__grad_" .. field
 end
 
+---@param field string
 local function face_name(field)
 	return "__face_" .. field
 end
