@@ -73,6 +73,53 @@ local function series_cmd(s)
 end
 
 --
+-- Output helper
+--
+
+---Write one or more series to a csv
+--- - M.write_csv(path, series_list)
+--- - M.write_csv(path, xs, ys, header?)
+function M.write_csv(path, xs_or_series, ys, header)
+	local f = io.open(path, "w")
+	if not f then error(string.format("[jnl.gp] cannot open %q for writing", path)) end
+
+	if type(xs_or_series) == "table" and xs_or_series[1] and xs_or_series[1].xs then
+		-- list of series structs
+		local series_list = xs_or_series
+		-- header from titles
+		local heads = {}
+		for _, s in ipairs(series_list) do
+			table.insert(heads, "x_" .. (s.title or #heads + 1))
+			table.insert(heads, "y_" .. (s.title or #heads + 1))
+		end
+		f:write(table.concat(heads, ",") .. "\n")
+		local nrows = 0
+		for _, s in ipairs(series_list) do
+			if #s.xs > nrows then nrows = #s.xs end
+		end
+		for i = 1, nrows do
+			local row = {}
+			for _, s in ipairs(series_list) do
+				table.insert(row, s.xs[i] and string.format("%.10g", s.xs[i]) or "")
+				table.insert(row, s.ys[i] and string.format("%.10g", s.ys[i]) or "")
+			end
+			f:write(table.concat(row, ",") .. "\n")
+		end
+	else
+		-- simple xs, ys path
+		local xs = xs_or_series
+		assert(#xs == #ys, "xs and ys must be the same length")
+		f:write((header or "x,y") .. "\n")
+		for i = 1, #xs do
+			f:write(string.format("%.10g,%.10g\n", xs[i], ys[i]))
+		end
+	end
+
+	f:close()
+	io.write(string.format("[jnl.gp] csv  → %s\n", path))
+end
+
+--
 -- Figure
 --
 
@@ -163,6 +210,12 @@ function Figure:save(path, opts)
 	self:_emit(pipe)
 	pipe:close()
 	io.write(string.format("[jnl.gp] saved → %s\n", path))
+end
+
+---Dumps all series to a csv
+function Figure:write_csv(path)
+	M.write_csv(path, self._series)
+	return self
 end
 
 --

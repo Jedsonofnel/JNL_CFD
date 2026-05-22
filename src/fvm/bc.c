@@ -31,8 +31,9 @@ void jnl_bc_dirichlet_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
 	for (i32 f = 0; f < mat->n_conns; f++) {
-		if (mat->neighbour[f] != encoded)
+		if (mat->neighbour[f] != encoded) {
 			continue;
+		}
 		i32 o = mat->owner[f];
 		f64 bc_coeff = -mat->upper[f];
 		f64 diag_coeff = -mat->lower[f];
@@ -49,8 +50,9 @@ void jnl_bc_neumann_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
 	for (i32 f = 0; f < mat->n_conns; f++) {
-		if (mat->neighbour[f] != encoded)
+		if (mat->neighbour[f] != encoded) {
 			continue;
+		}
 		i32 o = mat->owner[f];
 		mat->diag[o] += mat->upper[f] - mat->lower[f];
 		sys->rhs[o] += flux * geom->face_area[f];

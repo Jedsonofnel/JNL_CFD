@@ -47,13 +47,19 @@ function Mesh2D:patch_by_name(name) end
 ---@return number cy
 function Mesh2D:cell_centre(i) end
 
+---Return the cell volume (2D: area) for cell i (1-based).
+---@param i integer
+---@return number
+function Mesh2D:cell_vol(i) end
+
 ---Return the face-centre coordinates for face i (1-based).
 ---@param i integer
 ---@return number cx
 ---@return number cy
 function Mesh2D:face_centre(i) end
 
----Return the cell volume (2D: area) for cell i (1-based).
+---Return the face-normal componenets for face i (1-based).
 ---@param i integer
----@return number
-function Mesh2D:cell_vol(i) end
+---@return number nx
+---@return number ny
+function Mesh2D:face_normal(i) end

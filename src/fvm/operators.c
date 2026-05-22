@@ -179,8 +179,8 @@ void jnl_div_cds_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 
 		if (nb >= 0) {
 			f64 w = interp->weight[f];
-			mat->lower[f] -= F * (1.0 - w);
 			mat->upper[f] += F * w;
+			mat->lower[f] -= F * (1.0 - w);
 			mat->diag[o] += F * (1.0 - w);
 			mat->diag[nb] -= F * w;
 		} else {
@@ -211,8 +211,8 @@ void jnl_div_cds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 
 		if (nb >= 0) {
 			f64 w = interp->weight[f];
-			mat->lower[f] -= F * (1.0 - w);
 			mat->upper[f] += F * w;
+			mat->lower[f] -= F * (1.0 - w);
 			mat->diag[o] += F * (1.0 - w);
 			mat->diag[nb] -= F * w;
 		} else {
@@ -241,8 +241,8 @@ void jnl_div_uds_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 		if (nb >= 0) {
 			f64 Fpos = F > 0.0 ? F : 0.0;
 			f64 Fneg = F < 0.0 ? -F : 0.0;
-			mat->lower[f] -= Fpos;
 			mat->upper[f] -= Fneg;
+			mat->lower[f] -= Fpos;
 			mat->diag[o] += Fpos;
 			mat->diag[nb] += Fneg;
 		} else {
@@ -274,8 +274,8 @@ void jnl_div_uds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 		if (nb >= 0) {
 			f64 Fpos = F > 0.0 ? F : 0.0;
 			f64 Fneg = F < 0.0 ? -F : 0.0;
-			mat->lower[f] -= Fpos;
 			mat->upper[f] -= Fneg;
+			mat->lower[f] -= Fpos;
 			mat->diag[o] += Fpos;
 			mat->diag[nb] += Fneg;
 		} else {

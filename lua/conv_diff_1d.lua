@@ -61,7 +61,7 @@ fvm.face_normal_component(mesh, ux_face, uy_face, un_face)
 sys:reset()
 
 fvm.laplacian_const(sys, mesh, gamma)
-fvm.div_uds_const(sys, mesh, rho, un_face)
+fvm.div_cds_const(sys, mesh, rho, un_face)
 
 fvm.bc_dirichlet_const(sys, mesh, P.LEFT, 0.0)
 fvm.bc_dirichlet_const(sys, mesh, P.RIGHT, 1.0)

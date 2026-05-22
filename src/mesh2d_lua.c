@@ -130,6 +130,20 @@ static int l_mesh_cell_centre(lua_State *L)
 	return 2;
 }
 
+static int l_mesh_cell_vol(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	i32 i = (i32)luaL_checkinteger(L, 2) - 1;
+	luaL_argcheck(L, i >= 0 && i < m->topo.n_cells, 2,
+	              "cell index out of range");
+	lua_pushnumber(L, m->geom.cell_vol[i]);
+	return 1;
+}
+
+//
+// Face geometry accessors
+//
+
 static int l_mesh_face_centre(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
@@ -141,14 +155,15 @@ static int l_mesh_face_centre(lua_State *L)
 	return 2;
 }
 
-static int l_mesh_cell_vol(lua_State *L)
+static int l_mesh_face_normal(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
 	i32 i = (i32)luaL_checkinteger(L, 2) - 1;
-	luaL_argcheck(L, i >= 0 && i < m->topo.n_cells, 2,
-	              "cell index out of range");
-	lua_pushnumber(L, m->geom.cell_vol[i]);
-	return 1;
+	luaL_argcheck(L, i >= 0 && i < m->topo.n_faces, 2,
+	              "face index out of range");
+	lua_pushnumber(L, m->geom.face_nx[i]);
+	lua_pushnumber(L, m->geom.face_ny[i]);
+	return 2;
 }
 
 static const luaL_Reg mesh2d_methods[] = {
@@ -159,8 +174,9 @@ static const luaL_Reg mesh2d_methods[] = {
     {"n_patches", l_mesh_n_patches},
     {"patch_by_name", l_mesh_patch_by_name},
     {"cell_centre", l_mesh_cell_centre},
-    {"face_centre", l_mesh_face_centre},
     {"cell_vol", l_mesh_cell_vol},
+    {"face_centre", l_mesh_face_centre},
+    {"face_normal", l_mesh_face_normal},
     {"__tostring", l_mesh_tostring},
     {"__gc", l_mesh_gc},
     {NULL, NULL},

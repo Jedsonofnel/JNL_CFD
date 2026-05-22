@@ -28,8 +28,8 @@ void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y)
 		if (nb < 0) {
 			continue;
 		}
-		y[o] += m->lower[f] * x[nb];
-		y[nb] += m->upper[f] * x[o];
+		y[o] += m->upper[f] * x[nb];
+		y[nb] += m->lower[f] * x[o];
 	}
 }
 
