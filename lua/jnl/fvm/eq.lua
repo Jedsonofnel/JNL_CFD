@@ -52,6 +52,9 @@ function Op.ddt(...)
 
 	local config = pop_config(args)
 	local scheme = V.in_enum(ddt_scms, config.scheme or "implicit", "Op.ddt scheme")
+	if scheme:upper() ~= "IMPLICIT" then
+		error("Op.DDT scheme: no support for anything BUT implicit at the mo sorry")
+	end
 
 	local phi_raw = to_field_name(table.remove(args), "Op.ddt phi (last arg)")
 

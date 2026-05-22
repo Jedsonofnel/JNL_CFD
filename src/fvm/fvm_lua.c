@@ -213,6 +213,36 @@ static struct jnl_mesh *check_mesh(lua_State *L, int idx)
 	return *(struct jnl_mesh **)luaL_checkudata(L, idx, MESH_MT);
 }
 
+//
+// DDT
+//
+
+static int l_ddt_const(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	f64 rho = luaL_checknumber(L, 3);
+	f64 dt = luaL_checknumber(L, 4);
+	lua_vec *phi_old = check_vec(L, 5);
+	jnl_ddt_const(s->sys, m, rho, dt, phi_old->data);
+	return 0;
+}
+
+static int l_ddt_field(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	lua_vec *rho = check_vec(L, 3);
+	f64 dt = luaL_checknumber(L, 4);
+	lua_vec *phi_old = check_vec(L, 5);
+	jnl_ddt_field(s->sys, m, rho->data, dt, phi_old->data);
+	return 0;
+}
+
+//
+// Laplacian
+//
+
 static int l_laplacian_const(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
@@ -262,6 +292,10 @@ static int l_laplacian_nonorth_field(lua_State *L)
 	return 0;
 }
 
+//
+// Div CDS
+//
+
 static int l_div_cds_const(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
@@ -282,6 +316,10 @@ static int l_div_cds_field(lua_State *L)
 	return 0;
 }
 
+//
+// Div UDS
+//
+
 static int l_div_uds_const(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
@@ -301,6 +339,10 @@ static int l_div_uds_field(lua_State *L)
 	jnl_div_uds_field(s->sys, m, rho->data, un->data);
 	return 0;
 }
+
+//
+// Div TVD Correctors
+//
 
 static int l_div_tvd_minmod(lua_State *L)
 {
@@ -341,6 +383,10 @@ static int l_div_tvd_superbee(lua_State *L)
 	return 0;
 }
 
+//
+// Su
+//
+
 static int l_su_const(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
@@ -377,6 +423,10 @@ static int l_su_field_scaled(lua_State *L)
 	jnl_su_field_scaled(s->sys, m, coeff, f->data);
 	return 0;
 }
+
+//
+// Sp
+//
 
 static int l_sp_const(lua_State *L)
 {
@@ -578,6 +628,8 @@ static int l_ctx_new(lua_State *L)
 static const luaL_Reg fvm_funcs[] = {
     {"ctx_new", l_ctx_new},
     // operators
+    {"ddt_const", l_ddt_const},
+    {"ddt_field", l_ddt_field},
     {"laplacian_const", l_laplacian_const},
     {"laplacian_field", l_laplacian_field},
     {"laplacian_field_harmonic", l_laplacian_field_harmonic},

@@ -6,6 +6,16 @@
 #include "linalg.h"
 
 //
+// DDT
+//
+
+void jnl_ddt_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 rho,
+                   f64 dt, const f64 *phi_old);
+
+void jnl_ddt_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                   const f64 *rho, f64 dt, const f64 *phi_old);
+
+//
 // Laplacian
 //
 

@@ -68,6 +68,15 @@ local printers = {
 	sys_reset = function(f)
 		return string.format("SYS_RESET     %s", fmt(f.field))
 	end,
+	ddt_const = function(f)
+		return string.format("DDT_CONST     %s  rho=%g  phi0=%s",
+			fmt(f.field), f.coeff, fmt(f.phi_prev))
+	end,
+	ddt_field = function(f)
+		local coeff = f.coeff == "__coeff" and "<coeff>" or fmt(f.coeff)
+		return string.format("DDT_FIELD     %s  rho=%s  phi0=%s",
+			fmt(f.field), coeff, fmt(f.phi_prev))
+	end,
 	laplacian_const = function(f)
 		return string.format("LAP_CONST     %s  gamma=%g", fmt(f.field), f.gamma)
 	end,
@@ -294,8 +303,10 @@ local function emit_eval(reg, name, out)
 	end
 end
 
+---@param coeff Expr
+---@param reg table
 ---@return table
-local function coeff_of(coeff)
+local function coeff_of(coeff, reg)
 	if not coeff then
 		return { kind = "const", value = 1.0 }
 	end
@@ -303,6 +314,11 @@ local function coeff_of(coeff)
 		return { kind = "const", value = coeff.value }
 	end
 	if coeff.kind == "sym" then
+		-- check registry
+		local rsym = reg and reg[coeff.name]
+		if rsym and rsym.kind == "constant" then
+			return { kind = "const", value = rsym.value }
+		end
 		return { kind = "field", name = coeff.name }
 	end
 	if coeff._dep_name then
@@ -326,11 +342,15 @@ local function emit_coeff(coeff_desc, out)
 	end
 end
 
-local function emit_term(field, term, out)
+---@param field string
+---@param term Term
+---@param reg table
+local function emit_term(field, term, reg, out)
 	local kind = term.kind -- not term.op
 
 	if kind == "lap" then
-		local c = coeff_of(term.coeff)
+		---@cast term FvmLapTerm
+		local c = coeff_of(term.coeff, reg)
 		local harmonic = term.gamma_scheme == "HARMONIC"
 		local gamma = emit_coeff(c, out)
 
@@ -363,12 +383,13 @@ local function emit_term(field, term, out)
 			end
 		end
 	elseif kind == "div" then
+		---@cast term FvmDivTerm
 		local flux_name = term.flux._dep_name
 			or error("emit_term div: flux has no _dep_name", 2)
 		local scheme = (term.scheme or "UDS"):lower()
 
 		if term.coeff then
-			local c = coeff_of(term.coeff)
+			local c = coeff_of(term.coeff, reg)
 			local coeff = emit_coeff(c, out)
 			out[#out + 1] = Inst.new("div_" .. scheme .. "_field", {
 				field = term.phi,
@@ -395,11 +416,29 @@ local function emit_term(field, term, out)
 			})
 		end
 	elseif kind == "su" then
+		---@cast term FvmSuTerm
 		out[#out + 1] = Inst.new("su_integrated", { field = field, expr = term.expr })
 	elseif kind == "sp" then
+		---@cast term FvmSpTerm
 		out[#out + 1] = Inst.new("sp_integrated", { field = field, expr = term.expr })
 	elseif kind == "ddt" then
-		-- skipped for steady state; will need Su/Sp pair when DDT is reintroduced
+		local c = coeff_of(term.coeff, reg)
+		local coeff = emit_coeff(c, out)
+		local phi_prev = E.prev_name(field)
+
+		if type(coeff) == "number" then
+			out[#out + 1] = Inst.new("ddt_const", {
+				field = field,
+				coeff = coeff,
+				phi_prev = phi_prev,
+			})
+		else
+			out[#out + 1] = Inst.new("ddt_field", {
+				field = field,
+				coeff = coeff,
+				phi_prev = phi_prev,
+			})
+		end
 	end
 end
 
@@ -413,7 +452,7 @@ local function emit_solve(reg, name, out)
 	out[#out + 1] = Inst.new("sys_reset", { field = name })
 
 	for _, term in ipairs(eq.terms) do
-		emit_term(name, term, out)
+		emit_term(name, term, reg, out)
 	end
 
 	if sym.bcs then

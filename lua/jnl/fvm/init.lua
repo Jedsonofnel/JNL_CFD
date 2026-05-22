@@ -32,6 +32,8 @@ function FVM.ctx_new(mesh, n_fields, n_face_fields, n_systems, opts)
 end
 
 -- operators: assembled into the linear system
+FVM.ddt_const                = b.ddt_const
+FVM.ddt_field                = b.ddt_field
 FVM.laplacian_const          = b.laplacian_const
 FVM.laplacian_field          = b.laplacian_field
 FVM.laplacian_field_harmonic = b.laplacian_field_harmonic

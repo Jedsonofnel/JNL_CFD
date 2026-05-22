@@ -2,6 +2,32 @@
 #include "jnl/common.h"
 
 //
+// DDT
+//
+
+void jnl_ddt_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 rho,
+                   f64 dt, const f64 *phi_old)
+{
+	i32 n = mesh->topo.n_cells;
+	for (i32 i = 0; i < n; i++) {
+		f64 coeff = rho * mesh->geom.cell_vol[i] / dt;
+		sys->matrix.diag[i] += coeff;
+		sys->rhs[i] += coeff * phi_old[i];
+	}
+}
+
+void jnl_ddt_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                   const f64 *rho, f64 dt, const f64 *phi_old)
+{
+	i32 n = mesh->topo.n_cells;
+	for (i32 i = 0; i < n; i++) {
+		f64 coeff = rho[i] * mesh->geom.cell_vol[i] / dt;
+		sys->matrix.diag[i] += coeff;
+		sys->rhs[i] += coeff * phi_old[i];
+	}
+}
+
+//
 // Laplacian
 //
 
