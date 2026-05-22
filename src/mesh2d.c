@@ -554,7 +554,7 @@ static struct jnl_mesh_interp interp_gen(jnl_arena *arena,
 			    sqrt((fcx - ncx) * (fcx - ncx) + (fcy - ncy) * (fcy - ncy));
 			f64 d_dist = do_dist + dn_dist;
 
-			f64 w = (d_dist > 1e-14) ? dn_dist / d_dist : 0.5;
+			f64 w = (d_dist > 1e-14) ? do_dist / d_dist : 0.5;
 			interp.weight[f] = w;
 
 			f64 proj = dx * nx + dy * ny;

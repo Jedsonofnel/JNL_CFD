@@ -193,6 +193,7 @@ static void test_conv_diff_cds(void)
 		jnl_bc_dirichlet_const(sys, mesh, "east", 0.0);
 
 		f64 *T = cell_field(n);
+
 		jnl_fvsys_solve_bicgstab(sys, ctx, T, 1e-12, 0);
 
 		// L2 error over all cells
