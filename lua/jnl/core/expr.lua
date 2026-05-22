@@ -457,17 +457,21 @@ local function scratch_depth(e)
 		return 0 -- all become EXPR_ARRAY in C, no scratch consumed
 	end
 	if k == "neg" then
-		return scratch_depth(e.value) + 1
+		return scratch_depth(e.value)
 	end
 	if k == "add" or k == "sub" or k == "mul" or k == "div" or k == "pow" then
 		local da, db = scratch_depth(e.a), scratch_depth(e.b)
-		return ((da >= db) and da or (db + 1)) + 1
+		if da >= db then
+			return math.max(da, db + 1) + 1
+		else
+			return math.max(db, da + 1) + 1
+		end
 	end
 	if k == "addv" then
 		local d = scratch_depth(e.addends[1])
 		for i = 2, #e.addends do
 			local di = scratch_depth(e.addends[i])
-			d = ((d >= di) and d or (di + 1)) + 1
+			d = (d >= di) and d or (di + 1)
 		end
 		return d
 	end
@@ -475,7 +479,7 @@ local function scratch_depth(e)
 		local d = scratch_depth(e.factors[1])
 		for i = 2, #e.factors do
 			local di = scratch_depth(e.factors[i])
-			d = ((d >= di) and d or (di + 1)) + 1
+			d = (d >= di) and d or (di + 1)
 		end
 		return d
 	end
