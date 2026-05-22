@@ -51,6 +51,9 @@ local printers = {
 	eval_expr = function(f)
 		return string.format("EVAL_EXPR     %s  =  %s", fmt(f.name), tostring(f.expr))
 	end,
+	eval_coeff = function(f)
+		return string.format("| EVAL_COEFF  %s", tostring(f.expr))
+	end,
 	assemble = function(f)
 		local relax = f.relax and string.format(" [relax=%g]", f.relax) or ""
 		return string.format("ASSEMBLE      %s%s", fmt(f.field), relax)
@@ -69,34 +72,39 @@ local printers = {
 		return string.format("LAP_CONST     %s  gamma=%g", fmt(f.field), f.gamma)
 	end,
 	laplacian_field = function(f)
-		return string.format("LAP_FIELD     %s  gamma=%s", fmt(f.field), fmt(f.gamma))
+		local g = f.gamma == "__coeff" and "<coeff>" or fmt(f.gamma)
+		return string.format("LAP_FIELD     %s  gamma=%s", fmt(f.field), g)
 	end,
 	laplacian_field_harmonic = function(f)
-		return string.format("LAP_HARMONIC  %s  gamma=%s", fmt(f.field), fmt(f.gamma))
+		local g = f.gamma == "__coeff" and "<coeff>" or fmt(f.gamma)
+		return string.format("LAP_HARMONIC  %s  gamma=%s", fmt(f.field), g)
+	end,
+	laplacian_nonorth_field = function(f)
+		local g = f.gamma == "__coeff" and "<coeff>" or fmt(f.gamma)
+		return string.format("LAP_NONORTH   %s  gamma=%s  grad=(%s,%s)",
+			fmt(f.field), g, fmt(f.grad_x), fmt(f.grad_y))
 	end,
 	laplacian_nonorth_const = function(f)
 		return string.format("LAP_NONORTH   %s  gamma=%g  grad=(%s,%s)",
 			fmt(f.field), f.gamma, fmt(f.grad_x), fmt(f.grad_y))
 	end,
-	laplacian_nonorth_field = function(f)
-		return string.format("LAP_NONORTH   %s  gamma=%s  grad=(%s,%s)",
-			fmt(f.field), fmt(f.gamma), fmt(f.grad_x), fmt(f.grad_y))
-	end,
 	div_uds_const = function(f)
 		return string.format("DIV_UDS_CONST %s  rho=%g  flux=%s",
-			fmt(f.field), f.rho, fmt(f.un_face))
+			fmt(f.field), f.coeff, fmt(f.un_face))
 	end,
 	div_uds_field = function(f)
+		local coeff = f.coeff == "__coeff" and "<coeff>" or fmt(f.coeff)
 		return string.format("DIV_UDS_FIELD %s  rho=%s  flux=%s",
-			fmt(f.field), fmt(f.rho), fmt(f.un_face))
+			fmt(f.field), coeff, fmt(f.un_face))
+	end,
+	div_cds_field = function(f)
+		local coeff = f.coeff == "__coeff" and "<coeff>" or fmt(f.coeff)
+		return string.format("DIV_CDS_FIELD %s  rho=%s  flux=%s",
+			fmt(f.field), coeff, fmt(f.un_face))
 	end,
 	div_cds_const = function(f)
 		return string.format("DIV_CDS_CONST %s  rho=%g  flux=%s",
-			fmt(f.field), f.rho, fmt(f.un_face))
-	end,
-	div_cds_field = function(f)
-		return string.format("DIV_CDS_FIELD %s  rho=%s  flux=%s",
-			fmt(f.field), fmt(f.rho), fmt(f.un_face))
+			fmt(f.field), f.coeff, fmt(f.un_face))
 	end,
 	div_tvd_minmod = function(f)
 		return string.format("DIV_TVD_MM    %s  flux=%s", fmt(f.field), fmt(f.un_face))
@@ -151,6 +159,12 @@ end
 -- Resource counting
 --
 
+local function max_expr_depth(expr, current_max)
+	if not expr then return current_max end
+	local d = expr:scratch_depth()
+	return d > current_max and d or current_max
+end
+
 function M.count_resources(reg)
 	local n_fields         = 0
 	local n_face_fields    = 0
@@ -175,11 +189,18 @@ function M.count_resources(reg)
 			n_systems = n_systems + 1
 			if sym.eq and sym.eq._deps then
 				for dep in pairs(sym.eq._deps) do
-					if E.is_prev(dep) or E.is_expl(dep) then
+					if E.is_prev(dep) then
 						record(dep, "prev", false)
 					elseif E.is_expl(dep) then
 						record(dep, "expl", false)
 					end
+				end
+			end
+			-- walk terms for anonymous coeff expr scratch depths
+			if sym.eq and sym.eq.terms then
+				for _, term in ipairs(sym.eq.terms) do
+					max_expr_scratch = max_expr_depth(term.coeff, max_expr_scratch)
+					max_expr_scratch = max_expr_depth(term.expr, max_expr_scratch)
 				end
 			end
 		elseif sym.kind == "expression" then
@@ -273,29 +294,55 @@ local function emit_eval(reg, name, out)
 	end
 end
 
-local function gamma_of(coeff)
-	if not coeff then return 1.0 end
-	if coeff.kind == "const" then return coeff.value end
-	if coeff.kind == "sym" then return coeff.name end
-	return (coeff._dep_name or tostring(coeff))
+---@return table
+local function coeff_of(coeff)
+	if not coeff then
+		return { kind = "const", value = 1.0 }
+	end
+	if coeff.kind == "const" then
+		return { kind = "const", value = coeff.value }
+	end
+	if coeff.kind == "sym" then
+		return { kind = "field", name = coeff.name }
+	end
+	if coeff._dep_name then
+		-- registered intermediate or expression - already has a field slot
+		return { kind = "field", name = coeff._dep_name }
+	end
+	-- anonymous compound expr - needs eval_coeff before use
+	return { kind = "expr", expr = coeff }
+end
+
+---Emit an eval_coeff instruction if needed
+---@return string name
+local function emit_coeff(coeff_desc, out)
+	if coeff_desc.kind == "const" then
+		return coeff_desc.value
+	elseif coeff_desc.kind == "field" then
+		return coeff_desc.name
+	else
+		out[#out + 1] = Inst.new("eval_coeff", { expr = coeff_desc.expr })
+		return "__coeff"
+	end
 end
 
 local function emit_term(field, term, out)
 	local kind = term.kind -- not term.op
 
 	if kind == "lap" then
-		local gamma = gamma_of(term.coeff)
+		local c = coeff_of(term.coeff)
 		local harmonic = term.gamma_scheme == "HARMONIC"
+		local gamma = emit_coeff(c, out)
 
 		if type(gamma) == "number" then
 			out[#out + 1] = Inst.new("laplacian_const", {
 				field = field, gamma = gamma })
 		else
-			local scheme = harmonic and "laplacian_field_harmonic"
-				or "laplacian_field"
+			local scheme = harmonic and "laplacian_field_harmonic" or "laplacian_field"
 			out[#out + 1] = Inst.new(scheme, {
 				field = field, gamma = gamma })
 		end
+
 		if term.non_ortho then
 			local gx = names.grad(field, "x")
 			local gy = names.grad(field, "y")
@@ -316,25 +363,25 @@ local function emit_term(field, term, out)
 			end
 		end
 	elseif kind == "div" then
-		-- coeff is the flux expr (mwi, face, etc.)
-		-- phi is the convected field
-		local flux = term.coeff
-		local flux_name
-		if flux and flux.kind == "mwi" then
-			flux_name = names.mwi(flux.U, flux.p)
-		elseif flux and flux._dep_name then
-			flux_name = flux._dep_name
-		else
-			flux_name = tostring(flux)
-		end
-
+		local flux_name = term.flux._dep_name
+			or error("emit_term div: flux has no _dep_name", 2)
 		local scheme = (term.scheme or "UDS"):lower()
 
-		out[#out + 1] = Inst.new("div_" .. scheme .. "_const", {
-			field   = field,
-			rho     = 1.0,
-			un_face = flux_name
-		})
+		if term.coeff then
+			local c = coeff_of(term.coeff)
+			local coeff = emit_coeff(c, out)
+			out[#out + 1] = Inst.new("div_" .. scheme .. "_field", {
+				field = term.phi,
+				coeff = coeff,
+				un_face = flux_name,
+			})
+		else
+			out[#out + 1] = Inst.new("div_" .. scheme .. "_const", {
+				field   = term.phi,
+				coeff   = 1.0,
+				un_face = flux_name
+			})
+		end
 
 		if term.tvd then
 			local limiter_op = term.tvd:lower():gsub("-", "_")

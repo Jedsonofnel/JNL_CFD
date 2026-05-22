@@ -118,50 +118,67 @@ M.names = {
 	is_div_mwi = is_div_mwi,
 }
 
+--
+-- Pretty printing
+--
+
+local function pretty_grad(field, comp)
+	if comp then
+		return G.grad .. comp .. G.lparen .. E.pretty_sym(field) .. G.rparen
+	end
+	return G.grad .. G.lparen .. E.pretty_sym(field) .. G.rparen
+end
+
+local function pretty_face(field)
+	return "<" .. "f:" .. E.pretty_sym(field) .. ">"
+end
+
+local function pretty_mwi(U, p)
+	return "<" .. "mwi:" .. E.pretty_sym(U) .. "," .. E.pretty_sym(p) .. ">"
+end
+
+local function pretty_diag(field, comp)
+	local inner = E.pretty_sym(field)
+	if comp then inner = inner .. "." .. comp end
+	return "<" .. "d:" .. inner .. ">"
+end
+
+local function pretty_div_mwi(U, p)
+	return G.div .. G.lparen .. "<mwi:" .. U .. "," .. p .. ">" .. G.rparen
+end
+
+local function pretty_div(field)
+	return G.div .. G.lparen .. E.pretty_sym(field) .. G.rparen
+end
+
 E.pretty_sym_fallback = function(name)
 	do
 		local comp, field = is_grad(name)
-		if comp then
-			return G.grad .. comp .. G.lparen .. E.pretty_sym(field) .. G.rparen
-		end
+		if comp then return pretty_grad(field, comp) end
 	end
 	do
 		local field = is_grad_parent(name)
-		if field then
-			return G.grad .. "(" .. E.pretty_sym(field) .. ")"
-		end
+		if field then return pretty_grad(field) end
 	end
 	do
 		local field = is_face(name)
-		if field then
-			return "<" .. "f:" .. E.pretty_sym(field) .. ">"
-		end
+		if field then return pretty_face(field) end
 	end
 	do
 		local U, p = is_mwi(name)
-		if U then
-			return "<" .. "mwi:" .. E.pretty_sym(U) .. "," .. E.pretty_sym(p) .. ">"
-		end
+		if U then return pretty_mwi(U, p) end
 	end
 	do
 		local field, comp = is_diag(name)
-		if field then
-			local inner = E.pretty_sym(field)
-			if comp then inner = inner .. "." .. comp end
-			return "<" .. "d:" .. inner .. ">"
-		end
+		if field then return pretty_diag(field, comp) end
 	end
 	do
 		local U, p = is_div_mwi(name)
-		if U then
-			return G.div .. G.lparen .. "<mwi:" .. U .. "," .. p .. ">" .. G.rparen
-		end
+		if U then return pretty_div_mwi(U, p) end
 	end
 	do
 		local field = is_div(name)
-		if field then
-			return G.div .. G.lparen .. E.pretty_sym(field) .. G.rparen
-		end
+		if field then return pretty_div(field) end
 	end
 end
 
@@ -177,9 +194,7 @@ function M.grad(field, i)
 		field = field,
 		component = i,
 		_dep_name = grad_name(field), -- parent, not component
-		_pretty = function()
-			return G.grad .. i .. G.lparen .. field .. G.rparen
-		end,
+		_pretty = function() return pretty_grad(field, i) end
 	})
 end
 
@@ -188,16 +203,12 @@ function M.diag(field, i)
 	assert(i == nil or i == "x" or i == "y",
 		"Expr.diag: component (i) must be nil or 'x' or 'y'")
 
-	local display = i and (field .. "." .. i) or field
-
 	return E.make_expr({
 		kind = "diag",
 		field = field,
 		component = i,
 		_dep_name = diag_name(field, i),
-		_pretty = function()
-			return "<diag:" .. display .. ">"
-		end,
+		_pretty = function() return pretty_diag(field, i) end
 	})
 end
 
@@ -209,21 +220,29 @@ function M.mwi(U_name, p_name)
 		U = U_name,
 		p = p_name,
 		_dep_name = mwi_name(U_name, p_name),
-		_pretty = function()
-			return "<mwi:" .. U_name .. "," .. p_name .. ">"
-		end,
+		_facewise = true,
+		_pretty = function() return pretty_mwi(U_name, p_name) end
 	})
 end
 
+function M.face(field)
+	V.field_name(field, "face field")
+	return E.make_expr {
+		kind      = "face",
+		field     = field,
+		_dep_name = face_name(field),
+		_facewise = true,
+		_pretty   = function() return pretty_face(field) end
+	}
+end
+
 function M.div(field)
-	V.field_name(field, "E.div field")
+	V.field_name(field, "div field")
 	return E.make_expr({
 		kind = "div",
 		field = field,
 		_dep_name = div_name(field),
-		_pretty = function()
-			return G.div .. G.lparen .. field .. G.rparen
-		end,
+		_pretty = function() return pretty_div(field) end
 	})
 end
 
@@ -235,10 +254,18 @@ function M.div_mwi(U_name, p_name)
 		U = U_name,
 		p = p_name,
 		_dep_name = div_mwi_name(U_name, p_name),
-		_pretty = function()
-			return G.div .. G.lparen .. "<mwi:" .. U_name .. "," .. p_name .. ">" .. G.rparen
-		end,
+		_pretty = function() return pretty_div_mwi(U_name, p_name) end
 	})
 end
+
+--
+-- Helpers
+--
+
+local function is_facewise(e)
+	return E.is_expr(e) and e._facewise
+end
+
+M.is_facewise = is_facewise
 
 return M

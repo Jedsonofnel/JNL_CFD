@@ -233,6 +233,9 @@ local function is_prev(name) return name:match("^__prev_(.+)$") end
 M.pretty_sym_fallback = nil
 
 local function pretty_sym(name)
+	if type(name) ~= "string" then
+		return tostring(name)
+	end
 	local b
 	b = is_prime(name); if b then return b .. G.prime end
 	b = is_expl(name); if b then return b .. G.expl end

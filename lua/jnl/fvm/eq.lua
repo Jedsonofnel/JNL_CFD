@@ -8,7 +8,8 @@ local E = require("jnl.core.expr")
 local V = require("jnl.core.validation")
 local G = require("jnl.core.glyphs")
 local CEq = require("jnl.core.eq")
-local names = require("jnl.fvm.expr").names
+local FVexpr = require("jnl.fvm.expr")
+local names = FVexpr.names
 
 local make_term = CEq.make_term
 local make_eq = CEq.make_eq
@@ -19,6 +20,21 @@ local term_deps = CEq.term_deps
 --
 -- FVM: Differential operators etc
 --
+
+local function to_field_name(v, ctx)
+	if type(v) == "string" then
+		V.identifier(v, ctx)
+		return v
+	end
+	if E.is_expr(v) then
+		local name = v._dep_name or (v.kind == "sym" and v.name)
+		assert(type(name) == "string",
+			(ctx or "to_field_name") .. ": expr has no resolvable field name")
+		return name
+	end
+	error((ctx or "to_field_name") .. ": expected field name or name expr, got "
+		.. type(v), 3)
+end
 
 local Op = {}
 M.Op = Op
@@ -37,18 +53,20 @@ function Op.ddt(...)
 	local config = pop_config(args)
 	local scheme = V.in_enum(ddt_scms, config.scheme or "implicit", "Op.ddt scheme")
 
-	local phi = E.from(table.remove(args))
+	local phi_raw = to_field_name(table.remove(args), "Op.ddt phi (last arg)")
 
-	local coeff = #args > 0 and E.mul(table.unpack(args)) or nil
+	local coeff_exprs = {}
+	for _, a in ipairs(args) do coeff_exprs[#coeff_exprs + 1] = E.from(a) end
+	local coeff = #coeff_exprs > 0 and E.mul(table.unpack(coeff_exprs)) or nil
 
 	---@type FvmDdtTerm
 	return make_term({
 		kind     = "ddt",
 		coeff    = coeff,
-		phi      = phi,
+		phi      = phi_raw,
 		scheme   = scheme,
 		_backend = "fvm",
-		_deps    = term_deps(coeff, phi.name, E.prev_name(phi.name)),
+		_deps    = term_deps(coeff, phi_raw, E.prev_name(phi_raw)),
 	})
 end
 
@@ -69,24 +87,43 @@ function Op.div(...)
 	local raw_scheme = (config.scheme or "uds"):upper()
 	local scheme = V.in_enum(div_scms, raw_scheme, "Op.div scheme")
 
-	local phi = E.from(table.remove(args))
-	local coeff = #args > 0 and E.mul(table.unpack(args)) or nil
+	local phi_raw = to_field_name(table.remove(args), "Op.div phi (last arg)")
 
-	local deps = term_deps(coeff, phi.name)
+	-- scan remaining args for the single facewise flux
+	local flux_expr, flux_idx
+	for i, a in ipairs(args) do
+		local e = E.from(a)
+		if FVexpr.is_facewise(e) then
+			assert(flux_idx == nil,
+				"Op.div: only one facewise flux argument is allowed")
+			flux_expr = e
+			flux_idx  = i
+		end
+	end
+	assert(flux_expr ~= nil,
+		"Op.div: no facewise flux argument found (wrap your flux with FVMe.mwi or FVMe.face)")
+	table.remove(args, flux_idx)
+
+	local rho_exprs = {}
+	for _, a in ipairs(args) do rho_exprs[#rho_exprs + 1] = E.from(a) end
+	local coeff = #rho_exprs > 0 and E.mul(table.unpack(rho_exprs)) or nil
 
 	local tvd_limiter = nil
 	if scheme == "MINMOD" or scheme == "SUPERBEE" or scheme == "VAN-LEER" then
 		tvd_limiter = scheme
 		scheme = "UDS"
-
-		deps[names.grad(phi.name)] = true
 	end
+
+	local extra = tvd_limiter and { phi_raw, names.grad(phi_raw) } or { phi_raw }
+	local deps  = term_deps(coeff, table.unpack(extra))
+	if flux_expr._dep_name then deps[flux_expr._dep_name] = true end
 
 	---@type FvmDivTerm
 	return make_term({
 		kind     = "div",
+		flux     = flux_expr,
 		coeff    = coeff,
-		phi      = E.from(phi),
+		phi      = phi_raw,
 		scheme   = scheme,
 		tvd      = tvd_limiter,
 		_deps    = deps,
@@ -111,23 +148,22 @@ function Op.lap(...)
 		"Op.lap gamma_scheme")
 	local non_ortho = config.non_ortho or false
 
-	local phi = E.from(table.remove(args))
+	local phi_raw = to_field_name(table.remove(args), "Op.lap phi (last arg)")
 
-	local coeff = #args > 0 and E.mul(table.unpack(args)) or nil
+	local gamma_exprs = {}
+	for _, a in ipairs(args) do gamma_exprs[#gamma_exprs + 1] = E.from(a) end
+	local coeff = #gamma_exprs > 0 and E.mul(table.unpack(gamma_exprs)) or nil
 
-	local deps = term_deps(coeff, phi.name)
-	if non_ortho then
-		deps[names.grad(phi.name)] = true
-	end
+	local extra = non_ortho and { phi_raw, names.grad(phi_raw) } or { phi_raw }
 
 	---@type FvmLapTerm
 	return make_term({
 		kind         = "lap",
 		coeff        = coeff,
-		phi          = E.from(phi),
+		phi          = phi_raw,
 		gamma_scheme = gamma_scheme,
 		non_ortho    = non_ortho,
-		_deps        = deps,
+		_deps        = term_deps(coeff, table.unpack(extra)),
 		_backend     = "fvm",
 	})
 end
@@ -140,6 +176,7 @@ function Op.su(...)
 		exprs[#exprs + 1] = E.from(a)
 	end
 	local combined = #exprs == 1 and exprs[1] or E.add(table.unpack(exprs))
+
 	---@type FvmSuTerm
 	return make_term({
 		kind       = "su",

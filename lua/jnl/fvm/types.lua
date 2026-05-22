@@ -55,6 +55,7 @@ function FvSys:solve_bicgstab(x, tol, max_iters) end
 ---@field scheme  string  "IMPLICIT"|"EXPLICIT"|"CRANK_NICHOLSON"
 
 ---@class FvmDivTerm : Term
+---@field flux Expr|nil
 ---@field scheme  string  "UDS"|"CDS"
 ---@field tvd string "MINMOD"|"VAN-LEER"|"SUPERBEE"
 

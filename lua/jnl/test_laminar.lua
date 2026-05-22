@@ -17,7 +17,7 @@ reg:constant("alpha_p", 0.3)
 -- momentum
 reg:field("Ux", {
 	eq = FVM.eq(
-		Op.div(FVMe.mwi("U", "p"), "Ux", { scheme = "SUPERBEE" }),
+		Op.div("rho", 2, FVMe.mwi("U", "p"), "Ux", { scheme = "SUPERBEE" }),
 		Op.lap("mu", "Ux", { non_ortho = true }),
 		Op.su(E.neg(FVMe.grad("p", "x"))),
 		{ relax = 0.7, solver = "bicgstab" }
@@ -25,7 +25,7 @@ reg:field("Ux", {
 })
 reg:field("Uy", {
 	eq = FVM.eq(
-		Op.div(FVMe.mwi("U", "p"), "Uy", { scheme = "VAN-LEER" }),
+		Op.div("rho", 2, FVMe.mwi("U", "p"), "Uy", { scheme = "VAN-LEER" }),
 		Op.lap("mu", "Uy", { non_ortho = true }),
 		Op.su(E.neg(FVMe.grad("p", "y"))),
 		{ relax = 0.7, solver = "bicgstab" }
