@@ -9,4 +9,6 @@ function M.new_smesh(width, height, nx, ny)
 	return mesh2d.smesh_gen(width, height, nx, ny)
 end
 
+M.smesh = require("jnl.mesh2d.smesh")
+
 return M

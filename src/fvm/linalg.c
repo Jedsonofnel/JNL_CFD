@@ -6,12 +6,6 @@
 #include "vec.h"
 
 //
-// Global solver context
-//
-
-struct jnl_solver_ctx *jnl_solver_ctx_global = NULL;
-
-//
 // LDU Matrix
 //
 

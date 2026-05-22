@@ -70,9 +70,6 @@ struct jnl_solver_ctx {
 
 struct jnl_solver_ctx *jnl_solver_ctx_new(i32 n_cells_max, jnl_arena *arena);
 
-// Optional global solver context for single-threaded use
-extern struct jnl_solver_ctx *jnl_solver_ctx_global;
-
 //
 // Solvers
 //
