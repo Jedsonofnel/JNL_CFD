@@ -1,8 +1,6 @@
 #include "lua_bindings.h"
 #include "geo2d.h"
 
-#define PSLG_MT "jnl.geo2d.pslg"
-
 //
 // PSLG API
 //
