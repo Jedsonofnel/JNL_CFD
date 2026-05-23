@@ -16,7 +16,7 @@ local rules  = require("jnl.fvm.rules")
 local L      = 1.0
 local N      = 100
 local rho    = 1.0
-local u      = 0.1
+local u      = 1.0
 local gamma  = 0.1
 local Pe     = rho * u * L / gamma
 print(string.format("Peclet number: %.2f", Pe))
@@ -50,7 +50,7 @@ end, { max_iters = 200 })
 alg:add_ruleset(rules.stopping({
 	converged = rules.all_fields({
 		T = rules.any_of(
-			rules.residual_below(1e-8),
+			rules.field_change_below(1e-6, 3),
 			rules.field_stagnant(1e-6, 10)
 		),
 	}),
@@ -106,6 +106,13 @@ sage:add_rule("print_progress",
 	function(f) return f.kind == "field_norm" and f.iter % 10 == 0 end,
 	function(_, f)
 		print(string.format("iter %4d  |%s|  norm = %.3e", f.iter, f.field, f.value))
+	end
+)
+
+sage:add_rule("print_converged",
+	function(f) return f.kind == "converged" end,
+	function(_, f)
+		print(string.format("converged: iter=%d loop_depth=%d", f.iter, f.loop_depth or 1))
 	end
 )
 

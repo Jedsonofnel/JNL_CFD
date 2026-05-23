@@ -7,6 +7,8 @@ local names = FVMe.names
 
 local M = {}
 
+local LINALG_MIN_SCRATCH = 9
+
 -- Helper for copying registry
 
 local function deepcopy(src, seen)
@@ -504,7 +506,7 @@ local function count_resources(reg)
 		n_fields       = n_fields,
 		n_face_fields  = n_face_fields,
 		n_systems      = n_systems,
-		n_cell_scratch = math.max(8, max_expr_scratch + 2),
+		n_cell_scratch = math.max(LINALG_MIN_SCRATCH, max_expr_scratch + 2),
 		n_face_scratch = 4,
 		fields         = field_list,
 	}

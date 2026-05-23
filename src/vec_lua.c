@@ -170,11 +170,20 @@ static int l_vec_norm_linf(lua_State *L)
 	return 1;
 }
 
-static int l_vec_norm_l2_ref(lua_State *L)
+static int l_vec_norm_l2_rel(lua_State *L)
 {
 	lua_vec *v = check_vec(L, 1);
 	lua_vec *ref = check_vec(L, 2);
 	f64 norm = jnl_vec_norm_l2_rel(v->data, ref->data, v->len);
+	lua_pushnumber(L, norm);
+	return 1;
+}
+
+static int l_vec_norm_l2_rel_diff(lua_State *L)
+{
+	lua_vec *new = check_vec(L, 1);
+	lua_vec *old = check_vec(L, 2);
+	f64 norm = jnl_vec_norm_l2_rel_diff(new->data, old->data, new->len);
 	lua_pushnumber(L, norm);
 	return 1;
 }
@@ -198,7 +207,8 @@ static const luaL_Reg vec_mt[] = {{"fill", l_vec_fill},
                                   {"max", l_vec_max},
                                   {"norm_l2", l_vec_norm_l2},
                                   {"norm_linf", l_vec_norm_linf},
-                                  {"norm_l2_ref", l_vec_norm_l2_ref},
+                                  {"norm_l2_rel", l_vec_norm_l2_rel},
+                                  {"norm_l2_rel_diff", l_vec_norm_l2_rel_diff},
                                   {"norm_l2_weighted", l_vec_norm_l2_weighted},
                                   {"min", l_vec_min},
                                   {"sum", l_vec_sum},

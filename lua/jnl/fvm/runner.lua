@@ -380,22 +380,26 @@ dispatch.solve = function(r, inst)
 	local tol       = per_field.tol or inst.tol or 1e-6
 	local iters     = per_field.max_iters or inst.max_iters or 1000
 
-	local n
+	local new, n_iters
 	if solver == "bicgstab" then
-		n = sys:solve_bicgstab(phi, tol, iters)
+		new, n_iters = sys:solve_bicgstab(phi, tol, iters)
 	elseif solver == "cg" then
-		n = sys:solve_cg(phi, tol, iters)
+		new, n_iters = sys:solve_cg(phi, tol, iters)
 	else
 		error("runner: unknown solver '" .. solver .. "' for '" .. inst.field .. "'")
 	end
 
-	r._last_iters = n
+	-- use the temporary new to find norm_change
+	local norm_change = new:norm_l2_rel_diff(phi)
+	phi:copy_from(new)
+
+	r._last_iters = n_iters
 	r._residuals[inst.field] = sys:residual_norm(phi)
 	if r.on_solve then
-		r.on_solve(inst.field, r._residuals[inst.field], n, r._iter, r._loop_depth)
+		r.on_solve(inst.field, r._residuals[inst.field], n_iters, r._iter, r._loop_depth)
 	end
 	if r.on_monitor then
-		r.on_monitor(inst.field, phi:norm_l2(), r._iter, r._loop_depth, "normL2")
+		r.on_monitor(inst.field, norm_change, r._iter, r._loop_depth, "normL2_rel_diff")
 	end
 end
 

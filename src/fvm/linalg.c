@@ -173,16 +173,15 @@ static void fvsys_ensure_nonsingular(struct jnl_fvsys *sys,
 }
 
 //
-// Solvers
+// Solvers: CG with jacobi preconditioner
 //
 
-i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
-                       f64 *x, f64 tolerance, i32 max_iters)
+// Implementation not exposed
+static struct jnl_solve_result
+fvsys_solve_cg_impl(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
+                    const f64 *x_init, f64 tolerance, i32 max_iters)
 {
-	jnl_scratch_reset(pool);
-	assert(pool->len >= sys->matrix.n_cells);
-	fvsys_ensure_nonsingular(sys, pool);
-
+	// NOTE: caller must reset pool and ensure nonsingular before calling
 	const struct jnl_ldu_matrix *A = &sys->matrix;
 	const f64 *b = sys->rhs;
 	i32 n = A->n_cells;
@@ -190,10 +189,13 @@ i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
 	if (max_iters <= 0)
 		max_iters = n < 1000 ? n : 1000;
 
+	f64 *x = jnl_scratch_acquire(pool);
 	f64 *r = jnl_scratch_acquire(pool);
 	f64 *d = jnl_scratch_acquire(pool);
 	f64 *Ad = jnl_scratch_acquire(pool);
 	f64 *z = jnl_scratch_acquire(pool);
+
+	memcpy(x, x_init, n * sizeof(f64));
 
 	// r = b - Ax, d = M^-1 r (Jacobi: M^-1 = 1/diag)
 	jnl_ldu_matvec(A, x, r);
@@ -236,17 +238,45 @@ i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
 			d[i] = z[i] + beta * d[i];
 	}
 
-	return iter;
+	return (struct jnl_solve_result){
+	    .x = x,
+	    .iters = iter,
+	};
 }
 
-i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
-                             struct jnl_scratch_pool *pool, f64 *x,
-                             f64 tolerance, i32 max_iters)
+i32 jnl_fvsys_solve_cg_into(struct jnl_fvsys *sys,
+                            struct jnl_scratch_pool *pool, f64 *x,
+                            f64 tolerance, i32 max_iters)
 {
 	jnl_scratch_reset(pool);
-	assert(pool->len >= sys->matrix.n_cells);
 	fvsys_ensure_nonsingular(sys, pool);
 
+	struct jnl_solve_result result;
+	result = fvsys_solve_cg_impl(sys, pool, x, tolerance, max_iters);
+	memcpy(x, result.x, sys->matrix.n_cells * sizeof(f64));
+	return result.iters;
+}
+
+// Returns scratch pointer - valid until scrach is next used for something
+struct jnl_solve_result jnl_fvsys_solve_cg(struct jnl_fvsys *sys,
+                                           struct jnl_scratch_pool *pool,
+                                           const f64 *x_init, f64 tolerance,
+                                           i32 max_iters)
+{
+	jnl_scratch_reset(pool);
+	fvsys_ensure_nonsingular(sys, pool);
+	return fvsys_solve_cg_impl(sys, pool, x_init, tolerance, max_iters);
+}
+
+//
+// Solvers: BiCGSTAB with Jacobi preconditioner
+//
+
+static struct jnl_solve_result
+fvsys_solve_bicgstab_impl(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
+                          const f64 *x_init, f64 tolerance, i32 max_iters)
+{
+	// NOTE: caller must reset pool and ensure nonsingular before calling
 	const struct jnl_ldu_matrix *A = &sys->matrix;
 	const f64 *b = sys->rhs;
 	i32 n = A->n_cells;
@@ -254,6 +284,7 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 	if (max_iters <= 0)
 		max_iters = n < 1000 ? n : 1000;
 
+	f64 *x = jnl_scratch_acquire(pool);
 	f64 *r = jnl_scratch_acquire(pool);
 	f64 *rhat = jnl_scratch_acquire(pool);
 	f64 *p = jnl_scratch_acquire(pool);
@@ -262,6 +293,8 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 	f64 *t = jnl_scratch_acquire(pool);
 	f64 *y = jnl_scratch_acquire(pool);
 	f64 *z = jnl_scratch_acquire(pool);
+
+	memcpy(x, x_init, n * sizeof(f64));
 
 	// r = b - Ax
 	jnl_ldu_matvec(A, x, r);
@@ -295,8 +328,10 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 			s[i] = r[i] - alpha * v[i];
 		}
 
-		if (jnl_vec_dot(s, s, n) < threshold_sq)
-			return iter;
+		if (jnl_vec_dot(s, s, n) < threshold_sq) {
+			iter++;
+			return (struct jnl_solve_result){x, iter};
+		}
 
 		// z = s / diag
 		for (i32 i = 0; i < n; i++)
@@ -320,7 +355,7 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 
 		if (jnl_vec_dot(r, r, n) < threshold_sq) {
 			iter++;
-			return iter;
+			return (struct jnl_solve_result){x, iter};
 		}
 
 		f64 rho_new = jnl_vec_dot(rhat, r, n);
@@ -337,7 +372,31 @@ i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 		rho = rho_new;
 	}
 
-	return iter;
+	return (struct jnl_solve_result){x, iter};
+}
+
+i32 jnl_fvsys_solve_bicgstab_into(struct jnl_fvsys *sys,
+                                  struct jnl_scratch_pool *pool, f64 *x,
+                                  f64 tolerance, i32 max_iters)
+{
+	jnl_scratch_reset(pool);
+	fvsys_ensure_nonsingular(sys, pool);
+
+	struct jnl_solve_result result;
+	result = fvsys_solve_bicgstab_impl(sys, pool, x, tolerance, max_iters);
+	memcpy(x, result.x, sys->matrix.n_cells * sizeof(f64));
+	return result.iters;
+}
+
+// Returns scratch pointer - valid until scrach is next used for something
+struct jnl_solve_result jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
+                                                 struct jnl_scratch_pool *pool,
+                                                 const f64 *x_init,
+                                                 f64 tolerance, i32 max_iters)
+{
+	jnl_scratch_reset(pool);
+	fvsys_ensure_nonsingular(sys, pool);
+	return fvsys_solve_bicgstab_impl(sys, pool, x_init, tolerance, max_iters);
 }
 
 //

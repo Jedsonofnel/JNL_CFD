@@ -5,6 +5,8 @@
 #include "jnl/arena.h"
 #include "scratch.h"
 
+#define LINALG_MIN_SCRATCH 9 // for bicgstab + scratch return
+
 //
 // LDU Matrix
 //
@@ -60,12 +62,28 @@ void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
 // Solvers
 //
 
-i32 jnl_fvsys_solve_cg(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
-                       f64 *x, f64 tolerance, i32 max_iters);
+struct jnl_solve_result {
+	f64 *x;
+	i32 iters;
+};
 
-i32 jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
-                             struct jnl_scratch_pool *pool, f64 *x,
-                             f64 tolerance, i32 max_iters);
+i32 jnl_fvsys_solve_cg_into(struct jnl_fvsys *sys,
+                            struct jnl_scratch_pool *pool, f64 *x,
+                            f64 tolerance, i32 max_iters);
+
+struct jnl_solve_result jnl_fvsys_solve_cg(struct jnl_fvsys *sys,
+                                           struct jnl_scratch_pool *pool,
+                                           const f64 *x_init, f64 tolerance,
+                                           i32 max_iters);
+
+i32 jnl_fvsys_solve_bicgstab_into(struct jnl_fvsys *sys,
+                                  struct jnl_scratch_pool *pool, f64 *x,
+                                  f64 tolerance, i32 max_iters);
+
+struct jnl_solve_result jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
+                                                 struct jnl_scratch_pool *pool,
+                                                 const f64 *x_init,
+                                                 f64 tolerance, i32 max_iters);
 
 //
 // Useful diagnostics

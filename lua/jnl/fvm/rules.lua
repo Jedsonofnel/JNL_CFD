@@ -64,6 +64,24 @@ function M.field_is_nan()
 	end
 end
 
+function M.field_change_below(tol, n_consec)
+	n_consec = n_consec or 1
+	return function(field, sage, _)
+		ensure_caches(sage)
+
+		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
+			{ sort_by = "iter", desc = true, limit = n_consec })
+
+		if #h < n_consec then return false end
+
+		for _, f in ipairs(h) do
+			if f.norm ~= "normL2_rel_diff" then return false end
+			if f.value >= tol then return false end
+		end
+		return true
+	end
+end
+
 function M.field_stagnant(tol, window)
 	window = window or 10
 	return function(field, sage, _)
@@ -71,7 +89,9 @@ function M.field_stagnant(tol, window)
 		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
 			{ sort_by = "iter", desc = true, limit = window })
 		if #h < window then return false end
+
 		local hi, lo = h[1].value, h[1].value
+
 		for _, e in ipairs(h) do
 			hi = math.max(hi, e.value)
 			lo = math.min(lo, e.value)

@@ -116,6 +116,20 @@ f64 jnl_vec_norm_l2_rel(const f64 *f, const f64 *ref, i32 n)
 	return sqrt(f_sum / ref_sum);
 }
 
+// norm(a - b) / norm(a)  — pass new as a, old as b
+f64 jnl_vec_norm_l2_rel_diff(const f64 *a, const f64 *b, i32 n)
+{
+	f64 diff_sum = 0.0, ref_sum = 0.0;
+	for (i32 i = 0; i < n; i++) {
+		f64 d = a[i] - b[i];
+		diff_sum += d * d;
+		ref_sum += a[i] * a[i];
+	}
+	if (ref_sum < 1e-30)
+		return sqrt(diff_sum);
+	return sqrt(diff_sum / ref_sum);
+}
+
 f64 jnl_vec_norm_l2_weighted(const f64 *f, const f64 *weights, i32 n)
 {
 	f64 sum = 0.0;
