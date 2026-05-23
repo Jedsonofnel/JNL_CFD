@@ -10,10 +10,13 @@ local BC     = require("jnl.fvm.bc")
 local Reg    = require("jnl.core.registry")
 local Alg    = require("jnl.core.algorithm")
 
+local Sage   = require("jnl.sage")
+local rules  = require("jnl.fvm.rules")
+
 local L      = 1.0
-local N      = 20
+local N      = 100
 local rho    = 1.0
-local u      = 1.0
+local u      = 0.1
 local gamma  = 0.1
 local Pe     = rho * u * L / gamma
 print(string.format("Peclet number: %.2f", Pe))
@@ -40,9 +43,21 @@ reg:field("T", {
 })
 
 local alg = Alg.new()
-alg:linear(function(a)
+alg:loop(function(a)
 	a:solve("T")
-end)
+end, { max_iters = 200 })
+
+alg:add_ruleset(rules.stopping({
+	converged = rules.all_fields({
+		T = rules.any_of(
+			rules.residual_below(1e-8),
+			rules.field_stagnant(1e-6, 10)
+		),
+	}),
+	diverged = rules.any_field({
+		T = rules.field_above(1e15),
+	}),
+}))
 
 local case = require("jnl.fvm.case").new(reg, alg, mesh, {
 	T = {
@@ -54,13 +69,66 @@ local case = require("jnl.fvm.case").new(reg, alg, mesh, {
 })
 
 --
--- Solve
+-- Solve (inline orchestrator)
 --
 
 case:allocate()
 local runner = case:make_runner()
-runner:run_all()
-print(string.format("converged in %d iterations", runner:last_iters()))
+local sage   = Sage.new()
+
+for _, rs in ipairs(alg.rulesets) do
+	sage:add_ruleset(rs)
+end
+
+runner.on_solve = function(field, residual, iters, iter)
+	sage:assert({
+		kind = "residual",
+		field = field,
+		value = residual,
+		iters = iters,
+		iter = iter
+	})
+end
+
+runner.on_monitor = function(field, value, iter, depth, norm)
+	sage:assert({
+		kind       = "field_norm",
+		field      = field,
+		value      = value,
+		iter       = iter,
+		loop_depth = depth,
+		norm       = norm,
+	})
+end
+
+-- print every 10 iterations rule
+sage:add_rule("print_progress",
+	function(f) return f.kind == "field_norm" and f.iter % 10 == 0 end,
+	function(_, f)
+		print(string.format("iter %4d  |%s|  norm = %.3e", f.iter, f.field, f.value))
+	end
+)
+
+-- drive the loop manually for now
+local stopped
+repeat
+	local ongoing = runner:run_step()
+
+	if not ongoing then
+		if runner:is_finished() then
+			stopped = true
+		else
+			sage:assert({ kind = "iter_end", iter = runner._iter, loop_depth = 1 })
+			for _, action in ipairs(sage:pop_actions()) do
+				if action.kind == "stop" then stopped = true end
+			end
+			if not stopped then
+				runner._iter = runner._iter + 1
+				runner:reset()
+			end
+		end
+	end
+until stopped
 
 --
 -- Analytical solution

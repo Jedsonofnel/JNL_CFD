@@ -1,0 +1,171 @@
+-- jnl/fvm/rules.lua - rule helpers for sage in an FVM context
+
+local M = {}
+
+-- Cache key used by all residual/norm rules
+local BY_FIELD_KEY = "rules:by_field"
+
+local function by_field_key_fn(f)
+	if f.field and f.kind == "field_norm" then
+		return f.field .. ":field_norm"
+	end
+	if f.field and f.kind == "residual" then
+		return f.field .. ":residual"
+	end
+end
+
+local function ensure_caches(sage)
+	sage:ensure_cache(BY_FIELD_KEY, by_field_key_fn)
+end
+
+--
+-- Predicates (field_name, sage, iter, loop_depth) -> bool
+--
+
+function M.residual_below(tol, n_consec)
+	n_consec = n_consec or 1
+	return function(field, sage, _)
+		ensure_caches(sage)
+		local h = sage:cache_query(BY_FIELD_KEY, field .. ":residual",
+			{ sort_by = "iter", desc = true, limit = n_consec })
+
+		if #h < n_consec then return false end
+
+		for _, f in ipairs(h) do
+			if f.value >= tol then return false end
+		end
+		return true
+	end
+end
+
+function M.field_above(threshold)
+	return function(field, sage, _)
+		ensure_caches(sage)
+
+		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
+			{ sort_by = "iter", desc = true, limit = 1 })
+
+		if #h == 0 then return false end
+
+		return h[1].value > threshold or h[1].value ~= h[1].value
+	end
+end
+
+function M.field_is_nan()
+	return function(field, sage, _)
+		ensure_caches(sage)
+
+		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
+			{ sort_by = "iter", desc = true, limit = 1 })
+
+		if #h == 0 then return false end
+
+		return h[1].value ~= h[1].value
+	end
+end
+
+function M.field_stagnant(tol, window)
+	window = window or 10
+	return function(field, sage, _)
+		ensure_caches(sage)
+		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
+			{ sort_by = "iter", desc = true, limit = window })
+		if #h < window then return false end
+		local hi, lo = h[1].value, h[1].value
+		for _, e in ipairs(h) do
+			hi = math.max(hi, e.value)
+			lo = math.min(lo, e.value)
+		end
+		return (hi - lo) < tol * (lo + 1e-300)
+	end
+end
+
+function M.any_of(...)
+	local preds = { ... }
+
+	return function(field, sage, iter, depth)
+		for _, p in ipairs(preds) do
+			if p(field, sage, iter, depth) then return true end
+		end
+		return false
+	end
+end
+
+--
+-- Criteria
+--
+
+function M.all_fields(predicates)
+	return function(sage, iter, depth)
+		for field, pred in pairs(predicates) do
+			if not pred(field, sage, iter, depth) then return false end
+		end
+		return true
+	end
+end
+
+function M.any_field(predicates)
+	return function(sage, iter, depth)
+		for field, pred in pairs(predicates) do
+			if pred(field, sage, iter, depth) then return true end
+		end
+		return false
+	end
+end
+
+--
+-- Stopping ruleset
+--
+
+function M.stopping(criteria, opts)
+	opts        = opts or {}
+	local depth = opts.loop_depth or 1
+	local conv  = criteria.converged
+	local div   = criteria.diverged
+
+	local rules = {}
+
+	if conv then
+		rules[#rules + 1] = {
+			name  = string.format("convergence_check[depth=%d]", depth),
+			match = function(f) return f.kind == "iter_end" and f.loop_depth == depth end,
+			fire  = function(sage, f)
+				if conv(sage, f.iter, f.loop_depth) then
+					sage:derive({ kind = "converged", iter = f.iter, loop_depth = depth }, { f.id })
+				end
+			end,
+		}
+	end
+
+	if div then
+		rules[#rules + 1] = {
+			name  = string.format("divergence_check[depth=%d]", depth),
+			match = function(f) return f.kind == "iter_end" and f.loop_depth == depth end,
+			fire  = function(sage, f)
+				if div(sage, f.iter, f.loop_depth) then
+					sage:derive({ kind = "diverging", iter = f.iter, loop_depth = depth }, { f.id })
+				end
+			end,
+		}
+	end
+
+	rules[#rules + 1] = {
+		name  = string.format("act_on_conclusion[depth=%d]", depth),
+		match = function(f)
+			return (f.kind == "converged" or f.kind == "diverging")
+				and f.loop_depth == depth
+		end,
+		fire  = function(sage, f)
+			sage:push_action({
+				kind = "stop",
+				reason = f.kind,
+				iter = f.iter,
+				loop_depth = f.loop_depth
+			})
+		end,
+	}
+
+	return { rules = rules }
+end
+
+return M

@@ -34,10 +34,15 @@ function Runner.new(compiled, field_map, sys_map, mesh, ctx, opts)
 		_n_cells          = mesh:n_cells(),
 		_n_faces          = mesh:n_faces(),
 
+		-- algorithm details
+		_op               = compiled.expanded_alg.op,
+		_max_iters        = compiled.expanded_alg.max_iters or math.huge,
+
 		-- execution state
 		_phase            = "pre",
 		_pc               = 1,
 		_inner_runners    = {},
+		_loop_depth       = opts.loop_depth or 1,
 		_last_iters       = 0,
 		_last_coeff_vec   = nil,
 		_residuals        = {}, -- name -> last residual scalar
@@ -50,7 +55,6 @@ function Runner.new(compiled, field_map, sys_map, mesh, ctx, opts)
 		-- callbacks
 		on_monitor        = opts.on_monitor,
 		on_solve          = opts.on_solve,
-		hooks             = opts.hooks or {},
 		warn_missing      = opts.warn_missing,
 	}, Runner)
 
@@ -93,6 +97,7 @@ function Runner._make_inner(parent, inst)
 		_pc               = 1,
 		_pass             = 1,
 		_inner_runners    = {},
+		_loop_depth       = (parent._loop_depth or 1) + 1,
 		_last_iters       = 0,
 		_last_coeff_vec   = nil,
 		_residuals        = parent._residuals, -- shared with parent
@@ -101,7 +106,6 @@ function Runner._make_inner(parent, inst)
 		on_monitor        = parent.on_monitor,
 		on_solve          = parent.on_solve,
 		_solver_opts      = parent._solver_opts,
-		hooks             = parent.hooks,
 		warn_missing      = parent.warn_missing,
 		bindings          = parent.bindings,
 	}, Runner)
@@ -387,7 +391,12 @@ dispatch.solve = function(r, inst)
 
 	r._last_iters = n
 	r._residuals[inst.field] = sys:residual_norm(phi)
-	if r.on_solve then r.on_solve(inst.field, r._residuals[inst.field], n, r._iter) end
+	if r.on_solve then
+		r.on_solve(inst.field, r._residuals[inst.field], n, r._iter, r._loop_depth)
+	end
+	if r.on_monitor then
+		r.on_monitor(inst.field, phi:norm_l2(), r._iter, r._loop_depth, "normL2")
+	end
 end
 
 --
@@ -445,15 +454,6 @@ dispatch.monitor = function(r, inst)
 	r.on_monitor(inst.field, value, r._iter)
 end
 
-dispatch.hook = function(r, inst)
-	local fn = r.hooks[inst.name]
-	if fn then
-		fn(r)
-	else
-		io.stderr:write("runner: no hook for '" .. tostring(inst.name) .. "'\n")
-	end
-end
-
 dispatch.inner_loop = function(r, inst)
 	-- get or create cached inner runner for this pc position
 	local key = r._pc
@@ -466,10 +466,8 @@ dispatch.inner_loop = function(r, inst)
 	-- step the inner runner once to keep outer run_step() granular
 	local more = inner:run_step()
 	if not more then
-		-- completed one full pass — check convergence
-		local converged = inst.go_until and inst.go_until(r)
 		local exhausted = inner._pass >= (inst.max_iters or 1000)
-		if converged or exhausted then
+		if exhausted then
 			r._inner_runners[key] = nil -- release, outer pc will advance
 		else
 			inner._pass = inner._pass + 1
@@ -564,7 +562,10 @@ function Runner:iteration()
 end
 
 function Runner:is_finished()
-	return self._phase == "done"
+	if self._op ~= "loop" then
+		return self._phase == "done"
+	end
+	return self._phase == "done" and self._iter >= self._max_iters
 end
 
 function Runner:is_stopped()
@@ -577,6 +578,7 @@ function Runner:stop()
 end
 
 function Runner:reset()
+	if self:is_finished() then return end
 	self._phase   = #self.pre_instructions > 0 and "pre" or "main"
 	self._pc      = 1
 	self._stopped = false

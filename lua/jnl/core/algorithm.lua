@@ -28,10 +28,6 @@ local function step_clip(field, lo, hi, implicit)
 	return { op = "clip", field = field, lo = lo, hi = hi, implicit = implicit or false }
 end
 
-local function step_hook(fn, name)
-	return { op = "hook", fn = fn, name = name or "<fn>" }
-end
-
 local function step_monitor(field, norm)
 	norm = norm or "normL2"
 	V.norm(norm, "monitor norm")
@@ -47,7 +43,18 @@ end
 --
 
 function A.new()
-	return setmetatable({ pre = {}, steps = {}, post = {}, op = "linear" }, A)
+	return setmetatable({
+		pre = {},
+		steps = {},
+		post = {},
+		op = "linear",
+		rulesets = {},
+	}, A)
+end
+
+function A:add_ruleset(ruleset)
+	self.rulesets[#self.rulesets + 1] = ruleset
+	return self
 end
 
 function A:_push_pre(step)
@@ -91,12 +98,6 @@ function Builder:clip(field, lo, hi)
 	return self
 end
 
-function Builder:hook(fn, name)
-	V.typeof(fn, "function", "alg:hook fn")
-	self._alg:_push(step_hook(fn, name))
-	return self
-end
-
 function Builder:monitor(field, norm)
 	V.field_name(field, "alg:monitor field")
 	if norm ~= nil then V.norm(norm, "alg:monitor norm") end
@@ -124,7 +125,6 @@ function A:loop(cb, config)
 	self.op = "loop"
 	config = config or {}
 	self.max_iters = config.max_iters or 1000
-	self.go_until = config.go_until
 	self.linalg_tol = config.linalg_tol or 1e-6
 	self.linalg_max_iters = config.linalg_max_iters or 1000
 	cb(Builder.new(self))
@@ -437,7 +437,6 @@ function A:expand(reg, inserted, fresh)
 	local expanded = A.new()
 	expanded.op = self.op
 	expanded.max_iters = self.max_iters
-	expanded.go_until = self.go_until
 
 	local explicit_set = {}
 	for _, step in ipairs(self.steps) do
@@ -541,8 +540,6 @@ local function fmt_step(s)
 	elseif s.op == "correct" then
 		local sym = E.pretty_sym(s.field)
 		return string.format("  %s CORRECT %s", s.implicit and "~" or "*", sym)
-	elseif s.op == "hook" then
-		return string.format("    HOOK  %s", s.name)
 	elseif s.op == "clip" then
 		local sym = E.pretty_sym(s.field)
 		local hi = s.hi == math.huge and "inf" or string.format("%g", s.hi)

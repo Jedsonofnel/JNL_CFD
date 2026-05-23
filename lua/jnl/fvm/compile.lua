@@ -214,9 +214,6 @@ local printers = {
 		local hi = f.hi == math.huge and "inf" or string.format("%g", f.hi)
 		return string.format("CLIP          %s  [%g, %s]", fmt(f.field), f.lo, hi)
 	end,
-	hook = function(f)
-		return string.format("HOOK          %s", f.name)
-	end,
 	inner_loop = function(f, indent)
 		local lines = { string.format(">>INNER (max=%d):", f.max_iters) }
 		for _, sub in ipairs(f.body) do
@@ -848,15 +845,12 @@ local function walk_steps(reg, alg, steps, out)
 				field = step.field,
 				norm  = step.norm,
 			})
-		elseif step.op == "hook" then
-			out[#out + 1] = { op = "hook", fn = step.fn, name = step.name }
 		elseif step.op == "inner" then
 			local body = {}
 			walk_steps(reg, step.inner.steps, body)
 			out[#out + 1] = {
 				op               = "inner_loop",
 				max_iters        = step.inner.max_iters,
-				go_until         = step.inner.go_until,
 				linalg_tol       = step.inner.linalg_tol,
 				linalg_max_iters = step.inner.linalg_max_iters,
 				body             = body
