@@ -1,9 +1,18 @@
 -- jnl/fvm/rules.lua - rule helpers for sage in an FVM context
+-- <jed@nelson.ac> // 2026-05-23
+
+-- deps
+local E = require("jnl.core.expr")
 
 local M = {}
 
+--
+-- CONVERGENCE
+--
+
 -- Cache key used by all residual/norm rules
 local BY_FIELD_KEY = "rules:by_field"
+M.BY_FIELD_KEY = BY_FIELD_KEY
 
 local function by_field_key_fn(f)
 	if f.field and f.kind == "field_norm" then
@@ -197,7 +206,7 @@ function M.stopping(criteria, opts)
 			end,
 			fire  = function(_, f)
 				io.write(string.format("  iter %4d  |%s|  %s = %.3e\n",
-					f.iter, f.field, f.norm or "norm", f.value))
+					f.iter, E.pretty_sym(f.field), f.norm or "norm", f.value))
 			end,
 		}
 	end
@@ -216,6 +225,79 @@ function M.stopping(criteria, opts)
 		}
 	end
 
+	return { rules = rules }
+end
+
+--
+-- POST MORTEM
+--
+
+-- internal helpers
+
+local function diagnose(sage, f, code, msg)
+	sage:derive_once("diagnosis:" .. code .. ":" .. f.iter, {
+		kind    = "diagnosis",
+		code    = code,
+		message = msg,
+		iter    = f.iter,
+	}, { f.id })
+end
+
+--
+-- Public rule factories
+--
+
+function M.pm_rule(name, fn)
+	return {
+		name  = "pm:" .. name,
+		match = function(f) return f.kind == "post_mortem" end,
+		fire  = function(sage, f)
+			fn(sage, f, f.diagnostics, function(code, msg)
+				diagnose(sage, f, code, msg)
+			end)
+		end,
+	}
+end
+
+function M.pm_advice(code, msg)
+	return {
+		name  = "advice:" .. code,
+		match = function(f)
+			return f.kind == "diagnosis" and f.code == code
+		end,
+		fire  = function(sage, f)
+			sage:derive_once("advice:" .. code, {
+				kind     = "advice",
+				for_code = code,
+				message  = msg,
+				iter     = f.iter,
+			}, { f.id })
+		end,
+	}
+end
+
+function M.pm_print()
+	return {
+		name  = "pm:print",
+		match = function(f)
+			return f.kind == "diagnosis" or f.kind == "advice"
+		end,
+		fire  = function(_, f)
+			local tag = f.kind == "advice" and "  hint" or "  diag"
+			io.write(string.format("[POST-MORTEM] %s: %s\n", tag, f.message))
+		end,
+	}
+end
+
+function M.post_mortem(rules_list, opts)
+	opts = opts or {}
+	local rules = {}
+	for _, r in ipairs(rules_list) do
+		rules[#rules + 1] = r
+	end
+	if opts.print ~= false then
+		rules[#rules + 1] = M.pm_print()
+	end
 	return { rules = rules }
 end
 

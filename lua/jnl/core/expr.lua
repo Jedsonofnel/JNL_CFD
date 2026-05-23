@@ -568,7 +568,10 @@ local function compile(expr_table, bindings)
 			return I.const(ud, e.value)
 		elseif k == "sym" then
 			local v = bindings[e.name]
-			assert(v, "expr_binding.compile: no binding for symbol '" .. e.name .. "'")
+			assert(v ~= nil, "expr_binding.compile: no binding for symbol '" .. e.name .. "'")
+			if type(v) == "number" then
+				return I.const(ud, v)
+			end
 			return I.array(ud, v)
 		elseif k == "prime" or k == "expl" or k == "prev" then
 			-- these use mangled names: e._dep_name  ("__prime_foo", etc.)
@@ -612,6 +615,14 @@ local function compile(expr_table, bindings)
 				acc = I.mul(ud, acc, build(e.factors[i]))
 			end
 			return acc
+
+			-- things with _dep_name
+		elseif e._dep_name then
+			-- treat as array binding looked up by mangled name
+			local v = bindings[e._dep_name]
+			assert(v, "expr_binding.compile: no binding for intermediate '"
+				.. e._dep_name .. "'")
+			return I.array(ud, v)
 		end
 
 		-- custom node with a _compile hook

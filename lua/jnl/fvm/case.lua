@@ -2,6 +2,7 @@
 -- <jed@nelson.ac> // 2026-05-23
 
 local compile = require("jnl.fvm.compile")
+local names = require("jnl.fvm.expr").names
 local mesh2d = require("jnl.mesh2d")
 local BC = require("jnl.fvm.bc")
 
@@ -170,7 +171,9 @@ function Case:allocate()
 		field_map[f.name] = alloc_field(self._ctx, reg[f.name], f)
 		local sym = reg[f.name]
 		if sym and sym.kind == "field" then
-			sys_map[f.name] = self._ctx:fvsys()
+			local sys = self._ctx:fvsys()
+			sys_map[f.name] = sys
+			field_map[names.diag(f.name)] = sys:diag_vec()
 		end
 	end
 
@@ -235,6 +238,7 @@ function Case:reconcile()
 			else
 				new_sys[f.name] = new_ctx:fvsys()
 			end
+			new_map[names.diag(f.name)] = new_sys[f.name]:diag_vec()
 		end
 	end
 

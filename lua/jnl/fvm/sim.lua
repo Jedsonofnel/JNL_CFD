@@ -38,10 +38,32 @@ function Sim.new(runner, alg, opts)
 		})
 	end
 
-	local orch = CoreSim.new(runner, alg, { sage = opts.sage })
-	sage_getter = function() return orch._sage end
+	local sim = CoreSim.new(runner, alg, { sage = opts.sage })
+	sage_getter = function() return sim._sage end
 
-	return setmetatable({ _core = orch }, Sim)
+	-- diagnostic object
+	local diag = {
+		field = function(name) return runner:_field(name) end,
+		residual = function(name) return runner:last_residual(name) end,
+		is_nan = function(name)
+			local f = runner:_field(name)
+			return f:norm_linf() ~= f:norm_linf()
+		end,
+		max = function(name) return runner:_field(name):norm_linf() end,
+		iter = function() return runner:iteration() end,
+		sys_diag = function(name)
+			local sys = runner:_sys(name)
+			if not sys then return nil end
+			return {
+				diagonal_dominance     = sys:diagonal_dominance(),
+				all_diagonals_positive = sys:all_diagonals_positive(),
+				max_asymmetry          = sys:max_asymmetry(),
+				residual_norm          = sys:residual_norm(runner:_field(name)),
+			}
+		end,
+	}
+
+	return setmetatable({ _core = sim, diag = diag }, Sim)
 end
 
 --
@@ -49,7 +71,19 @@ end
 --
 
 -- delegate to core
-function Sim:run() return self._core:run() end
+function Sim:run()
+	self._core:run()
+
+	local sage = self._core._sage
+	local conclusion = sage:last_one({ kind = "diverging" })
+	if conclusion then
+		sage:derive({
+			kind = "post_mortem",
+			iter = conclusion.iter,
+			diagnostics = self.diag,
+		}, { conclusion.id })
+	end
+end
 
 function Sim:step() return self._core:step() end
 

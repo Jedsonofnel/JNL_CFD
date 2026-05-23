@@ -128,6 +128,27 @@ static int l_fvsys_diag_vec(lua_State *L)
 	return 1;
 }
 
+static int l_fvsys_diagonal_dominance(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	lua_pushnumber(L, jnl_fvsys_diagonal_dominance(s->sys));
+	return 1;
+}
+
+static int l_fvsys_all_diagonals_positive(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	lua_pushboolean(L, jnl_fvsys_all_diagonals_positive(s->sys));
+	return 1;
+}
+
+static int l_fvsys_max_asymmetry(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	lua_pushnumber(L, jnl_fvsys_max_asymmetry(s->sys));
+	return 1;
+}
+
 static int l_fvsys_gc(lua_State *L)
 {
 	luaL_unref(L, LUA_REGISTRYINDEX, check_fvsys(L, 1)->ctx_ref);
@@ -144,6 +165,9 @@ static const luaL_Reg fvsys_mt[] = {
     {"solve_cg_into", l_fvsys_solve_cg_into},
     {"solve_bicgstab_into", l_fvsys_solve_bicgstab_into},
     {"diag_vec", l_fvsys_diag_vec},
+    {"diagonal_dominance", l_fvsys_diagonal_dominance},
+    {"all_diagonals_positive", l_fvsys_all_diagonals_positive},
+    {"max_asymmetry", l_fvsys_max_asymmetry},
     {"__tostring", l_fvsys_tostring},
     {"__gc", l_fvsys_gc},
     {NULL, NULL}};

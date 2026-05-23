@@ -23,7 +23,7 @@ local term_deps = CEq.term_deps
 
 local function to_field_name(v, ctx)
 	if type(v) == "string" then
-		V.identifier(v, ctx)
+		V.field_name(v, ctx)
 		return v
 	end
 	if E.is_expr(v) then

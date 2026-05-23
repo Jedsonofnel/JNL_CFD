@@ -61,6 +61,13 @@ function Runner.new(compiled, field_map, sys_map, mesh, ctx)
 	for name, handle in pairs(field_map) do
 		r.bindings[name] = handle
 	end
+
+	for name, sym in pairs(compiled.expanded_reg) do
+		if type(sym) == "table" and sym.kind == "constant" then
+			r.bindings[name] = sym.value
+		end
+	end
+
 	r.bindings["cell_x"] = mesh:cell_cx_vec()
 	r.bindings["cell_y"] = mesh:cell_cy_vec()
 	r.bindings["cell_vol"] = mesh:cell_vol_vec()

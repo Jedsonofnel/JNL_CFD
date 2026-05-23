@@ -42,6 +42,7 @@ reg:field("T", {
 })
 
 local alg = Alg.new()
+
 alg:loop(function(a)
 	a:solve("T")
 end, { max_iters = 200 })
@@ -65,8 +66,8 @@ local case = require("jnl.fvm.case").new(reg, alg, mesh, {
 	T = {
 		BC.dirichlet(P.LEFT, 0.0),
 		BC.dirichlet(P.RIGHT, 1.0),
-		BC.wall(P.TOP),
-		BC.wall(P.BOTTOM),
+		BC.symmetry(P.TOP),
+		BC.symmetry(P.BOTTOM),
 	},
 })
 

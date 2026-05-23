@@ -34,12 +34,29 @@ function Sage:derive(fact, support_ids)
 	self:_propagate(fact)
 end
 
+function Sage:derive_once(key, fact, support_ids)
+	if self._derived_keys and self._derived_keys[key] then return false end
+	self._derived_keys = self._derived_keys or {}
+	self._derived_keys[key] = true
+	self:derive(fact, support_ids)
+	return true
+end
+
 function Sage:_propagate(fact)
-	for _, rule in ipairs(self.rules) do
-		if rule.match(fact) then
-			rule.fire(self, fact)
+	self._queue = self._queue or {}
+	self._queue[#self._queue + 1] = fact
+	if self._draining then return end
+	self._draining = true
+
+	while #self._queue > 0 do
+		local f = table.remove(self._queue, 1)
+		for _, rule in ipairs(self.rules) do
+			if (not rule.kinds or rule.kinds[f.kind]) and rule.match(f) then
+				rule.fire(self, f)
+			end
 		end
 	end
+	self._draining = false
 end
 
 --
@@ -60,8 +77,13 @@ end
 -- Rules
 --
 
-function Sage:add_rule(name, match_fn, fire_fn)
-	self.rules[#self.rules + 1] = { name = name, match = match_fn, fire = fire_fn }
+function Sage:add_rule(name, match_fn, fire_fn, kinds)
+	self.rules[#self.rules + 1] = {
+		name = name,
+		match = match_fn,
+		fire = fire_fn,
+		kinds = kinds,
+	}
 end
 
 function Sage:add_ruleset(ruleset)
