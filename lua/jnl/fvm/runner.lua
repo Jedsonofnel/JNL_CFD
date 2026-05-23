@@ -367,10 +367,10 @@ function Runner.new(case, opts)
 	opts = opts or {}
 
 	return setmetatable({
-		instructions       = case.instructions,
-		pre_instructions   = case.pre_instructions or {},
-		post_instructions  = case.post_instructions or {},
-		reg                = case.registry,
+		instructions       = case.compiled.main,
+		pre_instructions   = case.compiled.pre or {},
+		post_instructions  = case.compiled.post or {},
+		reg                = case.compiled.expanded_reg,
 		mesh               = case.mesh,
 		ctx                = case._ctx,
 		field_map          = case._field_map,
@@ -453,12 +453,23 @@ end
 function Runner:run_step()
 	if self._phase == "done" then return false end
 
-	local list = self._phase == "main"
-		and self.instructions or self.post_instructions
+	local list
+	if self._phase == "pre" then
+		list = self.pre_instructions
+	elseif self._phase == "main" then
+		list = self.instructions
+	else
+		list = self.post_instructions
+	end
+
 	local inst = list[self._pc]
 
 	if not inst then
-		if self._phase == "main" and #self.post_instructions > 0 then
+		if self._phase == "pre" then
+			self._phase = "main"
+			self._pc = 1
+			return true
+		elseif self._phase == "main" and #self.post_instructions > 0 then
 			self._phase = "post"
 			self._pc    = 1
 			return true
@@ -488,7 +499,7 @@ function Runner:is_finished()
 end
 
 function Runner:reset()
-	self._phase = "main"
+	self._phase = #self.pre_instructions > 0 and "pre" or "main"
 	self._pc    = 1
 end
 

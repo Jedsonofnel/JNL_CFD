@@ -31,4 +31,22 @@ function M.patch_lookup(mesh)
 	return t
 end
 
+-- Returns a set of patch name strings present in the mesh.
+function M.patch_name_set(mesh)
+	local s = {}
+	for _, p in ipairs(mesh:patches()) do
+		s[p.name] = true
+	end
+	return s
+end
+
+-- Returns an ordered list of patch name strings.
+function M.patch_name_list(mesh)
+	local names = {}
+	for _, p in ipairs(mesh:patches()) do
+		names[#names + 1] = p.name
+	end
+	return names
+end
+
 return M

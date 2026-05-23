@@ -1,63 +1,17 @@
 -- fvm/case.lua
--- <jed@nelson.ac> // 2026-05-22
+-- <jed@nelson.ac> // 2026-05-23
 
-local compile  = require("jnl.fvm.compile")
-local Physics  = require("jnl.fvm.physics")
-local deepcopy = Physics._deepcopy
+local compile = require("jnl.fvm.compile")
+local mesh2d = require("jnl.mesh2d")
+local BC = require("jnl.fvm.bc")
 
-
-local KNOWN_BC_KINDS = {
-	dirichlet_const       = true,
-	neumann_const         = true,
-	dirichlet_face_const  = true,
-	neumann_face_const    = true,
-	dirichlet_face_normal = true,
-	neumann_face_normal   = true,
-}
 
 local Case = {}
 Case.__index = Case
 
 --
--- Patch helpers
+-- BC Injection
 --
-
--- Returns a set of patch name strings present in the mesh.
-local function patch_name_set(mesh)
-	local s = {}
-	for _, p in ipairs(mesh:patches()) do
-		s[p.name] = true
-	end
-	return s
-end
-
--- Returns an ordered list of patch name strings.
-local function patch_name_list(mesh)
-	local names = {}
-	for _, p in ipairs(mesh:patches()) do
-		names[#names + 1] = p.name
-	end
-	return names
-end
-
---
--- BC Validation
---
-
-local function validate_bc_entry(field_name, i, bc)
-	local loc = string.format("Case.new bcs['%s'][%d]", field_name, i)
-	assert(type(bc.patch) == "string",
-		loc .. ": .patch must be a string (e.g. P.LEFT = 'west'), got "
-		.. type(bc.patch))
-	assert(bc.kind,
-		loc .. ": missing .kind")
-	assert(KNOWN_BC_KINDS[bc.kind],
-		loc .. ": unknown kind '" .. bc.kind .. "'")
-	-- value is required for scalar kinds; face_normal kinds carry ux/uy instead
-	if not bc.kind:find("normal", 1, true) then
-		assert(bc.value ~= nil, loc .. ": missing .value")
-	end
-end
 
 local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
 	bcs_table = bcs_table or {}
@@ -79,7 +33,7 @@ local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
 		local covered   = {}
 		local validated = {}
 		for i, bc in ipairs(raw_list) do
-			validate_bc_entry(field_name, i, bc)
+			BC.validate(field_name, i, bc)
 			local loc = string.format("Case.new bcs['%s'][%d]", field_name, i)
 			if not patch_set[bc.patch] then
 				-- Hard error: user named a patch that doesn't exist
@@ -133,103 +87,224 @@ local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
 end
 
 --
--- Constructor
+-- Internal recompile: safe to call doesn't touch C allocation
 --
 
-function Case.new(physics, mesh, bcs)
-	assert(physics, "Case.new: physics must not be nil")
-	assert(mesh, "Case.new: mesh must not be nil")
+function Case:_recompile()
+	self.warnings     = {}
+	local patch_names = mesh2d.patch_name_list(self.mesh)
+	local patch_set   = mesh2d.patch_name_set(self.mesh)
 
-	local warnings    = {}
-	local patch_names = patch_name_list(mesh)
-	local patch_set   = patch_name_set(mesh)
+	local reg         = compile.deepcopy(self.reg)
+	compile.expand(reg) -- intermediates first
+	inject_bcs(reg, self.bcs, patch_names, patch_set, self.warnings)
+	reg:validate()
 
-	if #patch_names == 0 then
-		warnings[#warnings + 1] = "Case.new: mesh has no patches — no BCs will be applied"
-	end
+	local expanded_alg = self.alg:expand(reg)
+	local pre, main, post = compile.emit(reg, expanded_alg)
+	self.compiled = {
+		expanded_reg = reg,
+		expanded_alg = expanded_alg,
+		manifest     = compile.manifest(reg),
+		pre          = pre,
+		main         = main,
+		post         = post,
+	}
 
-	-- Deepcopy registry so injection doesn't mutate the Physics
-	local reg = deepcopy(physics.registry)
-	local alg = deepcopy(physics.algorithm)
-
-	inject_bcs(reg, bcs, patch_names, patch_set, warnings)
-
-	local instance = setmetatable({
-		registry = reg,
-		algorithm = alg,
-		mesh = mesh,
-		warnings = warnings,
-	}, Case)
-
-	instance.resources = compile.count_resources(reg)
-
-	instance.pre_instructions,
-	instance.instructions,
-	instance.post_instructions = compile.emit_instructions(reg, instance.algorithm)
-
-	-- Sanity: no non-implicit bc_placeholder should survive in a Case
-	for _, inst in ipairs({ instance.pre_instructions, instance.instructions, instance.post_instructions }) do
-		if inst.op == "bc_placeholder" and not inst.fields.implicit then
-			error("Case.new: unresolved bc_placeholder for field '"
-				.. tostring(inst.fields.field) .. "' — compiler bug")
-		end
-	end
-
-	for _, w in ipairs(warnings) do
+	for _, w in ipairs(self.warnings) do
 		io.stderr:write("Case warning: " .. w .. "\n")
 	end
-
-	return instance
 end
 
+--
+-- Allocation
+--
+
+local function ctx_sufficient(ctx_man, new_man)
+	return new_man.n_fields <= ctx_man.n_fields
+		and new_man.n_face_fields <= ctx_man.n_face_fields
+		and new_man.n_systems <= ctx_man.n_systems
+		and new_man.n_cell_scratch <= ctx_man.n_cell_scratch
+		and new_man.n_face_scratch <= ctx_man.n_face_scratch
+end
+
+local function alloc_field(ctx, sym, man_entry)
+	local f
+	if man_entry.face then
+		f = ctx:face_field()
+	else
+		f = ctx:field()
+		local init = (sym and sym.kind == "uniform" and sym.value)
+			or (sym and sym.kind == "field" and (sym.initial or 0.0))
+			or 0.0
+		f:fill(init)
+	end
+	return f
+end
+
+-- Perform full case allocation from scratch
 function Case:allocate()
-	assert(self.resources, "Case:allocate: no resources — was Case.new called?")
+	assert(not self._allocated, "Case:allocate: already allocated — use reconcile()")
+	local FVM          = require("jnl.fvm")
+	local man          = self.compiled.manifest
+	local reg          = self.compiled.expanded_reg
 
-	local FVM = require("jnl.fvm")
-
-	local res = self.resources
-	local ctx = FVM.ctx_new(self.mesh,
-		res.n_fields,
-		res.n_face_fields,
-		res.n_systems,
-		{
-			cell_scratch = res.n_cell_scratch,
-			face_scratch = res.n_face_scratch
+	self._ctx          = FVM.ctx_new(self.mesh,
+		man.n_fields, man.n_face_fields, man.n_systems, {
+			cell_scratch = man.n_cell_scratch,
+			face_scratch = man.n_face_scratch,
 		})
 
-	local field_map = {}
-	local sys_map = {}
+	self._ctx_manifest = {
+		n_fields       = man.n_fields,
+		n_face_fields  = man.n_face_fields,
+		n_systems      = man.n_systems,
+		n_cell_scratch = man.n_cell_scratch,
+		n_face_scratch = man.n_face_scratch,
+	}
 
-	for _, f in ipairs(res.fields) do
-		if f.face then
-			field_map[f.name] = ctx:face_field()
-		else
-			field_map[f.name] = ctx:field()
-			local sym = self.registry[f.name]
-			if sym then
-				local init = (sym.kind == "uniform" and sym.value)
-					or (sym.kind == "field" and (sym.initial or 0.0))
-					or 0.0
-				field_map[f.name]:fill(init)
-			end
-		end
+	local field_map    = {}
+	local sys_map      = {}
 
-		-- system for every solved field
-		local sym = self.registry[f.name]
+	for _, f in ipairs(man.fields) do
+		field_map[f.name] = alloc_field(self._ctx, reg[f.name], f)
+		local sym = reg[f.name]
 		if sym and sym.kind == "field" then
-			sys_map[f.name] = ctx:fvsys()
+			sys_map[f.name] = self._ctx:fvsys()
 		end
 	end
 
 	self._field_map = field_map
 	self._sys_map   = sys_map
-	self._ctx       = ctx
 	self._allocated = true
 	return field_map, sys_map
 end
 
-function Case:is_allocated()
-	return self._allocated == true
+-- Diff old and new manifests and preserve what is possible
+function Case:reconcile()
+	assert(self._allocated, "Case:reconcile: not allocated — use allocate()")
+	local FVM     = require("jnl.fvm")
+	local man     = self.compiled.manifest
+	local reg     = self.compiled.expanded_reg
+	local old_map = self._field_map
+	local old_sys = self._sys_map
+
+	-- do we need a new ctx?
+	local new_ctx
+	if ctx_sufficient(self._ctx_manifest, man) then
+		new_ctx = self._ctx
+	else
+		new_ctx = FVM.ctx_new(self.mesh,
+			man.n_fields, man.n_face_fields, man.n_systems, {
+				cell_scratch = man.n_cell_scratch,
+				face_scratch = man.n_face_scratch,
+			})
+		self._ctx_manifest = {
+			n_fields       = man.n_fields,
+			n_face_fields  = man.n_face_fields,
+			n_systems      = man.n_systems,
+			n_cell_scratch = man.n_cell_scratch,
+			n_face_scratch = man.n_face_scratch,
+		}
+		-- old ctx will be GC'd when _ctx is replaced below
+	end
+
+	local new_map = {}
+	local new_sys = {}
+
+	for _, f in ipairs(man.fields) do
+		local sym = reg[f.name]
+		if old_map[f.name] then
+			if new_ctx ~= self._ctx then
+				-- migrating to new ctx: alloc fresh slot and copy data across
+				local migrated = alloc_field(new_ctx, sym, f)
+				migrated:copy_from(old_map[f.name])
+				new_map[f.name] = migrated
+			else
+				-- same ctx: reuse existing slot directly
+				new_map[f.name] = old_map[f.name]
+			end
+		else
+			-- new field: allocate and initialise
+			new_map[f.name] = alloc_field(new_ctx, sym, f)
+		end
+
+		if sym and sym.kind == "field" then
+			if old_sys[f.name] and new_ctx == self._ctx then
+				new_sys[f.name] = old_sys[f.name]
+			else
+				new_sys[f.name] = new_ctx:fvsys()
+			end
+		end
+	end
+
+	self._ctx             = new_ctx
+	self._field_map       = new_map
+	self._sys_map         = new_sys
+
+	self._needs_realloc   = false
+	self._needs_reconcile = false
+end
+
+-- Teardown allocation and reallocate
+function Case:reallocate()
+	self._allocated       = false
+	self._field_map       = nil
+	self._sys_map         = nil
+	self._ctx             = nil
+	self._ctx_manifest    = nil
+	self._needs_realloc   = false
+	self._needs_reconcile = false
+	self:allocate()
+end
+
+--
+-- Case Mutation API
+--
+
+function Case:set_mesh(mesh)
+	self.mesh = mesh
+	self:_recompile()
+	self._needs_realloc   = true
+	self._needs_reconcile = false
+end
+
+function Case:set_physics(reg, alg)
+	self.reg = reg
+	self.alg = alg or self.alg
+	self:_recompile()
+	self._needs_reconcile = true
+end
+
+function Case:set_bcs(bcs)
+	self.bcs = bcs
+	self:_recompile()
+	-- no allocation change needed
+end
+
+--
+-- Constructor
+--
+
+function Case.new(reg, alg, mesh, bcs)
+	assert(reg, "Case.new: reg must not be nil")
+	assert(alg, "Case.new: alg must not be nil")
+	assert(mesh, "Case.new: mesh must not be nil")
+
+	local self = setmetatable({
+		reg              = reg,
+		alg              = alg,
+		mesh             = mesh,
+		bcs              = bcs or {},
+		warnings         = {},
+		compiled         = nil,
+		_allocated       = false,
+		_needs_realloc   = false,
+		_needs_reconcile = false,
+	}, Case)
+
+	self:_recompile()
+	return self
 end
 
 function Case:make_runner(opts)
@@ -238,27 +313,33 @@ function Case:make_runner(opts)
 end
 
 --
--- Print helpers
+-- Queries
+--
+
+function Case:is_allocated() return self._allocated end
+
+function Case:needs_realloc() return self._needs_realloc end
+
+function Case:needs_reconcile() return self._needs_reconcile end
+
+--
+-- Diagnostics
 --
 
 function Case:print_instructions()
-	print(compile.instruction_listing(
-		self.pre_instructions,
-		self.instructions,
-		self.post_instructions))
+	local c = self.compiled
+	print(compile.instruction_listing(c.pre, c.main, c.post))
 end
 
 function Case:print_resources()
-	print(compile.resource_listing(self.resources))
+	print(compile.resource_listing(self.compiled.manifest))
 end
 
 function Case:print_warnings()
 	if #self.warnings == 0 then
 		print("(no warnings)")
 	else
-		for _, w in ipairs(self.warnings) do
-			print("WARNING: " .. w)
-		end
+		for _, w in ipairs(self.warnings) do print("WARNING: " .. w) end
 	end
 end
 

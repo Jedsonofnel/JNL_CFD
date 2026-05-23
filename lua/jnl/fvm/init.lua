@@ -1,28 +1,24 @@
 -- fvm/init.lua - re-exports from other fvm files
 -- <jed@nelson.ac> // 2026-05-12
 
-local FVM   = {}
+local FVM  = {}
 
 -- compiler/equation DSL
-local eq    = require("jnl.fvm.eq")
-FVM.Op      = eq.Op
-FVM.eq      = eq.Eq   -- lower case as it's a function NOT a module
+local eq   = require("jnl.fvm.eq")
+FVM.Op     = eq.Op
+FVM.eq     = eq.Eq  -- lower case as it's a function NOT a module
 
-local expr  = require("jnl.fvm.expr")
-FVM.Expr    = expr
+local expr = require("jnl.fvm.expr")
+FVM.Expr   = expr
 
-local case  = require("jnl.fvm.case")
-FVM.Case    = case
+local case = require("jnl.fvm.case")
+FVM.Case   = case
 
-local phys  = require("jnl.fvm.physics")
-FVM.Physics = phys
-
-local bc = require("jnl.fvm.bc")
-FVM.BC = bc
+local bc   = require("jnl.fvm.bc")
+FVM.BC     = bc
 
 -- C bindings, split by concern
-local b     = require("jnl.fvm_internal")
-
+local b    = require("jnl.fvm_internal")
 
 -- context + field + fvsys construction
 
