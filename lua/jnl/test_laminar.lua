@@ -2,6 +2,7 @@
 -- <jed@nelson.ac> // 2026-05-21
 
 local FVM  = require("jnl.fvm")
+local C    = FVM.Compile
 local Op   = FVM.Op
 local FVMe = FVM.Expr
 local E    = require("jnl.core.expr")
@@ -42,6 +43,8 @@ reg:field("Uy", {
 })
 reg:vector("U", { "Ux", "Uy" })
 
+reg:expression("divU", FVMe.div_mwi("U", "p"))
+
 -- Rhie-Chow coefficient
 reg:expression("inv_d",
 	E.mul(E.cV(),
@@ -59,7 +62,7 @@ reg:field("p", {
 reg:field(E.prime_name("p"), {
 	eq = FVM.eq(
 		Op.lap("inv_d", E.prime("p")),
-		Op.su(E.neg(FVMe.div_mwi("U", "p"))),
+		Op.su(E.neg("divU")),
 		{ solver = "cg" }
 	),
 })
@@ -98,10 +101,10 @@ alg:loop(function(a)
 	a:solve("p")
 	a:solve("nonsense")
 	a:solve(E.prime_name("p"))
+	a:monitor("divU")
 	a:correct("U")
 	a:correct("p")
 end)
 
-local phys = FVM.Physics.new(reg, alg)
-
-phys:print_algorithm()
+local compilation = C.compile(reg, alg)
+compilation.expanded_alg:print()

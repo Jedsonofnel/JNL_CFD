@@ -77,7 +77,7 @@ f64 jnl_vec_dot(const f64 *a, const f64 *b, i32 n)
 // Norms
 //
 
-f64 jnl_field_norm_l1(const f64 *f, i32 n)
+f64 jnl_vec_norm_l1(const f64 *f, i32 n)
 {
 	f64 sum = 0.0;
 	for (i32 i = 0; i < n; i++)
@@ -85,7 +85,7 @@ f64 jnl_field_norm_l1(const f64 *f, i32 n)
 	return sum;
 }
 
-f64 jnl_field_norm_l2(const f64 *f, i32 n)
+f64 jnl_vec_norm_l2(const f64 *f, i32 n)
 {
 	f64 sum = 0.0;
 	for (i32 i = 0; i < n; i++)
@@ -93,7 +93,7 @@ f64 jnl_field_norm_l2(const f64 *f, i32 n)
 	return sqrt(sum);
 }
 
-f64 jnl_field_norm_linf(const f64 *f, i32 n)
+f64 jnl_vec_norm_linf(const f64 *f, i32 n)
 {
 	f64 m = 0.0;
 	for (i32 i = 0; i < n; i++) {
@@ -104,7 +104,7 @@ f64 jnl_field_norm_linf(const f64 *f, i32 n)
 	return m;
 }
 
-f64 jnl_field_norm_l2_rel(const f64 *f, const f64 *ref, i32 n)
+f64 jnl_vec_norm_l2_rel(const f64 *f, const f64 *ref, i32 n)
 {
 	f64 f_sum = 0.0, ref_sum = 0.0;
 	for (i32 i = 0; i < n; i++) {
@@ -116,7 +116,7 @@ f64 jnl_field_norm_l2_rel(const f64 *f, const f64 *ref, i32 n)
 	return sqrt(f_sum / ref_sum);
 }
 
-f64 jnl_field_norm_l2_weighted(const f64 *f, const f64 *weights, i32 n)
+f64 jnl_vec_norm_l2_weighted(const f64 *f, const f64 *weights, i32 n)
 {
 	f64 sum = 0.0;
 	for (i32 i = 0; i < n; i++)

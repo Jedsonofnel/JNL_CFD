@@ -32,6 +32,12 @@ local function step_hook(fn, name)
 	return { op = "hook", fn = fn, name = name or "<fn>" }
 end
 
+local function step_monitor(field, norm)
+	norm = norm or "normL2"
+	V.norm(norm, "monitor norm")
+	return { op = "monitor", field = field, norm = norm }
+end
+
 local function step_inner(alg)
 	return { op = "inner", inner = alg }
 end
@@ -91,6 +97,13 @@ function Builder:hook(fn, name)
 	return self
 end
 
+function Builder:monitor(field, norm)
+	V.field_name(field, "alg:monitor field")
+	if norm ~= nil then V.norm(norm, "alg:monitor norm") end
+	self._alg:_push(step_monitor(field, norm))
+	return self
+end
+
 function Builder:inner(cb, config)
 	config = config or {}
 	local inner_alg = A.new()
@@ -115,6 +128,12 @@ function A:loop(cb, config)
 	self.linalg_tol = config.linalg_tol or 1e-6
 	self.linalg_max_iters = config.linalg_max_iters or 1000
 	cb(Builder.new(self))
+end
+
+function A:monitor(field, config)
+	config = config or {}
+	V.field_name(field, "alg:monitor field")
+	self:_push(step_monitor(field, config.norm))
 end
 
 --
@@ -486,6 +505,16 @@ function A:expand(reg, inserted, fresh)
 				expanded:_push(step_correct(field, false))
 				fresh[cname] = true
 			end
+		elseif step.op == "monitor" then
+			local sym = reg[step.field]
+			if not sym then
+				error(string.format("monitor: field '%s' not found in registry", step.field), 2)
+			end
+			if not fresh[step.field] then
+				emit_deps_for(step.field, sorted_main, reg, inserted, fresh, expanded, explicit_set)
+				emit_implicit(step.field, reg, inserted, fresh, expanded)
+			end
+			expanded:_push(step_monitor(step.field, step.norm))
 		elseif step.op == "inner" then
 			local expanded_inner = step.inner:expand(reg, inserted, fresh)
 			expanded:_push(step_inner(expanded_inner))
@@ -519,6 +548,9 @@ local function fmt_step(s)
 		local hi = s.hi == math.huge and "inf" or string.format("%g", s.hi)
 		return string.format("  %s CLIP  %s [%g %s]",
 			s.implicit and "~" or "*", sym, s.lo, hi)
+	elseif s.op == "monitor" then
+		local sym = E.pretty_sym(s.field)
+		return string.format("    MONITOR %s [%s]", sym, s.norm)
 	elseif s.op == "init" then
 		local sym = E.pretty_sym(s.field)
 		return string.format("  ~ INIT %s = %g", sym, s.value or 0)

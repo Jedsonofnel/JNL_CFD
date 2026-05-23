@@ -17,6 +17,9 @@ FVM.Case   = case
 local bc   = require("jnl.fvm.bc")
 FVM.BC     = bc
 
+local compile = require("jnl.fvm.compile")
+FVM.Compile = compile
+
 -- C bindings, split by concern
 local b    = require("jnl.fvm_internal")
 

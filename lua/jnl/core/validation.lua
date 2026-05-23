@@ -80,4 +80,11 @@ function V.in_enum(set, name, ctx)
 		ctx or "value", name, table.concat(keys, ", ")), 2)
 end
 
+local SCALAR_NORMS = { normL1 = true, normL2 = true, normInf = true }
+
+function V.norm(name, label)
+	V.typeof(name, "string", label)
+	V.in_set(SCALAR_NORMS, name, label)
+end
+
 return V

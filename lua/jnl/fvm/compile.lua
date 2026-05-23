@@ -84,6 +84,9 @@ local printers = {
 	comment = function(f)
 		return "\n  ; " .. f.message
 	end,
+	monitor = function(f)
+		return string.format("MONITOR       %s  [%s]", fmt(f.field), f.norm)
+	end,
 	face_interp_cds = function(f)
 		return string.format("FACE_INTERP   %s  ->  %s", fmt(f.field), fmt(f.out))
 	end,
@@ -106,10 +109,6 @@ local printers = {
 	end,
 	eval_coeff = function(f)
 		return string.format("| EVAL_COEFF  %s", tostring(f.expr))
-	end,
-	assemble = function(f)
-		local relax = f.relax and string.format(" [relax=%g]", f.relax) or ""
-		return string.format("ASSEMBLE      %s%s", fmt(f.field), relax)
 	end,
 	solve = function(f)
 		local tol   = f.tol and string.format(" tol=%g", f.tol) or ""
@@ -844,6 +843,11 @@ local function walk_steps(reg, alg, steps, out)
 				lo = step.lo,
 				hi = step.hi
 			}
+		elseif step.op == "monitor" then
+			out[#out + 1] = Inst.new("monitor", {
+				field = step.field,
+				norm  = step.norm,
+			})
 		elseif step.op == "hook" then
 			out[#out + 1] = { op = "hook", fn = step.fn, name = step.name }
 		elseif step.op == "inner" then

@@ -387,8 +387,7 @@ dispatch.solve = function(r, inst)
 
 	r._last_iters = n
 	r._residuals[inst.field] = sys:residual_norm(phi)
-	if r.on_solve then r.on_solve(inst.field, n) end
-	if r.on_monitor then r.on_monitor(inst.field, r._residuals[inst.field], r._iter) end
+	if r.on_solve then r.on_solve(inst.field, r._residuals[inst.field], n, r._iter) end
 end
 
 --
@@ -428,6 +427,22 @@ dispatch.apply_correction = function(r, inst)
 		local delta = r:_eval_cell(inst.expr)
 		r:_field(inst.field):axpy(1.0, delta)
 	end
+end
+
+dispatch.monitor = function(r, inst)
+	if not r.on_monitor then return end
+	local field = r:_field(inst.field)
+	local value
+	if inst.norm == "normL1" then
+		value = field:norm_l1()
+	elseif inst.norm == "normL2" then
+		value = field:norm_l2()
+	elseif inst.norm == "normInf" then
+		value = field:norm_linf()
+	else
+		error("runner: unknown norm '" .. tostring(inst.norm) .. "'")
+	end
+	r.on_monitor(inst.field, value, r._iter)
 end
 
 dispatch.hook = function(r, inst)

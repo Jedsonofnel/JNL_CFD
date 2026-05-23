@@ -1,4 +1,3 @@
-#include <math.h>
 #include <string.h>
 
 #include "lua_bindings.h"
@@ -77,16 +76,6 @@ static int l_vec_copy_from(lua_State *L)
 	return 0;
 }
 
-static int l_vec_norm(lua_State *L)
-{
-	lua_vec *v = check_vec(L, 1);
-	f64 s = 0.0;
-	for (i32 i = 0; i < v->len; i++)
-		s += v->data[i] * v->data[i];
-	lua_pushnumber(L, sqrt(s));
-	return 1;
-}
-
 static int l_vec_max(lua_State *L)
 {
 	lua_vec *v = check_vec(L, 1);
@@ -154,18 +143,75 @@ static int l_vec_dot(lua_State *L)
 }
 
 //
+// Norms
+//
+
+static int l_vec_norm_l1(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	f64 norm = jnl_vec_norm_l1(v->data, v->len);
+	lua_pushnumber(L, norm);
+	return 1;
+}
+
+static int l_vec_norm_l2(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	f64 norm = jnl_vec_norm_l2(v->data, v->len);
+	lua_pushnumber(L, norm);
+	return 1;
+}
+
+static int l_vec_norm_linf(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	f64 norm = jnl_vec_norm_linf(v->data, v->len);
+	lua_pushnumber(L, norm);
+	return 1;
+}
+
+static int l_vec_norm_l2_ref(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	lua_vec *ref = check_vec(L, 2);
+	f64 norm = jnl_vec_norm_l2_rel(v->data, ref->data, v->len);
+	lua_pushnumber(L, norm);
+	return 1;
+}
+
+static int l_vec_norm_l2_weighted(lua_State *L)
+{
+	lua_vec *v = check_vec(L, 1);
+	lua_vec *weights = check_vec(L, 2);
+	f64 norm = jnl_vec_norm_l2_weighted(v->data, weights->data, v->len);
+	lua_pushnumber(L, norm);
+	return 1;
+}
+
+//
 // Registration
 //
 
-static const luaL_Reg vec_mt[] = {
-    {"fill", l_vec_fill}, {"copy_from", l_vec_copy_from},
-    {"norm", l_vec_norm}, {"max", l_vec_max},
-    {"min", l_vec_min},   {"sum", l_vec_sum},
-    {"mean", l_vec_mean}, {"scale", l_vec_scale},
-    {"axpy", l_vec_axpy}, {"clamp", l_vec_clamp},
-    {"dot", l_vec_dot},   {"__newindex", l_vec_newindex},
-    {"__len", l_vec_len}, {"__tostring", l_vec_tostring},
-    {"__gc", l_vec_gc},   {NULL, NULL}};
+static const luaL_Reg vec_mt[] = {{"fill", l_vec_fill},
+                                  {"copy_from", l_vec_copy_from},
+                                  {"norm_l1", l_vec_norm_l1},
+                                  {"max", l_vec_max},
+                                  {"norm_l2", l_vec_norm_l2},
+                                  {"norm_linf", l_vec_norm_linf},
+                                  {"norm_l2_ref", l_vec_norm_l2_ref},
+                                  {"norm_l2_weighted", l_vec_norm_l2_weighted},
+                                  {"min", l_vec_min},
+                                  {"sum", l_vec_sum},
+                                  {"mean", l_vec_mean},
+                                  {"scale", l_vec_scale},
+                                  {"axpy", l_vec_axpy},
+                                  {"clamp", l_vec_clamp},
+                                  {"dot", l_vec_dot},
+                                  {"__newindex", l_vec_newindex},
+                                  {"__len", l_vec_len},
+                                  {"__tostring", l_vec_tostring},
+                                  {"__gc", l_vec_gc},
+                                  {NULL, NULL}};
 
 int luaopen_vec_internal(lua_State *L)
 {
