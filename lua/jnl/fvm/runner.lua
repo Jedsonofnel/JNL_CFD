@@ -11,12 +11,11 @@ Runner.__index = Runner
 -- Construction
 --
 
-function Runner.new(compiled, field_map, sys_map, mesh, ctx, opts)
+function Runner.new(compiled, field_map, sys_map, mesh, ctx)
 	assert(compiled, "Runner.new: compiled must not be nil")
 	assert(field_map, "Runner.new: field_map must not be nil")
 	assert(sys_map, "Runner.new: sys_map must not be nil")
 	assert(mesh, "Runner.new: mesh must not be nil")
-	opts = opts or {}
 
 	local r = setmetatable({
 		-- snapshot of compiled state
@@ -42,20 +41,20 @@ function Runner.new(compiled, field_map, sys_map, mesh, ctx, opts)
 		_phase            = "pre",
 		_pc               = 1,
 		_inner_runners    = {},
-		_loop_depth       = opts.loop_depth or 1,
+		_loop_depth       = 1,
 		_last_iters       = 0,
 		_last_coeff_vec   = nil,
 		_residuals        = {}, -- name -> last residual scalar
 		_iter             = 0, -- outer iteration count
-		_solver_opts      = opts.solver_opts or {},
+		_solver_opts      = {},
 
 		-- unsteady state
 		_dt               = nil, -- nil = ddt terms are no-ops
 
 		-- callbacks
-		on_monitor        = opts.on_monitor,
-		on_solve          = opts.on_solve,
-		warn_missing      = opts.warn_missing,
+		on_monitor        = nil,
+		on_solve          = nil,
+		warn_missing      = nil,
 	}, Runner)
 
 	r.bindings = {}

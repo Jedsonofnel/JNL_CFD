@@ -10,11 +10,10 @@ local BC     = require("jnl.fvm.bc")
 local Reg    = require("jnl.core.registry")
 local Alg    = require("jnl.core.algorithm")
 
-local Sage   = require("jnl.sage")
 local rules  = require("jnl.fvm.rules")
 
 local L      = 1.0
-local N      = 100
+local N      = 40
 local rho    = 1.0
 local u      = 1.0
 local gamma  = 0.1
@@ -57,6 +56,9 @@ alg:add_ruleset(rules.stopping({
 	diverged = rules.any_field({
 		T = rules.field_above(1e15),
 	}),
+}, {
+	progress = true,
+	progress_n = 10,
 }))
 
 local case = require("jnl.fvm.case").new(reg, alg, mesh, {
@@ -69,73 +71,10 @@ local case = require("jnl.fvm.case").new(reg, alg, mesh, {
 })
 
 --
--- Solve (inline orchestrator)
+-- Solve
 --
 
-case:allocate()
-local runner = case:make_runner()
-local sage   = Sage.new()
-
-for _, rs in ipairs(alg.rulesets) do
-	sage:add_ruleset(rs)
-end
-
-runner.on_solve = function(field, residual, iters, iter)
-	sage:assert({
-		kind = "residual",
-		field = field,
-		value = residual,
-		iters = iters,
-		iter = iter
-	})
-end
-
-runner.on_monitor = function(field, value, iter, depth, norm)
-	sage:assert({
-		kind       = "field_norm",
-		field      = field,
-		value      = value,
-		iter       = iter,
-		loop_depth = depth,
-		norm       = norm,
-	})
-end
-
--- print every 10 iterations rule
-sage:add_rule("print_progress",
-	function(f) return f.kind == "field_norm" and f.iter % 10 == 0 end,
-	function(_, f)
-		print(string.format("iter %4d  |%s|  norm = %.3e", f.iter, f.field, f.value))
-	end
-)
-
-sage:add_rule("print_converged",
-	function(f) return f.kind == "converged" end,
-	function(_, f)
-		print(string.format("converged: iter=%d loop_depth=%d", f.iter, f.loop_depth or 1))
-	end
-)
-
--- drive the loop manually for now
-local stopped
-repeat
-	local ongoing = runner:run_step()
-
-	if not ongoing then
-		if runner:is_finished() then
-			stopped = true
-		else
-			sage:assert({ kind = "iter_end", iter = runner._iter, loop_depth = 1 })
-			for _, action in ipairs(sage:pop_actions()) do
-				if action.kind == "stop" then stopped = true end
-			end
-			if not stopped then
-				runner._iter = runner._iter + 1
-				runner:reset()
-			end
-		end
-	end
-until stopped
+case:make_sim():run()
 
 --
 -- Analytical solution

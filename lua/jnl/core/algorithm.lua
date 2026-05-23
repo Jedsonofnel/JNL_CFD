@@ -52,6 +52,16 @@ function A.new()
 	}, A)
 end
 
+function A:add_rules(...)
+	self.rulesets[#self.rulesets + 1] = { rules = { ... } }
+	return self
+end
+
+function A:add_rule(rule)
+	self.rulesets[#self.rulesets + 1] = { rules = { rule } }
+	return self
+end
+
 function A:add_ruleset(ruleset)
 	self.rulesets[#self.rulesets + 1] = ruleset
 	return self

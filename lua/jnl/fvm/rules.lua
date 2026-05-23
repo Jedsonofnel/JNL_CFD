@@ -185,6 +185,37 @@ function M.stopping(criteria, opts)
 		end,
 	}
 
+	-- add progress tracking optionally
+	if opts.progress ~= false then
+		local n = opts.progress_n or 10
+		rules[#rules + 1] = {
+			name  = string.format("progress[depth=%d]", depth),
+			match = function(f)
+				return f.kind == "field_norm"
+					and (f.loop_depth or 1) == depth
+					and f.iter % n == 0
+			end,
+			fire  = function(_, f)
+				io.write(string.format("  iter %4d  |%s|  %s = %.3e\n",
+					f.iter, f.field, f.norm or "norm", f.value))
+			end,
+		}
+	end
+
+	-- always print convergence/divergence at outer depth
+	if depth == 1 then
+		rules[#rules + 1] = {
+			name  = "print_conclusion",
+			match = function(f)
+				return (f.kind == "converged" or f.kind == "diverging")
+					and f.loop_depth == depth
+			end,
+			fire  = function(_, f)
+				io.write(string.format("%s at iter %d\n", f.kind, f.iter))
+			end,
+		}
+	end
+
 	return { rules = rules }
 end
 

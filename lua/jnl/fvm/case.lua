@@ -307,10 +307,15 @@ function Case.new(reg, alg, mesh, bcs)
 	return self
 end
 
-function Case:make_runner(opts)
-	assert(self._allocated, "Case:make_runner: case must be allocated — call allocate() first")
+function Case:make_runner()
+	if not self._allocated then self:allocate() end
 	local Runner = require("jnl.fvm.runner")
-	return Runner.new(self.compiled, self._field_map, self._sys_map, self.mesh, self._ctx, opts)
+	return Runner.new(self.compiled, self._field_map, self._sys_map, self.mesh, self._ctx)
+end
+
+function Case:make_sim(opts)
+	local FVMSim = require("jnl.fvm.sim")
+	return FVMSim.new(self:make_runner(), self.alg, opts)
 end
 
 --
