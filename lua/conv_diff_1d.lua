@@ -1,9 +1,11 @@
 -- conv_diff_1d.lua - steady 1D convection-diffusion
 -- <jed@nelson.ac> // 2026-05-22
-
 local mesh2d = require("jnl.mesh2d")
 local P      = mesh2d.smesh.PATCH
-local fvm    = require("jnl.fvm")
+local FVM    = require("jnl.fvm")
+local FVMe   = FVM.Expr
+local Op     = FVM.Op
+local E      = require("jnl.core.expr")
 
 local L      = 1.0 -- domain length
 local N      = 20  -- cells
@@ -12,67 +14,48 @@ local u      = 1.0 -- convection velocity
 local gamma  = 0.1 -- diffusion coefficient
 local Pe     = rho * u * L / gamma
 print(string.format("Peclet number: %.2f", Pe))
-
 local mesh = mesh2d.new_smesh(L, 1.0, N, 1)
 
 --
--- allocations
+-- Physics setup
 --
 
-local ctx  = fvm.ctx_new(mesh, 3, 3, 1)
+local reg = require("jnl.core.registry").new()
 
-local sys = ctx:fvsys()
+reg:constant("k", gamma)
+reg:constant("rho", rho)
 
-local T   = ctx:field()
-local Ux  = ctx:field()
-local Uy  = ctx:field()
+reg:uniform("Ux", u)
 
-T:fill(0.0)
-Ux:fill(u)
-Uy:fill(0.0)
+reg:field("T", {
+	eq = FVM.eq(
+		Op.div("rho", FVMe.face("Ux"), "T"),
+		Op.lap("k", "T")),
+})
 
---
--- Face values
---
+local alg = require("jnl.core.algorithm").new()
+alg:linear(function(a)
+	a:solve("T")
+end)
 
-local ux_face = ctx:face_field()
-local uy_face = ctx:face_field()
-local un_face = ctx:face_field()
-
-fvm.face_interp_cds(mesh, Ux, ux_face)
-fvm.face_interp_cds(mesh, Uy, uy_face)
-
-fvm.bc_dirichlet_face_const(mesh, ux_face, P.LEFT, u)
-fvm.bc_dirichlet_face_const(mesh, ux_face, P.RIGHT, u)
-fvm.bc_dirichlet_face_const(mesh, ux_face, P.TOP, 0.0)
-fvm.bc_dirichlet_face_const(mesh, ux_face, P.BOTTOM, 0.0)
-
-fvm.bc_dirichlet_face_const(mesh, uy_face, P.LEFT, 0.0)
-fvm.bc_dirichlet_face_const(mesh, uy_face, P.RIGHT, 0.0)
-fvm.bc_dirichlet_face_const(mesh, uy_face, P.TOP, 0.0)
-fvm.bc_dirichlet_face_const(mesh, uy_face, P.BOTTOM, 0.0)
-
-fvm.face_normal_component(mesh, ux_face, uy_face, un_face)
-
---
--- Assembly
---
-
-sys:reset()
-
-fvm.laplacian_const(sys, mesh, gamma)
-fvm.div_cds_const(sys, mesh, rho, un_face)
-
-fvm.bc_dirichlet_const(sys, mesh, P.LEFT, 0.0)
-fvm.bc_dirichlet_const(sys, mesh, P.RIGHT, 1.0)
-fvm.bc_neumann_const(sys, mesh, P.TOP, 0.0)
-fvm.bc_neumann_const(sys, mesh, P.BOTTOM, 0.0)
+local phys   = FVM.Physics.new(reg, alg)
+local BC     = FVM.BC
+local case   = FVM.Case.new(phys, mesh, {
+	T = {
+		BC.dirichlet(P.LEFT, 0.0),
+		BC.dirichlet(P.RIGHT, 1.0),
+		BC.wall(P.TOP),
+		BC.wall(P.BOTTOM),
+	},
+})
 
 --
 -- Solve
 --
 
-local iters = sys:solve_bicgstab(T, 1e-10, 500)
+local runner = case:make_runner()
+runner:run_all()
+local iters = runner:last_iters()
 print(string.format("converged in %d iterations", iters))
 
 --
@@ -90,14 +73,15 @@ end
 -- Output
 --
 
-local gp = require("jnl.gp")
+local gp             = require("jnl.gp")
+local n_cells        = mesh:n_cells()
+local T              = case._field_map["T"]
 
-local n_cells = mesh:n_cells()
 local num_xs, num_ys = {}, {}
 for i = 1, n_cells do
 	local x, _ = mesh:cell_centre(i)
-	num_xs[i] = x
-	num_ys[i] = T[i]
+	num_xs[i]  = x
+	num_ys[i]  = T[i]
 end
 
 local ana_xs, ana_ys = gp.sample(analytical, 0, L)

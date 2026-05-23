@@ -13,6 +13,13 @@ local reg  = R.new()
 reg:constant("rho", 1025.0)
 reg:constant("mu", 0.001)
 reg:constant("alpha_p", 0.3)
+reg:constant("k", 100)
+
+reg:uniform("nu_lam", 0.001 / 1025.0)
+reg:expression("rho_mu_ratio",
+	E.div("rho", "mu"))
+
+reg:expression("nonsense", E.add("rho_mu_ratio", 42))
 
 -- momentum
 reg:field("Ux", {
@@ -77,10 +84,19 @@ reg:correction("p",
 		E.expl("p"),
 		E.mul("alpha_p", E.prime("p"))))
 
+-- Temperature
+reg:field("T", {
+	eq = FVM.eq(
+		Op.ddt("rho", "T"),
+		Op.lap("k", "T"),
+		Op.div("rho", FVMe.mwi("U", "p"), "T")),
+})
+
 local alg = A.new()
 alg:loop(function(a)
 	a:solve("U")
 	a:solve("p")
+	a:solve("nonsense")
 	a:solve(E.prime_name("p"))
 	a:correct("U")
 	a:correct("p")
@@ -88,5 +104,4 @@ end)
 
 local phys = FVM.Physics.new(reg, alg)
 
-phys:print_resources()
-phys:print_instructions()
+phys:print_algorithm()

@@ -105,6 +105,31 @@ local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
 		sym.bcs                 = validated -- list of explicit bc entries
 		sym.unspecified_patches = unspecified -- list of patch name strings
 	end
+
+	-- make sure uniform fields have their BCs
+	for name, sym in pairs(reg) do
+		if type(sym) ~= "table" then goto continue end
+		if sym.kind ~= "uniform" then goto continue end
+
+		-- find any face intermediates that interpolate this uniform
+		local face_name = "__face_" .. name
+		local face_sym  = reg[face_name]
+		if not face_sym then goto continue end
+
+		-- inject dirichlet of the uniform value on all patches
+		local bcs = {}
+		for _, pname in ipairs(patch_names) do
+			bcs[#bcs + 1] = {
+				patch = pname,
+				kind  = "dirichlet_face_const",
+				value = sym.value,
+			}
+		end
+		face_sym.bcs = bcs
+		face_sym.unspecified_patches = {}
+
+		::continue::
+	end
 end
 
 --
@@ -138,11 +163,13 @@ function Case.new(physics, mesh, bcs)
 
 	instance.algorithm = alg:expand(reg)
 	instance.resources = compile.count_resources(reg)
+
+	instance.pre_instructions,
 	instance.instructions,
 	instance.post_instructions = compile.emit_instructions(reg, instance.algorithm)
 
 	-- Sanity: no non-implicit bc_placeholder should survive in a Case
-	for _, inst in ipairs(instance.instructions) do
+	for _, inst in ipairs({ instance.pre_instructions, instance.instructions, instance.post_instructions }) do
 		if inst.op == "bc_placeholder" and not inst.fields.implicit then
 			error("Case.new: unresolved bc_placeholder for field '"
 				.. tostring(inst.fields.field) .. "' — compiler bug")
@@ -156,9 +183,59 @@ function Case.new(physics, mesh, bcs)
 	return instance
 end
 
-function Case:make_runner(ctx, field_map, opts)
+function Case:allocate()
+	assert(self.resources, "Case:allocate: no resources — was Case.new called?")
+
+	local FVM = require("jnl.fvm")
+
+	local res = self.resources
+	local ctx = FVM.ctx_new(self.mesh,
+		res.n_fields,
+		res.n_face_fields,
+		res.n_systems,
+		{
+			cell_scratch = res.n_cell_scratch,
+			face_scratch = res.n_face_scratch
+		})
+
+	local field_map = {}
+	local sys_map = {}
+
+	for _, f in ipairs(res.fields) do
+		if f.face then
+			field_map[f.name] = ctx:face_field()
+		else
+			field_map[f.name] = ctx:field()
+			local sym = self.registry[f.name]
+			if sym then
+				local init = (sym.kind == "uniform" and sym.value)
+					or (sym.kind == "field" and (sym.initial or 0.0))
+					or 0.0
+				field_map[f.name]:fill(init)
+			end
+		end
+
+		-- system for every solved field
+		local sym = self.registry[f.name]
+		if sym and sym.kind == "field" then
+			sys_map[f.name] = ctx:fvsys()
+		end
+	end
+
+	self._field_map = field_map
+	self._sys_map   = sys_map
+	self._ctx       = ctx
+	self._allocated = true
+	return field_map, sys_map
+end
+
+function Case:is_allocated()
+	return self._allocated == true
+end
+
+function Case:make_runner(opts)
 	local Runner = require("jnl.fvm.runner")
-	return Runner.new(self, self.mesh, ctx, field_map, opts)
+	return Runner.new(self, opts)
 end
 
 --

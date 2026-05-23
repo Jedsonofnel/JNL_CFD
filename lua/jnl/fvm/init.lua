@@ -17,6 +17,9 @@ FVM.Case    = case
 local phys  = require("jnl.fvm.physics")
 FVM.Physics = phys
 
+local bc = require("jnl.fvm.bc")
+FVM.BC = bc
+
 -- C bindings, split by concern
 local b     = require("jnl.fvm_internal")
 

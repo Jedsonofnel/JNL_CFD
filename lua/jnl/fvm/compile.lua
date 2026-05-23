@@ -237,6 +237,8 @@ function M.count_resources(reg)
 				local d = sym.expr:scratch_depth()
 				if d > max_expr_scratch then max_expr_scratch = d end
 			end
+		elseif sym.kind == "uniform" then
+			record(name, "uniform", false)
 		elseif sym.kind == "intermediate" then
 			local itype = sym.itype
 			if itype == "face" or itype == "face_vector" then
@@ -435,11 +437,19 @@ local function emit_term(field, term, reg, out)
 		if term.coeff then
 			local c = coeff_of(term.coeff, reg)
 			local coeff = emit_coeff(c, out)
-			out[#out + 1] = Inst.new("div_" .. scheme .. "_field", {
-				field = term.phi,
-				coeff = coeff,
-				un_face = flux_name,
-			})
+			if type(coeff) == "number" then
+				out[#out + 1] = Inst.new("div_" .. scheme .. "_const", {
+					field   = term.phi,
+					coeff   = coeff,
+					un_face = flux_name,
+				})
+			else
+				out[#out + 1] = Inst.new("div_" .. scheme .. "_field", {
+					field   = term.phi,
+					coeff   = coeff,
+					un_face = flux_name,
+				})
+			end
 		else
 			out[#out + 1] = Inst.new("div_" .. scheme .. "_const", {
 				field   = term.phi,
@@ -550,7 +560,14 @@ local function walk_steps(reg, steps, out)
 		if step.op == "evaluate" then
 			emit_eval(reg, step.field, out)
 		elseif step.op == "solve" then
-			emit_solve(reg, step.field, out)
+			local sym = reg[step.field]
+			if sym and sym.kind == "expression" then
+				emit_eval(reg, step.field, out)
+			else
+				emit_solve(reg, step.field, out)
+			end
+		elseif step.op == "init" then
+			-- handled at case allocation
 		elseif step.op == "correct" then
 			emit_correct(reg, step.field, out)
 		elseif step.op == "clip" then
@@ -576,20 +593,25 @@ local function walk_steps(reg, steps, out)
 end
 
 function M.emit_instructions(reg, expanded_alg)
-	local main, post = {}, {}
+	local pre, main, post = {}, {}, {}
+	walk_steps(reg, expanded_alg.pre, pre)
 	walk_steps(reg, expanded_alg.steps, main)
 	if expanded_alg.post and #expanded_alg.post > 0 then
 		walk_steps(reg, expanded_alg.post, post)
 	end
-	return main, post
+	return pre, main, post
 end
 
 --
 -- Listings
 --
 
-function M.instruction_listing(main, post)
+function M.instruction_listing(pre, main, post)
 	local lines = { ".INSTRUCTIONS:" }
+	if pre and #pre > 0 then
+		lines[#lines + 1] = ".PRE:"
+		for _, inst in ipairs(pre) do lines[#lines + 1] = inst:tostring() end
+	end
 	for _, inst in ipairs(main) do
 		lines[#lines + 1] = inst:tostring()
 	end

@@ -336,39 +336,35 @@ local function build_bindings(field_map, mesh)
 	return b
 end
 
-function Runner.new(case, mesh, ctx, field_map, opts)
-	opts = opts or {}
-
-	local sys_map = {}
-	for name, sym in pairs(case.registry) do
-		if type(sym) == "table" and sym.kind == "field" then
-			sys_map[name] = ctx:fvsys()
-		end
+function Runner.new(case, opts)
+	if not case:is_allocated() then
+		case:allocate()
 	end
+	opts = opts or {}
 
 	return setmetatable({
 		instructions       = case.instructions,
+		pre_instructions   = case.pre_instructions or {},
 		post_instructions  = case.post_instructions or {},
 		reg                = case.registry,
-		mesh               = mesh,
-		ctx                = ctx,
-		field_map          = field_map,
-		sys_map            = sys_map,
+		mesh               = case.mesh,
+		ctx                = case._ctx,
+		field_map          = case._field_map,
+		sys_map            = case._sys_map,
 		_phase             = "main",
 		_pc                = 1,
 		on_solve           = opts.on_solve,
-		expr_hooks         = opts.expr_hooks or {},
 		hooks              = opts.hooks or {},
 		warn_missing_exprs = opts.warn_missing_exprs,
 		_unsteady          = false,
 		_dt                = nil,
 		_last_iters        = 0,
 		_last_coeff        = 0.0,
-		bindings           = build_bindings(field_map, mesh),
-		_cell_pool         = ctx:cell_pool(),
-		_face_pool         = ctx:face_pool(),
-		_n_cells           = mesh:n_cells(),
-		_n_faces           = mesh:n_faces(),
+		bindings           = build_bindings(case._field_map, case.mesh),
+		_cell_pool         = case._ctx:cell_pool(),
+		_face_pool         = case._ctx:face_pool(),
+		_n_cells           = case.mesh:n_cells(),
+		_n_faces           = case.mesh:n_faces(),
 		_last_coeff_vec    = nil,
 		_inner_runners     = {},
 	}, Runner)

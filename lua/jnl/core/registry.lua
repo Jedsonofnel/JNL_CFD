@@ -74,6 +74,9 @@ function Field:_pretty()
 	return table.concat(lines, "\n")
 end
 
+local Uniform = {}
+Uniform.__index = Uniform
+
 local Vector = {}
 Vector.__index = Vector
 
@@ -158,6 +161,15 @@ function R:field(name, spec)
 		eq = spec.eq,
 		clip = spec.clip,
 	}, Field)
+end
+
+function R:uniform(name, value)
+	V.field_name(name, "R:uniform name")
+	V.typeof(value, "number", "uniform value")
+	self:define(name, {
+		kind = "uniform",
+		value = value,
+	}, Uniform)
 end
 
 function R:vector(name, components)

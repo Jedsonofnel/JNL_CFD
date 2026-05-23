@@ -41,7 +41,11 @@ end
 --
 
 function A.new()
-	return setmetatable({ steps = {}, post = {}, op = "linear" }, A)
+	return setmetatable({ pre = {}, steps = {}, post = {}, op = "linear" }, A)
+end
+
+function A:_push_pre(step)
+	self.pre[#self.pre + 1] = step
 end
 
 function A:_push(step)
@@ -216,8 +220,21 @@ local function invalidate_dependents(reg, field, fresh, inserted)
 	end
 end
 
+local function has_mutable_dep(reg, name, explicit_set)
+	local tdeps = transitive_deps(reg, name, {}, false, nil, nil, false)
+	for dep_name in pairs(tdeps) do
+		if dep_name == name then goto continue end
+		local dsym = reg[dep_name]
+		if not dsym then goto continue end
+		if dsym.kind == "field" then return true end
+		if dsym.kind == "expression" and explicit_set[dep_name] then return true end
+		::continue::
+	end
+	return false
+end
+
 local function classify(reg, explicit_set)
-	local main_names, post_names = {}, {}
+	local pre_names, main_names, post_names = {}, {}, {}
 
 	local ex_tdeps = {}
 	for ex in pairs(explicit_set) do
@@ -234,19 +251,32 @@ local function classify(reg, explicit_set)
 		if explicit_set[name] then goto continue end
 		if sym.kind == "constant" or sym.kind == "vector" then goto continue end
 		if sym.kind == "intermediate" and sym.accessor then goto continue end
+		if sym.kind == "uniform" then
+			pre_names[#pre_names + 1] = name
+			goto continue
+		end
 
 		if ex_tdeps[name] then
-			main_names[#main_names + 1] = name
+			if has_mutable_dep(reg, name, explicit_set) then
+				main_names[#main_names + 1] = name
+			else
+				pre_names[#pre_names + 1] = name
+			end
 		else
-			post_names[#post_names + 1] = name
+			if has_mutable_dep(reg, name, explicit_set) then
+				post_names[#post_names + 1] = name
+			else
+				pre_names[#post_names + 1] = name
+			end
 		end
 		::continue::
 	end
 
+	table.sort(pre_names)
 	table.sort(main_names)
 	table.sort(post_names)
 
-	return main_names, post_names
+	return pre_names, main_names, post_names
 end
 
 local function emit_implicit(name, reg, inserted, fresh, expanded)
@@ -279,6 +309,33 @@ local function emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded,
 		if tdeps[name] and not fresh[name] then
 			emit_implicit(name, reg, inserted, fresh, expanded)
 		end
+	end
+end
+
+local function emit_pre(pre_names, reg, expanded, inserted, fresh)
+	local sorted = topo_sort(reg, pre_names)
+	for _, name in ipairs(sorted) do
+		local sym = reg[name]
+		if not sym then goto continue end
+
+		local step
+		if sym.kind == "uniform" then
+			step = { op = "init", field = name, value = sym.value, implicit = true }
+		elseif sym.kind == "expression" or sym.kind == "intermediate" then
+			step = step_evaluate(name, true)
+		end
+
+		if step then
+			if expanded.op == "loop" then
+				expanded:_push_pre(step)
+			else
+				expanded:_push(step)
+			end
+		end
+
+		inserted[name] = true
+		fresh[name] = true
+		::continue::
 	end
 end
 
@@ -362,7 +419,9 @@ function A:expand(reg, inserted, fresh)
 	for _, step in ipairs(self.steps) do
 		if step.op == "solve" then
 			local sym = reg[step.field]
-			if sym and sym.kind == "vector" then
+			if sym and sym.kind == "expression" then
+				explicit_set[step.field] = true
+			elseif sym and sym.kind == "vector" then
 				for _, c in ipairs(sym.components) do explicit_set[c] = true end
 			else
 				explicit_set[step.field] = true
@@ -377,26 +436,37 @@ function A:expand(reg, inserted, fresh)
 		end
 	end
 
-	local main_names, post_names = classify(reg, explicit_set)
+	local pre_names, main_names, post_names = classify(reg, explicit_set)
 	local sorted_main = topo_sort(reg, main_names)
+
+	emit_pre(pre_names, reg, expanded, inserted, fresh)
 
 	for _, step in ipairs(self.steps) do
 		if step.op == "solve" then
-			local sym    = reg[step.field]
-			local fields = (sym and sym.kind == "vector")
-				and sym.components or { step.field }
+			local sym = reg[step.field]
+			if sym and sym.kind == "expression" then
+				emit_deps_for(step.field, sorted_main, reg, inserted, fresh, expanded, explicit_set)
+				if not fresh[step.field] then
+					expanded:_push(step_evaluate(step.field, false))
+					fresh[step.field] = true
+					invalidate_dependents(reg, step.field, fresh, inserted)
+				end
+			else
+				local fields = (sym and sym.kind == "vector")
+					and sym.components or { step.field }
 
-			for _, field in ipairs(fields) do
-				emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded, explicit_set)
+				for _, field in ipairs(fields) do
+					emit_deps_for(field, sorted_main, reg, inserted, fresh, expanded, explicit_set)
 
-				if not fresh[field] then
-					expanded:_push(step_solve(field, false))
-					fresh[field] = true
-					invalidate_dependents(reg, field, fresh, inserted)
+					if not fresh[field] then
+						expanded:_push(step_solve(field, false))
+						fresh[field] = true
+						invalidate_dependents(reg, field, fresh, inserted)
 
-					local fsym = reg[field]
-					if fsym and fsym.correction then
-						expanded:_push(step_correct(field, false))
+						local fsym = reg[field]
+						if fsym and fsym.correction then
+							expanded:_push(step_correct(field, false))
+						end
 					end
 				end
 			end
@@ -444,6 +514,9 @@ local function fmt_step(s)
 		local hi = s.hi == math.huge and "inf" or string.format("%g", s.hi)
 		return string.format("  %s CLIP  %s [%g %s]",
 			s.implicit and "~" or "*", sym, s.lo, hi)
+	elseif s.op == "init" then
+		local sym = E.pretty_sym(s.field)
+		return string.format("  ~ INIT %s = %g", sym, s.value or 0)
 	elseif s.op == "inner" then
 		return s.inner:_pretty("\n>>INNER", "<<END\n") -- don't care about indentation
 	end
@@ -453,6 +526,14 @@ end
 --- Returns a pretty string depicting the algorithm
 function A:_pretty(heading, ending) -- TOOD use heading and ending for nested algorithm loops
 	local lines = {}
+
+	if #self.pre > 0 then
+		lines[#lines + 1] = ".PRE:"
+		for _, s in ipairs(self.pre) do
+			lines[#lines + 1] = fmt_step(s)
+		end
+	end
+
 	lines[#lines + 1] = heading or (
 		self.op == "loop"
 		and string.format(".LOOP (max=%d):", self.max_iters)
