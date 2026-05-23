@@ -124,18 +124,27 @@ end
 
 local function elaborate_face(reg, name, field)
 	local comps = scalars_of(reg, field)
-	if #comps == 1 then
-		assert(reg[comps[1]],
-			"intermediate '" .. name .. "': unregistered field '" .. comps[1] .. "'")
-		return "face", comps, {}, false, nil
+	if #comps > 1 then
+		error("intermediate '" .. name .. "': cannot take face of vector field '"
+			.. field .. "' directly — use FVMe.face_normal('" .. field .. "') instead")
 	end
-	local face_deps, to_enqueue = {}, {}
-	for _, c in ipairs(comps) do
-		local cf = names.face(c)
-		face_deps[#face_deps + 1] = cf
-		to_enqueue[#to_enqueue + 1] = cf
-	end
-	return "face_vector", face_deps, to_enqueue, false, nil
+	assert(reg[comps[1]],
+		"intermediate '" .. name .. "': unregistered field '" .. comps[1] .. "'")
+	return "face", comps, {}, false, nil
+end
+
+local function elaborate_face_normal(reg, _, U)
+	local reg_U = reg[U]
+	assert(reg_U, "face_normal: no symbol for U='" .. U .. "'")
+	assert(reg_U.kind == "vector",
+		"face_normal: U='" .. U .. "' must be a vector, got " .. (reg_U.kind or "nil"))
+
+	local Ux, Uy = reg_U.components[1], reg_U.components[2]
+	local fx = names.face(Ux)
+	local fy = names.face(Uy)
+	local deps = { fx, fy }
+	local to_enqueue = { fx, fy }
+	return "face_normal", deps, to_enqueue, false, nil
 end
 
 local function elaborate_mwi(reg, _, U, p)
@@ -181,7 +190,7 @@ local function elaborate_expl(_, _, field)
 end
 
 local function elaborate(reg, name)
-	local comp, field
+	local comp, field, U, p
 
 	field = names.is_grad_parent(name)
 	if field then return elaborate_grad_parent(reg, name, field) end
@@ -192,13 +201,16 @@ local function elaborate(reg, name)
 	field = names.is_face(name)
 	if field then return elaborate_face(reg, name, field) end
 
+	U = names.is_face_normal(name)
+	if U then return elaborate_face_normal(reg, name, U) end
+
 	comp, field = names.is_mwi(name)
 	if comp then return elaborate_mwi(reg, name, comp, field) end
 
 	field, comp = names.is_diag(name)
 	if field then return elaborate_diag(reg, name, field, comp) end
 
-	local U, p = names.is_div_mwi(name)
+	U, p = names.is_div_mwi(name)
 	if U then return elaborate_div_mwi(reg, name, U, p) end
 
 	field = names.is_div(name)

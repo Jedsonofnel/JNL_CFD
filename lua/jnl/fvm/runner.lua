@@ -2,6 +2,7 @@
 -- <jed@nelson.ac> // 2026-05-23
 
 local FVM = require("jnl.fvm")
+local names = FVM.Expr.names
 
 local Runner = {}
 Runner.__index = Runner
@@ -10,24 +11,42 @@ Runner.__index = Runner
 -- BC Dispatch table
 --
 
-local bc_dispatch = {
-	dirichlet_const = function(mesh, sys, patch, bc)
-		FVM.bc_dirichlet_const(sys, mesh, patch, bc.value)
+local bc_patch_dispatch = {
+	dirichlet_const = function(r, inst)
+		FVM.bc_dirichlet_const(r:_sys(inst.field), r.mesh, inst.patch, inst.value)
 	end,
-	neumann_const = function(mesh, sys, patch, bc)
-		FVM.bc_neumann_const(sys, mesh, patch, bc.value)
+	neumann_const = function(r, inst)
+		FVM.bc_neumann_const(r:_sys(inst.field), r.mesh, inst.patch, inst.value)
 	end,
-	dirichlet_face_const = function(mesh, face_field, patch, bc)
-		FVM.bc_dirichlet_face_const(mesh, face_field, patch, bc.value)
+}
+
+local bc_face_dispatch = {
+	dirichlet_face_const = function(r, inst)
+		FVM.bc_dirichlet_face_const(r.mesh, r:_field(inst.face_field), inst.patch, inst.value)
 	end,
-	neumann_face_const = function(mesh, face_field, patch, bc)
-		FVM.bc_neumann_face_const(mesh, face_field, patch, bc.value)
+	neumann_face_const = function(r, inst)
+		FVM.bc_neumann_face_const(
+			r.mesh,
+			r:_field(names.is_face(inst.face_field)),
+			r:_field(inst.face_field),
+			inst.patch,
+			inst.value)
 	end,
-	dirichlet_face_normal = function(mesh, face_field, patch, bc)
-		FVM.bc_dirichlet_face_normal(mesh, face_field, patch, bc.ux, bc.uy)
+	dirichlet_face_normal = function(r, inst)
+		FVM.bc_dirichlet_face_normal(r.mesh, r:_field(inst.face_field), inst.patch, inst.ux, inst.uy)
 	end,
-	neumann_face_normal = function(mesh, face_field, patch, bc)
-		FVM.bc_neumann_face_normal(mesh, face_field, patch, bc.ux, bc.uy)
+	neumann_face_normal = function(r, inst)
+		local U      = names.is_face_normal(inst.face_field)
+		local reg_U  = r.reg[U]
+		local Ux, Uy = reg_U.components[1], reg_U.components[2]
+		FVM.bc_neumann_face_normal(
+			r.mesh,
+			r:_field(names.face(Ux)),
+			r:_field(names.face(Uy)),
+			r:_field(inst.face_field),
+			inst.patch,
+			inst.ux or 0.0,
+			inst.uy or 0.0)
 	end,
 }
 
@@ -66,17 +85,15 @@ dispatch.bc_placeholder = function() end
 --
 
 dispatch.apply_bc_patch = function(r, inst)
-	local fn = bc_dispatch[inst.kind]
+	local fn = bc_patch_dispatch[inst.kind]
 	assert(fn, "runner: unknown bc kind '" .. tostring(inst.kind) .. "'")
-	local sys = r:_sys(inst.field)
-	fn(r.mesh, sys, inst.patch, inst)
+	fn(r, inst)
 end
 
 dispatch.apply_bc_face = function(r, inst)
-	local fn = bc_dispatch[inst.kind]
+	local fn = bc_face_dispatch[inst.kind]
 	assert(fn, "runner: unknown bc face kind '" .. tostring(inst.kind) .. "'")
-	local face_h = r:_field(inst.face_field)
-	fn(r.mesh, face_h, inst.patch, inst)
+	fn(r, inst)
 end
 
 --
@@ -87,6 +104,13 @@ dispatch.face_interp_cds = function(r, inst)
 	local src = r:_field(inst.field)
 	local dst = r:_field(inst.out)
 	FVM.face_interp_cds(r.mesh, src, dst)
+end
+
+dispatch.face_normal_component = function(r, inst)
+	local ux = r:_field(inst.ux_face)
+	local uy = r:_field(inst.uy_face)
+	local un = r:_field(inst.out)
+	FVM.face_normal_component(r.mesh, ux, uy, un)
 end
 
 dispatch.grad_green_gauss = function(r, inst)

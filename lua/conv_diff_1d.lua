@@ -26,10 +26,12 @@ reg:constant("k", gamma)
 reg:constant("rho", rho)
 
 reg:uniform("Ux", u)
+reg:uniform("Uy", u)
+reg:vector("U", { "Ux", "Uy" })
 
 reg:field("T", {
 	eq = FVM.eq(
-		Op.div("rho", FVMe.face("Ux"), "T"),
+		Op.div("rho", FVMe.face_normal("U"), "T", { scheme = "SUPERBEE" }),
 		Op.lap("k", "T")),
 })
 
@@ -48,6 +50,8 @@ local case   = FVM.Case.new(phys, mesh, {
 		BC.wall(P.BOTTOM),
 	},
 })
+
+case:print_instructions()
 
 --
 -- Solve

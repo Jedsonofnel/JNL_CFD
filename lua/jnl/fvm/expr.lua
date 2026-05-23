@@ -27,6 +27,12 @@ local function face_name(field)
 end
 
 ---@param U string
+---@return string
+local function face_normal_name(U)
+	return "__facen_" .. U
+end
+
+---@param U string
 ---@param p string
 local function mwi_name(U, p)
 	return "__mwi_" .. U .. ":" .. p
@@ -50,6 +56,7 @@ local function div_mwi_name(U, p)
 	return "__div_mwi_" .. U .. ":" .. p
 end
 
+
 -- Decoders return nil if name doesn't match pattern
 
 ---@param name string
@@ -70,6 +77,12 @@ end
 ---@return string
 local function is_face(name)
 	return name:match("^__face_(.+)$")
+end
+
+---@param name string
+---@return string
+local function is_face_normal(name)
+	return name:match("^__facen_(.+)$")
 end
 
 ---@param name string
@@ -97,14 +110,18 @@ local function is_div(name)
 	return name:match("^__div_(.+)$")
 end
 
+---@param name string
+---@return string, string
 local function is_div_mwi(name)
 	local U, p = name:match("^__div_mwi_(.+):(.+)$")
 	return U, p
 end
 
+
 M.names = {
 	grad = grad_name,
 	face = face_name,
+	face_normal = face_normal_name,
 	mwi = mwi_name,
 	diag = diag_name,
 	div = div_name,
@@ -113,6 +130,7 @@ M.names = {
 	is_grad_parent = is_grad_parent,
 	is_face = is_face,
 	is_mwi = is_mwi,
+	is_face_normal = is_face_normal,
 	is_diag = is_diag,
 	is_div = is_div,
 	is_div_mwi = is_div_mwi,
@@ -131,6 +149,10 @@ end
 
 local function pretty_face(field)
 	return "<" .. "f:" .. E.pretty_sym(field) .. ">"
+end
+
+local function pretty_face_normal(U)
+	return "<fn:" .. E.pretty_sym(U) .. ">"
 end
 
 local function pretty_mwi(U, p)
@@ -163,6 +185,10 @@ E.pretty_sym_fallback = function(name)
 	do
 		local field = is_face(name)
 		if field then return pretty_face(field) end
+	end
+	do
+		local field = is_face_normal(name)
+		if field then return pretty_face_normal(field) end
 	end
 	do
 		local U, p = is_mwi(name)
@@ -234,6 +260,17 @@ function M.face(field)
 		_facewise = true,
 		_pretty   = function() return pretty_face(field) end
 	}
+end
+
+function M.face_normal(U_name)
+	V.field_name(U_name, "face_normal U")
+	return E.make_expr({
+		kind = "face_normal",
+		U = U_name,
+		_dep_name = face_normal_name(U_name),
+		_facewise = true,
+		_pretty = function() return pretty_face(U_name) end
+	})
 end
 
 function M.div(field)

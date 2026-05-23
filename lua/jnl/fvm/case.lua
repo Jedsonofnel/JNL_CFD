@@ -125,8 +125,8 @@ local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
 				value = sym.value,
 			}
 		end
-		face_sym.bcs = bcs
-		face_sym.unspecified_patches = {}
+		sym.bcs = bcs
+		sym.unspecified_patches = {}
 
 		::continue::
 	end
@@ -161,7 +161,6 @@ function Case.new(physics, mesh, bcs)
 		warnings = warnings,
 	}, Case)
 
-	instance.algorithm = alg:expand(reg)
 	instance.resources = compile.count_resources(reg)
 
 	instance.pre_instructions,
@@ -243,7 +242,10 @@ end
 --
 
 function Case:print_instructions()
-	print(compile.instruction_listing(self.instructions, self.post_instructions))
+	print(compile.instruction_listing(
+		self.pre_instructions,
+		self.instructions,
+		self.post_instructions))
 end
 
 function Case:print_resources()

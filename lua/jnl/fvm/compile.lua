@@ -37,6 +37,9 @@ local printers = {
 	face_interp_cds = function(f)
 		return string.format("FACE_INTERP   %s  ->  %s", fmt(f.field), fmt(f.out))
 	end,
+	face_normal_component = function(f)
+		return string.format("FACE_NORMAL   (%s, %s)  ->  %s", fmt(f.ux_face), fmt(f.uy_face), fmt(f.out))
+	end,
 	grad_green_gauss = function(f)
 		return string.format("GRAD_GG       %s  ->  (%s, %s)",
 			fmt(f.face_field), fmt(f.out_x), fmt(f.out_y))
@@ -241,8 +244,10 @@ function M.count_resources(reg)
 			record(name, "uniform", false)
 		elseif sym.kind == "intermediate" then
 			local itype = sym.itype
-			if itype == "face" or itype == "face_vector" then
+			if itype == "face" then
 				record(name, "face_interp", true)
+			elseif itype == "face_normal" then
+				record(name, "face_normal", true)
 			elseif itype == "grad_component" then
 				record(name, "grad", false)
 			elseif itype == "mwi" then
@@ -290,12 +295,18 @@ local function emit_eval(reg, name, out)
 		out[#out + 1] = Inst.new("face_interp_cds", {
 			field = src_name, out = name })
 		local src_sym = reg[src_name]
+
+		local face_kind_map = {
+			dirichlet_const = "dirichlet_face_const",
+			neumann_const   = "neumann_face_const",
+		}
+
 		if src_sym and src_sym.bcs and #src_sym.bcs > 0 then
 			for _, bc in ipairs(src_sym.bcs) do
 				out[#out + 1] = Inst.new("apply_bc_face", {
 					face_field = name,
 					patch      = bc.patch,
-					kind       = bc.kind,
+					kind       = face_kind_map[bc.kind] or bc.kind,
 					value      = bc.value,
 				})
 			end
@@ -313,6 +324,21 @@ local function emit_eval(reg, name, out)
 				implicit = false,
 			})
 		end
+	elseif itype == "face_normal" then
+		local U = names.is_face_normal(name)
+		local reg_U = reg[U]
+		assert(reg_U, "face_normal: no symbol for U='" .. U .. "'")
+		assert(reg_U.kind == "vector",
+			"face_normal: U='" .. U .. "' must be a vector, got " .. (reg_U.kind or "nil"))
+
+		local Ux = reg_U.components[1]
+		local Uy = reg_U.components[2]
+
+		out[#out + 1] = Inst.new("face_normal_component", {
+			ux_face = names.face(Ux),
+			uy_face = names.face(Uy),
+			out = name,
+		})
 	elseif itype == "grad" then
 		local field = names.is_grad_parent(name) or ""
 		out[#out + 1] = Inst.new("grad_green_gauss", {
