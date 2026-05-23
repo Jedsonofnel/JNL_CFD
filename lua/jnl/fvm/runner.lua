@@ -8,6 +8,149 @@ local Runner = {}
 Runner.__index = Runner
 
 --
+-- Construction
+--
+
+function Runner.new(compiled, field_map, sys_map, mesh, ctx, opts)
+	assert(compiled, "Runner.new: compiled must not be nil")
+	assert(field_map, "Runner.new: field_map must not be nil")
+	assert(sys_map, "Runner.new: sys_map must not be nil")
+	assert(mesh, "Runner.new: mesh must not be nil")
+	opts = opts or {}
+
+	local r = setmetatable({
+		-- snapshot of compiled state
+		reg               = compiled.expanded_reg,
+		pre_instructions  = compiled.pre or {},
+		instructions      = compiled.main or {},
+		post_instructions = compiled.post or {},
+
+		-- C handles (snapshot, not live references to case)
+		field_map         = field_map,
+		sys_map           = sys_map,
+		mesh              = mesh,
+		_cell_pool        = ctx:cell_pool(),
+		_face_pool        = ctx:face_pool(),
+		_n_cells          = mesh:n_cells(),
+		_n_faces          = mesh:n_faces(),
+
+		-- execution state
+		_phase            = "pre",
+		_pc               = 1,
+		_inner_runners    = {},
+		_last_iters       = 0,
+		_last_coeff_vec   = nil,
+		_residuals        = {}, -- name -> last residual scalar
+		_iter             = 0, -- outer iteration count
+		_solver_opts      = opts.solver_opts or {},
+
+		-- unsteady state
+		_dt               = nil, -- nil = ddt terms are no-ops
+
+		-- callbacks
+		on_monitor        = opts.on_monitor,
+		on_solve          = opts.on_solve,
+		hooks             = opts.hooks or {},
+		warn_missing      = opts.warn_missing,
+	}, Runner)
+
+	r.bindings = {}
+	for name, handle in pairs(field_map) do
+		r.bindings[name] = handle
+	end
+	r.bindings["cell_x"] = mesh:cell_cx_vec()
+	r.bindings["cell_y"] = mesh:cell_cy_vec()
+	r.bindings["cell_vol"] = mesh:cell_vol_vec()
+
+	r._phase = #r.pre_instructions > 0 and "pre" or "main"
+
+	return r
+end
+
+function Runner.from_case(case, opts)
+	assert(case:is_allocated(), "Runner.from_case: case must be allocated")
+	return Runner.new(case.compiled, case._field_map, case._sys_map, case.mesh, opts)
+end
+
+--
+-- Inner runner construction: shares handles, own execution state
+--
+
+function Runner._make_inner(parent, inst)
+	return setmetatable({
+		reg               = parent.reg,
+		pre_instructions  = {},
+		instructions      = inst.body,
+		post_instructions = {},
+		field_map         = parent.field_map,
+		sys_map           = parent.sys_map,
+		mesh              = parent.mesh,
+		_cell_pool        = parent._cell_pool,
+		_face_pool        = parent._face_pool,
+		_n_cells          = parent._n_cells,
+		_n_faces          = parent._n_faces,
+		_phase            = "main",
+		_pc               = 1,
+		_pass             = 1,
+		_inner_runners    = {},
+		_last_iters       = 0,
+		_last_coeff_vec   = nil,
+		_residuals        = parent._residuals, -- shared with parent
+		_iter             = parent._iter,
+		_dt               = parent._dt,
+		on_monitor        = parent.on_monitor,
+		on_solve          = parent.on_solve,
+		_solver_opts      = parent._solver_opts,
+		hooks             = parent.hooks,
+		warn_missing      = parent.warn_missing,
+		bindings          = parent.bindings,
+	}, Runner)
+end
+
+--
+-- Lookup helpers
+--
+
+function Runner:_field(name)
+	local h = self.field_map[name]
+	assert(h, "runner: no field handle for '" .. tostring(name) .. "'")
+	return h
+end
+
+function Runner:_sys(name)
+	local s = self.sys_map[name]
+	assert(s, "runner: no sys for field '" .. tostring(name) .. "'")
+	return s
+end
+
+function Runner:_coeff(name_or_val)
+	if type(name_or_val) == "number" then return name_or_val end
+	if name_or_val == "__coeff" then return self._last_coeff_vec end
+	return self:_field(name_or_val)
+end
+
+--
+-- Expression evaluation
+--
+
+
+local function ensure_compiled(expr, bindings)
+	if not expr._ud then
+		expr:compile(bindings)
+	end
+end
+
+function Runner:_eval_cell(expr)
+	ensure_compiled(expr, self.bindings)
+	return expr:eval(self._cell_pool, self._n_cells)
+end
+
+function Runner:_eval_face(expr)
+	ensure_compiled(expr, self.bindings)
+	return expr:eval(self._face_pool, self._n_faces)
+end
+
+--
 -- BC Dispatch table
 --
 
@@ -49,26 +192,6 @@ local bc_face_dispatch = {
 			inst.uy or 0.0)
 	end,
 }
-
---
--- Expression helpers
---
-
-local function ensure_compiled(expr, bindings)
-	if not expr._ud then
-		expr:compile(bindings)
-	end
-end
-
-function Runner:_eval_cell(expr)
-	ensure_compiled(expr, self.bindings)
-	return expr:eval(self._cell_pool, self._n_cells)
-end
-
-function Runner:_eval_face(expr)
-	ensure_compiled(expr, self.bindings)
-	return expr:eval(self._face_pool, self._n_faces)
-end
 
 --
 -- Instruction dispatch table
@@ -143,17 +266,15 @@ end
 --
 
 dispatch.ddt_const = function(r, inst)
-	if r._unsteady then
-		FVM.ddt_const(r:_sys(inst.field), r.mesh,
-			inst.coeff, r._dt, r:_field(inst.phi_prev))
-	end
+	if r._dt == nil then return end
+	FVM.ddt_const(r:_sys(inst.field), r.mesh,
+		inst.coeff, r._dt, r:_field(inst.phi_prev))
 end
 
 dispatch.ddt_field = function(r, inst)
-	if r._unsteady then
-		FVM.ddt_field(r:_sys(inst.field), r.mesh,
-			r:_coeff(inst.coeff), r._dt, r:_field(inst.phi_prev))
-	end
+	if r._dt == nil then return end
+	FVM.ddt_field(r:_sys(inst.field), r.mesh,
+		r:_coeff(inst.coeff), r._dt, r:_field(inst.phi_prev))
 end
 
 dispatch.laplacian_const = function(r, inst)
@@ -214,8 +335,6 @@ dispatch.div_tvd_superbee = function(r, inst)
 		r:_field(inst.grad_y), r:_field(inst.un_face))
 end
 
--- TODO: where are normal su etc?
-
 dispatch.su_integrated = function(r, inst)
 	local sys = r:_sys(inst.field)
 	if inst.expr then
@@ -234,7 +353,6 @@ dispatch.sp_integrated = function(r, inst)
 	end
 end
 
-
 --
 -- Linalg
 --
@@ -250,11 +368,13 @@ dispatch.under_relax = function(r, inst)
 end
 
 dispatch.solve = function(r, inst)
-	local sys    = r:_sys(inst.field)
-	local phi    = r:_field(inst.field)
-	local solver = (inst.solver or "bicgstab"):lower()
-	local tol    = inst.tol or 1e-6
-	local iters  = inst.max_iters or 1000
+	local sys       = r:_sys(inst.field)
+	local phi       = r:_field(inst.field)
+	local solver    = (inst.solver or "bicgstab"):lower()
+
+	local per_field = r._solver_opts[inst.field] or {}
+	local tol       = per_field.tol or inst.tol or 1e-6
+	local iters     = per_field.max_iters or inst.max_iters or 1000
 
 	local n
 	if solver == "bicgstab" then
@@ -266,7 +386,9 @@ dispatch.solve = function(r, inst)
 	end
 
 	r._last_iters = n
+	r._residuals[inst.field] = sys:residual_norm(phi)
 	if r.on_solve then r.on_solve(inst.field, n) end
+	if r.on_monitor then r.on_monitor(inst.field, r._residuals[inst.field], r._iter) end
 end
 
 --
@@ -344,139 +466,34 @@ dispatch.inner_loop = function(r, inst)
 	end
 end
 
-
---
--- Construction
---
-
-local function build_bindings(field_map, mesh)
-	local b = {}
-	for name, handle in pairs(field_map) do
-		b[name] = handle
-	end
-	b["cell_x"]   = mesh:cell_cx_vec()
-	b["cell_y"]   = mesh:cell_cy_vec()
-	b["cell_vol"] = mesh:cell_vol_vec()
-	return b
-end
-
-function Runner.new(case, opts)
-	if not case:is_allocated() then
-		case:allocate()
-	end
-	opts = opts or {}
-
-	return setmetatable({
-		instructions       = case.compiled.main,
-		pre_instructions   = case.compiled.pre or {},
-		post_instructions  = case.compiled.post or {},
-		reg                = case.compiled.expanded_reg,
-		mesh               = case.mesh,
-		ctx                = case._ctx,
-		field_map          = case._field_map,
-		sys_map            = case._sys_map,
-		_phase             = "main",
-		_pc                = 1,
-		on_solve           = opts.on_solve,
-		hooks              = opts.hooks or {},
-		warn_missing_exprs = opts.warn_missing_exprs,
-		_unsteady          = false,
-		_dt                = nil,
-		_last_iters        = 0,
-		_last_coeff        = 0.0,
-		bindings           = build_bindings(case._field_map, case.mesh),
-		_cell_pool         = case._ctx:cell_pool(),
-		_face_pool         = case._ctx:face_pool(),
-		_n_cells           = case.mesh:n_cells(),
-		_n_faces           = case.mesh:n_faces(),
-		_last_coeff_vec    = nil,
-		_inner_runners     = {},
-	}, Runner)
-end
-
-function Runner._make_inner(parent, inst)
-	-- shares all handles with parent, own pc/phase only
-	local inner = setmetatable({
-		instructions       = inst.body,
-		post_instructions  = {},
-		reg                = parent.reg,
-		mesh               = parent.mesh,
-		ctx                = parent.ctx,
-		field_map          = parent.field_map,
-		sys_map            = parent.sys_map,
-		bindings           = parent.bindings,
-		_cell_pool         = parent._cell_pool,
-		_face_pool         = parent._face_pool,
-		_n_cells           = parent._n_cells,
-		_n_faces           = parent._n_faces,
-		_phase             = "main",
-		_pc                = 1,
-		_pass              = 1,
-		on_solve           = parent.on_solve,
-		hooks              = parent.hooks,
-		warn_missing_exprs = parent.warn_missing_exprs,
-		_unsteady          = parent._unsteady,
-		_dt                = parent._dt,
-		_last_iters        = 0,
-		_last_coeff_vec    = nil,
-		_inner_runners     = {},
-	}, Runner)
-	return inner
-end
-
---
--- Lookup helpers
---
-
-function Runner:_field(name)
-	local h = self.field_map[name]
-	assert(h, "runner: no field handle for '" .. tostring(name) .. "'")
-	return h
-end
-
-function Runner:_sys(name)
-	local s = self.sys_map[name]
-	assert(s, "runner: no sys for field '" .. tostring(name) .. "'")
-	return s
-end
-
-function Runner:_coeff(name_or_val)
-	if type(name_or_val) == "number" then return name_or_val end
-	if name_or_val == "__coeff" then return self._last_coeff_vec end
-	return self:_field(name_or_val)
-end
-
 --
 -- State machine
 --
 
+local phase_order = { pre = "main", main = "post" }
+
 function Runner:run_step()
 	if self._phase == "done" then return false end
 
-	local list
-	if self._phase == "pre" then
-		list = self.pre_instructions
-	elseif self._phase == "main" then
-		list = self.instructions
-	else
-		list = self.post_instructions
-	end
+	local list = (self._phase == "pre" and self.pre_instructions)
+		or (self._phase == "main" and self.instructions)
+		or self.post_instructions
 
 	local inst = list[self._pc]
 
 	if not inst then
-		if self._phase == "pre" then
-			self._phase = "main"
-			self._pc = 1
-			return true
-		elseif self._phase == "main" and #self.post_instructions > 0 then
-			self._phase = "post"
-			self._pc    = 1
-			return true
-		else
-			self._phase = "done"
-			return false
+		local next_phase = phase_order[self._phase]
+		if next_phase then
+			local next_list = (next_phase == "main" and self.instructions)
+				or self.post_instructions
+			if #next_list > 0 then
+				self._phase = next_phase
+				self._pc    = 1
+				return true
+			end
 		end
+		self._phase = "done"
+		return false
 	end
 
 	local fn = dispatch[inst.op]
@@ -491,20 +508,71 @@ function Runner:run_step()
 end
 
 function Runner:run_all()
+	self._iter = self._iter + 1
 	while self:run_step() do end
 end
 
-function Runner:is_finished()
-	return self._phase ~= "main" or self._pc > #self.instructions
+--
+-- Unsteady lifecycle
+--
+
+function Runner:begin_timestep(dt)
+	assert(dt and dt > 0, "begin_timestep: dt must be positive")
+	self._dt = dt
+
+	-- snapshot current fields into prev buffers
+	for name in pairs(self.field_map) do
+		local prev = self.field_map["__prev_" .. name]
+		if prev then prev:copy_from(self.field_map[name]) end
+	end
+	self:reset()
 end
 
-function Runner:reset()
-	self._phase = #self.pre_instructions > 0 and "pre" or "main"
-	self._pc    = 1
+function Runner:end_timestep()
+	-- hook point for monitors, expert system etc. — no-op for now
+end
+
+--
+-- Queries
+--
+
+function Runner:last_residual(name)
+	return self._residuals[name]
 end
 
 function Runner:last_iters()
 	return self._last_iters
+end
+
+function Runner:iteration()
+	return self._iter
+end
+
+function Runner:is_finished()
+	return self._phase == "done"
+end
+
+function Runner:is_stopped()
+	return self._stopped == true
+end
+
+function Runner:stop()
+	self._stopped = true
+	self._phase   = "done"
+end
+
+function Runner:reset()
+	self._phase   = #self.pre_instructions > 0 and "pre" or "main"
+	self._pc      = 1
+	self._stopped = false
+end
+
+--
+-- Mutation
+--
+
+function Runner:set_solver_opts(field, opts)
+	self._solver_opts[field] = opts
 end
 
 return Runner

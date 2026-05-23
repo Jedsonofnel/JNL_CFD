@@ -53,12 +53,11 @@ local case = require("jnl.fvm.case").new(reg, alg, mesh, {
 	},
 })
 
-case:print_instructions()
-
 --
 -- Solve
 --
 
+case:allocate()
 local runner = case:make_runner()
 runner:run_all()
 print(string.format("converged in %d iterations", runner:last_iters()))

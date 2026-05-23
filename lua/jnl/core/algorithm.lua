@@ -99,8 +99,11 @@ function Builder:inner(cb, config)
 	return self
 end
 
-function A:linear(cb)
+function A:linear(cb, config)
+	config = config or {}
 	self.op = "linear"
+	self.linalg_tol = config.linalg_tol or 1e-6
+	self.linalg_max_iters = config.linalg_max_iters or 1000
 	cb(Builder.new(self))
 end
 
@@ -109,6 +112,8 @@ function A:loop(cb, config)
 	config = config or {}
 	self.max_iters = config.max_iters or 1000
 	self.go_until = config.go_until
+	self.linalg_tol = config.linalg_tol or 1e-6
+	self.linalg_max_iters = config.linalg_max_iters or 1000
 	cb(Builder.new(self))
 end
 

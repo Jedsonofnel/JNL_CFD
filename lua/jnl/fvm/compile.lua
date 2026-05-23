@@ -112,8 +112,9 @@ local printers = {
 		return string.format("ASSEMBLE      %s%s", fmt(f.field), relax)
 	end,
 	solve = function(f)
-		return string.format("SOLVE         %s  [%s tol=%g iters=%d]",
-			fmt(f.field), f.solver, f.tol, f.max_iters)
+		local tol   = f.tol and string.format(" tol=%g", f.tol) or ""
+		local iters = f.max_iters and string.format(" iters=%d", f.max_iters) or ""
+		return string.format("SOLVE         %s  [%s%s%s]", fmt(f.field), f.solver, tol, iters)
 	end,
 	apply_bc_patch = function(f)
 		local val = f.value ~= nil and string.format("  %g", f.value) or ""
@@ -762,7 +763,7 @@ local function emit_term(field, term, reg, out)
 	end
 end
 
-local function emit_solve(reg, name, out)
+local function emit_solve(reg, name, alg_ctx, out)
 	local sym = reg[name]
 	assert(sym and sym.kind == "field", "emit_solve: not a field: " .. name)
 	local eq = sym.eq
@@ -807,8 +808,8 @@ local function emit_solve(reg, name, out)
 	out[#out + 1] = Inst.new("solve", {
 		field     = name,
 		solver    = (eq.solver or "BICGSTAB"):lower(),
-		tol       = eq.tol or 1e-6,
-		max_iters = eq.max_iters or 1000
+		tol       = alg_ctx and alg_ctx.linalg_tol,
+		max_iters = alg_ctx and alg_ctx.linalg_max_iters,
 	})
 end
 
@@ -821,7 +822,7 @@ local function emit_correct(reg, name, out)
 	out[#out + 1] = Inst.new("apply_correction", { field = name, expr = csym.expr })
 end
 
-local function walk_steps(reg, steps, out)
+local function walk_steps(reg, alg, steps, out)
 	for _, step in ipairs(steps) do
 		if step.op == "evaluate" then
 			emit_eval(reg, step.field, out)
@@ -830,7 +831,7 @@ local function walk_steps(reg, steps, out)
 			if sym and sym.kind == "expression" then
 				emit_eval(reg, step.field, out)
 			else
-				emit_solve(reg, step.field, out)
+				emit_solve(reg, step.field, alg, out)
 			end
 		elseif step.op == "init" then
 			-- handled at case allocation
@@ -849,10 +850,12 @@ local function walk_steps(reg, steps, out)
 			local body = {}
 			walk_steps(reg, step.inner.steps, body)
 			out[#out + 1] = {
-				op        = "inner_loop",
-				max_iters = step.inner.max_iters,
-				go_until  = step.inner.go_until,
-				body      = body
+				op               = "inner_loop",
+				max_iters        = step.inner.max_iters,
+				go_until         = step.inner.go_until,
+				linalg_tol       = step.inner.linalg_tol,
+				linalg_max_iters = step.inner.linalg_max_iters,
+				body             = body
 			}
 		end
 	end
@@ -860,11 +863,9 @@ end
 
 local function emit_instructions(reg, expanded_alg)
 	local pre, main, post = {}, {}, {}
-	walk_steps(reg, expanded_alg.pre, pre)
-	walk_steps(reg, expanded_alg.steps, main)
-	if expanded_alg.post and #expanded_alg.post > 0 then
-		walk_steps(reg, expanded_alg.post, post)
-	end
+	walk_steps(reg, expanded_alg, expanded_alg.pre, pre)
+	walk_steps(reg, expanded_alg, expanded_alg.steps, main)
+	walk_steps(reg, expanded_alg, expanded_alg.post, post)
 	return pre, main, post
 end
 

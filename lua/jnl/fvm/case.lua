@@ -308,8 +308,9 @@ function Case.new(reg, alg, mesh, bcs)
 end
 
 function Case:make_runner(opts)
+	assert(self._allocated, "Case:make_runner: case must be allocated — call allocate() first")
 	local Runner = require("jnl.fvm.runner")
-	return Runner.new(self, opts)
+	return Runner.new(self.compiled, self._field_map, self._sys_map, self.mesh, self._ctx, opts)
 end
 
 --
@@ -321,6 +322,17 @@ function Case:is_allocated() return self._allocated end
 function Case:needs_realloc() return self._needs_realloc end
 
 function Case:needs_reconcile() return self._needs_reconcile end
+
+function Case:is_unsteady()
+	for _, sym in pairs(self.compiled.expanded_reg) do
+		if type(sym) == "table" and sym.kind == "field" and sym.eq then
+			for _, term in ipairs(sym.eq.terms or {}) do
+				if term.kind == "ddt" then return true end
+			end
+		end
+	end
+	return false
+end
 
 --
 -- Diagnostics
