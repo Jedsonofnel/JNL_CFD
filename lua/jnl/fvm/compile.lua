@@ -62,8 +62,27 @@ local printers = {
 		return string.format("SOLVE         %s  [%s tol=%g iters=%d]",
 			fmt(f.field), f.solver, f.tol, f.max_iters)
 	end,
-	apply_bcs = function(f)
-		return string.format("APPLY_BCS     %s", fmt(f.field))
+	apply_bc_patch = function(f)
+		local val = f.value ~= nil and string.format("  %g", f.value) or ""
+		return string.format("APPLY_BC      %-16s patch=%-10s %s%s",
+			fmt(f.field), f.patch, f.kind, val)
+	end,
+	apply_bc_face = function(f)
+		local val = f.value ~= nil and string.format("  %g", f.value) or ""
+		return string.format("APPLY_BC_FACE %-16s patch=%-10s %s%s",
+			fmt(f.face_field), f.patch, f.kind, val)
+	end,
+	bc_placeholder = function(f)
+		local field_str = fmt(f.field)
+		if f.patch then
+			local tag = f.implicit
+				and "neumann_const  0.0  [implicit default]"
+				or "[no bc registered]"
+			return string.format("; BC          %-16s patch=%-10s %s",
+				field_str, f.patch, tag)
+		else
+			return string.format("; BC          %-16s [no mesh — bc unknown]", field_str)
+		end
 	end,
 	sys_reset = function(f)
 		return string.format("SYS_RESET     %s", fmt(f.field))
@@ -265,8 +284,33 @@ local function emit_eval(reg, name, out)
 	end
 
 	if itype == "face" then
+		local src_name = names.is_face(name)
 		out[#out + 1] = Inst.new("face_interp_cds", {
-			field = names.is_face(name), out = name })
+			field = src_name, out = name })
+		local src_sym = reg[src_name]
+		if src_sym and src_sym.bcs and #src_sym.bcs > 0 then
+			for _, bc in ipairs(src_sym.bcs) do
+				out[#out + 1] = Inst.new("apply_bc_face", {
+					face_field = name,
+					patch      = bc.patch,
+					kind       = bc.kind,
+					value      = bc.value,
+				})
+			end
+			for _, patch_name in ipairs(src_sym.unspecified_patches or {}) do
+				out[#out + 1] = Inst.new("bc_placeholder", {
+					field    = name,
+					patch    = patch_name,
+					implicit = true,
+				})
+			end
+		else
+			out[#out + 1] = Inst.new("bc_placeholder", {
+				field    = name,
+				patch    = nil,
+				implicit = false,
+			})
+		end
 	elseif itype == "grad" then
 		local field = names.is_grad_parent(name) or ""
 		out[#out + 1] = Inst.new("grad_green_gauss", {
@@ -455,8 +499,29 @@ local function emit_solve(reg, name, out)
 		emit_term(name, term, reg, out)
 	end
 
-	if sym.bcs then
-		out[#out + 1] = Inst.new("apply_bcs", { field = name, bcs = sym.bcs })
+	if sym.bcs and #sym.bcs > 0 then
+		for _, bc in ipairs(sym.bcs) do
+			out[#out + 1] = Inst.new("apply_bc_patch", {
+				field = name,
+				patch = bc.patch,
+				kind  = bc.kind,
+				value = bc.value,
+			})
+		end
+		for _, patch_name in ipairs(sym.unspecified_patches or {}) do
+			out[#out + 1] = Inst.new("bc_placeholder", {
+				field    = name,
+				patch    = patch_name,
+				implicit = true,
+			})
+		end
+	else
+		-- No mesh context (Physics listing) or no bcs at all
+		out[#out + 1] = Inst.new("bc_placeholder", {
+			field    = name,
+			patch    = nil,
+			implicit = false,
+		})
 	end
 
 	if eq.relax then

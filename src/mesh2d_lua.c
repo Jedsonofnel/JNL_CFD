@@ -73,7 +73,7 @@ static int l_mesh_n_patches(lua_State *L)
 	return 1;
 }
 
-// Returns patch table: { name, start_face, n_faces }
+// Returns patch table: { name, start_face, n_faces, marker }
 static int l_mesh_patches(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
@@ -88,6 +88,8 @@ static int l_mesh_patches(lua_State *L)
 		lua_setfield(L, -2, "start_face");
 		lua_pushinteger(L, p->data[i].n_faces);
 		lua_setfield(L, -2, "n_faces");
+		lua_pushinteger(L, p->data[i].marker);
+		lua_setfield(L, -2, "marker");
 		lua_rawseti(L, -2, i + 1);
 	}
 	return 1;

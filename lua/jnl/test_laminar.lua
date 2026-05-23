@@ -86,7 +86,7 @@ alg:loop(function(a)
 	a:correct("p")
 end)
 
-local case = FVM.Case.new(reg, alg)
+local phys = FVM.Physics.new(reg, alg)
 
-case:print_resources()
-case:print_instructions()
+phys:print_resources()
+phys:print_instructions()

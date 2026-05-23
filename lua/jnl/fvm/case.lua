@@ -1,62 +1,169 @@
--- fvm/case.lua - physics case that gets compiled
--- <jed@nelson.ac> // 2026-05-12
+-- fvm/case.lua
+-- <jed@nelson.ac> // 2026-05-22
 
--- deps
-local E = require("jnl.core.expr")
-local names = require("jnl.fvm.expr").names
-local compile = require("jnl.fvm.compile")
+local compile  = require("jnl.fvm.compile")
+local Physics  = require("jnl.fvm.physics")
+local deepcopy = Physics._deepcopy
 
--- Helper for copying registry
 
-local function deepcopy(src, seen)
-	seen = seen or {}
-	if seen[src] then return seen[src] end
-
-	local copy = {}
-	seen[src] = copy
-	for k, v in pairs(src) do
-		local ck = type(k) == "table" and deepcopy(k, seen) or k
-		local cv = type(v) == "table" and deepcopy(v, seen) or v
-		copy[ck] = cv
-	end
-	setmetatable(copy, getmetatable(src))
-	return copy
-end
-
---
--- Case - manages algorithm and registry and performs compilation
---
+local KNOWN_BC_KINDS = {
+	dirichlet_const       = true,
+	neumann_const         = true,
+	dirichlet_face_const  = true,
+	neumann_face_const    = true,
+	dirichlet_face_normal = true,
+	neumann_face_normal   = true,
+}
 
 local Case = {}
 Case.__index = Case
 
--- TODO: add mesh and bcs
-function Case.new(registry, algorithm)
-	local reg_clone = deepcopy(registry)
-	local alg_clone = deepcopy(algorithm)
+--
+-- Patch helpers
+--
+
+-- Returns a set of patch name strings present in the mesh.
+local function patch_name_set(mesh)
+	local s = {}
+	for _, p in ipairs(mesh:patches()) do
+		s[p.name] = true
+	end
+	return s
+end
+
+-- Returns an ordered list of patch name strings.
+local function patch_name_list(mesh)
+	local names = {}
+	for _, p in ipairs(mesh:patches()) do
+		names[#names + 1] = p.name
+	end
+	return names
+end
+
+--
+-- BC Validation
+--
+
+local function validate_bc_entry(field_name, i, bc)
+	local loc = string.format("Case.new bcs['%s'][%d]", field_name, i)
+	assert(type(bc.patch) == "string",
+		loc .. ": .patch must be a string (e.g. P.LEFT = 'west'), got "
+		.. type(bc.patch))
+	assert(bc.kind,
+		loc .. ": missing .kind")
+	assert(KNOWN_BC_KINDS[bc.kind],
+		loc .. ": unknown kind '" .. bc.kind .. "'")
+	-- value is required for scalar kinds; face_normal kinds carry ux/uy instead
+	if not bc.kind:find("normal", 1, true) then
+		assert(bc.value ~= nil, loc .. ": missing .value")
+	end
+end
+
+local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
+	bcs_table = bcs_table or {}
+
+	-- Only "field" kind symbols get equation-level BCs
+	local field_names = {}
+	for name, sym in pairs(reg) do
+		if type(sym) == "table" and sym.kind == "field" then
+			field_names[#field_names + 1] = name
+		end
+	end
+	table.sort(field_names)
+
+	for _, field_name in ipairs(field_names) do
+		local sym       = reg[field_name]
+		local raw_list  = bcs_table[field_name] or {}
+
+		-- Validate entries and build a set of covered patches
+		local covered   = {}
+		local validated = {}
+		for i, bc in ipairs(raw_list) do
+			validate_bc_entry(field_name, i, bc)
+			local loc = string.format("Case.new bcs['%s'][%d]", field_name, i)
+			if not patch_set[bc.patch] then
+				-- Hard error: user named a patch that doesn't exist
+				error(loc .. ": patch '" .. bc.patch
+					.. "' not found in mesh. Available: "
+					.. table.concat(patch_names, ", "))
+			end
+			covered[bc.patch] = true
+			validated[#validated + 1] = bc
+		end
+
+		-- Find uncovered patches -> default neumann 0, warn
+		local unspecified = {}
+		for _, pname in ipairs(patch_names) do
+			if not covered[pname] then
+				unspecified[#unspecified + 1] = pname
+				warnings[#warnings + 1] = string.format(
+					"field '%s' patch '%s': no bc specified, defaulting to neumann_const 0.0",
+					field_name, pname)
+			end
+		end
+
+		sym.bcs                 = validated -- list of explicit bc entries
+		sym.unspecified_patches = unspecified -- list of patch name strings
+	end
+end
+
+--
+-- Constructor
+--
+
+function Case.new(physics, mesh, bcs)
+	assert(physics, "Case.new: physics must not be nil")
+	assert(mesh, "Case.new: mesh must not be nil")
+
+	local warnings    = {}
+	local patch_names = patch_name_list(mesh)
+	local patch_set   = patch_name_set(mesh)
+
+	if #patch_names == 0 then
+		warnings[#warnings + 1] = "Case.new: mesh has no patches — no BCs will be applied"
+	end
+
+	-- Deepcopy registry so injection doesn't mutate the Physics
+	local reg = deepcopy(physics.registry)
+	local alg = deepcopy(physics.algorithm)
+
+	inject_bcs(reg, bcs, patch_names, patch_set, warnings)
 
 	local instance = setmetatable({
-		registry = reg_clone,
-		algorithm = alg_clone,
-		hooks = {},
-		warnings = {},
+		registry = reg,
+		algorithm = alg,
+		mesh = mesh,
+		warnings = warnings,
 	}, Case)
 
-	instance:_compile()
+	instance.algorithm = alg:expand(reg)
+	instance.resources = compile.count_resources(reg)
+	instance.instructions,
+	instance.post_instructions = compile.emit_instructions(reg, instance.algorithm)
+
+	-- Sanity: no non-implicit bc_placeholder should survive in a Case
+	for _, inst in ipairs(instance.instructions) do
+		if inst.op == "bc_placeholder" and not inst.fields.implicit then
+			error("Case.new: unresolved bc_placeholder for field '"
+				.. tostring(inst.fields.field) .. "' — compiler bug")
+		end
+	end
+
+	for _, w in ipairs(warnings) do
+		io.stderr:write("Case warning: " .. w .. "\n")
+	end
+
 	return instance
 end
 
-function Case:_warn(msg)
-	self.warnings[#self.warnings + 1] = msg
+function Case:make_runner(ctx, field_map, opts)
+	local Runner = require("jnl.fvm.runner")
+	return Runner.new(self, self.mesh, ctx, field_map, opts)
 end
 
-function Case:print_registry()
-	self.registry:print()
-end
-
-function Case:print_algorithm()
-	self.algorithm:print()
-end
+--
+-- Print helpers
+--
 
 function Case:print_instructions()
 	print(compile.instruction_listing(self.instructions, self.post_instructions))
@@ -66,192 +173,14 @@ function Case:print_resources()
 	print(compile.resource_listing(self.resources))
 end
 
---
--- Compiler: expanding intermediate fields
---
-
-local function seed_intermediates(reg)
-	local queued, pending = {}, {}
-
-	local function enqueue(name)
-		if not queued[name] then
-			queued[name] = true
-			pending[#pending + 1] = name
+function Case:print_warnings()
+	if #self.warnings == 0 then
+		print("(no warnings)")
+	else
+		for _, w in ipairs(self.warnings) do
+			print("WARNING: " .. w)
 		end
 	end
-
-	local function sweep(deps)
-		for name in pairs(deps or {}) do
-			if name:match("^__") then enqueue(name) end
-		end
-	end
-
-	for _, sym in pairs(reg) do
-		if type(sym) ~= "table" then goto continue end
-
-		if sym.kind == "field" and sym.eq then
-			sweep(sym.eq._deps)
-		elseif sym.kind == "expression" and sym.expr then
-			sweep(sym.expr._deps)
-		elseif sym.kind == "correction" and sym.expr then
-			sweep(sym.expr._deps)
-		end
-
-		::continue::
-	end
-
-	return pending, queued
-end
-
---- Resolve a vector or scalar name to its scalar component list.
-local function scalars_of(reg, name)
-	local sym = reg[name]
-	if sym and sym.kind == "vector" then return sym.components end
-	return { name }
-end
-
-local function elaborate_grad_component(_, _, _, field)
-	local parent = names.grad(field)
-	return "grad_component", { parent }, { parent }, true, nil
-end
-
-local function elaborate_grad_parent(_, _, field)
-	local face = names.face(field)
-	local comps = { names.grad(field, "x"), names.grad(field, "y") }
-	return "grad", { face }, { face }, false, comps
-end
-
-local function elaborate_face(reg, name, field)
-	local comps = scalars_of(reg, field)
-	if #comps == 1 then
-		assert(reg[comps[1]],
-			"intermediate '" .. name .. "': unregistered field '" .. comps[1] .. "'")
-		return "face", comps, {}, false, nil
-	end
-	local face_deps, to_enqueue = {}, {}
-	for _, c in ipairs(comps) do
-		local cf = names.face(c)
-		face_deps[#face_deps + 1] = cf
-		to_enqueue[#to_enqueue + 1] = cf
-	end
-	return "face_vector", face_deps, to_enqueue, false, nil
-end
-
-local function elaborate_mwi(reg, _, U, p)
-	local deps, to_enqueue = {}, {}
-	for _, uc in ipairs(scalars_of(reg, U)) do
-		for _, d in ipairs({ names.face(uc), names.diag(uc) }) do
-			deps[#deps + 1] = d
-			to_enqueue[#to_enqueue + 1] = d
-		end
-	end
-	for _, d in ipairs({ names.face(p), names.grad(p) }) do
-		deps[#deps + 1] = d
-		to_enqueue[#to_enqueue + 1] = d
-	end
-	return "mwi", deps, to_enqueue, false, nil
-end
-
-local function elaborate_diag(reg, _, field, comp)
-	local deps = comp and { field .. "." .. comp } or scalars_of(reg, field)
-	return "diag", deps, {}, true, nil
-end
-
-local function elaborate_div(reg, _, field)
-	local comps = scalars_of(reg, field)
-	local face_deps = {}
-	for _, c in ipairs(comps) do
-		face_deps[#face_deps + 1] = names.face(c)
-	end
-	return "div", face_deps, face_deps, false, nil
-end
-
-local function elaborate_div_mwi(_, _, U, p)
-	local dep = names.mwi(U, p)
-	return "div_mwi", { dep }, { dep }, false, nil
-end
-
-local function elaborate_prev(_, _, field)
-	return "prev", { field }, {}, true, nil
-end
-
-local function elaborate_expl(_, _, field)
-	return "expl", { field }, {}, true, nil
-end
-
-local function elaborate(reg, name)
-	local comp, field
-
-	field = names.is_grad_parent(name)
-	if field then return elaborate_grad_parent(reg, name, field) end
-
-	comp, field = names.is_grad(name)
-	if comp then return elaborate_grad_component(reg, name, comp, field) end
-
-	field = names.is_face(name)
-	if field then return elaborate_face(reg, name, field) end
-
-	comp, field = names.is_mwi(name)
-	if comp then return elaborate_mwi(reg, name, comp, field) end
-
-	field, comp = names.is_diag(name)
-	if field then return elaborate_diag(reg, name, field, comp) end
-
-	local U, p = names.is_div_mwi(name)
-	if U then return elaborate_div_mwi(reg, name, U, p) end
-
-	field = names.is_div(name)
-	if field then return elaborate_div(reg, name, field) end
-
-	field = E.is_prev(name)
-	if field then return elaborate_prev(reg, name, field) end
-
-	field = E.is_expl(name)
-	if field then return elaborate_expl(reg, name, field) end
-
-	error("_expand_intermediates: unrecognised intermediate: " .. name)
-end
-
-function Case:_expand_intermediates()
-	local reg = self.registry
-	local pending, queued = seed_intermediates(reg)
-
-	while #pending > 0 do
-		local name = table.remove(pending, 1)
-		if not reg[name] then
-			local itype, deps, to_enqueue, accessor, components = elaborate(reg, name)
-
-			if components then
-				for _, c in ipairs(components) do
-					if not reg[c] then
-						reg:intermediate(c, "grad_component", { name }, { accessor = true })
-					end
-				end
-			end
-
-			reg:intermediate(name, itype, deps, { accessor = accessor })
-
-			for _, d in ipairs(to_enqueue) do
-				if not queued[d] then
-					queued[d] = true
-					pending[#pending + 1] = d
-				end
-			end
-		end
-	end
-end
-
---
--- Main compilation itself
---
-
-function Case:_compile()
-	self:_expand_intermediates()
-	self.registry:validate()
-	self.algorithm = self.algorithm:expand(self.registry)
-	self.resources = compile.count_resources(self.registry)
-	self.instructions, self.post_instructions =
-		compile.emit_instructions(self.registry, self.algorithm)
 end
 
 return Case
