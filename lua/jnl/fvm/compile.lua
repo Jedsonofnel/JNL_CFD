@@ -214,6 +214,9 @@ local printers = {
 		local src = f.expr and tostring(f.expr) or fmt(f.src)
 		return string.format("SP            %s  src=%s", fmt(f.field), src)
 	end,
+	diag_snapshot = function(f)
+		return string.format("DIAG_SNAPSHOT %-16s -> %s", fmt(f.field), fmt(f.out))
+	end,
 	under_relax = function(f)
 		return string.format("UNDER_RELAX   %s  alpha=%g", fmt(f.field), f.alpha)
 	end,
@@ -340,7 +343,7 @@ end
 
 local function elaborate_diag(reg, _, field, comp)
 	local deps = comp and { field .. "." .. comp } or scalars_of(reg, field)
-	return "diag", deps, {}, true, nil
+	return "diag", deps, {}, false, nil
 end
 
 local function elaborate_div(reg, _, field)
@@ -398,7 +401,7 @@ local function elaborate(reg, name)
 	field = E.is_expl(name)
 	if field then return elaborate_expl(reg, name, field) end
 
-	error("_expand_intermediates: unrecognised intermediate: " .. name)
+	error("expand_intermediates: unrecognised intermediate: " .. name)
 end
 
 local function expand_intermediates(reg)
@@ -418,6 +421,14 @@ local function expand_intermediates(reg)
 			end
 
 			reg:intermediate(name, itype, deps, { accessor = accessor })
+
+			local diag_field, _ = names.is_diag(name)
+			if diag_field and reg[diag_field] then
+				local fsym = reg[diag_field]
+				fsym._also_fresh = fsym._also_fresh or {}
+				fsym._also_fresh[name] = true
+				reg[name].invalidated_by = diag_field
+			end
 
 			for _, d in ipairs(to_enqueue) do
 				if not queued[d] then
@@ -499,6 +510,8 @@ local function count_resources(reg)
 				record(name, "mwi", true)
 			elseif itype == "div" or itype == "div_mwi" then
 				record(name, "div", false)
+			elseif itype == "diag" and not sym.accessor then
+				record(name, "diag_snapshot", false)
 			end
 		end
 
@@ -645,6 +658,8 @@ local function emit_eval(reg, name, out)
 	local sym = reg[name]
 	if not sym then return end
 	local itype = sym.itype or sym.kind
+
+	if itype == "diag" then return end -- populated by DIAG_SNAPSHOT
 
 	-- comments for compound ops
 	if itype == "mwi" then
@@ -842,6 +857,12 @@ local function emit_solve(reg, name, alg_ctx, out)
 			patch    = nil,
 			implicit = false,
 		})
+	end
+
+	-- snapshot diag before relaxation
+	local dname = names.diag(name)
+	if reg[dname] and not reg[dname].accessor then
+		out[#out + 1] = Inst.new("diag_snapshot", { field = name, out = dname })
 	end
 
 	if eq.relax then

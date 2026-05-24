@@ -210,7 +210,7 @@ dispatch.apply_bc_face_normal = function(r, inst)
 	elseif inst.kind == "neumann_face_normal" then
 		-- face_field may be __facen_U or __mwi_U:p — try both decoders
 		local U = names.is_face_normal(inst.face_field)
-			or (names.is_mwi(inst.face_field))       -- returns U, p; only U needed
+			or (names.is_mwi(inst.face_field)) -- returns U, p; only U needed
 		assert(U, "apply_bc_face_normal: cannot decode face_field '"
 			.. tostring(inst.face_field) .. "'")
 		local reg_U = r.reg[U]
@@ -370,6 +370,11 @@ dispatch.sys_reset = function(r, inst)
 	sys:reset()
 end
 
+dispatch.diag_snapshot = function(r, inst)
+	local sys = r:_sys(inst.field)
+	local dst = r:_field(inst.out)
+	dst:copy_from(sys:diag_vec())
+end
 
 dispatch.under_relax = function(r, inst)
 	r:_sys(inst.field):under_relax(r:_field(inst.field), inst.alpha)

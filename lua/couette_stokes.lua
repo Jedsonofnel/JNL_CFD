@@ -18,7 +18,7 @@ local rho    = 1.0
 local mesh   = mesh2d.new_smesh(L, H, Nx, Ny)
 
 local reg    = canned.stokes_registry({ rho = rho, mu = mu })
-local alg    = canned.SIMPLE({ max_iters = 2000 })
+local alg    = canned.SIMPLE({ max_iters = 50 })
 
 local bcs    = {
 	Ux = {
@@ -42,6 +42,10 @@ local bcs    = {
 }
 
 local case   = require("jnl.fvm.case").new(reg, alg, mesh, bcs)
+case:print_algorithm()
+
+os.exit(0)
+
 case:make_sim():run()
 
 --

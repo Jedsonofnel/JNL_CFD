@@ -151,7 +151,8 @@ local function alloc_field(ctx, sym, man_entry)
 		f = ctx:face_field()
 	else
 		f = ctx:field()
-		local init = (sym and sym.kind == "uniform" and sym.value)
+		local init = (man_entry.tag == "diag_snapshot" and 1.0)
+			or (sym and sym.kind == "uniform" and sym.value)
 			or (sym and sym.kind == "field" and (sym.initial or 0.0))
 			or 0.0
 		f:fill(init)
@@ -190,11 +191,6 @@ function Case:allocate()
 		if sym and sym.kind == "field" then
 			local sys = self._ctx:fvsys()
 			sys_map[f.name] = sys
-
-			-- put diagonals into field map
-			local diag_handle = sys:diag_vec()
-			field_map[names.diag(f.name)] = diag_handle
-			diag_handle:fill(1.0) -- prevent div by zero
 		end
 	end
 
@@ -259,7 +255,6 @@ function Case:reconcile()
 			else
 				new_sys[f.name] = new_ctx:fvsys()
 			end
-			new_map[names.diag(f.name)] = new_sys[f.name]:diag_vec()
 		end
 	end
 
@@ -367,6 +362,11 @@ end
 --
 -- Diagnostics
 --
+
+function Case:print_algorithm()
+	local c = self.compiled
+	print(c.expanded_alg:_pretty())
+end
 
 function Case:print_instructions()
 	local c = self.compiled

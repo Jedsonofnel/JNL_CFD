@@ -92,12 +92,14 @@ function M.stokes_registry(props)
 	reg:field("Ux", {
 		eq = FVM.eq(
 			Op.lap("mu", "Ux"),
+			Op.su(E.neg(FVMe.grad("p", "x"))),
 			{ relax = 0.7, solver = "bicgstab" }
 		)
 	})
 	reg:field("Uy", {
 		eq = FVM.eq(
 			Op.lap("mu", "Uy"),
+			Op.su(E.neg(FVMe.grad("p", "y"))),
 			{ relax = 0.7, solver = "bicgstab" }
 		)
 	})
@@ -167,8 +169,11 @@ function M.SIMPLE(opts)
 		a:solve(E.prime_name("p"))
 		a:correct("U")
 		a:correct("p")
-	end, { max_iters = opts.max_iters or 1000 })
-	alg:add_ruleset(M.SIMPLEConvergence)
+	end, {
+		max_iters = opts.max_iters or 1000,
+		linalg_max_iters = opts.linalg_max_iters or 20,
+	})
+	-- alg:add_ruleset(M.SIMPLEConvergence)
 	alg:add_ruleset(M.SIMPLEPostMortem)
 	return alg
 end
