@@ -1,4 +1,4 @@
--- algorithm.lua - storage for algorithmic steps for a solver
+-- jnl/core/algorithm.lua - storage for algorithmic steps for a solver
 -- <jed@nelson.ac> // 2026-05-24
 
 -- deps
@@ -208,6 +208,9 @@ local function deps_transitive(reg, name, seen, opts)
 	if not sym or type(sym) ~= "table" then return seen end
 
 	if opts.ignore_accessors and sym.kind == "intermediate" and sym.accessor then
+		for _, d in ipairs(sym.deps or {}) do
+			deps_transitive(reg, d, seen, opts)
+		end
 		return seen
 	end
 
@@ -368,13 +371,19 @@ fresh_invalidate_dependents - field value changed; anything in `fresh`
 	that transitively depends on it must be recomputed.  Walks only the
 	fresh set (not the whole reg) so it is O(fresh * deps).
 
-fresh_invalidate_by_solve - ceratin intermediates are populated as a
-	side effect of matrix assembly (diagonals) rather than by explicit
-	evaluation.  They declare `invalidated_by = field` in the registry
-	and are cleared here after each solve of that field.
 
-fresh_mark also handled teh inverse case: symbols that become valid as
-a side effect of a solve (e.g. a coupled system populating two fields).
+fresh_mark_side_effects  - certain intermediates are populated as a
+	side-effect of matrix assembly (e.g. diagonal snapshots) rather than
+	by explicit evaluation.  They carry `side_effect_of = field` in the
+	registry.  After each solve of that field they are marked fresh here,
+	without any evaluate step being emitted.
+
+Accessor intermediates (accessor=true) are never emitted as evaluate
+steps and are invisible to deps_classify — but deps_transitive passes
+*through* them so their underlying field dep is still visible for
+mutability classification.  The net effect: something like inv_d that
+depends on __diag_Ux is correctly seen as mutable (reaches Ux), lands
+in `main`, and is only emitted after Ux has been solved.
 
 --]]
 
@@ -388,11 +397,11 @@ local function fresh_clear(fresh, inserted, name)
 	inserted[name] = nil
 end
 
-local function fresh_mark_also(reg, field, fresh, inserted)
-	local sym = reg[field]
-	if not sym or not sym._also_fresh then return end
-	for name in pairs(sym._also_fresh) do
-		fresh_mark(fresh, inserted, name)
+local function fresh_mark_side_effects(reg, field, fresh, inserted)
+	for name, sym in pairs(reg) do
+		if type(sym) == "table" and sym.side_effect_of == field then
+			fresh_mark(fresh, inserted, name)
+		end
 	end
 end
 
@@ -402,15 +411,6 @@ local function fresh_invalidate_dependents(reg, field, fresh, inserted, hook)
 		if tdeps[field] then
 			fresh_clear(fresh, inserted, name)
 			if hook then hook(name, "dependent") end
-		end
-	end
-end
-
-local function fresh_invalidate_by_solve(reg, field, fresh, inserted, hook)
-	for name, sym in pairs(reg) do
-		if type(sym) == "table" and sym.invalidated_by == field then
-			fresh_clear(fresh, inserted, name)
-			if hook then hook(name, "by_solve") end
 		end
 	end
 end
@@ -438,30 +438,33 @@ emit_solve / emit_correct / emit_monitor - handle each explicit
 
 local function emit_implicit(reg, name, inserted, fresh, expanded, hooks)
 	if inserted[name] then return end
-	fresh_mark(fresh, inserted, name)
 
 	local sym = reg[name]
 	if not sym then return end
-	if sym.kind == "intermediate" and sym.accessor then return end
+
+	if sym.kind == "intermediate" and sym.accessor then
+		fresh_mark(fresh, inserted, name)
+		return
+	end
 
 	if sym.kind == "field" then
 		local step = step_solve(name, true)
 		expanded:_push(step)
 		if hooks and hooks.implicit_emit then hooks.implicit_emit(name, step) end
 
-		fresh_invalidate_dependents(reg, name, fresh, inserted,
-			hooks and hooks.invalidated)
-		fresh_invalidate_by_solve(reg, name, fresh, inserted,
-			hooks and hooks.invalidated)
-		fresh_mark_also(reg, name, fresh, inserted)
+		fresh_invalidate_dependents(reg, name, fresh, inserted, hooks and hooks.invalidated)
+		fresh_mark(fresh, inserted, name)
+		fresh_mark_side_effects(reg, name, fresh, inserted)
 
 		if sym.correction then expanded:_push(step_correct(name, true)) end
 		if sym.clip then expanded:_push(step_clip(name, sym.clip[1], sym.clip[2], true)) end
 	elseif sym.kind == "expression" or sym.kind == "intermediate" then
+		fresh_mark(fresh, inserted, name)
 		local step = step_evaluate(name, true)
 		expanded:_push(step)
 		if hooks and hooks.implicit_emit then hooks.implicit_emit(name, step) end
 	elseif sym.kind == "correction" then
+		fresh_mark(fresh, inserted, name)
 		expanded:_push(step_correct(sym.target, true))
 	end
 end
@@ -544,8 +547,7 @@ local function emit_solve(reg, field, expanded, sorted_main, inserted, fresh, ex
 			expanded:_push(step_solve(f, false))
 			fresh_mark(fresh, inserted, f)
 			fresh_invalidate_dependents(reg, f, fresh, inserted, hooks and hooks.invalidated)
-			fresh_invalidate_by_solve(reg, f, fresh, inserted, hooks and hooks.invalidated)
-			fresh_mark_also(reg, f, fresh, inserted)
+			fresh_mark_side_effects(reg, f, fresh, inserted)
 
 			if hooks and hooks.after_solve then hooks.after_solve(f, fresh, inserted) end
 

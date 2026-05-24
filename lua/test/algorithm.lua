@@ -4,7 +4,6 @@
 local H = require("test.harness")
 local A = require("jnl.core.algorithm")
 local R = require("jnl.core.registry")
-local E = require("jnl.core.expr")
 
 local root, suite = H.root()
 
@@ -48,6 +47,15 @@ local function count(steps, op, field)
 		if s.op == op and s.field == field then n = n + 1 end
 	end
 	return n
+end
+
+local function absent(steps, op, field)
+	for _, s in ipairs(steps) do
+		if s.op == op and s.field == field then
+			return false, "unexpected step: " .. op .. ":" .. field
+		end
+	end
+	return true
 end
 
 local function dump(steps, highlight)
@@ -189,7 +197,7 @@ do
 		a:solve("psi")
 		a:solve("phi")
 	end)
-	local steps, pos = expand(reg, alg)
+	local _, pos = expand(reg, alg)
 
 	t:check("psi before phi",
 		before(pos, "solve:psi", "solve:phi"))
@@ -266,7 +274,7 @@ do
 		a:solve("Ux")
 		a:solve("p")
 	end)
-	local steps, pos = expand(reg, alg)
+	local _, pos = expand(reg, alg)
 
 	t:check("face_p before grad_p", before(pos, "evaluate:__face_p", "evaluate:__grad_p"))
 	t:check("grad_p before Ux", before(pos, "evaluate:__grad_p", "solve:Ux"))
@@ -501,6 +509,137 @@ do
 
 	t:check("nu in pre", in_pre, "nu not classified as pre")
 	t:check("nu not in steps", not in_steps, "nu incorrectly in main steps")
+end
+
+--
+-- 10. side_effect_of: accessor not emitted, inv_d deferred until after solve
+--
+--   Ux        (field, explicit anchor)
+--   __diag_Ux (intermediate, accessor=true, side_effect_of="Ux")
+--               → no evaluate step; becomes fresh as side-effect of solve:Ux
+--   inv_d     (expression, deps={__diag_Ux})
+--               → mutable via pass-through: __diag_Ux → Ux (field)
+--               → must not emit until __diag_Ux is fresh
+--   p         (field, depends on inv_d)
+--
+-- Expected:
+--   no evaluate:__diag_Ux anywhere
+--   solve:Ux  →  evaluate:inv_d  →  solve:p
+--
+do
+	local t = suite("side_effect_of: accessor not emitted, inv_d deferred")
+
+	local reg = reg_from({
+		Ux        = field("Ux", {}),
+		__diag_Ux = {
+			_type          = "sym",
+			name           = "__diag_Ux",
+			kind           = "intermediate",
+			itype          = "diag",
+			deps           = { "Ux" },
+			accessor       = true,
+			side_effect_of = "Ux",
+		},
+		inv_d     = expr("inv_d", { __diag_Ux = true }),
+		p         = field("p", { inv_d = true }),
+	})
+
+	local alg = A.new()
+	alg:loop(function(a)
+		a:solve("Ux")
+		a:solve("p")
+	end)
+	local steps, pos = expand(reg, alg)
+
+	t:diag(function()
+		dump(steps, { "solve:Ux", "evaluate:__diag_Ux", "evaluate:inv_d", "solve:p" })
+	end)
+
+	t:check("no evaluate:__diag_Ux",
+		absent(steps, "evaluate", "__diag_Ux"))
+	t:check("Ux before inv_d",
+		before(pos, "solve:Ux", "evaluate:inv_d"))
+	t:check("inv_d before p",
+		before(pos, "evaluate:inv_d", "solve:p"))
+	-- belt-and-braces: inv_d must not precede Ux
+	t:check("inv_d not before Ux",
+		(pos["evaluate:inv_d"] or 0) > (pos["solve:Ux"] or 0),
+		"inv_d evaluated before Ux — diag not yet populated")
+end
+
+--
+-- 11. side_effect_of: two diags, inv_d deferred until BOTH solves done
+--
+--   Ux, Uy    (fields, explicit anchors)
+--   __diag_Ux (accessor, side_effect_of="Ux")
+--   __diag_Uy (accessor, side_effect_of="Uy")
+--   inv_d     (expression, deps={__diag_Ux, __diag_Uy})
+--               → must wait for both Ux AND Uy solves before emitting
+--   p         (field, depends on inv_d)
+--
+-- Expected:
+--   no evaluate:__diag_Ux or __diag_Uy
+--   solve:Ux  →  solve:Uy  →  evaluate:inv_d  →  solve:p
+--
+do
+	local t = suite("side_effect_of: two diags, inv_d waits for both")
+
+	local reg = reg_from({
+		Ux        = field("Ux", {}),
+		Uy        = field("Uy", {}),
+		__diag_Ux = {
+			_type = "sym",
+			name = "__diag_Ux",
+			kind = "intermediate",
+			itype = "diag",
+			deps = { "Ux" },
+			accessor = true,
+			side_effect_of = "Ux",
+		},
+		__diag_Uy = {
+			_type = "sym",
+			name = "__diag_Uy",
+			kind = "intermediate",
+			itype = "diag",
+			deps = { "Uy" },
+			accessor = true,
+			side_effect_of = "Uy",
+		},
+		inv_d     = expr("inv_d", { __diag_Ux = true, __diag_Uy = true }),
+		p         = field("p", { inv_d = true }),
+	})
+
+	local alg = A.new()
+	alg:loop(function(a)
+		a:solve("Ux")
+		a:solve("Uy")
+		a:solve("p")
+	end)
+	local steps, pos = expand(reg, alg)
+
+	t:diag(function()
+		dump(steps, {
+			"solve:Ux", "solve:Uy",
+			"evaluate:__diag_Ux", "evaluate:__diag_Uy",
+			"evaluate:inv_d", "solve:p",
+		})
+	end)
+
+	t:check("no evaluate:__diag_Ux", absent(steps, "evaluate", "__diag_Ux"))
+	t:check("no evaluate:__diag_Uy", absent(steps, "evaluate", "__diag_Uy"))
+
+	t:check("Ux before inv_d", before(pos, "solve:Ux", "evaluate:inv_d"))
+	t:check("Uy before inv_d", before(pos, "solve:Uy", "evaluate:inv_d"))
+	t:check("inv_d before p", before(pos, "evaluate:inv_d", "solve:p"))
+
+	-- inv_d must not appear between the two velocity solves
+	-- (would mean it ran with only one fresh diag)
+	local inv = pos["evaluate:inv_d"] or 0
+	local ux  = pos["solve:Ux"] or 0
+	local uy  = pos["solve:Uy"] or 0
+	t:check("inv_d after both Ux and Uy",
+		inv > ux and inv > uy,
+		string.format("inv_d at %d, Ux at %d, Uy at %d — emitted too early", inv, ux, uy))
 end
 
 --

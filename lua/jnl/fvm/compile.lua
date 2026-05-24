@@ -246,48 +246,44 @@ function Inst:tostring(indent)
 	return indent .. "?" .. self.op
 end
 
---
--- Expansion of registry intermediates
---
+--[[
 
-local function seed_intermediates(reg)
-	local queued, pending = {}, {}
+EXPANSION
+=========
 
-	local function enqueue(name)
-		if not queued[name] then
-			queued[name] = true
-			pending[#pending + 1] = name
-		end
-	end
+expand(reg) mutates reg in place, adding all synthetic intermediates.
 
-	local function sweep(deps)
-		for name in pairs(deps or {}) do
-			if name:match("^__") then enqueue(name) end
-		end
-	end
+Pipeline:
+	seed - collect every "__"-prefixed name from sym deps
+	elaborate - pattern-match name -> IntermResult describing the node
+	register - call reg:intermediate; wire side_effect_of for diags
+	enqueue - add any new "__"-prefixed deps to the BFS frontier
 
-	for _, sym in pairs(reg) do
-		if type(sym) ~= "table" then goto continue end
+Accessor nodes (accessor=true, e.g. __diag_Ux):
+	Cannot be explicitly evaluated — populated as a side-effect of matrix
+	assembly during solve:field.  Carry side_effect_of = field so the
+	algorithm marks them fresh after each such solve without emitting an
+	evaluate step.  deps_transitive passes *through* accessor nodes so
+	their underlying field dep remains visible for mutability classification
+	(e.g. inv_d → __diag_Ux → Ux is seen as mutable, lands in main).
 
-		if sym.kind == "field" and sym.eq then
-			sweep(sym.eq._deps)
-		elseif sym.kind == "expression" and sym.expr then
-			sweep(sym.expr._deps)
-		elseif sym.kind == "correction" and sym.expr then
-			sweep(sym.expr._deps)
-		end
+--]]
 
-		::continue::
-	end
-
-	return pending, queued
-end
-
---- Resolve a vector or scalar name to its scalar component list.
+-- scalars_of(reg, name) → {name} or vector component list
 local function scalars_of(reg, name)
 	local sym = reg[name]
 	if sym and sym.kind == "vector" then return sym.components end
 	return { name }
+end
+
+--
+-- Elaborators: pattern-matched from name, return IntermResult
+--
+
+local function elaborate_grad_parent(_, _, field)
+	local face = names.face(field)
+	local comps = { names.grad(field, "x"), names.grad(field, "y") }
+	return "grad", { face }, { face }, false, comps
 end
 
 local function elaborate_grad_component(_, _, _, field)
@@ -295,11 +291,6 @@ local function elaborate_grad_component(_, _, _, field)
 	return "grad_component", { parent }, { parent }, true, nil
 end
 
-local function elaborate_grad_parent(_, _, field)
-	local face = names.face(field)
-	local comps = { names.grad(field, "x"), names.grad(field, "y") }
-	return "grad", { face }, { face }, false, comps
-end
 
 local function elaborate_face(reg, name, field)
 	local comps = scalars_of(reg, field)
@@ -313,32 +304,23 @@ local function elaborate_face(reg, name, field)
 end
 
 local function elaborate_face_normal(reg, _, U)
-	local reg_U = reg[U]
-	assert(reg_U, "face_normal: no symbol for U='" .. U .. "'")
+	local reg_U = assert(reg[U], "face_normal: no symbol for U='" .. U .. "'")
 	assert(reg_U.kind == "vector",
 		"face_normal: U='" .. U .. "' must be a vector, got " .. (reg_U.kind or "nil"))
-
-	local Ux, Uy = reg_U.components[1], reg_U.components[2]
-	local fx = names.face(Ux)
-	local fy = names.face(Uy)
-	local deps = { fx, fy }
-	local to_enqueue = { fx, fy }
-	return "face_normal", deps, to_enqueue, false, nil
+	local fx = names.face(reg_U.components[1])
+	local fy = names.face(reg_U.components[2])
+	return "face_normal", { fx, fy }, { fx, fy }, false, nil
 end
 
 local function elaborate_mwi(reg, _, U, p)
-	local deps, to_enqueue = {}, {}
+	local deps = {}
 	for _, uc in ipairs(scalars_of(reg, U)) do
-		for _, d in ipairs({ names.face(uc), names.diag(uc) }) do
-			deps[#deps + 1] = d
-			to_enqueue[#to_enqueue + 1] = d
-		end
+		deps[#deps + 1] = names.face(uc)
+		deps[#deps + 1] = names.diag(uc)
 	end
-	for _, d in ipairs({ names.face(p), names.grad(p) }) do
-		deps[#deps + 1] = d
-		to_enqueue[#to_enqueue + 1] = d
-	end
-	return "mwi", deps, to_enqueue, false, nil
+	deps[#deps + 1] = names.face(p)
+	deps[#deps + 1] = names.grad(p)
+	return "mwi", deps, deps, false, nil -- to_enqueue == deps
 end
 
 local function elaborate_diag(reg, _, field, comp)
@@ -347,12 +329,11 @@ local function elaborate_diag(reg, _, field, comp)
 end
 
 local function elaborate_div(reg, _, field)
-	local comps = scalars_of(reg, field)
-	local face_deps = {}
-	for _, c in ipairs(comps) do
-		face_deps[#face_deps + 1] = names.face(c)
+	local deps = {}
+	for _, c in ipairs(scalars_of(reg, field)) do
+		deps[#deps + 1] = names.face(c)
 	end
-	return "div", face_deps, face_deps, false, nil
+	return "div", deps, deps, false, nil
 end
 
 local function elaborate_div_mwi(_, _, U, p)
@@ -368,6 +349,7 @@ local function elaborate_expl(_, _, field)
 	return "expl", { field }, {}, true, nil
 end
 
+-- Dispatch: pattern-match name -> elaborator
 local function elaborate(reg, name)
 	local comp, field, U, p
 
@@ -404,43 +386,65 @@ local function elaborate(reg, name)
 	error("expand_intermediates: unrecognised intermediate: " .. name)
 end
 
-local function expand_intermediates(reg)
-	local pending, queued = seed_intermediates(reg)
+-- Seed: collect all "__"-prefixed dep names referenced in the registry
+local function seed(reg)
+	local pending, queued = {}, {}
+	local function enqueue(name)
+		if not queued[name] then
+			queued[name] = true
+			pending[#pending + 1] = name
+		end
+	end
+	for _, sym in pairs(reg) do
+		if type(sym) ~= "table" then goto continue end
+		local deps =
+			(sym.kind == "field" and sym.eq and sym.eq._deps) or
+			(sym.kind == "expression" and sym.expr and sym.expr._deps) or
+			(sym.kind == "correction" and sym.expr and sym.expr._deps)
+		for dep in pairs(deps or {}) do
+			if dep:match("^__") then enqueue(dep) end
+		end
+		::continue::
+	end
+	return pending, queued
+end
 
-	while #pending > 0 do
-		local name = table.remove(pending, 1)
-		if not reg[name] then
-			local itype, deps, to_enqueue, accessor, components = elaborate(reg, name)
-
-			if components then
-				for _, c in ipairs(components) do
-					if not reg[c] then
-						reg:intermediate(c, "grad_component", { name }, { accessor = true })
-					end
-				end
-			end
-
-			reg:intermediate(name, itype, deps, { accessor = accessor })
-
-			local diag_field, _ = names.is_diag(name)
-			if diag_field and reg[diag_field] then
-				local fsym = reg[diag_field]
-				fsym._also_fresh = fsym._also_fresh or {}
-				fsym._also_fresh[name] = true
-				reg[name].invalidated_by = diag_field
-			end
-
-			for _, d in ipairs(to_enqueue) do
-				if not queued[d] then
-					queued[d] = true
-					pending[#pending + 1] = d
-				end
+-- Register one intermediate; wire side_effect_of for diag nodes
+local function register_intermediate(reg, name, itype, deps, accessor, components)
+	if components then
+		for _, c in ipairs(components) do
+			if not reg[c] then
+				reg:intermediate(c, "grad_component", { name }, { accessor = true })
 			end
 		end
 	end
+	reg:intermediate(name, itype, deps, { accessor = accessor })
+
+	local diag_field = names.is_diag(name)
+	if diag_field and reg[diag_field] then
+		reg[name].side_effect_of = diag_field
+	end
 end
 
-M.expand = expand_intermediates
+-- BFS expansion loop
+local function expand(reg)
+	local pending, queued = seed(reg)
+	while #pending > 0 do
+		local name = table.remove(pending, 1)
+		if reg[name] then goto continue end
+		local itype, deps, to_enqueue, accessor, components = elaborate(reg, name)
+		register_intermediate(reg, name, itype, deps, accessor, components)
+		for _, d in ipairs(to_enqueue) do
+			if not queued[d] then
+				queued[d] = true
+				pending[#pending + 1] = d
+			end
+		end
+		::continue::
+	end
+end
+
+M.expand = expand
 
 --
 -- Manifest (resource counting)
