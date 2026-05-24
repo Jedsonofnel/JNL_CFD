@@ -4,13 +4,8 @@
 local M = {}
 
 --
--- Formatting helpers
+-- Formatting helper
 --
-
-local function pad_right(s, n)
-	local len = utf8 and (utf8.len(s) or #s) or #s
-	return s .. string.rep(" ", math.max(0, n - len))
-end
 
 local function fmt_value(v)
 	if type(v) == "string" then return string.format("%q", v) end
@@ -68,6 +63,11 @@ end
 -- add a diagnostic function to run on failure
 function Suite:diag(fn)
 	self._next_diag = fn
+end
+
+-- directly fail
+function Suite:fail(name, msg)
+	self:check(name, false, msg)
 end
 
 -- Low-level: pass a boolean condition directly.

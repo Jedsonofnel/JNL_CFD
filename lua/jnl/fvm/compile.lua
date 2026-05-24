@@ -325,7 +325,7 @@ end
 
 local function elaborate_diag(reg, _, field, comp)
 	local deps = comp and { field .. "." .. comp } or scalars_of(reg, field)
-	return "diag", deps, {}, false, nil
+	return "diag", deps, {}, true, nil
 end
 
 local function elaborate_div(reg, _, field)
