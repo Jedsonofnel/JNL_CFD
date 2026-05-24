@@ -219,7 +219,8 @@ function M.grad(field, i)
 		kind = "grad",
 		field = field,
 		component = i,
-		_dep_name = grad_name(field, i),
+		_dep_name = grad_name(field),
+		_comp_name = grad_name(field, i),
 		_pretty = function() return pretty_grad(field, i) end
 	})
 end

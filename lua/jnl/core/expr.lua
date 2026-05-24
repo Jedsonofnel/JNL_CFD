@@ -619,9 +619,10 @@ local function compile(expr_table, bindings)
 			-- things with _dep_name
 		elseif e._dep_name then
 			-- treat as array binding looked up by mangled name
-			local v = bindings[e._dep_name]
+			local lookup = e._comp_name or e._dep_name
+			local v = bindings[lookup]
 			assert(v, "expr_binding.compile: no binding for intermediate '"
-				.. e._dep_name .. "'")
+				.. lookup .. "'")
 			return I.array(ud, v)
 		end
 

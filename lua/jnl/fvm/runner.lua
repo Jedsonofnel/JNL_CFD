@@ -161,49 +161,6 @@ function Runner:_eval_face(expr)
 end
 
 --
--- BC Dispatch table
---
-
-local bc_patch_dispatch = {
-	dirichlet_const = function(r, inst)
-		FVM.bc_dirichlet_const(r:_sys(inst.field), r.mesh, inst.patch, inst.value)
-	end,
-	neumann_const = function(r, inst)
-		FVM.bc_neumann_const(r:_sys(inst.field), r.mesh, inst.patch, inst.value)
-	end,
-}
-
-local bc_face_dispatch = {
-	dirichlet_face_const = function(r, inst)
-		FVM.bc_dirichlet_face_const(r.mesh, r:_field(inst.face_field), inst.patch, inst.value)
-	end,
-	neumann_face_const = function(r, inst)
-		FVM.bc_neumann_face_const(
-			r.mesh,
-			r:_field(names.is_face(inst.face_field)),
-			r:_field(inst.face_field),
-			inst.patch,
-			inst.value)
-	end,
-	dirichlet_face_normal = function(r, inst)
-		FVM.bc_dirichlet_face_normal(r.mesh, r:_field(inst.face_field), inst.patch, inst.ux, inst.uy)
-	end,
-	neumann_face_normal = function(r, inst)
-		local U      = names.is_face_normal(inst.face_field)
-		local reg_U  = r.reg[U]
-		local Ux, Uy = reg_U.components[1], reg_U.components[2]
-		FVM.bc_neumann_face_normal(
-			r.mesh,
-			r:_field(names.face(Ux)),
-			r:_field(names.face(Uy)),
-			r:_field(inst.face_field),
-			inst.patch,
-			inst.ux or 0.0,
-			inst.uy or 0.0)
-	end,
-}
-
---
 -- Instruction dispatch table
 --
 
@@ -217,16 +174,57 @@ dispatch.bc_placeholder = function() end
 -- BC Application
 --
 
+local bc_patch_dispatch = {
+	dirichlet_const = function(r, inst)
+		FVM.bc_dirichlet_const(r:_sys(inst.field), r.mesh, inst.patch, inst.value)
+	end,
+	neumann_const = function(r, inst)
+		FVM.bc_neumann_const(r:_sys(inst.field), r.mesh, inst.patch, inst.value)
+	end,
+}
+
 dispatch.apply_bc_patch = function(r, inst)
 	local fn = bc_patch_dispatch[inst.kind]
 	assert(fn, "runner: unknown bc kind '" .. tostring(inst.kind) .. "'")
 	fn(r, inst)
 end
 
-dispatch.apply_bc_face = function(r, inst)
-	local fn = bc_face_dispatch[inst.kind]
-	assert(fn, "runner: unknown bc face kind '" .. tostring(inst.kind) .. "'")
-	fn(r, inst)
+dispatch.apply_bc_face_scalar = function(r, inst)
+	if inst.kind == "dirichlet_face_const" then
+		FVM.bc_dirichlet_face_const(r.mesh, r:_field(inst.face_field), inst.patch, inst.value)
+	elseif inst.kind == "neumann_face_const" then
+		FVM.bc_neumann_face_const(
+			r.mesh,
+			r:_field(names.is_face(inst.face_field)),
+			r:_field(inst.face_field),
+			inst.patch, inst.value)
+	else
+		error("apply_bc_face_scalar: unknown kind '" .. tostring(inst.kind) .. "'")
+	end
+end
+
+dispatch.apply_bc_face_normal = function(r, inst)
+	if inst.kind == "dirichlet_face_normal" then
+		FVM.bc_dirichlet_face_normal(
+			r.mesh, r:_field(inst.face_field), inst.patch, inst.ux, inst.uy)
+	elseif inst.kind == "neumann_face_normal" then
+		-- face_field may be __facen_U or __mwi_U:p — try both decoders
+		local U = names.is_face_normal(inst.face_field)
+			or (names.is_mwi(inst.face_field))       -- returns U, p; only U needed
+		assert(U, "apply_bc_face_normal: cannot decode face_field '"
+			.. tostring(inst.face_field) .. "'")
+		local reg_U = r.reg[U]
+		assert(reg_U, "apply_bc_face_normal: no reg entry for U='" .. U .. "'")
+		local Ux, Uy = reg_U.components[1], reg_U.components[2]
+		FVM.bc_neumann_face_normal(
+			r.mesh,
+			r:_field(names.face(Ux)),
+			r:_field(names.face(Uy)),
+			r:_field(inst.face_field),
+			inst.patch, inst.ux or 0.0, inst.uy or 0.0)
+	else
+		error("apply_bc_face_normal: unknown kind '" .. tostring(inst.kind) .. "'")
+	end
 end
 
 --
@@ -436,6 +434,10 @@ end
 --
 -- Algorithm bits
 --
+
+dispatch.zero = function(r, inst)
+	r:_field(inst.field):fill(0.0)
+end
 
 dispatch.clip = function(r, inst)
 	r:_field(inst.field):clip(inst.lo, inst.hi)

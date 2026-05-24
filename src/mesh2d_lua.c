@@ -1,5 +1,6 @@
 #include <lauxlib.h>
 #include <lua.h>
+#include <math.h>
 #include <string.h>
 
 #include "lua_bindings.h"
@@ -142,6 +143,18 @@ static int l_mesh_cell_vol(lua_State *L)
 	return 1;
 }
 
+static int l_mesh_mean_cell_size(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+
+	// sqrt(total_area / n_cells) = RMS cell size
+	f64 total = 0.0;
+	for (i32 i = 0; i < m->topo.n_cells; i++)
+		total += m->geom.cell_vol[i];
+	lua_pushnumber(L, sqrt(total / m->topo.n_cells));
+	return 1;
+}
+
 //
 // Face geometry accessors
 //
@@ -206,6 +219,7 @@ static const luaL_Reg mesh2d_methods[] = {
     {"patch_by_name", l_mesh_patch_by_name},
     {"cell_centre", l_mesh_cell_centre},
     {"cell_vol", l_mesh_cell_vol},
+    {"mean_cell_size", l_mesh_mean_cell_size},
     {"face_centre", l_mesh_face_centre},
     {"face_normal", l_mesh_face_normal},
     {"cell_cx_vec", l_mesh_cell_cx_vec},

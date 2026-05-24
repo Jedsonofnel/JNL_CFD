@@ -28,6 +28,10 @@ local function step_clip(field, lo, hi, implicit)
 	return { op = "clip", field = field, lo = lo, hi = hi, implicit = implicit or false }
 end
 
+local function step_zero(field)
+	return { op = "zero", field = field }
+end
+
 local function step_monitor(field, norm)
 	norm = norm or "normL2"
 	V.norm(norm, "monitor norm")
@@ -91,6 +95,12 @@ end
 function Builder:solve(field)
 	V.field_name(field, "alg:solve field")
 	self._alg:_push(step_solve(field, false))
+	return self
+end
+
+function Builder:zero(field)
+	V.field_name(field, "alg:zero field")
+	self._alg:_push(step_zero(field))
 	return self
 end
 

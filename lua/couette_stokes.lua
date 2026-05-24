@@ -17,7 +17,7 @@ local rho    = 1.0
 
 local mesh   = mesh2d.new_smesh(L, H, Nx, Ny)
 
-local reg    = canned.incompressible_registry({ rho = rho, mu = mu })
+local reg    = canned.stokes_registry({ rho = rho, mu = mu })
 local alg    = canned.SIMPLE({ max_iters = 2000 })
 
 local bcs    = {
@@ -42,7 +42,6 @@ local bcs    = {
 }
 
 local case   = require("jnl.fvm.case").new(reg, alg, mesh, bcs)
-
 case:make_sim():run()
 
 --
@@ -52,12 +51,12 @@ case:make_sim():run()
 -- Extract a vertical profile at the middle column (x ~ L/2)
 -- Walk cells, keep those nearest x = L/2, sort by y
 local Ux_field = case._field_map["Ux"]
+
+local dx = L / Nx
 local x_target = L / 2.0
 local prof_y, prof_u = {}, {}
-
 for i = 1, mesh:n_cells() do
 	local cx, cy = mesh:cell_centre(i)
-	local dx = mesh:cell_size_x()
 	if math.abs(cx - x_target) < dx * 0.5 then
 		prof_y[#prof_y + 1] = cy
 		prof_u[#prof_u + 1] = Ux_field[i]

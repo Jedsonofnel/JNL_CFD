@@ -9,6 +9,8 @@ local FVM = require("jnl.fvm")
 local Op = FVM.Op
 local FVMe = FVM.Expr
 
+local BC = require("jnl.fvm.bc")
+
 local rules = require("jnl.fvm.rules")
 
 local M = {}
@@ -64,7 +66,63 @@ function M.incompressible_registry(props)
 			Op.lap("inv_d", pp),
 			Op.su(E.neg("divU")),
 			{ solver = "cg" }
+		),
+		bcs = { BC.neumann_all(0.0) },
+	})
+
+	reg:correction("Ux", E.sub(E.expl("Ux"),
+		E.mul(E.cV(), E.div(FVMe.grad(pp, "x"), FVMe.diag("Ux")))))
+	reg:correction("Uy", E.sub(E.expl("Uy"),
+		E.mul(E.cV(), E.div(FVMe.grad(pp, "y"), FVMe.diag("Uy")))))
+	reg:correction("p", E.add(E.expl("p"),
+		E.mul("alpha_p", E.prime("p"))))
+
+	return reg
+end
+
+function M.stokes_registry(props)
+	props         = props or {}
+	local mu      = props.mu or 1e-3
+	local alpha_p = props.alpha_p or 0.3
+	local reg     = R.new()
+
+	reg:constant("mu", mu)
+	reg:constant("alpha_p", alpha_p)
+
+	reg:field("Ux", {
+		eq = FVM.eq(
+			Op.lap("mu", "Ux"),
+			{ relax = 0.7, solver = "bicgstab" }
 		)
+	})
+	reg:field("Uy", {
+		eq = FVM.eq(
+			Op.lap("mu", "Uy"),
+			{ relax = 0.7, solver = "bicgstab" }
+		)
+	})
+	reg:vector("U", { "Ux", "Uy" })
+
+	reg:expression("divU", FVMe.div_mwi("U", "p"))
+
+	reg:expression("inv_d",
+		E.mul(E.cV(), E.div(2, E.add(FVMe.diag("Ux"), FVMe.diag("Uy")))))
+
+	reg:field("p", {
+		eq = FVM.eq(
+			Op.lap("inv_d", "p"),
+			{ relax = 0.3, solver = "cg" }
+		)
+	})
+
+	local pp = E.prime_name("p")
+	reg:field(pp, {
+		eq = FVM.eq(
+			Op.lap("inv_d", pp),
+			Op.su(E.neg("divU")),
+			{ solver = "cg" }
+		),
+		bcs = { BC.neumann_all(0.0) },
 	})
 
 	reg:correction("Ux", E.sub(E.expl("Ux"),
@@ -105,6 +163,7 @@ function M.SIMPLE(opts)
 		a:solve("U")
 		a:solve("p")
 		a:monitor("divU")
+		a:zero(E.prime_name("p"))
 		a:solve(E.prime_name("p"))
 		a:correct("U")
 		a:correct("p")
@@ -131,6 +190,14 @@ M.SIMPLEPostMortem = rules.post_mortem({
 				diag("nan_in_" .. name, "NaN in " .. name
 					.. " at iter " .. f.iter)
 			end
+		end
+	end),
+	rules.pm_rule("divu_check", function(sage, f, d, diag)
+		if not d then return end
+		local divu_max = d.max("divU")
+		io.write(string.format("[POST-MORTEM]  divU max = %.3e\n", divu_max))
+		if divu_max ~= divu_max then
+			diag("divu_nan", "divU is NaN from iteration 0 — MWI flux uninitialised")
 		end
 	end),
 	rules.pm_rule("pressure_singular", function(sage, _, _, diag)
@@ -207,6 +274,20 @@ M.SIMPLEPostMortem = rules.post_mortem({
 					string.format("%s: residual grew %.1fx over last %d iters",
 						name, h[1].value / (h[#h].value + 1e-300), #h))
 			end
+			::continue::
+		end
+	end),
+	rules.pm_rule("diagonal_range", function(_, _, d, _)
+		if not d then return end
+		for _, name in ipairs({ "Ux", "Uy", "p" }) do
+			local s = d.sys_diag(name)
+			if not s then goto continue end
+			io.write(string.format(
+				"[POST-MORTEM]  %s: diag_dominance=%.3e  all_pos=%s  residual=%.3e\n",
+				name,
+				s.diagonal_dominance,
+				tostring(s.all_diagonals_positive),
+				s.residual_norm))
 			::continue::
 		end
 	end),

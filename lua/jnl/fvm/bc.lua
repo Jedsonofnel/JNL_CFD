@@ -19,8 +19,8 @@ M.KNOWN_BC_KINDS = KNOWN_BC_KINDS
 
 function M.validate(field_name, i, bc)
 	local loc = string.format("bcs['%s'][%d]", field_name, i)
-	assert(type(bc.patch) == "string",
-		loc .. ": .patch must be a string (e.g. P.LEFT = 'west'), got "
+	assert(bc.patch == true or type(bc.patch) == "string",
+		loc .. ": .patch must be a string or true (wildcard), got "
 		.. type(bc.patch))
 	assert(bc.kind,
 		loc .. ": missing .kind")
@@ -42,6 +42,10 @@ end
 
 function M.neumann(patch, value)
 	return { patch = patch, kind = "neumann_const", value = value or 0.0 }
+end
+
+function M.neumann_all(value)
+	return { patch = true, kind = "neumann_const", value = value or 0.0 }
 end
 
 function M.symmetry(patch)

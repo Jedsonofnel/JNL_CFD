@@ -86,6 +86,9 @@ local printers = {
 	comment = function(f)
 		return "\n  ; " .. f.message
 	end,
+	zero = function(f)
+		return string.format("ZERO          %s", fmt(f.field))
+	end,
 	monitor = function(f)
 		return string.format("MONITOR       %s  [%s]", fmt(f.field), f.norm)
 	end,
@@ -118,14 +121,19 @@ local printers = {
 		return string.format("SOLVE         %s  [%s%s%s]", fmt(f.field), f.solver, tol, iters)
 	end,
 	apply_bc_patch = function(f)
+		local patch = f.patch == true and "*" or f.patch
 		local val = f.value ~= nil and string.format("  %g", f.value) or ""
 		return string.format("APPLY_BC      %-16s patch=%-10s %s%s",
-			fmt(f.field), f.patch, f.kind, val)
+			fmt(f.field), patch, f.kind, val)
 	end,
-	apply_bc_face = function(f)
+	apply_bc_face_scalar = function(f)
 		local val = f.value ~= nil and string.format("  %g", f.value) or ""
-		return string.format("APPLY_BC_FACE %-16s patch=%-10s %s%s",
+		return string.format("BC_FACE_SCALAR %-16s patch=%-10s %s%s",
 			fmt(f.face_field), f.patch, f.kind, val)
+	end,
+	apply_bc_face_normal = function(f)
+		return string.format("BC_FACE_NORMAL %-16s patch=%-10s %s  (ux=%g, uy=%g)",
+			fmt(f.face_field), f.patch, f.kind, f.ux or 0, f.uy or 0)
 	end,
 	bc_placeholder = function(f)
 		local field_str = fmt(f.field)
@@ -518,99 +526,136 @@ M.manifest = count_resources
 -- Instruction emission
 --
 
+-- in compile.lua, replace the itype dispatch in emit_eval
+
+local eval_emitters = {}
+
+eval_emitters.face = function(reg, name, out)
+	local src_name = names.is_face(name)
+	out[#out + 1] = Inst.new("face_interp_cds", { field = src_name, out = name })
+	local src_sym = reg[src_name]
+	local face_kind_map = {
+		dirichlet_const = "dirichlet_face_const",
+		neumann_const   = "neumann_face_const",
+	}
+	if src_sym and src_sym.bcs and #src_sym.bcs > 0 then
+		for _, bc in ipairs(src_sym.bcs) do
+			out[#out + 1] = Inst.new("apply_bc_face_scalar", {
+				face_field = name,
+				patch = bc.patch,
+				kind = face_kind_map[bc.kind] or bc.kind,
+				value = bc.value,
+			})
+		end
+		for _, pname in ipairs(src_sym.unspecified_patches or {}) do
+			out[#out + 1] = Inst.new("bc_placeholder", { field = name, patch = pname, implicit = true })
+		end
+	else
+		out[#out + 1] = Inst.new("bc_placeholder", { field = name, patch = nil, implicit = false })
+	end
+end
+
+eval_emitters.face_normal = function(reg, name, out)
+	local U = names.is_face_normal(name)
+	local reg_U = assert(reg[U], "face_normal: no symbol for U='" .. U .. "'")
+	assert(reg_U.kind == "vector", "face_normal: U must be a vector")
+	local Ux, Uy = reg_U.components[1], reg_U.components[2]
+	out[#out + 1] = Inst.new("face_normal_component", {
+		ux_face = names.face(Ux), uy_face = names.face(Uy), out = name,
+	})
+end
+
+eval_emitters.grad = function(_, name, out)
+	local field = names.is_grad_parent(name) or ""
+	out[#out + 1] = Inst.new("grad_green_gauss", {
+		face_field = names.face(field),
+		out_x = names.grad(field, "x"),
+		out_y = names.grad(field, "y"),
+	})
+end
+
+eval_emitters.mwi = function(reg, name, out)
+	local U, p = names.is_mwi(name)
+	local reg_U = assert(reg[U], "mwi: no symbol for U")
+	assert(reg_U.kind == "vector", "mwi: U must be a vector")
+	local Ux, Uy = reg_U.components[1], reg_U.components[2]
+
+	out[#out + 1] = Inst.new("rhie_chow", {
+		Ux = Ux,
+		Uy = Uy,
+		p = p,
+		grad_px = names.grad(p, "x"),
+		grad_py = names.grad(p, "y"),
+		ap_x = names.diag(Ux),
+		ap_y = names.diag(Uy),
+		out = name,
+	})
+
+	-- Derive face-normal BCs from the Ux BCs
+	local ux_sym = reg[Ux]
+	local uy_sym = reg[Uy]
+	if not (ux_sym and ux_sym.bcs) then
+		out[#out + 1] = Inst.new("bc_placeholder", { field = name, patch = nil, implicit = false })
+		return
+	end
+
+	for _, bc in ipairs(ux_sym.bcs) do
+		local uy_val = 0.0
+		if uy_sym and uy_sym.bcs then
+			for _, uybc in ipairs(uy_sym.bcs) do
+				if uybc.patch == bc.patch then
+					uy_val = uybc.value or 0.0; break
+				end
+			end
+		end
+		out[#out + 1] = Inst.new("apply_bc_face_normal", {
+			face_field = name,
+			patch = bc.patch,
+			kind = bc.kind == "neumann_const" and "neumann_face_normal" or "dirichlet_face_normal",
+			ux = bc.kind == "neumann_const" and 0.0 or (bc.value or 0.0),
+			uy = bc.kind == "neumann_const" and 0.0 or uy_val,
+		})
+	end
+	for _, pname in ipairs(ux_sym.unspecified_patches or {}) do
+		out[#out + 1] = Inst.new("apply_bc_face_normal", {
+			face_field = name,
+			patch = pname,
+			kind = "dirichlet_face_normal",
+			ux = 0.0,
+			uy = 0.0,
+		})
+	end
+end
+
+eval_emitters.div_mwi = function(_, name, out)
+	local U, p = names.is_div_mwi(name)
+	out[#out + 1] = Inst.new("divergence", { un_face = names.mwi(U, p), out = name })
+end
+
+eval_emitters.div = function(_, name, out)
+	local field = names.is_div(name) or ""
+	out[#out + 1] = Inst.new("divergence", { un_face = names.face(field), out = name })
+end
+
+eval_emitters.expression = function(reg, name, out)
+	out[#out + 1] = Inst.new("eval_expr", { name = name, expr = reg[name].expr })
+end
+
 local function emit_eval(reg, name, out)
 	local sym = reg[name]
 	if not sym then return end
 	local itype = sym.itype or sym.kind
 
+	-- comments for compound ops
 	if itype == "mwi" then
 		out[#out + 1] = Inst.comment("rhie-chow face flux  " .. E.pretty_sym(name))
 	elseif itype == "div_mwi" or itype == "div" then
 		out[#out + 1] = Inst.comment("divergence  " .. E.pretty_sym(name))
 	end
 
-	if itype == "face" then
-		local src_name = names.is_face(name)
-		out[#out + 1] = Inst.new("face_interp_cds", {
-			field = src_name, out = name })
-		local src_sym = reg[src_name]
-
-		local face_kind_map = {
-			dirichlet_const = "dirichlet_face_const",
-			neumann_const   = "neumann_face_const",
-		}
-
-		if src_sym and src_sym.bcs and #src_sym.bcs > 0 then
-			for _, bc in ipairs(src_sym.bcs) do
-				out[#out + 1] = Inst.new("apply_bc_face", {
-					face_field = name,
-					patch      = bc.patch,
-					kind       = face_kind_map[bc.kind] or bc.kind,
-					value      = bc.value,
-				})
-			end
-			for _, patch_name in ipairs(src_sym.unspecified_patches or {}) do
-				out[#out + 1] = Inst.new("bc_placeholder", {
-					field    = name,
-					patch    = patch_name,
-					implicit = true,
-				})
-			end
-		else
-			out[#out + 1] = Inst.new("bc_placeholder", {
-				field    = name,
-				patch    = nil,
-				implicit = false,
-			})
-		end
-	elseif itype == "face_normal" then
-		local U = names.is_face_normal(name)
-		local reg_U = reg[U]
-		assert(reg_U, "face_normal: no symbol for U='" .. U .. "'")
-		assert(reg_U.kind == "vector",
-			"face_normal: U='" .. U .. "' must be a vector, got " .. (reg_U.kind or "nil"))
-
-		local Ux = reg_U.components[1]
-		local Uy = reg_U.components[2]
-
-		out[#out + 1] = Inst.new("face_normal_component", {
-			ux_face = names.face(Ux),
-			uy_face = names.face(Uy),
-			out = name,
-		})
-	elseif itype == "grad" then
-		local field = names.is_grad_parent(name) or ""
-		out[#out + 1] = Inst.new("grad_green_gauss", {
-			face_field = names.face(field),
-			out_x      = names.grad(field, "x"),
-			out_y      = names.grad(field, "y")
-		})
-	elseif itype == "mwi" then
-		local U, p  = names.is_mwi(name)
-		local reg_U = reg[U]
-		assert(reg_U and reg_U.kind == "vector",
-			"mwi: expected vector for U, got " .. tostring(U))
-		local Ux, Uy = reg_U.components[1], reg_U.components[2]
-		out[#out + 1] = Inst.new("rhie_chow", {
-			Ux = Ux,
-			Uy = Uy,
-			p = p,
-			grad_px = names.grad(p, "x"),
-			grad_py = names.grad(p, "y"),
-			ap_x = names.diag(Ux),
-			ap_y = names.diag(Uy),
-			out = name
-		})
-	elseif itype == "div_mwi" then
-		local U, p = names.is_div_mwi(name)
-		out[#out + 1] = Inst.new("divergence", {
-			un_face = names.mwi(U, p), out = name })
-	elseif itype == "div" then
-		local field = names.is_div(name) or ""
-		out[#out + 1] = Inst.new("divergence", {
-			un_face = names.face(field), out = name })
-	elseif sym.kind == "expression" then
-		out[#out + 1] = Inst.new("eval_expr", { name = name, expr = sym.expr })
+	local emitter = eval_emitters[itype]
+	if emitter then
+		emitter(reg, name, out)
 	end
 end
 
@@ -831,6 +876,8 @@ local function walk_steps(reg, alg, steps, out)
 			else
 				emit_solve(reg, step.field, alg, out)
 			end
+		elseif step.op == "zero" then
+			out[#out + 1] = Inst.new("zero", { field = step.field })
 		elseif step.op == "init" then
 			-- handled at case allocation
 		elseif step.op == "correct" then

@@ -27,8 +27,24 @@ local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
 	table.sort(field_names)
 
 	for _, field_name in ipairs(field_names) do
-		local sym       = reg[field_name]
-		local raw_list  = bcs_table[field_name] or {}
+		local sym           = reg[field_name]
+		local raw_list      = bcs_table[field_name] or sym.bcs or {}
+
+		-- any bc where patch = true gets the bc for ALL patches
+		local expanded_list = {}
+		for _, bc in ipairs(raw_list) do
+			if bc.patch == true then
+				for _, pname in ipairs(patch_names) do
+					local copy = {}
+					for k, v in pairs(bc) do copy[k] = v end
+					copy.patch = pname
+					expanded_list[#expanded_list + 1] = copy
+				end
+			else
+				expanded_list[#expanded_list + 1] = bc
+			end
+		end
+		raw_list        = expanded_list
 
 		-- Validate entries and build a set of covered patches
 		local covered   = {}
@@ -170,10 +186,15 @@ function Case:allocate()
 	for _, f in ipairs(man.fields) do
 		field_map[f.name] = alloc_field(self._ctx, reg[f.name], f)
 		local sym = reg[f.name]
+
 		if sym and sym.kind == "field" then
 			local sys = self._ctx:fvsys()
 			sys_map[f.name] = sys
-			field_map[names.diag(f.name)] = sys:diag_vec()
+
+			-- put diagonals into field map
+			local diag_handle = sys:diag_vec()
+			field_map[names.diag(f.name)] = diag_handle
+			diag_handle:fill(1.0) -- prevent div by zero
 		end
 	end
 
