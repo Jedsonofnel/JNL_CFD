@@ -6,6 +6,7 @@ OBJDIR  = build
 HDIR    = include
 TESTDIR = test
 LUADIR  = lua
+OUTDIR  = out
 
 # compiler vars
 CC = gcc
@@ -58,7 +59,7 @@ $(OBJDIR)/test/%.o: $(TESTDIR)/%.c
 
 $(BINDIR)/%: $(OBJDIR)/$(CMDDIR)/%/main.o \
              $(filter $(OBJDIR)/$(CMDDIR)/$*/%.o, $(CMD_OBJS)) \
-             $(OBJS) | $(BINDIR)
+             $(OBJS) | $(BINDIR) $(OUTDIR)
 	$(CC) $(LDFLAGS) -o $@ $^
 
 $(OBJDIR)/$(CMDDIR)/%.o: $(CMDDIR)/%.c
@@ -75,7 +76,10 @@ $(BINDIR):
 $(BINDIR)/test:
 	mkdir -p $@
 
+$(OUTDIR):
+	mkdir -p $@
+
 -include $(DEPS)
 
 clean:
-	rm -rf $(OBJDIR) $(BINDIR)
+	rm -rf $(OBJDIR) $(BINDIR) $(OUTDIR)

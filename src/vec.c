@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <string.h>
 
 #include "jnl/common.h"
 #include "vec.h"
@@ -41,6 +42,14 @@ f64 jnl_vec_mean(const f64 *v, i32 n)
 	assert(n > 0);
 	return jnl_vec_sum(v, n) / (f64)n;
 }
+
+void jnl_vec_fill(f64 *v, f64 value, i32 n)
+{
+	for (i32 i = 0; i < n; i++)
+		v[i] = value;
+}
+
+void jnl_vec_zero(f64 *v, i32 n) { memset(v, 0, n * sizeof(f64)); }
 
 void jnl_vec_scale(f64 *v, f64 alpha, i32 n)
 {

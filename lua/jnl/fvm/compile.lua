@@ -206,11 +206,11 @@ local printers = {
 	div_tvd_superbee = function(f)
 		return string.format("DIV_TVD_SB    %s  flux=%s", fmt(f.field), fmt(f.un_face))
 	end,
-	su_integrated = function(f)
+	su_field = function(f)
 		local src = f.expr and tostring(f.expr) or fmt(f.src)
 		return string.format("SU            %s  src=%s", fmt(f.field), src)
 	end,
-	sp_integrated = function(f)
+	sp_field = function(f)
 		local src = f.expr and tostring(f.expr) or fmt(f.src)
 		return string.format("SP            %s  src=%s", fmt(f.field), src)
 	end,
@@ -802,10 +802,10 @@ local function emit_term(field, term, reg, out)
 		end
 	elseif kind == "su" then
 		---@cast term FvmSuTerm
-		out[#out + 1] = Inst.new("su_integrated", { field = field, expr = term.expr })
+		out[#out + 1] = Inst.new("su_field", { field = field, expr = term.expr })
 	elseif kind == "sp" then
 		---@cast term FvmSpTerm
-		out[#out + 1] = Inst.new("sp_integrated", { field = field, expr = term.expr })
+		out[#out + 1] = Inst.new("sp_field", { field = field, expr = term.expr })
 	elseif kind == "ddt" then
 		local c = coeff_of(term.coeff, reg)
 		local coeff = emit_coeff(c, out)

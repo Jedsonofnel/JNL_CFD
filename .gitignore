@@ -2,6 +2,7 @@
 *.wasm
 bin/
 build/
+out/
 
 *.d
 *.o

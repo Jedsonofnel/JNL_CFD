@@ -343,19 +343,19 @@ dispatch.div_tvd_superbee = function(r, inst)
 		r:_field(inst.grad_y), r:_field(inst.un_face))
 end
 
-dispatch.su_integrated = function(r, inst)
+dispatch.su_field = function(r, inst)
 	local sys = r:_sys(inst.field)
 	if inst.expr then
-		FVM.su_integrated(sys, r.mesh, r:_eval_cell(inst.expr))
+		FVM.su_field(sys, r.mesh, r:_eval_cell(inst.expr))
 	else
 		FVM.su_const(sys, r.mesh, 0.0)
 	end
 end
 
-dispatch.sp_integrated = function(r, inst)
+dispatch.sp_field = function(r, inst)
 	local sys = r:_sys(inst.field)
 	if inst.expr then
-		FVM.sp_integrated(sys, r.mesh, r:_eval_cell(inst.expr))
+		FVM.sp_field(sys, r.mesh, r:_eval_cell(inst.expr))
 	else
 		FVM.sp_const(sys, r.mesh, 0.0)
 	end
