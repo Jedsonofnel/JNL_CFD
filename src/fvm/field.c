@@ -3,6 +3,31 @@
 #include "mesh2d.h"
 
 //
+// Face block helpers
+//
+
+static inline i32 first_internal_face(const struct jnl_mesh *mesh)
+{
+	(void)mesh;
+	return 0;
+}
+
+static inline i32 first_baffle_face(const struct jnl_mesh *mesh)
+{
+	return mesh->topo.n_internal_faces;
+}
+
+static inline i32 first_patch_face(const struct jnl_mesh *mesh)
+{
+	return mesh->topo.n_internal_faces + mesh->baffles.n_baffle_faces;
+}
+
+static inline i32 end_face(const struct jnl_mesh *mesh)
+{
+	return mesh->topo.n_faces;
+}
+
+//
 // Face interpolation
 //
 
@@ -12,25 +37,33 @@ void jnl_face_interp_cds(const struct jnl_mesh *mesh, const f64 *field,
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_interp *interp = &mesh->interp;
 
-	for (i32 f = 0; f < topo->n_faces; f++) {
+	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
 		i32 owner = topo->owner[f];
 		i32 neigh = topo->neighbour[f];
-		if (neigh >= 0) {
-			f64 w = interp->weight[f];
-			face_field[f] = (1.0 - w) * field[owner] + w * field[neigh];
-		} else {
-			face_field[f] = field[owner]; // zero-gradient default
-		}
+
+		f64 w = interp->weight[f];
+		face_field[f] = (1.0 - w) * field[owner] + w * field[neigh];
+	}
+
+	// NOTE: weak/default choice - zero gradient
+	for (i32 f = first_baffle_face(mesh); f < first_patch_face(mesh); f++) {
+		i32 owner = topo->owner[f];
+		face_field[f] = field[owner];
+	}
+
+	// NOTE: default is zero gradient at boundary
+	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+		i32 owner = topo->owner[f];
+		face_field[f] = field[owner];
 	}
 }
 
 void jnl_face_normal_component(const struct jnl_mesh *mesh, const f64 *ux_face,
                                const f64 *uy_face, f64 *un_face)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_geom *geom = &mesh->geom;
 
-	for (i32 f = 0; f < topo->n_faces; f++) {
+	for (i32 f = first_internal_face(mesh); f < end_face(mesh); f++) {
 		un_face[f] =
 		    ux_face[f] * geom->face_nx[f] + uy_face[f] * geom->face_ny[f];
 	}
@@ -44,7 +77,7 @@ void jnl_rhie_chow(const struct jnl_mesh *mesh, const f64 *ux, const f64 *uy,
 	const struct jnl_mesh_geom *geom = &mesh->geom;
 	const struct jnl_mesh_interp *interp = &mesh->interp;
 
-	for (i32 f = 0; f < topo->n_internal_faces; f++) {
+	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
 		i32 owner = topo->owner[f];
 		i32 neigh = topo->neighbour[f];
 		f64 w = interp->weight[f];
@@ -58,7 +91,7 @@ void jnl_rhie_chow(const struct jnl_mesh *mesh, const f64 *ux, const f64 *uy,
 		f64 dx_neigh = geom->cell_vol[neigh] / ap_x[neigh];
 		f64 dy_neigh = geom->cell_vol[neigh] / ap_y[neigh];
 
-		// interpolated face-normal velocity (no pressure correction)
+		// interpolated face-normal velocity without pressure correction
 		f64 un_owner = ux[owner] * nx + uy[owner] * ny;
 		f64 un_neigh = ux[neigh] * nx + uy[neigh] * ny;
 		f64 un_interp = (1.0 - w) * un_owner + w * un_neigh;
@@ -68,15 +101,13 @@ void jnl_rhie_chow(const struct jnl_mesh *mesh, const f64 *ux, const f64 *uy,
 		f64 gp_n_neigh = grad_px[neigh] * nx + grad_py[neigh] * ny;
 		f64 gp_n_interp = (1.0 - w) * gp_n_owner + w * gp_n_neigh;
 
-		// interpolated face diffusivity (normal component)
+		// interpolated face diffusivity, normal component
 		f64 dx_face = (1.0 - w) * dx_owner + w * dx_neigh;
 		f64 dy_face = (1.0 - w) * dy_owner + w * dy_neigh;
 		f64 d_normal = dx_face * nx * nx + dy_face * ny * ny;
 
-		// direct pressure gradient along the O-N line
-		// grad_pn_direct = delta_coeff * (p_N - p_O)
-		//                + non-orth correction dot interp_grad_p
 		f64 p_diff = p[neigh] - p[owner];
+
 		f64 gp_x_face = (1.0 - w) * grad_px[owner] + w * grad_px[neigh];
 		f64 gp_y_face = (1.0 - w) * grad_py[owner] + w * grad_py[neigh];
 
@@ -85,6 +116,11 @@ void jnl_rhie_chow(const struct jnl_mesh *mesh, const f64 *ux, const f64 *uy,
 		                  interp->corr_y[f] * gp_y_face;
 
 		un_face[f] = un_interp - d_normal * (gp_n_direct - gp_n_interp);
+	}
+
+	// Baffles are impermeable walls by default
+	for (i32 f = first_baffle_face(mesh); f < first_patch_face(mesh); f++) {
+		un_face[f] = 0.0;
 	}
 }
 
@@ -97,20 +133,48 @@ void jnl_grad_green_gauss(const struct jnl_mesh *mesh, const f64 *face_field,
 {
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_geom *geom = &mesh->geom;
+
 	for (i32 c = 0; c < topo->n_cells; c++) {
 		grad_x[c] = grad_y[c] = 0.0;
 	}
-	for (i32 f = 0; f < topo->n_faces; f++) {
+
+	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
 		i32 owner = topo->owner[f];
 		i32 neigh = topo->neighbour[f];
+
 		f64 flux = face_field[f] * geom->face_area[f];
+
 		grad_x[owner] += flux * geom->face_nx[f];
 		grad_y[owner] += flux * geom->face_ny[f];
-		if (neigh >= 0) {
-			grad_x[neigh] -= flux * geom->face_nx[f];
-			grad_y[neigh] -= flux * geom->face_ny[f];
-		}
+
+		grad_x[neigh] -= flux * geom->face_nx[f];
+		grad_y[neigh] -= flux * geom->face_ny[f];
 	}
+
+	// NOTE: treat each baffle like two coincident boundary faces
+	for (i32 f = first_baffle_face(mesh); f < first_patch_face(mesh); f++) {
+		i32 owner = topo->owner[f];
+		i32 neigh = topo->neighbour[f];
+
+		f64 flux = face_field[f] * geom->face_area[f];
+
+		grad_x[owner] += flux * geom->face_nx[f];
+		grad_y[owner] += flux * geom->face_ny[f];
+
+		grad_x[neigh] -= flux * geom->face_nx[f];
+		grad_y[neigh] -= flux * geom->face_ny[f];
+	}
+
+	// Boundary faces
+	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+		i32 owner = topo->owner[f];
+
+		f64 flux = face_field[f] * geom->face_area[f];
+
+		grad_x[owner] += flux * geom->face_nx[f];
+		grad_y[owner] += flux * geom->face_ny[f];
+	}
+
 	for (i32 c = 0; c < topo->n_cells; c++) {
 		f64 inv_vol = 1.0 / geom->cell_vol[c];
 		grad_x[c] *= inv_vol;
@@ -132,13 +196,28 @@ void jnl_divergence_integrated(const struct jnl_mesh *mesh, const f64 *un_face,
 		div[c] = 0.0;
 	}
 
-	for (i32 f = 0; f < topo->n_faces; f++) {
+	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
 		i32 owner = topo->owner[f];
 		i32 neigh = topo->neighbour[f];
+
 		f64 flux = un_face[f] * geom->face_area[f];
+
 		div[owner] += flux;
-		if (neigh >= 0)
-			div[neigh] -= flux;
+		div[neigh] -= flux;
+	}
+
+	// NOTE: intentionally doing nothing for baffles
+	for (i32 f = first_baffle_face(mesh); f < first_patch_face(mesh); f++) {
+		(void)f;
+	}
+
+	// Boundary faces
+	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+		i32 owner = topo->owner[f];
+
+		f64 flux = un_face[f] * geom->face_area[f];
+
+		div[owner] += flux;
 	}
 }
 
