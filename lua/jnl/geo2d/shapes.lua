@@ -6,6 +6,14 @@ local geo2d = require("jnl.geo2d_internal")
 
 local M = {}
 
+M._doc = "2D shape primitives with bbox, containment, and PSLG discretisation"
+
+M._api = {
+	circle  = { args = "cx, cy, r:number, n:int?", ret = "Circle", doc = "Circle centred at cx,cy; n polygon segments (default 64)" },
+	rect    = { args = "x0, y0, x1, y1:number", ret = "Rect", doc = "Axis-aligned rectangle from two corners" },
+	polygon = { args = "pts:number[][]", ret = "Polygon", doc = "Arbitrary polygon; min 3 points, consistent winding" },
+}
+
 ---@class BBox
 ---@field min_x number
 ---@field min_y number

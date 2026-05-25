@@ -187,6 +187,22 @@ function REPL:_register_builtins()
 		_self._mode = "lua"
 		io.write("lua mode\n")
 	end, ",lua", "Switch to Lua evaluation mode")
+
+	self:command("doc", function(_, arg)
+		local doc = require("jnl.doc")
+		arg = arg:match("^%s*(.-)%s*$")
+		if arg ~= "" then
+			-- ,doc jnl.mesh2d -> just that module
+			local ok, mod = pcall(require, arg)
+			if ok then
+				doc.dump({ [arg] = mod })
+			else
+				io.write("unknown module: " .. arg .. "\n")
+			end
+		else
+			doc.dump()
+		end
+	end, ",doc [module]", "Print API reference (optionally for one module)")
 end
 
 --

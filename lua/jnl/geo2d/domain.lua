@@ -6,6 +6,16 @@ local geo2d = require("jnl.geo2d_internal")
 
 local M = {}
 
+M._doc = "Composite 2D domain from concentric shapes; builds a PSLG for meshing"
+
+M._api = {
+	new        = { args = "outer:Shape", ret = "Domain", doc = "Create domain with given outer boundary" },
+	add_hole   = { args = "self, shape, marker?", ret = "Domain", doc = "Add an inner hole; marker defaults to next index" },
+	add_region = { args = "self, shape, marker?", ret = "Domain", doc = "Add an inner region (not a hole)" },
+	check      = { args = "self", ret = "true|nil, err", doc = "Validate all inner shapes; returns nil+err on failure" },
+	build      = { args = "self", ret = "PSLG", doc = "Discretise all shapes onto a new PSLG" },
+}
+
 --
 -- Domain
 --
