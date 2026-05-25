@@ -6,6 +6,13 @@ local M = {}
 
 M._doc = "Fluent triangulation spec builder for PSLG meshing"
 
+M._doc_subsection = {
+	"Create triangulation specs with tri.spec(), then usually call from_registry(registry) for domains built with geo2d.domain.",
+	"Choose one sizing strategy such as resolution(pslg, h), cell_count(pslg, n), or max_area(area).",
+	"Use min_angle, conforming, quiet, and region_areas to tune Triangle.c options before calling triangulate(pslg).",
+	"triangulate returns mesh, 'ok' on success, or nil plus an error message on failure.",
+}
+
 M._api = {
 	spec = {
 		args = "",
@@ -168,4 +175,3 @@ M._types = {
 }
 
 return M
-

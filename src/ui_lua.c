@@ -5,7 +5,13 @@
 
 static jnl_ui_handle *check_ui(lua_State *L, int idx)
 {
-	return *(jnl_ui_handle **)luaL_checkudata(L, idx, UI_MT);
+	jnl_ui_handle **hp = luaL_checkudata(L, idx, UI_MT);
+
+	if (!*hp) {
+		luaL_error(L, "closed jnl.ui handle");
+	}
+
+	return *hp;
 }
 
 static int l_ui_spawn(lua_State *L)
@@ -13,6 +19,13 @@ static int l_ui_spawn(lua_State *L)
 	jnl_ui_handle **h = lua_newuserdata(L, sizeof(jnl_ui_handle *));
 	*h = jnl_ui_spawn();
 	luaL_setmetatable(L, UI_MT);
+	return 1;
+}
+
+static int l_ui_closed(lua_State *L)
+{
+	jnl_ui_handle *h = check_ui(L, 1);
+	lua_pushboolean(L, jnl_ui_closed(h));
 	return 1;
 }
 
@@ -41,19 +54,26 @@ static int l_ui_focus(lua_State *L)
 
 static int l_ui_close(lua_State *L)
 {
-	jnl_ui_handle *h = check_ui(L, 1);
-	jnl_ui_close(h);
+	jnl_ui_handle **hp = luaL_checkudata(L, 1, UI_MT);
+
+	if (*hp) {
+		jnl_ui_close(*hp);
+		jnl_ui_free(*hp);
+		*hp = NULL;
+	}
+
 	return 0;
 }
 
 static int l_ui_gc(lua_State *L)
 {
 	jnl_ui_handle **hp = luaL_checkudata(L, 1, UI_MT);
+
 	if (*hp) {
-		jnl_ui_close(*hp);
 		jnl_ui_free(*hp);
 		*hp = NULL;
 	}
+
 	return 0;
 }
 
@@ -63,13 +83,11 @@ static int l_ui_tostring(lua_State *L)
 	return 1;
 }
 
-static const luaL_Reg ui_methods[] = {{"send_pslg", l_ui_send_pslg},
-                                      {"send_mesh", l_ui_send_mesh},
-                                      {"focus", l_ui_focus},
-                                      {"close", l_ui_close},
-                                      {"__gc", l_ui_gc},
-                                      {"__tostring", l_ui_tostring},
-                                      {NULL, NULL}};
+static const luaL_Reg ui_methods[] = {
+    {"closed", l_ui_closed},       {"send_pslg", l_ui_send_pslg},
+    {"send_mesh", l_ui_send_mesh}, {"focus", l_ui_focus},
+    {"close", l_ui_close},         {"__gc", l_ui_gc},
+    {"__tostring", l_ui_tostring}, {NULL, NULL}};
 
 static const luaL_Reg ui_funcs[] = {{"spawn", l_ui_spawn}, {NULL, NULL}};
 

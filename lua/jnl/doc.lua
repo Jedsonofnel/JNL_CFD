@@ -88,12 +88,22 @@ local function audit_module(mod_name, mod, warn)
 	if type(mod) ~= "table" then
 		warn("%s is not a table", mod_name); return
 	end
+
 	if not mod._doc then
 		warn("%s missing _doc string", mod_name)
 	end
+
+	if mod._doc_subsection
+		and type(mod._doc_subsection) ~= "string"
+		and type(mod._doc_subsection) ~= "table"
+	then
+		warn("%s._doc_subsection should be a string or table of strings", mod_name)
+	end
+
 	if not mod._api and not mod._types then
 		warn("%s has neither _api nor _types", mod_name)
 	end
+
 	if mod._api then audit_api(mod_name, mod, mod._api, warn) end
 	if mod._types then audit_types(mod_name, mod._types, warn) end
 	if mod._constants then audit_constants(mod_name, mod._constants, warn) end
@@ -165,6 +175,23 @@ end
 --
 -- Dump
 --
+
+local function dump_doc_subsection(subsection, p)
+	if type(subsection) == "string" then
+		p:wrap("   ", "   ", subsection)
+		p:blank()
+		return
+	end
+
+	if type(subsection) ~= "table" then
+		return
+	end
+
+	for _, paragraph in ipairs(subsection) do
+		p:wrap("   ", "   ", paragraph)
+		p:blank()
+	end
+end
 
 local function dump_api(mod_name, api, p)
 	local fns = {}
@@ -278,6 +305,10 @@ local function dump_module(mod_name, mod, p)
 	p:line(string.format("== %s", mod_name))
 	p:wrap("   ", "   ", mod._doc or "(no description)")
 	p:blank()
+
+	if mod._doc_subsection then
+		dump_doc_subsection(mod._doc_subsection, p)
+	end
 
 	if mod._api then dump_api(mod_name, mod._api, p) end
 	if mod._types then dump_types(mod._types, p) end

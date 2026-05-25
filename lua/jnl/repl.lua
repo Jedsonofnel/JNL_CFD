@@ -8,6 +8,13 @@ REPL.__index = REPL
 
 REPL._doc = "Configurable Fennel REPL with comma commands and help system"
 
+REPL._doc_subsection = {
+	"Use jnl.repl.new() in interactive scripts, register useful values with repl:register, then end with return repl:run().",
+	"The REPL evaluates Fennel input, even when the startup script itself is written in Lua.",
+	"Registered names should be user-facing and Fennel-friendly; prefer names like show-mesh while optionally adding Lua-style aliases.",
+	"Comma commands are for REPL control and discovery; registered globals are for user-callable demo functions and objects.",
+}
+
 -- Lua stdlib names
 local STDLIB = {
 	_G = 1,
@@ -177,13 +184,6 @@ function REPL:_read_fennel_chunk(state)
 	end
 end
 
-function REPL:_print_fennel_values(values)
-	for _, value in ipairs(values) do
-		io.write(value)
-		io.write("\n")
-	end
-end
-
 function REPL:_print_fennel_error(err_type, err, _)
 	io.write(string.format("error [%s]: %s\n", err_type, tostring(err)))
 end
@@ -193,6 +193,44 @@ function REPL:_fennel_view_opts()
 		["line-length"] = self._help_width or 72,
 		depth = 8,
 	}
+end
+
+function REPL:_view_value(value, opts)
+	local ok, view = pcall(require, "fennel.view")
+	if not ok then
+		return tostring(value)
+	end
+
+	opts = opts or self:_fennel_view_opts()
+
+	if type(view) == "function" then
+		return view(value, opts)
+	end
+
+	if type(view) == "table" and type(view.view) == "function" then
+		return view.view(value, opts)
+	end
+
+	local mt = type(view) == "table" and getmetatable(view)
+	if mt and type(mt.__call) == "function" then
+		local ok_call, rendered = pcall(view, value, opts)
+		if ok_call then
+			return rendered
+		end
+	end
+
+	return tostring(value)
+end
+
+function REPL:_print_fennel_values(values)
+	local rendered = {}
+
+	for i, value in ipairs(values) do
+		rendered[i] = self:_view_value(value)
+	end
+
+	io.write(table.concat(rendered, "\t"))
+	io.write("\n")
 end
 
 function REPL:_fennel_repl_options()
@@ -210,6 +248,10 @@ function REPL:_fennel_repl_options()
 
 		onError = function(err_type, err, lua_source)
 			return self:_print_fennel_error(err_type, err, lua_source)
+		end,
+
+		pp = function(value, opts)
+			return self:_view_value(value, opts)
 		end,
 
 		["view-opts"] = self:_fennel_view_opts(),
@@ -230,7 +272,17 @@ end
 -- Built in commands
 --
 
+function REPL:pp(value, opts)
+	io.write(self:_view_value(value, opts))
+	io.write("\n")
+	return value
+end
+
 function REPL:_register_builtins()
+	self:register("pp", function(value, opts)
+		return self:pp(value, opts)
+	end, "Pretty-print a Lua/Fennel value: (pp value)")
+
 	self:command("quit", function(_self, _)
 		io.write("bye\n")
 		_self._quit = true
@@ -489,6 +541,11 @@ REPL._types = {
 				args = "",
 				ret = "nil",
 				doc = "Start the Fennel REPL loop",
+			},
+			pp = {
+				args = "value:any, opts:table?",
+				ret = "any",
+				doc = "Pretty-print a Lua/Fennel value and return it",
 			},
 		},
 	},

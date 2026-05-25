@@ -6,42 +6,11 @@ local M = {}
 
 M._doc = "Build named 2D PSLG domains from shapes, holes, lines, and regions"
 
-M._api = {
-	new             = {
-		args = "outer:Shape, opts:table?",
-		ret = "Domain",
-		doc = "Create domain with given outer boundary. opts: { default='wall' }"
-	},
-	name_boundary   = {
-		args = "self, name:string, shape:Line, kind:string?",
-		ret = "Domain",
-		doc = "Register a named boundary segment lying on the outer or hole boundary. kind: 'patch'|'baffle'"
-	},
-	add_hole        = {
-		args = "self, shape:Shape, name:string?",
-		ret = "Domain",
-		doc = "Add a closed inner hole. name registers its boundary edges as a patch."
-	},
-	add_line        = {
-		args = "self, name:string, pts:number[][]|Line, kind:string?",
-		ret = "Domain",
-		doc = "Add an internal line. kind: 'patch'|'baffle' (default 'patch')"
-	},
-	add_region_seed = {
-		args = "self, name:string, x:number, y:number, opts:table?",
-		ret = "Domain",
-		doc = "Place a region seed. opts: { max_area=-1, marker=auto }"
-	},
-	check           = {
-		args = "self",
-		ret = "true|nil, err:string",
-		doc = "Validate all named boundaries lie on domain geometry."
-	},
-	build           = {
-		args = "self",
-		ret = "pslg:PSLG, registry:table",
-		doc = "Discretise all geometry. Returns pslg + name→marker registry."
-	},
+M._doc_subsection = {
+	"Typical PSLG workflow: create an outer shape, pass it to domain.new, then add named boundaries, holes, internal lines, and region seeds.",
+	"name_boundary is only for segments that lie exactly on an outer or hole boundary; use add_line for internal constrained lines.",
+	"Call check() before build() when using named boundary segments so geometry mistakes are caught early.",
+	"Pass the registry returned by build() into tri.spec():from_registry(registry) before triangulating.",
 }
 
 --
@@ -330,5 +299,48 @@ function Domain:build()
 
 	return g, build_registry(self)
 end
+
+--
+-- API
+--
+
+M._api = {
+	new             = {
+		args = "outer:Shape, opts:table?",
+		ret = "Domain",
+		doc = "Create domain with given outer boundary. opts: { default='wall' }"
+	},
+	name_boundary   = {
+		args = "self, name:string, shape:Line, kind:string?",
+		ret = "Domain",
+		doc = "Register a named boundary segment lying on the outer or hole boundary. kind: 'patch'|'baffle'"
+	},
+	add_hole        = {
+		args = "self, shape:Shape, name:string?",
+		ret = "Domain",
+		doc = "Add a closed inner hole. name registers its boundary edges as a patch."
+	},
+	add_line        = {
+		args = "self, name:string, pts:number[][]|Line, kind:string?",
+		ret = "Domain",
+		doc = "Add an internal line. kind: 'patch'|'baffle' (default 'patch')"
+	},
+	add_region_seed = {
+		args = "self, name:string, x:number, y:number, opts:table?",
+		ret = "Domain",
+		doc = "Place a region seed. opts: { max_area=-1, marker=auto }"
+	},
+	check           = {
+		args = "self",
+		ret = "true|nil, err:string",
+		doc = "Validate all named boundaries lie on domain geometry."
+	},
+	build           = {
+		args = "self",
+		ret = "pslg:PSLG, registry:table",
+		doc = "Discretise all geometry. Returns pslg + name→marker registry."
+	},
+}
+
 
 return M

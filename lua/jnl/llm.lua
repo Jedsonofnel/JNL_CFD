@@ -49,6 +49,7 @@ local SECTIONS = {
 
 	section("Writing JNL library code", {
 		bullet("Prefer clear, shallow Lua code. Avoid unnecessary nesting."),
+		bullet("Use tabs for indentation when writing code."),
 		bullet("Use early returns to keep control flow flat."),
 		bullet("Prefer small helper functions over deeply nested blocks."),
 		bullet("Use local functions for internal helpers."),
@@ -71,6 +72,12 @@ local SECTIONS = {
 		"",
 		bullet("Do not let large _api or _types tables interrupt the main implementation."),
 		bullet("When adding public functions, update the bottom API metadata in the same change."),
+		bullet(
+			"When a module has a specific workflow or usage pattern, add a short _doc_subsection with at most 3-4 lines of prose."),
+		bullet(
+			"_doc_subsection should explain how to use the module correctly, not duplicate the function-by-function API docs."),
+		bullet(
+			"_doc_subsection may be a string or an array of short paragraphs, and should stay concise enough to appear before _api output."),
 	}),
 
 	section("File headers", {
@@ -78,7 +85,9 @@ local SECTIONS = {
 		"in this style:",
 		"",
 		"-- lua/jnl/example.lua - Short module description",
-		"-- <jed@nelson.ac> // 2026-05-25",
+		"-- <your@email.llm> // 2026-05-25",
+		"",
+		bullet("Use <your@email.llm> for LLM-generated files until a human reviews and takes authorship."),
 	}),
 
 	section("Section headers", {
@@ -111,8 +120,21 @@ local SECTIONS = {
 		bullet("Print a short post-load message explaining the available entry point."),
 	}),
 
+	section("REPL script entry points", {
+		bullet("Interactive showcase scripts should normally create and run a JNL REPL."),
+		bullet("Require the REPL with local repl = require(\"jnl.repl\").new()."),
+		bullet("Register demo values and functions with repl:register(name, value, doc)."),
+		bullet(
+			"End the script with return repl:run() unless the script is explicitly intended to be required as a module."),
+		bullet("Remember that the REPL language is Fennel, even when the loaded script is written in Lua."),
+		bullet(
+			"When telling users what to type after loading a Lua script, give Fennel-friendly calls such as (demo), (show-pslg :rocket), or (mesh-pslg :rocket {:resolution 0.05})."),
+		bullet(
+			"If registered Lua function names contain underscores, mention the exact registered REPL name the user should call."),
+	}),
+
 	section("Fennel style", {
-		bullet("Prefer Lua examples for interactive use unless Fennel is specifically requested."),
+		bullet("Prefer Lua for runnable script files, but give user-facing REPL examples in Fennel syntax."),
 		bullet("Implement the same comment system/style as Lua above but with ';'"),
 		bullet("Use local bindings for derived values."),
 		bullet("Use tables for options in the same shape expected by the Lua-facing API."),

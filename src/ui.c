@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/prctl.h>
+#include <errno.h>
 
 #include <raylib.h>
 
@@ -19,6 +20,8 @@
 struct jnl_ui_handle {
 	pid_t pid;
 	int sock_fd;
+	int closed;
+	int reaped;
 };
 
 //
@@ -567,14 +570,87 @@ void ui_window_run(int sock_fd)
 }
 
 //
-// Parent: signal handling
+// Aliveness helpers
 //
 
-static volatile sig_atomic_t g_child_died = 0;
-static void sigchld_handler(int sig)
+static void ui_handle_close_fd(jnl_ui_handle *h)
 {
-	(void)sig;
-	g_child_died = 1;
+	if (!h || h->sock_fd < 0) {
+		return;
+	}
+
+	close(h->sock_fd);
+	h->sock_fd = -1;
+}
+
+static void ui_handle_reap_nonblocking(jnl_ui_handle *h)
+{
+	if (!h || h->reaped || h->pid <= 0) {
+		return;
+	}
+
+	int status = 0;
+	pid_t r = waitpid(h->pid, &status, WNOHANG);
+
+	if (r == h->pid) {
+		h->reaped = 1;
+		h->closed = 1;
+		ui_handle_close_fd(h);
+		return;
+	}
+
+	if (r < 0 && errno == ECHILD) {
+		h->reaped = 1;
+		h->closed = 1;
+		ui_handle_close_fd(h);
+	}
+}
+
+static void ui_handle_mark_closed(jnl_ui_handle *h)
+{
+	if (!h) {
+		return;
+	}
+
+	h->closed = 1;
+	ui_handle_close_fd(h);
+	ui_handle_reap_nonblocking(h);
+}
+
+int jnl_ui_closed(jnl_ui_handle *h)
+{
+	if (!h) {
+		return 1;
+	}
+
+	if (h->closed || h->sock_fd < 0) {
+		h->closed = 1;
+		return 1;
+	}
+
+	ui_handle_reap_nonblocking(h);
+	if (h->closed) {
+		return 1;
+	}
+
+	struct pollfd pfd = {
+	    .fd = h->sock_fd,
+	    .events = POLLOUT,
+	    .revents = 0,
+	};
+
+	int r = poll(&pfd, 1, 0);
+	if (r < 0) {
+		ui_handle_mark_closed(h);
+		return 1;
+	}
+
+	if (r > 0 && (pfd.revents & (POLLHUP | POLLERR | POLLNVAL))) {
+		ui_handle_mark_closed(h);
+		return 1;
+	}
+
+	return 0;
 }
 
 //
@@ -583,13 +659,13 @@ static void sigchld_handler(int sig)
 
 jnl_ui_handle *jnl_ui_spawn(void)
 {
+	signal(SIGPIPE, SIG_IGN);
+
 	int sv[2];
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0) {
 		perror("socketpair");
 		return NULL;
 	}
-
-	signal(SIGCHLD, sigchld_handler);
 
 	pid_t pid = fork();
 	if (pid < 0) {
@@ -616,25 +692,55 @@ jnl_ui_handle *jnl_ui_spawn(void)
 		kill(pid, SIGTERM);
 		return NULL;
 	}
+
 	h->pid = pid;
 	h->sock_fd = sv[0];
+	h->closed = 0;
+	h->reaped = 0;
 	return h;
 }
 
 int jnl_ui_send_pslg(jnl_ui_handle *h, struct jnl_pslg *pslg)
 {
-	if (!h || g_child_died) {
+	if (jnl_ui_closed(h)) {
 		return -1;
 	}
-	return ui_send_pslg(h->sock_fd, pslg);
+
+	if (ui_send_pslg(h->sock_fd, pslg) < 0) {
+		ui_handle_mark_closed(h);
+		return -1;
+	}
+
+	return 0;
 }
 
 int jnl_ui_send_mesh(jnl_ui_handle *h, struct jnl_mesh *mesh)
 {
-	if (!h || g_child_died) {
+	if (jnl_ui_closed(h)) {
 		return -1;
 	}
-	return ui_send_mesh(h->sock_fd, mesh);
+
+	if (ui_send_mesh(h->sock_fd, mesh) < 0) {
+		ui_handle_mark_closed(h);
+		return -1;
+	}
+
+	return 0;
+}
+
+int jnl_ui_focus(jnl_ui_handle *h)
+{
+	if (jnl_ui_closed(h)) {
+		return -1;
+	}
+
+	u8 b = MSG_FOCUS;
+	if (send_all(h->sock_fd, &b, 1) < 0) {
+		ui_handle_mark_closed(h);
+		return -1;
+	}
+
+	return 0;
 }
 
 void jnl_ui_close(jnl_ui_handle *h)
@@ -642,20 +748,25 @@ void jnl_ui_close(jnl_ui_handle *h)
 	if (!h) {
 		return;
 	}
-	if (!g_child_died) {
+
+	if (!h->closed && h->sock_fd >= 0) {
 		ui_send_close(h->sock_fd);
+		ui_handle_close_fd(h);
+		h->closed = 1;
 	}
-	close(h->sock_fd);
-	waitpid(h->pid, NULL, 0);
+
+	if (!h->reaped && h->pid > 0) {
+		waitpid(h->pid, NULL, 0);
+		h->reaped = 1;
+	}
 }
 
-int jnl_ui_focus(jnl_ui_handle *h)
+void jnl_ui_free(jnl_ui_handle *h)
 {
-	if (!h || g_child_died) {
-		return -1;
+	if (!h) {
+		return;
 	}
-	u8 b = MSG_FOCUS;
-	return send_all(h->sock_fd, &b, 1);
-}
 
-void jnl_ui_free(jnl_ui_handle *h) { free(h); }
+	jnl_ui_close(h);
+	free(h);
+}
