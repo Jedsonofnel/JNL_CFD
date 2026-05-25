@@ -119,10 +119,11 @@ void jnl_grad_green_gauss(const struct jnl_mesh *mesh, const f64 *face_field,
 }
 
 //
-// Misc
+// Divergence
 //
 
-void jnl_divergence(const struct jnl_mesh *mesh, const f64 *un_face, f64 *div)
+void jnl_divergence_integrated(const struct jnl_mesh *mesh, const f64 *un_face,
+                               f64 *div)
 {
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_geom *geom = &mesh->geom;
@@ -139,10 +140,23 @@ void jnl_divergence(const struct jnl_mesh *mesh, const f64 *un_face, f64 *div)
 		if (neigh >= 0)
 			div[neigh] -= flux;
 	}
-	for (i32 c = 0; c < topo->n_cells; c++) {
-		div[c] /= geom->cell_vol[c];
-	}
 }
+
+void jnl_divergence_volumetric(const struct jnl_mesh *mesh, const f64 *un_face,
+                               f64 *div)
+{
+	const struct jnl_mesh_topo *topo = &mesh->topo;
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+
+	jnl_divergence_integrated(mesh, un_face, div);
+
+	for (i32 c = 0; c < topo->n_cells; c++)
+		div[c] /= geom->cell_vol[c];
+}
+
+//
+// Vorticity
+//
 
 void jnl_vorticity_2d(const struct jnl_mesh *mesh, const f64 *grad_vy_x,
                       const f64 *grad_ux_y, f64 *omega)

@@ -24,10 +24,23 @@ void jnl_grad_green_gauss(const struct jnl_mesh *mesh, const f64 *face_field,
                           f64 *grad_x, f64 *grad_y);
 
 //
-// Misc
+// Divergence
 //
 
-void jnl_divergence(const struct jnl_mesh *mesh, const f64 *un_face, f64 *div);
+void jnl_divergence_integrated(const struct jnl_mesh *, const f64 *, f64 *);
+void jnl_divergence_volumetric(const struct jnl_mesh *, const f64 *, f64 *);
+
+// default means integrated
+static inline void jnl_divergence(const struct jnl_mesh *mesh,
+                                  const f64 *un_face, f64 *div)
+{
+	jnl_divergence_integrated(mesh, un_face, div);
+}
+
+//
+// Vorticity
+//
+
 void jnl_vorticity_2d(const struct jnl_mesh *mesh, const f64 *grad_vy_x,
                       const f64 *grad_ux_y, f64 *omega);
 

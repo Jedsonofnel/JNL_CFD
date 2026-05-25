@@ -82,14 +82,18 @@ void jnl_fvsys_under_relax(struct jnl_fvsys *sys, const f64 *field_old,
 void jnl_fvsys_pin_cell(struct jnl_fvsys *sys, i32 cell_idx, f64 value)
 {
 	struct jnl_ldu_matrix *m = &sys->matrix;
+
 	for (i32 k = 0; k < m->n_conns; k++) {
-		if (m->owner[k] == cell_idx)
+		if (m->owner[k] == cell_idx || m->neighbour[k] == cell_idx) {
 			m->lower[k] = 0.0;
-		if (m->neighbour[k] == cell_idx)
 			m->upper[k] = 0.0;
+		}
 	}
+
 	m->diag[cell_idx] = 1.0;
 	sys->rhs[cell_idx] = value;
+	sys->matrix.diag[cell_idx] += 1.0;
+	sys->rhs[cell_idx] += value;
 }
 
 void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
@@ -100,15 +104,18 @@ void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
 	// O(n_conns * n_pinned) - fine for small pin sets
 	for (i32 k = 0; k < m->n_conns; k++) {
 		for (i32 p = 0; p < n_cells; p++) {
-			if (m->owner[k] == cells[p])
+			if (m->owner[k] == cells[p] || m->neighbour[k] == cells[p]) {
 				m->lower[k] = 0.0;
-			if (m->neighbour[k] == cells[p])
 				m->upper[k] = 0.0;
+			}
 		}
 	}
+
 	for (i32 p = 0; p < n_cells; p++) {
 		m->diag[cells[p]] = 1.0;
 		sys->rhs[cells[p]] = value;
+		sys->matrix.diag[cells[p]] += 1.0;
+		sys->rhs[cells[p]] += value;
 	}
 }
 
@@ -423,10 +430,11 @@ f64 jnl_fvsys_residual_norm(const struct jnl_fvsys *sys, const f64 *x)
 		f64 ax = m->diag[i] * x[i];
 		for (i32 k = 0; k < m->n_conns; k++) {
 			if (m->owner[k] == i && m->neighbour[k] >= 0)
-				ax += m->lower[k] * x[m->neighbour[k]];
+				ax += m->upper[k] * x[m->neighbour[k]];
 			if (m->neighbour[k] == i)
-				ax += m->upper[k] * x[m->owner[k]];
+				ax += m->lower[k] * x[m->owner[k]];
 		}
+
 		f64 r = ax - sys->rhs[i];
 		sum += r * r;
 	}
@@ -444,8 +452,8 @@ f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys)
 	for (i32 k = 0; k < m->n_conns; k++) {
 		if (m->neighbour[k] < 0)
 			continue;
-		off[m->owner[k]] += fabs(m->lower[k]);
-		off[m->neighbour[k]] += fabs(m->upper[k]);
+		off[m->owner[k]] += fabs(m->upper[k]);
+		off[m->neighbour[k]] += fabs(m->lower[k]);
 	}
 
 	f64 min_ratio = INFINITY;

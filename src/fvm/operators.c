@@ -402,60 +402,160 @@ void jnl_div_tvd_correction_superbee(struct jnl_fvsys *sys,
 // Su
 //
 
-void jnl_su_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 coeff)
+void jnl_su_volumetric_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                             f64 coeff)
 {
 	i32 n = mesh->topo.n_cells;
-	for (i32 i = 0; i < n; i++)
-		sys->rhs[i] += coeff * mesh->geom.cell_vol[i];
+	const f64 *vol = mesh->geom.cell_vol;
+
+	for (i32 c = 0; c < n; c++)
+		sys->rhs[c] += coeff * vol[c];
 }
 
-void jnl_su_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                  const f64 *field)
+void jnl_su_volumetric_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                             const f64 *field)
 {
 	i32 n = mesh->topo.n_cells;
-	for (i32 i = 0; i < n; i++)
-		sys->rhs[i] += field[i] * mesh->geom.cell_vol[i];
+	const f64 *vol = mesh->geom.cell_vol;
+
+	for (i32 c = 0; c < n; c++)
+		sys->rhs[c] += field[c] * vol[c];
+}
+
+void jnl_su_volumetric_field_scaled(struct jnl_fvsys *sys,
+                                    const struct jnl_mesh *mesh, f64 coeff,
+                                    const f64 *field)
+{
+	i32 n = mesh->topo.n_cells;
+	const f64 *vol = mesh->geom.cell_vol;
+
+	for (i32 c = 0; c < n; c++)
+		sys->rhs[c] += coeff * field[c] * vol[c];
+}
+
+void jnl_su_integrated_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                             f64 coeff)
+{
+	i32 n = mesh->topo.n_cells;
+
+	for (i32 c = 0; c < n; c++)
+		sys->rhs[c] += coeff;
 }
 
 void jnl_su_integrated(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
                        const f64 *field)
 {
 	i32 n = mesh->topo.n_cells;
-	for (i32 i = 0; i < n; i++)
-		sys->rhs[i] += field[i];
+
+	for (i32 c = 0; c < n; c++)
+		sys->rhs[c] += field[c];
+}
+
+void jnl_su_integrated_scaled(struct jnl_fvsys *sys,
+                              const struct jnl_mesh *mesh, f64 coeff,
+                              const f64 *field)
+{
+	i32 n = mesh->topo.n_cells;
+
+	for (i32 c = 0; c < n; c++)
+		sys->rhs[c] += coeff * field[c];
+}
+
+// Backwards-compatible/default names: volumetric.
+void jnl_su_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 coeff)
+{
+	jnl_su_volumetric_const(sys, mesh, coeff);
+}
+
+void jnl_su_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                  const f64 *field)
+{
+	jnl_su_volumetric_field(sys, mesh, field);
 }
 
 void jnl_su_field_scaled(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
                          f64 coeff, const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
-	for (i32 i = 0; i < n; i++)
-		sys->rhs[i] += coeff * field[i];
+	jnl_su_volumetric_field_scaled(sys, mesh, coeff, field);
 }
 
 //
 // Sp
 //
 
-void jnl_sp_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 coeff)
+void jnl_sp_volumetric_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                             f64 coeff)
 {
 	i32 n = mesh->topo.n_cells;
-	for (i32 i = 0; i < n; i++)
-		sys->matrix.diag[i] += coeff * mesh->geom.cell_vol[i];
+	const f64 *vol = mesh->geom.cell_vol;
+
+	for (i32 c = 0; c < n; c++)
+		sys->matrix.diag[c] += coeff * vol[c];
 }
 
-void jnl_sp_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                  const f64 *field)
+void jnl_sp_volumetric_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                             const f64 *field)
 {
 	i32 n = mesh->topo.n_cells;
-	for (i32 i = 0; i < n; i++)
-		sys->matrix.diag[i] += field[i] * mesh->geom.cell_vol[i];
+	const f64 *vol = mesh->geom.cell_vol;
+
+	for (i32 c = 0; c < n; c++)
+		sys->matrix.diag[c] += field[c] * vol[c];
+}
+
+void jnl_sp_volumetric_field_scaled(struct jnl_fvsys *sys,
+                                    const struct jnl_mesh *mesh, f64 coeff,
+                                    const f64 *field)
+{
+	i32 n = mesh->topo.n_cells;
+	const f64 *vol = mesh->geom.cell_vol;
+
+	for (i32 c = 0; c < n; c++)
+		sys->matrix.diag[c] += coeff * field[c] * vol[c];
+}
+
+void jnl_sp_integrated_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                             f64 coeff)
+{
+	i32 n = mesh->topo.n_cells;
+
+	for (i32 c = 0; c < n; c++)
+		sys->matrix.diag[c] += coeff;
 }
 
 void jnl_sp_integrated(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
                        const f64 *field)
 {
 	i32 n = mesh->topo.n_cells;
-	for (i32 i = 0; i < n; i++)
-		sys->matrix.diag[i] += field[i];
+
+	for (i32 c = 0; c < n; c++)
+		sys->matrix.diag[c] += field[c];
+}
+
+void jnl_sp_integrated_scaled(struct jnl_fvsys *sys,
+                              const struct jnl_mesh *mesh, f64 coeff,
+                              const f64 *field)
+{
+	i32 n = mesh->topo.n_cells;
+
+	for (i32 c = 0; c < n; c++)
+		sys->matrix.diag[c] += coeff * field[c];
+}
+
+// Backwards-compatible/default names: volumetric.
+void jnl_sp_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 coeff)
+{
+	jnl_sp_volumetric_const(sys, mesh, coeff);
+}
+
+void jnl_sp_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                  const f64 *field)
+{
+	jnl_sp_volumetric_field(sys, mesh, field);
+}
+
+void jnl_sp_field_scaled(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                         f64 coeff, const f64 *field)
+{
+	jnl_sp_volumetric_field_scaled(sys, mesh, coeff, field);
 }

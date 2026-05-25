@@ -447,21 +447,40 @@ static int l_div_tvd_superbee(lua_State *L)
 // Su
 //
 
-static int l_su_const(lua_State *L)
+static int l_su_volumetric_const(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	f64 coeff = luaL_checknumber(L, 3);
-	jnl_su_const(s->sys, m, coeff);
+	jnl_su_volumetric_const(s->sys, m, coeff);
 	return 0;
 }
 
-static int l_su_field(lua_State *L)
+static int l_su_volumetric_field(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	lua_vec *f = check_vec(L, 3);
-	jnl_su_field(s->sys, m, f->data);
+	jnl_su_volumetric_field(s->sys, m, f->data);
+	return 0;
+}
+
+static int l_su_volumetric_field_scaled(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	f64 coeff = luaL_checknumber(L, 3);
+	lua_vec *f = check_vec(L, 4);
+	jnl_su_volumetric_field_scaled(s->sys, m, coeff, f->data);
+	return 0;
+}
+
+static int l_su_integrated_const(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	f64 coeff = luaL_checknumber(L, 3);
+	jnl_su_integrated_const(s->sys, m, coeff);
 	return 0;
 }
 
@@ -474,13 +493,13 @@ static int l_su_integrated(lua_State *L)
 	return 0;
 }
 
-static int l_su_field_scaled(lua_State *L)
+static int l_su_integrated_scaled(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	f64 coeff = luaL_checknumber(L, 3);
 	lua_vec *f = check_vec(L, 4);
-	jnl_su_field_scaled(s->sys, m, coeff, f->data);
+	jnl_su_integrated_scaled(s->sys, m, coeff, f->data);
 	return 0;
 }
 
@@ -488,21 +507,40 @@ static int l_su_field_scaled(lua_State *L)
 // Sp
 //
 
-static int l_sp_const(lua_State *L)
+static int l_sp_volumetric_const(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	f64 coeff = luaL_checknumber(L, 3);
-	jnl_sp_const(s->sys, m, coeff);
+	jnl_sp_volumetric_const(s->sys, m, coeff);
 	return 0;
 }
 
-static int l_sp_field(lua_State *L)
+static int l_sp_volumetric_field(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	struct jnl_mesh *m = check_mesh(L, 2);
 	lua_vec *f = check_vec(L, 3);
-	jnl_sp_field(s->sys, m, f->data);
+	jnl_sp_volumetric_field(s->sys, m, f->data);
+	return 0;
+}
+
+static int l_sp_volumetric_field_scaled(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	f64 coeff = luaL_checknumber(L, 3);
+	lua_vec *f = check_vec(L, 4);
+	jnl_sp_volumetric_field_scaled(s->sys, m, coeff, f->data);
+	return 0;
+}
+
+static int l_sp_integrated_const(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	f64 coeff = luaL_checknumber(L, 3);
+	jnl_sp_integrated_const(s->sys, m, coeff);
 	return 0;
 }
 
@@ -512,6 +550,16 @@ static int l_sp_integrated(lua_State *L)
 	struct jnl_mesh *m = check_mesh(L, 2);
 	lua_vec *f = check_vec(L, 3);
 	jnl_sp_integrated(s->sys, m, f->data);
+	return 0;
+}
+
+static int l_sp_integrated_scaled(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *m = check_mesh(L, 2);
+	f64 coeff = luaL_checknumber(L, 3);
+	lua_vec *f = check_vec(L, 4);
+	jnl_sp_integrated_scaled(s->sys, m, coeff, f->data);
 	return 0;
 }
 
@@ -639,15 +687,24 @@ static int l_grad_green_gauss(lua_State *L)
 }
 
 //
-// Misc
+// Divergence
 //
 
-static int l_divergence(lua_State *L)
+static int l_divergence_integrated(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
 	lua_vec *un_face = check_vec(L, 2);
 	lua_vec *div = check_vec(L, 3);
-	jnl_divergence(m, un_face->data, div->data);
+	jnl_divergence_integrated(m, un_face->data, div->data);
+	return 0;
+}
+
+static int l_divergence_volumetric(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	lua_vec *un_face = check_vec(L, 2);
+	lua_vec *div = check_vec(L, 3);
+	jnl_divergence_volumetric(m, un_face->data, div->data);
 	return 0;
 }
 
@@ -687,14 +744,16 @@ static int l_ctx_new(lua_State *L)
 
 static const luaL_Reg fvm_funcs[] = {
     {"ctx_new", l_ctx_new},
-    // operators
+    // DDT Operator
     {"ddt_const", l_ddt_const},
     {"ddt_field", l_ddt_field},
+    // Laplacian Operator
     {"laplacian_const", l_laplacian_const},
     {"laplacian_field", l_laplacian_field},
     {"laplacian_field_harmonic", l_laplacian_field_harmonic},
     {"laplacian_nonorth_const", l_laplacian_nonorth_const},
     {"laplacian_nonorth_field", l_laplacian_nonorth_field},
+    // Div Operator
     {"div_cds_const", l_div_cds_const},
     {"div_cds_field", l_div_cds_field},
     {"div_uds_const", l_div_uds_const},
@@ -702,13 +761,20 @@ static const luaL_Reg fvm_funcs[] = {
     {"div_tvd_minmod", l_div_tvd_minmod},
     {"div_tvd_van_leer", l_div_tvd_van_leer},
     {"div_tvd_superbee", l_div_tvd_superbee},
-    {"su_const", l_su_const},
-    {"su_field", l_su_field},
+    // Su Operator
+    {"su_volumetric_const", l_su_volumetric_const},
+    {"su_volumetric_field", l_su_volumetric_field},
+    {"su_volumetric_field_scaled", l_su_volumetric_field_scaled},
+    {"su_integrated_const", l_su_integrated_const},
     {"su_integrated", l_su_integrated},
-    {"su_field_scaled", l_su_field_scaled},
-    {"sp_const", l_sp_const},
-    {"sp_field", l_sp_field},
+    {"su_integrated_scaled", l_su_integrated_scaled},
+    // Sp Operator
+    {"sp_volumetric_const", l_sp_volumetric_const},
+    {"sp_volumetric_field", l_sp_volumetric_field},
+    {"sp_volumetric_field_scaled", l_sp_volumetric_field_scaled},
+    {"sp_integrated_const", l_sp_integrated_const},
     {"sp_integrated", l_sp_integrated},
+    {"sp_integrated_scaled", l_sp_integrated_scaled},
     // bcs
     {"bc_dirichlet_const", l_bc_dirichlet_const},
     {"bc_neumann_const", l_bc_neumann_const},
@@ -722,8 +788,10 @@ static const luaL_Reg fvm_funcs[] = {
     {"rhie_chow", l_rhie_chow},
     // grad
     {"grad_green_gauss", l_grad_green_gauss},
-    // misc
-    {"divergence", l_divergence},
+    // Divergence
+    {"divergence_integrated", l_divergence_integrated},
+    {"divergence_volumetric", l_divergence_volumetric},
+    // Vorticity
     {"vorticity_2d", l_vorticity_2d},
     {NULL, NULL}};
 
