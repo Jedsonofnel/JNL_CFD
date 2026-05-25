@@ -7,17 +7,21 @@
 // Internal helper
 //
 
-// Returns the encoded neighbour value (~marker) for a named patch,
-// or INT32_MIN if not found.
-static i32 find_patch_encoded(const struct jnl_mesh *mesh, const char *name)
+static const struct jnl_patch *find_patch(const struct jnl_mesh *mesh,
+                                          const char *name)
 {
 	for (i32 p = 0; p < mesh->patches.n_patches; p++) {
 		if (strcmp(mesh->patches.data[p].name, name) == 0)
-			return ~mesh->patches.data[p].marker;
+			return &mesh->patches.data[p];
 	}
-	// Lua layer should validate names before calling — this is a hard error
+
 	fprintf(stderr, "jnl_bc: patch '%s' not found\n", name);
-	return INT32_MIN;
+	return NULL;
+}
+
+static inline i32 patch_end(const struct jnl_patch *p)
+{
+	return p->start_face + p->n_faces;
 }
 
 //
@@ -27,16 +31,17 @@ static i32 find_patch_encoded(const struct jnl_mesh *mesh, const char *name)
 void jnl_bc_dirichlet_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
                             const char *patch_name, f64 value)
 {
-	i32 encoded = find_patch_encoded(mesh, patch_name);
+	const struct jnl_patch *patch = find_patch(mesh, patch_name);
+	if (!patch)
+		return;
+
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = 0; f < mat->n_conns; f++) {
-		if (mat->neighbour[f] != encoded) {
-			continue;
-		}
+	for (i32 f = patch->start_face; f < patch_end(patch); f++) {
 		i32 o = mat->owner[f];
 		f64 bc_coeff = -mat->upper[f];
 		f64 diag_coeff = -mat->lower[f];
+
 		mat->diag[o] += diag_coeff;
 		sys->rhs[o] += value * bc_coeff;
 	}
@@ -45,15 +50,16 @@ void jnl_bc_dirichlet_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 void jnl_bc_neumann_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
                           const char *patch_name, f64 flux)
 {
-	i32 encoded = find_patch_encoded(mesh, patch_name);
+	const struct jnl_patch *patch = find_patch(mesh, patch_name);
+	if (!patch)
+		return;
+
 	const struct jnl_mesh_geom *geom = &mesh->geom;
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = 0; f < mat->n_conns; f++) {
-		if (mat->neighbour[f] != encoded) {
-			continue;
-		}
+	for (i32 f = patch->start_face; f < patch_end(patch); f++) {
 		i32 o = mat->owner[f];
+
 		mat->diag[o] += mat->upper[f] - mat->lower[f];
 		sys->rhs[o] += flux * geom->face_area[f];
 	}
@@ -66,28 +72,28 @@ void jnl_bc_neumann_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 void jnl_bc_dirichlet_face_const(const struct jnl_mesh *mesh, f64 *face_field,
                                  const char *patch_name, f64 value)
 {
-	i32 encoded = find_patch_encoded(mesh, patch_name);
-	const struct jnl_mesh_topo *topo = &mesh->topo;
+	const struct jnl_patch *patch = find_patch(mesh, patch_name);
+	if (!patch)
+		return;
 
-	for (i32 f = 0; f < topo->n_faces; f++) {
-		if (topo->neighbour[f] == encoded)
-			face_field[f] = value;
-	}
+	for (i32 f = patch->start_face; f < patch_end(patch); f++)
+		face_field[f] = value;
 }
 
 void jnl_bc_neumann_face_const(const struct jnl_mesh *mesh, const f64 *field,
                                f64 *face_field, const char *patch_name,
                                f64 flux)
 {
-	i32 encoded = find_patch_encoded(mesh, patch_name);
+	const struct jnl_patch *patch = find_patch(mesh, patch_name);
+	if (!patch)
+		return;
+
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_interp *interp = &mesh->interp;
 
-	for (i32 f = 0; f < topo->n_faces; f++) {
-		if (topo->neighbour[f] != encoded)
-			continue;
+	for (i32 f = patch->start_face; f < patch_end(patch); f++) {
 		i32 o = topo->owner[f];
-		f64 dist = 1.0 / interp->delta_coeff[f]; // delta_coeff = 1/dist
+		f64 dist = 1.0 / interp->delta_coeff[f];
 		face_field[f] = field[o] + flux * dist;
 	}
 }
@@ -100,13 +106,13 @@ void jnl_bc_dirichlet_face_normal(const struct jnl_mesh *mesh, f64 *un_face,
                                   const char *patch_name, f64 ux_value,
                                   f64 uy_value)
 {
-	i32 encoded = find_patch_encoded(mesh, patch_name);
-	const struct jnl_mesh_topo *topo = &mesh->topo;
+	const struct jnl_patch *patch = find_patch(mesh, patch_name);
+	if (!patch)
+		return;
+
 	const struct jnl_mesh_geom *geom = &mesh->geom;
 
-	for (i32 f = 0; f < topo->n_faces; f++) {
-		if (topo->neighbour[f] != encoded)
-			continue;
+	for (i32 f = patch->start_face; f < patch_end(patch); f++) {
 		un_face[f] = ux_value * geom->face_nx[f] + uy_value * geom->face_ny[f];
 	}
 }
@@ -116,16 +122,18 @@ void jnl_bc_neumann_face_normal(const struct jnl_mesh *mesh, const f64 *ux,
                                 const char *patch_name, f64 ux_flux,
                                 f64 uy_flux)
 {
-	i32 encoded = find_patch_encoded(mesh, patch_name);
+	const struct jnl_patch *patch = find_patch(mesh, patch_name);
+	if (!patch)
+		return;
+
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_geom *geom = &mesh->geom;
 	const struct jnl_mesh_interp *interp = &mesh->interp;
 
-	for (i32 f = 0; f < topo->n_faces; f++) {
-		if (topo->neighbour[f] != encoded)
-			continue;
+	for (i32 f = patch->start_face; f < patch_end(patch); f++) {
 		i32 o = topo->owner[f];
 		f64 dist = 1.0 / interp->delta_coeff[f];
+
 		un_face[f] = (ux[o] + ux_flux * dist) * geom->face_nx[f] +
 		             (uy[o] + uy_flux * dist) * geom->face_ny[f];
 	}
@@ -135,7 +143,7 @@ void jnl_bc_neumann_face_normal(const struct jnl_mesh *mesh, const f64 *ux,
 // All assembly
 //
 
-static i32 boundary_face_start(const struct jnl_mesh *mesh)
+static i32 first_patch_face(const struct jnl_mesh *mesh)
 {
 	return mesh->topo.n_internal_faces + mesh->baffles.n_baffle_faces;
 }
@@ -144,7 +152,7 @@ void jnl_bc_dirichlet_all(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
                           f64 value)
 {
 	struct jnl_ldu_matrix *mat = &sys->matrix;
-	for (i32 f = boundary_face_start(mesh); f < mesh->topo.n_faces; f++) {
+	for (i32 f = first_patch_face(mesh); f < mesh->topo.n_faces; f++) {
 		i32 o = mat->owner[f];
 		f64 bc_coeff = -mat->upper[f];
 		f64 diag_coeff = -mat->lower[f];
@@ -158,7 +166,7 @@ void jnl_bc_neumann_all(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 {
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 	const struct jnl_mesh_geom *geom = &mesh->geom;
-	for (i32 f = boundary_face_start(mesh); f < mesh->topo.n_faces; f++) {
+	for (i32 f = first_patch_face(mesh); f < mesh->topo.n_faces; f++) {
 		i32 o = mat->owner[f];
 		mat->diag[o] += mat->upper[f] - mat->lower[f];
 		sys->rhs[o] += flux * geom->face_area[f];
@@ -168,7 +176,7 @@ void jnl_bc_neumann_all(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 void jnl_bc_dirichlet_face_all(const struct jnl_mesh *mesh, f64 *face_field,
                                f64 value)
 {
-	for (i32 f = boundary_face_start(mesh); f < mesh->topo.n_faces; f++)
+	for (i32 f = first_patch_face(mesh); f < mesh->topo.n_faces; f++)
 		face_field[f] = value;
 }
 
@@ -177,7 +185,7 @@ void jnl_bc_neumann_face_all(const struct jnl_mesh *mesh, const f64 *field,
 {
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_interp *interp = &mesh->interp;
-	for (i32 f = boundary_face_start(mesh); f < topo->n_faces; f++) {
+	for (i32 f = first_patch_face(mesh); f < topo->n_faces; f++) {
 		i32 o = topo->owner[f];
 		f64 dist = 1.0 / interp->delta_coeff[f];
 		face_field[f] = field[o] + flux * dist;
@@ -189,7 +197,7 @@ void jnl_bc_dirichlet_face_normal_all(const struct jnl_mesh *mesh, f64 *un_face,
 {
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_geom *geom = &mesh->geom;
-	for (i32 f = boundary_face_start(mesh); f < topo->n_faces; f++)
+	for (i32 f = first_patch_face(mesh); f < topo->n_faces; f++)
 		un_face[f] = ux_value * geom->face_nx[f] + uy_value * geom->face_ny[f];
 }
 
@@ -200,7 +208,7 @@ void jnl_bc_neumann_face_normal_all(const struct jnl_mesh *mesh, const f64 *ux,
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_geom *geom = &mesh->geom;
 	const struct jnl_mesh_interp *interp = &mesh->interp;
-	for (i32 f = boundary_face_start(mesh); f < topo->n_faces; f++) {
+	for (i32 f = first_patch_face(mesh); f < topo->n_faces; f++) {
 		i32 o = topo->owner[f];
 		f64 dist = 1.0 / interp->delta_coeff[f];
 		un_face[f] = (ux[o] + ux_flux * dist) * geom->face_nx[f] +

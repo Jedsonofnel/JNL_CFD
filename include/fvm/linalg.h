@@ -13,13 +13,14 @@
 
 struct jnl_ldu_matrix {
 	f64 *diag;  // [n_cells]
-	f64 *lower; // [n_conns]
-	f64 *upper; // [n_conns]
+	f64 *lower; // [n_faces]
+	f64 *upper; // [n_faces]
 
 	const i32 *owner;     // borrowed from mesh
 	const i32 *neighbour; // ditto
 	i32 n_cells;
-	i32 n_conns;
+	i32 n_faces;          // all mesh faces
+	i32 n_internal_faces; // owner-neighbour couplings
 };
 
 void jnl_ldu_zero(struct jnl_ldu_matrix *m);
@@ -45,8 +46,9 @@ struct jnl_fvsys {
 	enum jnl_singularity singularity;
 };
 
-struct jnl_fvsys *jnl_fvsys_new(i32 cells, i32 conns, const i32 *owner,
-                                const i32 *neighbour, jnl_arena *arena);
+struct jnl_fvsys *jnl_fvsys_new(i32 cells, i32 faces, i32 internal_faces,
+                                const i32 *owner, const i32 *neighbour,
+                                jnl_arena *arena);
 
 void jnl_fvsys_reset(struct jnl_fvsys *sys);
 void jnl_fvsys_reset_singularity(struct jnl_fvsys *sys);
@@ -101,6 +103,6 @@ f64 jnl_fvsys_max_asymmetry(const struct jnl_fvsys *sys);
 //
 
 // Bytes needed for one fvsys
-u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_conns);
+u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_faces);
 
 #endif

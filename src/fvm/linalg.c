@@ -13,8 +13,8 @@
 void jnl_ldu_zero(struct jnl_ldu_matrix *m)
 {
 	memset(m->diag, 0, m->n_cells * sizeof(f64));
-	memset(m->lower, 0, m->n_conns * sizeof(f64));
-	memset(m->upper, 0, m->n_conns * sizeof(f64));
+	memset(m->lower, 0, m->n_faces * sizeof(f64));
+	memset(m->upper, 0, m->n_faces * sizeof(f64));
 }
 
 void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y)
@@ -23,12 +23,10 @@ void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y)
 		y[i] = m->diag[i] * x[i];
 	}
 
-	for (i32 f = 0; f < m->n_conns; f++) {
+	for (i32 f = 0; f < m->n_internal_faces; f++) {
 		i32 o = m->owner[f];
 		i32 nb = m->neighbour[f];
-		if (nb < 0) {
-			continue;
-		}
+
 		y[o] += m->upper[f] * x[nb];
 		y[nb] += m->lower[f] * x[o];
 	}
@@ -38,18 +36,22 @@ void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y)
 // FV Linear System
 //
 
-struct jnl_fvsys *jnl_fvsys_new(i32 n_cells, i32 n_conns, const i32 *owner,
-                                const i32 *neighbour, jnl_arena *arena)
+struct jnl_fvsys *jnl_fvsys_new(i32 n_cells, i32 n_faces, i32 n_internal_faces,
+                                const i32 *owner, const i32 *neighbour,
+                                jnl_arena *arena)
 {
 	struct jnl_fvsys *sys = ARENA_PUSH_STRUCT_Z(arena, struct jnl_fvsys);
 
 	sys->matrix.diag = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells);
-	sys->matrix.lower = ARENA_PUSH_ARRAY_Z(arena, f64, n_conns);
-	sys->matrix.upper = ARENA_PUSH_ARRAY_Z(arena, f64, n_conns);
+	sys->matrix.lower = ARENA_PUSH_ARRAY_Z(arena, f64, n_faces);
+	sys->matrix.upper = ARENA_PUSH_ARRAY_Z(arena, f64, n_faces);
+
 	sys->matrix.owner = owner;
 	sys->matrix.neighbour = neighbour;
+
 	sys->matrix.n_cells = n_cells;
-	sys->matrix.n_conns = n_conns;
+	sys->matrix.n_faces = n_faces;
+	sys->matrix.n_internal_faces = n_internal_faces;
 
 	sys->rhs = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells);
 	sys->singularity = JNL_SING_UNCHECKED;
@@ -84,7 +86,7 @@ void jnl_fvsys_pin_cell(struct jnl_fvsys *sys, i32 cell_idx, f64 value)
 {
 	struct jnl_ldu_matrix *m = &sys->matrix;
 
-	for (i32 k = 0; k < m->n_conns; k++) {
+	for (i32 k = 0; k < m->n_internal_faces; k++) {
 		if (m->owner[k] == cell_idx || m->neighbour[k] == cell_idx) {
 			m->lower[k] = 0.0;
 			m->upper[k] = 0.0;
@@ -101,7 +103,7 @@ void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
 	struct jnl_ldu_matrix *m = &sys->matrix;
 
 	// O(n_conns * n_pinned) - fine for small pin sets
-	for (i32 k = 0; k < m->n_conns; k++) {
+	for (i32 k = 0; k < m->n_internal_faces; k++) {
 		for (i32 p = 0; p < n_cells; p++) {
 			if (m->owner[k] == cells[p] || m->neighbour[k] == cells[p]) {
 				m->lower[k] = 0.0;
@@ -131,7 +133,7 @@ static f64 fvsys_max_row_sum_ratio(const struct jnl_fvsys *sys,
 
 	memcpy(row_sums, m->diag, n * sizeof(f64));
 
-	for (i32 f = 0; f < m->n_conns; f++) {
+	for (i32 f = 0; f < m->n_internal_faces; f++) {
 		if (m->neighbour[f] < 0)
 			continue;
 		row_sums[m->owner[f]] += m->upper[f];
@@ -407,11 +409,13 @@ struct jnl_solve_result jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 // Arena sizing helpers
 //
 
-u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_conns)
+u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_faces)
 {
-	return ARENA_SIZE(struct jnl_fvsys, 1) + ARENA_SIZE(f64, n_cells) +
-	       ARENA_SIZE(f64, n_conns) + ARENA_SIZE(f64, n_conns) +
-	       ARENA_SIZE(f64, n_cells);
+	return ARENA_SIZE(struct jnl_fvsys, 1) + //
+	       ARENA_SIZE(f64, n_cells) +        // diag
+	       ARENA_SIZE(f64, n_faces) +        // lower
+	       ARENA_SIZE(f64, n_faces) +        // upper
+	       ARENA_SIZE(f64, n_cells);         // rhs
 }
 
 //
@@ -446,7 +450,7 @@ f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys)
 	f64 off[n];
 	memset(off, 0, n * sizeof(f64));
 
-	for (i32 k = 0; k < m->n_conns; k++) {
+	for (i32 k = 0; k < m->n_internal_faces; k++) {
 		if (m->neighbour[k] < 0)
 			continue;
 		off[m->owner[k]] += fabs(m->upper[k]);
@@ -477,7 +481,7 @@ f64 jnl_fvsys_max_asymmetry(const struct jnl_fvsys *sys)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
 	f64 max_asym = 0.0;
-	for (i32 k = 0; k < m->n_conns; k++) {
+	for (i32 k = 0; k < m->n_internal_faces; k++) {
 		if (m->neighbour[k] < 0)
 			continue;
 		f64 asym = fabs(m->lower[k] - m->upper[k]);

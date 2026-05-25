@@ -30,8 +30,8 @@ static lua_fvsys *check_fvsys(lua_State *L, int idx)
 static int l_fvsys_tostring(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
-	lua_pushfstring(L, "fvsys(n_cells=%d, n_conns=%d)", s->sys->matrix.n_cells,
-	                s->sys->matrix.n_conns);
+	lua_pushfstring(L, "fvsys(n_cells=%d, n_internal_faces=%d)",
+	                s->sys->matrix.n_cells, s->sys->matrix.n_internal_faces);
 	return 1;
 }
 

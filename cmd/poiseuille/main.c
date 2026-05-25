@@ -105,7 +105,7 @@ int main(void)
 
 	i32 n_cells = mesh->topo.n_cells;
 	i32 n_faces = mesh->topo.n_faces;
-	i32 n_conns = n_faces;
+	i32 n_internal_faces = mesh->topo.n_internal_faces;
 
 	printf("Poiseuille: %d cells, %d faces\n", n_cells, n_faces);
 
@@ -141,7 +141,7 @@ int main(void)
 	    jnl_scratch_pool_new(n_cells, n_scratch, sp_arena);
 
 	// Linear systems
-	u64 sys_sz = jnl_fvsys_arena_size(n_cells, n_conns);
+	u64 sys_sz = jnl_fvsys_arena_size(n_cells, n_faces);
 	jnl_arena *ux_arena = arena_create(sys_sz);
 	jnl_arena *uy_arena = arena_create(sys_sz);
 	jnl_arena *pp_arena = arena_create(sys_sz);
@@ -149,12 +149,12 @@ int main(void)
 	const i32 *owner = mesh->topo.owner;
 	const i32 *neighbour = mesh->topo.neighbour;
 
-	struct jnl_fvsys *ux_sys =
-	    jnl_fvsys_new(n_cells, n_conns, owner, neighbour, ux_arena);
-	struct jnl_fvsys *uy_sys =
-	    jnl_fvsys_new(n_cells, n_conns, owner, neighbour, uy_arena);
-	struct jnl_fvsys *pp_sys =
-	    jnl_fvsys_new(n_cells, n_conns, owner, neighbour, pp_arena);
+	struct jnl_fvsys *ux_sys = jnl_fvsys_new(n_cells, n_faces, n_internal_faces,
+	                                         owner, neighbour, ux_arena);
+	struct jnl_fvsys *uy_sys = jnl_fvsys_new(n_cells, n_faces, n_internal_faces,
+	                                         owner, neighbour, uy_arena);
+	struct jnl_fvsys *pp_sys = jnl_fvsys_new(n_cells, n_faces, n_internal_faces,
+	                                         owner, neighbour, pp_arena);
 
 	// Cell fields
 	f64 *Ux = alloc_cell(n_cells);

@@ -8,10 +8,14 @@
 
 struct jnl_fvm_ctx {
 	jnl_arena *arena;
+
 	i32 n_cells;
 	i32 n_faces;
+	i32 n_internal_faces;
+
 	const i32 *owner;
 	const i32 *neighbour;
+
 	struct jnl_scratch_pool *cell_pool;
 	struct jnl_scratch_pool *face_pool;
 };

@@ -19,6 +19,7 @@ struct jnl_fvm_ctx *jnl_fvm_ctx_new(const struct jnl_mesh *mesh, i32 n_fields,
 {
 	i32 n_cells = mesh->topo.n_cells;
 	i32 n_faces = mesh->topo.n_faces;
+	i32 n_internal_faces = mesh->topo.n_internal_faces;
 
 	u64 arena_sz =
 	    jnl_fvm_ctx_arena_size(n_cells, n_faces, n_fields, n_face_fields,
@@ -27,8 +28,11 @@ struct jnl_fvm_ctx *jnl_fvm_ctx_new(const struct jnl_mesh *mesh, i32 n_fields,
 
 	struct jnl_fvm_ctx *ctx = ARENA_PUSH_STRUCT_Z(arena, struct jnl_fvm_ctx);
 	ctx->arena = arena;
+
 	ctx->n_cells = n_cells;
 	ctx->n_faces = n_faces;
+	ctx->n_internal_faces = n_internal_faces;
+
 	ctx->owner = mesh->topo.owner;
 	ctx->neighbour = mesh->topo.neighbour;
 
@@ -57,6 +61,6 @@ f64 *jnl_fvm_ctx_alloc_face_field(struct jnl_fvm_ctx *ctx)
 
 struct jnl_fvsys *jnl_fvm_ctx_alloc_fvsys(struct jnl_fvm_ctx *ctx)
 {
-	return jnl_fvsys_new(ctx->n_cells, ctx->n_faces, ctx->owner, ctx->neighbour,
-	                     ctx->arena);
+	return jnl_fvsys_new(ctx->n_cells, ctx->n_faces, ctx->n_internal_faces,
+	                     ctx->owner, ctx->neighbour, ctx->arena);
 }
