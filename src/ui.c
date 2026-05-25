@@ -107,32 +107,47 @@ static int ui_send_close(int fd)
 
 static int ui_send_pslg(int fd, struct jnl_pslg *pslg)
 {
-	u64 cap =
-	    (pslg->nodes.len + pslg->hlen + pslg->rlen) * sizeof(jnl_vec2d) * 4 +
-	    pslg->edges.len * sizeof(u32) * 4 + 128;
+	u32 nn = pslg->nodes.len;
+	u32 ne = pslg->edges.len;
+	u32 nh = pslg->hlen;
+	u32 nr = pslg->rlen;
 
-	jnl_arena *arena = arena_create(cap);
-	if (!arena)
-		return -1;
-	jnl_pslg_compact(pslg, arena);
-
-	u8 *blob = (u8 *)arena + JNL_ARENA_BASE_POS;
-	u32 blob_len = (u32)(arena->pos - JNL_ARENA_BASE_POS);
+	u32 blob_len = nn * sizeof(jnl_vec2d) + nn * sizeof(i32) +
+	               ne * sizeof(u32) + ne * sizeof(u32) + ne * sizeof(i32) +
+	               nh * sizeof(jnl_vec2d) + nr * sizeof(jnl_vec2d) +
+	               nr * sizeof(i32) + nr * sizeof(f64);
 
 	u8 hdr[21];
 	hdr[0] = MSG_PSLG;
 	W32(hdr + 1, blob_len);
-	W32(hdr + 5, pslg->nodes.len);
-	W32(hdr + 9, pslg->edges.len);
-	W32(hdr + 13, pslg->hlen);
-	W32(hdr + 17, pslg->rlen);
+	W32(hdr + 5, nn);
+	W32(hdr + 9, ne);
+	W32(hdr + 13, nh);
+	W32(hdr + 17, nr);
 
-	int ret = 0;
-	ret = ret || send_all(fd, hdr, 21);
-	ret = ret || send_all(fd, blob, blob_len);
+	if (send_all(fd, hdr, 21) < 0)
+		return -1;
 
-	arena_destroy(arena);
-	return ret ? -1 : 0;
+	if (send_all(fd, pslg->nodes.coords, nn * sizeof(jnl_vec2d)) < 0)
+		return -1;
+	if (send_all(fd, pslg->nodes.markers, nn * sizeof(i32)) < 0)
+		return -1;
+	if (send_all(fd, pslg->edges.ps, ne * sizeof(u32)) < 0)
+		return -1;
+	if (send_all(fd, pslg->edges.qs, ne * sizeof(u32)) < 0)
+		return -1;
+	if (send_all(fd, pslg->edges.markers, ne * sizeof(i32)) < 0)
+		return -1;
+	if (send_all(fd, pslg->holes, nh * sizeof(jnl_vec2d)) < 0)
+		return -1;
+	if (send_all(fd, pslg->rcoords, nr * sizeof(jnl_vec2d)) < 0)
+		return -1;
+	if (send_all(fd, pslg->rmarkers, nr * sizeof(i32)) < 0)
+		return -1;
+	if (send_all(fd, pslg->rareas, nr * sizeof(f64)) < 0)
+		return -1;
+
+	return 0;
 }
 
 static int ui_send_mesh(int fd, struct jnl_mesh *mesh)
@@ -313,10 +328,9 @@ static Texture2D pslg_gen_texture(struct jnl_pslg *pslg, struct jnl_view2D view)
 	struct jnl_aabb bbox = jnl_pslg_bbox(pslg);
 	f64 bbw = bbox.max_x - bbox.min_x, bbh = bbox.max_y - bbox.min_y;
 
-	f64 scale = view.zoom * width / bbw;
-	if (scale * bbh > height) {
-		scale = height / bbh;
-	}
+	f64 scale_x = view.zoom * width / bbw;
+	f64 scale_y = view.zoom * height / bbh;
+	f64 scale = scale_x < scale_y ? scale_x : scale_y;
 
 	f64 dx = ((1 + view.centre.x) * width - (bbw * scale)) / 2;
 	f64 dy = ((bbh * scale) - (1 + view.centre.y) * height) / 2;

@@ -48,6 +48,10 @@ struct jnl_tri_opts jnl_tri_opts_set_min_angle(struct jnl_tri_opts opts,
 	return opts;
 }
 
+//
+// Cell sizing helpers for opts
+//
+
 struct jnl_tri_opts jnl_tri_opts_set_global_max_area(struct jnl_tri_opts opts,
                                                      f64 max_area)
 {
@@ -60,6 +64,44 @@ struct jnl_tri_opts jnl_tri_opts_set_global_max_area(struct jnl_tri_opts opts,
 	}
 
 	return opts;
+}
+
+struct jnl_tri_opts jnl_tri_opts_set_cell_count(struct jnl_tri_opts opts,
+                                                const struct jnl_pslg *pslg,
+                                                i32 target_cells)
+{
+	if (target_cells <= 0)
+		return opts;
+
+	struct jnl_aabb bbox = jnl_pslg_bbox(pslg);
+	double w = bbox.max_x - bbox.min_x;
+	double h = bbox.max_y - bbox.min_y;
+	double bbox_area = w * h;
+
+	// bbox_area overestimates, factor of 0.9 roughly compensates
+	double target_area = (bbox_area * 0.9) / (double)target_cells;
+
+	return jnl_tri_opts_set_global_max_area(opts, target_area);
+}
+
+struct jnl_tri_opts jnl_tri_opts_set_resolution(struct jnl_tri_opts opts,
+                                                const struct jnl_pslg *pslg,
+                                                double resolution)
+{
+	if (resolution <= 0.0)
+		return opts;
+
+	struct jnl_aabb bbox = jnl_pslg_bbox(pslg);
+	double w = bbox.max_x - bbox.min_x;
+	double h = bbox.max_y - bbox.min_y;
+	double scale = (w < h ? w : h);
+
+	// Edge length target = resolution * scale.
+	// Equilateral triangle area = (sqrt(3)/4) * edge^2 ~ 0.433 * edge^2.
+	double edge = resolution * scale;
+	double target_area = 0.433 * edge * edge;
+
+	return jnl_tri_opts_set_global_max_area(opts, target_area);
 }
 
 struct jnl_tri_opts jnl_tri_opts_enable_region_areas(struct jnl_tri_opts opts,
