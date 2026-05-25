@@ -35,7 +35,7 @@
  * BAFFLES
  * =======
  *
- * baffles.data[i].start_cell: first face index for baffle i.
+ * baffles.data[i].start_face: first face index for baffle i.
  * baffles.data[i].marker:     user-assigned tag, unrelated to patch marker.
  * Neighbour is a valid cell index - use index range to identify baffle faces.
  * Populated by topo_sort_faces().
@@ -75,6 +75,7 @@
 
 #include "jnl/common.h"
 #include "jnl/arena.h"
+#include "geo2d.h"
 
 //
 // Topology
@@ -200,5 +201,57 @@ enum jnl_mesh_err {
 
 struct jnl_mesh *jnl_smesh_gen(f64 width, f64 height, u32 nx, u32 ny);
 void jnl_mesh_free(struct jnl_mesh *mesh);
+
+//
+// Triangle PSLG meshing
+//
+
+enum jnl_tri_quality_mode {
+	JNL_TRIANGLE_QUALITY_NONE = 0,
+	JNL_TRIANGLE_QUALITY_MIN_ANGLE,
+};
+
+struct jnl_tri_opts {
+	// Geometry / topology behaviour
+	bool preserve_segments;   // PSLG constrained triangulation
+	bool conforming_delaunay; // split segments if needed for conforming
+
+	// Quality refinement
+	enum jnl_tri_quality_mode quality_mode;
+	f64 min_angle_deg; // used when quality_mode == MIN_ANGLE
+
+	// Area constraints
+	bool use_global_max_area;
+	f64 global_max_area;
+
+	bool use_region_areas; // use jnl_pslg region max areas
+
+	// Output / numbering
+	bool zero_based_numbering; // should normally remain true
+
+	// Diagnostics
+	bool quiet;
+	bool verbose;
+};
+
+struct jnl_tri_opts jnl_tri_opts_default(void);
+
+struct jnl_tri_opts jnl_tri_opts_set_min_angle(struct jnl_tri_opts opts,
+                                               f64 min_angle_deg);
+
+struct jnl_tri_opts jnl_tri_opts_set_global_max_area(struct jnl_tri_opts opts,
+                                                     f64 max_area);
+
+struct jnl_tri_opts jnl_tri_opts_enable_region_areas(struct jnl_tri_opts opts,
+                                                     bool enabled);
+
+struct jnl_tri_opts
+jnl_tri_opts_set_conforming_delaunay(struct jnl_tri_opts opts, bool enabled);
+
+struct jnl_tri_opts jnl_tri_opts_set_quiet(struct jnl_tri_opts opts,
+                                           bool enabled);
+
+struct jnl_mesh *jnl_mesh2d_from_pslg_tri(const struct jnl_pslg *pslg,
+                                          struct jnl_tri_opts opts);
 
 #endif
