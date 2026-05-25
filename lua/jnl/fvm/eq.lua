@@ -174,6 +174,9 @@ end
 ---@return FvmSuTerm
 function Op.su(...)
 	local args = { ... }
+	local config = pop_config(args)
+	local integrated = config.integrated or false
+
 	local exprs = {}
 	for _, a in ipairs(args) do
 		exprs[#exprs + 1] = E.from(a)
@@ -184,6 +187,7 @@ function Op.su(...)
 	return make_term({
 		kind       = "su",
 		expr       = combined,
+		integrated = integrated,
 		_deps      = term_deps(combined),
 		_backend   = "fvm",
 		_is_linear = false,
@@ -191,12 +195,16 @@ function Op.su(...)
 end
 
 ---@return FvmSpTerm
-function Op.sp(coeff)
+function Op.sp(coeff, config)
+	config = config or {}
+	local integrated = config.integrated or false
 	local expr = E.from(coeff)
+
 	---@type FvmSpTerm
 	return make_term({
 		kind       = "sp",
 		expr       = expr,
+		integrated = integrated,
 		_deps      = term_deps(expr),
 		_backend   = "fvm",
 		_is_linear = false,
@@ -242,13 +250,15 @@ end)
 
 CEq.register_pretty("su", function(self, _)
 	---@cast self FvmSuTerm
-	return E.pretty(self.expr)
+	local prefix = self.integrated and "∫Su" or "Su"
+	return string.format("%s[%s]", prefix, E.pretty(self.expr))
 end)
 
 CEq.register_pretty("sp", function(self, field)
 	---@cast self FvmSpTerm
+	local prefix = self.integrated and "∫Sp" or "Sp"
 	local phi_str = field or "phi"
-	return string.format("%s[%s]%s%s", G.sp, E.pretty(self.expr), G.mul, phi_str)
+	return string.format("%s[%s]%s%s", prefix, E.pretty(self.expr), G.mul, phi_str)
 end)
 
 --

@@ -107,7 +107,8 @@ local printers = {
 			fmt(f.Ux), fmt(f.Uy), fmt(f.p), fmt(f.out))
 	end,
 	divergence = function(f)
-		return string.format("DIVERGENCE    %s  ->  %s", fmt(f.un_face), fmt(f.out))
+		local tag = f.integrated ~= false and "DIV_INT" or "DIV_VOL"
+		return string.format("%-14s%s  ->  %s", tag, fmt(f.un_face), fmt(f.out))
 	end,
 	eval_expr = function(f)
 		return string.format("EVAL_EXPR     %s  =  %s", fmt(f.name), tostring(f.expr))
@@ -208,11 +209,13 @@ local printers = {
 	end,
 	su_field = function(f)
 		local src = f.expr and tostring(f.expr) or fmt(f.src)
-		return string.format("SU            %s  src=%s", fmt(f.field), src)
+		local tag = f.integrated and "SU_INT" or "SU"
+		return string.format("%-14s%s  src=%s", tag, fmt(f.field), src)
 	end,
 	sp_field = function(f)
 		local src = f.expr and tostring(f.expr) or fmt(f.src)
-		return string.format("SP            %s  src=%s", fmt(f.field), src)
+		local tag = f.integrated and "SP_INT" or "SP"
+		return string.format("%-14s%s  src=%s", tag, fmt(f.field), src)
 	end,
 	diag_snapshot = function(f)
 		return string.format("DIAG_SNAPSHOT %-16s -> %s", fmt(f.field), fmt(f.out))
@@ -388,6 +391,8 @@ end
 -- Seed: collect all "__"-prefixed dep names referenced in the registry
 local function seed(reg)
 	local pending, queued = {}, {}
+	local integrated_flags = {}
+
 	local function enqueue(name)
 		if not queued[name] then
 			queued[name] = true
@@ -400,16 +405,38 @@ local function seed(reg)
 			(sym.kind == "field" and sym.eq and sym.eq._deps) or
 			(sym.kind == "expression" and sym.expr and sym.expr._deps) or
 			(sym.kind == "correction" and sym.expr and sym.expr._deps)
+
+		-- walk expression tree to find div/div_mwi exprs and capture their flag
+		local function scan_expr(e)
+			if not E.is_expr(e) then return end
+			if (e.kind == "div" or e.kind == "div_mwi") and e._dep_name then
+				integrated_flags[e._dep_name] = e.integrated ~= false
+			end
+			-- recurse into operands if present
+			if e.operands then
+				for _, op in ipairs(e.operands) do scan_expr(op) end
+			end
+		end
+
+		if sym.kind == "expression" and sym.expr then scan_expr(sym.expr) end
+		if sym.kind == "field" and sym.eq then
+			for _, term in ipairs(sym.eq.terms or {}) do
+				if term.expr then scan_expr(term.expr) end
+				if term.flux then scan_expr(term.flux) end
+			end
+		end
+
 		for dep in pairs(deps or {}) do
 			if dep:match("^__") then enqueue(dep) end
 		end
 		::continue::
 	end
-	return pending, queued
+
+	return pending, queued, integrated_flags
 end
 
 -- Register one intermediate; wire side_effect_of for diag nodes
-local function register_intermediate(reg, name, itype, deps, accessor, components)
+local function register_intermediate(reg, name, itype, deps, accessor, components, opts)
 	if components then
 		for _, c in ipairs(components) do
 			if not reg[c] then
@@ -418,9 +445,11 @@ local function register_intermediate(reg, name, itype, deps, accessor, component
 		end
 	end
 
-	reg:intermediate(name, itype, deps, {
-		accessor = accessor,
-	})
+	local sym_opts = { accessor = accessor }
+	if opts then
+		for k, v in pairs(opts) do sym_opts[k] = v end
+	end
+	reg:intermediate(name, itype, deps, sym_opts)
 
 	local diag_field = names.is_diag(name)
 	if diag_field and reg[diag_field] then
@@ -430,18 +459,27 @@ end
 
 -- BFS expansion loop
 local function expand(reg)
-	local pending, queued = seed(reg)
+	local pending, queued, integrated_flags = seed(reg)
+
 	while #pending > 0 do
 		local name = table.remove(pending, 1)
 		if reg[name] then goto continue end
+
 		local itype, deps, to_enqueue, accessor, components = elaborate(reg, name)
-		register_intermediate(reg, name, itype, deps, accessor, components)
+
+		local extra = {}
+		if integrated_flags[name] ~= nil then
+			extra.integrated = integrated_flags[name]
+		end
+		register_intermediate(reg, name, itype, deps, accessor, components, extra)
+
 		for _, d in ipairs(to_enqueue) do
 			if not queued[d] then
 				queued[d] = true
 				pending[#pending + 1] = d
 			end
 		end
+
 		::continue::
 	end
 end
@@ -646,14 +684,24 @@ eval_emitters.mwi = function(reg, name, out)
 	end
 end
 
-eval_emitters.div_mwi = function(_, name, out)
+eval_emitters.div_mwi = function(reg, name, out)
 	local U, p = names.is_div_mwi(name)
-	out[#out + 1] = Inst.new("divergence", { un_face = names.mwi(U, p), out = name })
+	local sym = reg[name]
+	out[#out + 1] = Inst.new("divergence", {
+		un_face    = names.mwi(U, p),
+		out        = name,
+		integrated = sym and sym.integrated ~= false,
+	})
 end
 
-eval_emitters.div = function(_, name, out)
+eval_emitters.div = function(reg, name, out)
 	local field = names.is_div(name) or ""
-	out[#out + 1] = Inst.new("divergence", { un_face = names.face(field), out = name })
+	local sym = reg[name]
+	out[#out + 1] = Inst.new("divergence", {
+		un_face    = names.face(field),
+		out        = name,
+		integrated = sym and sym.integrated ~= false,
+	})
 end
 
 eval_emitters.expression = function(reg, name, out)
@@ -802,10 +850,18 @@ local function emit_term(field, term, reg, out)
 		end
 	elseif kind == "su" then
 		---@cast term FvmSuTerm
-		out[#out + 1] = Inst.new("su_field", { field = field, expr = term.expr })
+		out[#out + 1] = Inst.new("su_field", {
+			field = field,
+			expr = term.expr,
+			integrated = term.integrated,
+		})
 	elseif kind == "sp" then
 		---@cast term FvmSpTerm
-		out[#out + 1] = Inst.new("sp_field", { field = field, expr = term.expr })
+		out[#out + 1] = Inst.new("sp_field", {
+			field = field,
+			expr = term.expr,
+			integrated = term.integrated,
+		})
 	elseif kind == "ddt" then
 		local c = coeff_of(term.coeff, reg)
 		local coeff = emit_coeff(c, out)

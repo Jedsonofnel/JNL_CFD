@@ -3,12 +3,11 @@
 
 local mesh2d = require("jnl.mesh2d")
 local P      = mesh2d.smesh.PATCH
-local FVM    = require("jnl.fvm")
 local BC     = require("jnl.fvm.bc")
 local canned = require("jnl.fvm.canned")
 
 local H      = 1.0
-local L      = 2.0 -- streamwise length (irrelevant for Couette, just needs to be periodic-ish)
+local L      = 2.0
 local Nx     = 10
 local Ny     = 40
 local U_wall = 1.0
@@ -18,7 +17,7 @@ local rho    = 1.0
 
 local mesh = mesh2d.new_smesh(L, H, Nx, Ny)
 local reg = canned.stokes_registry({ rho = rho, mu = mu })
-local alg = canned.SIMPLE({ max_iters = 50 })
+local alg = canned.SIMPLE()
 
 
 local bcs  = {
@@ -43,10 +42,6 @@ local bcs  = {
 }
 
 local case = require("jnl.fvm.case").new(reg, alg, mesh, bcs)
-
--- DEBUG:
-case:print_instructions()
-
 case:make_sim():run()
 
 --

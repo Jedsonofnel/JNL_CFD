@@ -65,6 +65,8 @@ function FvSys:solve_bicgstab(x, tol, max_iters) end
 
 ---@class FvmSuTerm : Term
 ---@field expr  Expr
+---@field integrated boolean
 
 ---@class FvmSpTerm : Term
 ---@field expr  Expr
+---@field integrated boolean

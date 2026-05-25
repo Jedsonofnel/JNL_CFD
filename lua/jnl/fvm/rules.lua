@@ -1,45 +1,46 @@
 -- jnl/fvm/rules.lua - rule helpers for sage in an FVM context
 -- <jed@nelson.ac> // 2026-05-23
 
--- deps
 local E = require("jnl.core.expr")
 
 local M = {}
 
 --
--- CONVERGENCE
+-- CACHE
 --
 
--- Cache key used by all residual/norm rules
+-- Single cache key for all residual/norm facts keyed by field+kind
 local BY_FIELD_KEY = "rules:by_field"
 M.BY_FIELD_KEY = BY_FIELD_KEY
 
 local function by_field_key_fn(f)
-	if f.field and f.kind == "field_norm" then
-		return f.field .. ":field_norm"
-	end
-	if f.field and f.kind == "residual" then
-		return f.field .. ":residual"
+	if not f.field then return nil end
+	if f.kind == "field_norm"
+		or f.kind == "field_change"
+		or f.kind == "residual" then
+		return f.field .. ":" .. f.kind
 	end
 end
 
-local function ensure_caches(sage)
+local function ensure_cache(sage)
 	sage:ensure_cache(BY_FIELD_KEY, by_field_key_fn)
 end
 
+local function latest(sage, field, kind, n)
+	return sage:cache_query(BY_FIELD_KEY, field .. ":" .. kind,
+		{ sort_by = "iter", desc = true, limit = n or 1 })
+end
+
 --
--- Predicates (field_name, sage, iter, loop_depth) -> bool
+-- PREDICATES  (field:string, sage, iter, loop_depth) -> bool
 --
 
 function M.residual_below(tol, n_consec)
 	n_consec = n_consec or 1
-	return function(field, sage, _)
-		ensure_caches(sage)
-		local h = sage:cache_query(BY_FIELD_KEY, field .. ":residual",
-			{ sort_by = "iter", desc = true, limit = n_consec })
-
+	return function(field, sage)
+		ensure_cache(sage)
+		local h = latest(sage, field, "residual", n_consec)
 		if #h < n_consec then return false end
-
 		for _, f in ipairs(h) do
 			if f.value >= tol then return false end
 		end
@@ -48,59 +49,60 @@ function M.residual_below(tol, n_consec)
 end
 
 function M.field_above(threshold)
-	return function(field, sage, _)
-		ensure_caches(sage)
-
-		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
-			{ sort_by = "iter", desc = true, limit = 1 })
-
+	return function(field, sage)
+		ensure_cache(sage)
+		local h = latest(sage, field, "field_norm")
 		if #h == 0 then return false end
-
 		return h[1].value > threshold or h[1].value ~= h[1].value
 	end
 end
 
 function M.field_is_nan()
-	return function(field, sage, _)
-		ensure_caches(sage)
-
-		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
-			{ sort_by = "iter", desc = true, limit = 1 })
-
+	return function(field, sage)
+		ensure_cache(sage)
+		local h = latest(sage, field, "field_norm")
 		if #h == 0 then return false end
-
 		return h[1].value ~= h[1].value
 	end
 end
 
 function M.field_change_below(tol, n_consec)
 	n_consec = n_consec or 1
-	return function(field, sage, _)
-		ensure_caches(sage)
-
-		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
-			{ sort_by = "iter", desc = true, limit = n_consec })
-
+	return function(field, sage)
+		ensure_cache(sage)
+		local h = latest(sage, field, "field_change", n_consec)
 		if #h < n_consec then return false end
-
 		for _, f in ipairs(h) do
-			if f.norm ~= "normL2_rel_diff" then return false end
 			if f.value >= tol then return false end
 		end
 		return true
 	end
 end
 
+function M.field_norm_below(tol, n_consec)
+	n_consec = n_consec or 1
+
+	return function(field, sage)
+		ensure_cache(sage)
+
+		local h = latest(sage, field, "field_norm", n_consec)
+		if #h < n_consec then return false end
+
+		for _, f in ipairs(h) do
+			if f.value >= tol then return false end
+		end
+
+		return true
+	end
+end
+
 function M.field_stagnant(tol, window)
 	window = window or 10
-	return function(field, sage, _)
-		ensure_caches(sage)
-		local h = sage:cache_query(BY_FIELD_KEY, field .. ":field_norm",
-			{ sort_by = "iter", desc = true, limit = window })
+	return function(field, sage)
+		ensure_cache(sage)
+		local h = latest(sage, field, "field_change", window)
 		if #h < window then return false end
-
 		local hi, lo = h[1].value, h[1].value
-
 		for _, e in ipairs(h) do
 			hi = math.max(hi, e.value)
 			lo = math.min(lo, e.value)
@@ -111,7 +113,6 @@ end
 
 function M.any_of(...)
 	local preds = { ... }
-
 	return function(field, sage, iter, depth)
 		for _, p in ipairs(preds) do
 			if p(field, sage, iter, depth) then return true end
@@ -121,7 +122,7 @@ function M.any_of(...)
 end
 
 --
--- Criteria
+-- CRITERIA  (sage, iter, loop_depth) -> bool
 --
 
 function M.all_fields(predicates)
@@ -143,7 +144,7 @@ function M.any_field(predicates)
 end
 
 --
--- Stopping ruleset
+-- STOPPING RULESET
 --
 
 function M.stopping(criteria, opts)
@@ -151,7 +152,6 @@ function M.stopping(criteria, opts)
 	local depth = opts.loop_depth or 1
 	local conv  = criteria.converged
 	local div   = criteria.diverged
-
 	local rules = {}
 
 	if conv then
@@ -185,39 +185,15 @@ function M.stopping(criteria, opts)
 				and f.loop_depth == depth
 		end,
 		fire  = function(sage, f)
-			sage:push_action({
-				kind = "stop",
-				reason = f.kind,
-				iter = f.iter,
-				loop_depth = f.loop_depth
-			})
+			sage:push_action({ kind = "stop", reason = f.kind, iter = f.iter, loop_depth = f.loop_depth })
 		end,
 	}
 
-	-- add progress tracking optionally
-	if opts.progress ~= false then
-		local n = opts.progress_n or 10
-		rules[#rules + 1] = {
-			name  = string.format("progress[depth=%d]", depth),
-			match = function(f)
-				return f.kind == "field_norm"
-					and (f.loop_depth or 1) == depth
-					and f.iter % n == 0
-			end,
-			fire  = function(_, f)
-				io.write(string.format("  iter %4d  |%s|  %s = %.3e\n",
-					f.iter, E.pretty_sym(f.field), f.norm or "norm", f.value))
-			end,
-		}
-	end
-
-	-- always print convergence/divergence at outer depth
 	if depth == 1 then
 		rules[#rules + 1] = {
 			name  = "print_conclusion",
 			match = function(f)
-				return (f.kind == "converged" or f.kind == "diverging")
-					and f.loop_depth == depth
+				return (f.kind == "converged" or f.kind == "diverging") and f.loop_depth == depth
 			end,
 			fire  = function(_, f)
 				io.write(string.format("%s at iter %d\n", f.kind, f.iter))
@@ -229,10 +205,90 @@ function M.stopping(criteria, opts)
 end
 
 --
--- POST MORTEM
+-- TABULAR PROGRESS
 --
 
--- internal helpers
+function M.tabular_progress(columns, opts)
+	opts = opts or {}
+
+
+	local depth     = opts.loop_depth or 1
+	local every     = opts.every or 25
+	local hdr_every = opts.header_every or 20
+
+	local function header()
+		local cols = { string.format("%6s", "iter") }
+		for _, col in ipairs(columns) do
+			cols[#cols + 1] = string.format("%12s", E.pretty_sym(col[1]))
+		end
+		io.write(table.concat(cols, "  ") .. "\n")
+	end
+
+	local function fmt(v)
+		if v ~= v then return string.format("%12s", "nan") end
+		return string.format("%12.4e", v)
+	end
+
+	local print_count = 0
+	local started = false
+
+	local function is_iter_end(f)
+		return f.kind == "iter_end" and f.loop_depth == depth
+	end
+
+	local rules = {
+		{
+			name  = string.format("tabular_header[depth=%d]", depth),
+			match = is_iter_end,
+			fire  = function()
+				if started then return end
+				header()
+				started = true
+				print_count = 0
+			end,
+		},
+		{
+			name  = string.format("tabular_row[depth=%d]", depth),
+			match = function(f) return is_iter_end(f) and f.iter % every == 0 end,
+			fire  = function(sage, f)
+				if print_count > 0 and print_count % hdr_every == 0 then header() end
+				print_count = print_count + 1
+
+				local cols = { string.format("%6d", f.iter) }
+				for _, col in ipairs(columns) do
+					local h = latest(sage, col[1], col[2])
+					cols[#cols + 1] = fmt(h[1] and h[1].value or math.huge)
+				end
+				io.write(table.concat(cols, "  ") .. "\n")
+			end,
+		},
+		{
+			name  = "tabular_conclusion",
+			match = function(f)
+				return (f.kind == "converged" or f.kind == "diverging")
+					and f.loop_depth == depth
+			end,
+			fire  = function(sage, f)
+				-- always print the final row at the conclusion iter
+				local cols = { string.format("%6d", f.iter) }
+				for _, col in ipairs(columns) do
+					local h = latest(sage, col[1], col[2])
+					cols[#cols + 1] = fmt(h[1] and h[1].value or math.huge)
+				end
+				io.write(table.concat(cols, "  ") .. "\n")
+			end,
+		},
+	}
+
+	return {
+		rules = rules,
+		init  = function(sage) sage:ensure_cache(BY_FIELD_KEY, by_field_key_fn) end,
+	}
+end
+
+--
+-- POST MORTEM
+--
 
 local function diagnose(sage, f, code, msg)
 	sage:derive_once("diagnosis:" .. code .. ":" .. f.iter, {
@@ -243,10 +299,7 @@ local function diagnose(sage, f, code, msg)
 	}, { f.id })
 end
 
---
--- Public rule factories
---
-
+-- fn(sage, fact, diagnostics, diag_fn) — call diag_fn(code, msg) only when something is wrong
 function M.pm_rule(name, fn)
 	return {
 		name  = "pm:" .. name,
@@ -262,9 +315,7 @@ end
 function M.pm_advice(code, msg)
 	return {
 		name  = "advice:" .. code,
-		match = function(f)
-			return f.kind == "diagnosis" and f.code == code
-		end,
+		match = function(f) return f.kind == "diagnosis" and f.code == code end,
 		fire  = function(sage, f)
 			sage:derive_once("advice:" .. code, {
 				kind     = "advice",
@@ -276,12 +327,12 @@ function M.pm_advice(code, msg)
 	}
 end
 
+-- prints only diagnosis and advice facts — informational dumps belong in pm_rule fns
+-- and should go through diag() so they only appear when significant
 function M.pm_print()
 	return {
 		name  = "pm:print",
-		match = function(f)
-			return f.kind == "diagnosis" or f.kind == "advice"
-		end,
+		match = function(f) return f.kind == "diagnosis" or f.kind == "advice" end,
 		fire  = function(_, f)
 			local tag = f.kind == "advice" and "  hint" or "  diag"
 			io.write(string.format("[POST-MORTEM] %s: %s\n", tag, f.message))
@@ -300,5 +351,41 @@ function M.post_mortem(rules_list, opts)
 	end
 	return { rules = rules }
 end
+
+--
+-- API
+--
+
+M._doc = "Rule helpers and rulesets for FVM convergence monitoring via Sage."
+
+M._api = {
+	-- predicates
+	residual_below     = "(tol, n_consec?) -> pred  true if last n residuals all < tol",
+	field_above        = "(threshold) -> pred  true if latest field_norm > threshold or NaN",
+	field_is_nan       = "() -> pred  true if latest field_norm is NaN",
+	field_change_below = "(tol, n_consec?) -> pred  true if last n normL2_rel_diff < tol",
+	field_stagnant     = "(tol, window?) -> pred  true if field_norm range < tol*lo over window iters",
+	field_norm_below   = "(tol, n_consec?) -> pred  true if last n field_norm values all < tol",
+	any_of             = "(...preds) -> pred  true if any child predicate is true",
+	-- criteria
+	all_fields         = "(predicates:{field->pred}) -> criterion  true if all fields satisfy pred",
+	any_field          = "(predicates:{field->pred}) -> criterion  true if any field satisfies pred",
+	-- rulesets
+	stopping           = "(criteria, opts?) -> ruleset  convergence/divergence stopping rules",
+	tabular_progress   = "(columns:{{field,kind}}, opts?) -> ruleset  periodic tabular log",
+	post_mortem        = "(rules_list, opts?) -> ruleset  post-mortem diagnosis ruleset",
+	-- rule factories
+	pm_rule            = "(name, fn) -> rule  fire fn on post_mortem fact; fn calls diag() only when significant",
+	pm_advice          = "(code, msg) -> rule  derive advice fact when diagnosis code seen",
+	pm_print           = "() -> rule  print all diagnosis and advice facts",
+}
+
+M._types = {
+	pred      = "(field:string, sage, iter, depth) -> bool",
+	criterion = "(sage, iter, depth) -> bool",
+	ruleset   = "{ rules:{rule}, init:fn? }  — passed to sage:add_ruleset or alg:add_ruleset",
+	rule      = "{ name:string, match:fn, fire:fn }",
+	column    = "{ [1]:field:string, [2]:kind:'residual'|'field_norm' }",
+}
 
 return M

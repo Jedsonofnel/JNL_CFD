@@ -266,7 +266,11 @@ end
 dispatch.divergence = function(r, inst)
 	local un  = r:_field(inst.un_face)
 	local out = r:_field(inst.out)
-	FVM.divergence(r.mesh, un, out)
+	if inst.integrated ~= false then
+		FVM.divergence_integrated(r.mesh, un, out)
+	else
+		FVM.divergence_volumetric(r.mesh, un, out)
+	end
 end
 
 --
@@ -345,19 +349,35 @@ end
 
 dispatch.su_field = function(r, inst)
 	local sys = r:_sys(inst.field)
-	if inst.expr then
-		FVM.su_field(sys, r.mesh, r:_eval_cell(inst.expr))
+	if inst.integrated then
+		if inst.expr then
+			FVM.su_integrated(sys, r.mesh, r:_eval_cell(inst.expr))
+		else
+			FVM.su_integrated_const(sys, r.mesh, 0.0)
+		end
 	else
-		FVM.su_const(sys, r.mesh, 0.0)
+		if inst.expr then
+			FVM.su_volumetric_field(sys, r.mesh, r:_eval_cell(inst.expr))
+		else
+			FVM.su_volumetric_const(sys, r.mesh, 0.0)
+		end
 	end
 end
 
 dispatch.sp_field = function(r, inst)
 	local sys = r:_sys(inst.field)
-	if inst.expr then
-		FVM.sp_field(sys, r.mesh, r:_eval_cell(inst.expr))
+	if inst.integrated then
+		if inst.expr then
+			FVM.sp_integrated(sys, r.mesh, r:_eval_cell(inst.expr))
+		else
+			FVM.sp_integrated_const(sys, r.mesh, 0.0)
+		end
 	else
-		FVM.sp_const(sys, r.mesh, 0.0)
+		if inst.expr then
+			FVM.sp_volumetric_field(sys, r.mesh, r:_eval_cell(inst.expr))
+		else
+			FVM.sp_volumetric_const(sys, r.mesh, 0.0)
+		end
 	end
 end
 
@@ -408,7 +428,8 @@ dispatch.solve = function(r, inst)
 		r.on_solve(inst.field, r._residuals[inst.field], n_iters, r._iter, r._loop_depth)
 	end
 	if r.on_monitor then
-		r.on_monitor(inst.field, norm_change, r._iter, r._loop_depth, "normL2_rel_diff")
+		r.on_monitor(inst.field, norm_change, r._iter, r._loop_depth, "field_change")
+		r.on_monitor(inst.field, phi:norm_l2(), r._iter, r._loop_depth, "field_norm")
 	end
 end
 
@@ -459,6 +480,7 @@ dispatch.monitor = function(r, inst)
 	if not r.on_monitor then return end
 	local field = r:_field(inst.field)
 	local value
+
 	if inst.norm == "normL1" then
 		value = field:norm_l1()
 	elseif inst.norm == "normL2" then
@@ -468,7 +490,8 @@ dispatch.monitor = function(r, inst)
 	else
 		error("runner: unknown norm '" .. tostring(inst.norm) .. "'")
 	end
-	r.on_monitor(inst.field, value, r._iter)
+
+	r.on_monitor(inst.field, value, r._iter, r._loop_depth, "field_norm")
 end
 
 dispatch.inner_loop = function(r, inst)

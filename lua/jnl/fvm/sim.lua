@@ -27,14 +27,13 @@ function Sim.new(runner, alg, opts)
 		})
 	end
 
-	runner.on_monitor = function(field, value, iter, depth, norm)
+	runner.on_monitor = function(field, value, iter, depth, kind)
 		sage_getter():assert({
-			kind = "field_norm",
+			kind = kind,
 			field = field,
 			value = value,
 			iter = iter,
 			loop_depth = depth,
-			norm = norm
 		})
 	end
 

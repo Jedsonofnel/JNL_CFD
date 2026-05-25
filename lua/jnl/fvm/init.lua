@@ -1,33 +1,49 @@
--- fvm/init.lua - re-exports from other fvm files
+-- lua/jnl/fvm/init.lua - FVM facade: re-exports compiler, case, BC, and operators
 -- <jed@nelson.ac> // 2026-05-12
 
-local FVM  = {}
+local FVM           = {}
 
--- compiler/equation DSL
-local eq   = require("jnl.fvm.eq")
-FVM.Op     = eq.Op
-FVM.eq     = eq.Eq  -- lower case as it's a function NOT a module
+FVM._doc            = "FVM facade: equation DSL, compiler, case management, and operator bindings."
 
-local expr = require("jnl.fvm.expr")
-FVM.Expr   = expr
+FVM._doc_subsection = [[
+Build a registry of fields and equations, compile it with an algorithm, then
+run the result with a Runner. Operators are available flat on FVM or namespaced
+under FVM.operators for documentation and introspection.]]
 
-local case = require("jnl.fvm.case")
-FVM.Case   = case
+local eq            = require("jnl.fvm.eq")
+FVM.Op              = eq.Op
+FVM.eq              = eq.Eq
 
-local bc   = require("jnl.fvm.bc")
-FVM.BC     = bc
+local expr          = require("jnl.fvm.expr")
+FVM.Expr            = expr
 
-local compile = require("jnl.fvm.compile")
-FVM.Compile = compile
+local case          = require("jnl.fvm.case")
+FVM.Case            = case
 
--- C bindings, split by concern
-local b    = require("jnl.fvm_internal")
+local bc            = require("jnl.fvm.bc")
+FVM.BC              = bc
 
--- context + field + fvsys construction
+local compile       = require("jnl.fvm.compile")
+FVM.Compile         = compile
 
--- defaults: 8 cell scratch (sufficient for BiCGSTAB), 4 face scratch
+local ops           = require("jnl.fvm.operators")
+FVM.operators       = ops
+
+local function flat(t)
+	for k, v in pairs(t) do
+		if type(v) == "function" then FVM[k] = v end
+	end
+end
+flat(ops)
+
+--
+-- Context constructor
+--
+
 local DEFAULT_CELL_SCRATCH = 8
 local DEFAULT_FACE_SCRATCH = 4
+
+local b = require("jnl.fvm_internal")
 
 function FVM.ctx_new(mesh, n_fields, n_face_fields, n_systems, opts)
 	opts = opts or {}
@@ -36,45 +52,43 @@ function FVM.ctx_new(mesh, n_fields, n_face_fields, n_systems, opts)
 	return b.ctx_new(mesh, n_fields, n_face_fields, n_systems, ncs, nfs)
 end
 
--- operators: assembled into the linear system
-FVM.ddt_const                = b.ddt_const
-FVM.ddt_field                = b.ddt_field
-FVM.laplacian_const          = b.laplacian_const
-FVM.laplacian_field          = b.laplacian_field
-FVM.laplacian_field_harmonic = b.laplacian_field_harmonic
-FVM.laplacian_nonorth_const  = b.laplacian_nonorth_const
-FVM.laplacian_nonorth_field  = b.laplacian_nonorth_field
-FVM.div_cds_const            = b.div_cds_const
-FVM.div_cds_field            = b.div_cds_field
-FVM.div_uds_const            = b.div_uds_const
-FVM.div_uds_field            = b.div_uds_field
-FVM.div_tvd_minmod           = b.div_tvd_minmod
-FVM.div_tvd_van_leer         = b.div_tvd_van_leer
-FVM.div_tvd_superbee         = b.div_tvd_superbee
-FVM.su_const                 = b.su_const
-FVM.su_field                 = b.su_field
-FVM.su_integrated            = b.su_integrated
-FVM.su_field_scaled          = b.su_field_scaled
-FVM.sp_const                 = b.sp_const
-FVM.sp_field                 = b.sp_field
-FVM.sp_integrated            = b.sp_integrated
+--
+-- API
+--
 
--- boundary conditions
-FVM.bc_dirichlet_const       = b.bc_dirichlet_const
-FVM.bc_neumann_const         = b.bc_neumann_const
-FVM.bc_dirichlet_face_const  = b.bc_dirichlet_face_const
-FVM.bc_neumann_face_const    = b.bc_neumann_face_const
-FVM.bc_dirichlet_face_normal = b.bc_dirichlet_face_normal
-FVM.bc_neumann_face_normal   = b.bc_neumann_face_normal
-
--- interpolation
-FVM.face_interp_cds          = b.face_interp_cds
-FVM.face_normal_component    = b.face_normal_component
-FVM.rhie_chow                = b.rhie_chow
-
--- grad
-FVM.grad_green_gauss         = b.grad_green_gauss
-FVM.divergence               = b.divergence
-FVM.vorticity_2d             = b.vorticity_2d
+FVM._api = {
+	ctx_new = {
+		sig = "ctx_new(mesh:Mesh, n_fields:int, n_face_fields:int, n_systems:int, opts:table?) -> ctx",
+		doc = "Allocate an FVM context. opts: { cell_scratch=8, face_scratch=4 }",
+	},
+	eq = {
+		sig = "eq(...terms, opts:table?) -> Eq",
+		doc = "Construct a field equation from FVM terms. opts: { solver='bicgstab'|'cg', relax:f64 }",
+	},
+	Op = {
+		sig = "Op.lap | Op.div | Op.ddt | Op.su | Op.sp",
+		doc = "FVM differential operator constructors for use inside FVM.eq()",
+	},
+	Expr = {
+		sig = "Expr.grad | Expr.face | Expr.mwi | Expr.diag | Expr.div | Expr.div_mwi | ...",
+		doc = "FVM expression constructors for intermediate quantities and flux references.",
+	},
+	BC = {
+		sig = "BC.dirichlet | BC.neumann | BC.neumann_all | ...",
+		doc = "Boundary condition constructors for use in field registration.",
+	},
+	Case = {
+		sig = "Case.new(mesh, reg, opts?) -> Case",
+		doc = "Allocate and manage field storage, systems, and compiled state for a registry.",
+	},
+	Compile = {
+		sig = "Compile.compile(reg, alg) -> compiled",
+		doc = "Expand intermediates, emit instructions, and count resources for a registry+algorithm pair.",
+	},
+	operators = {
+		sig = "operators.<op>(sys, mesh, ...) -> nil",
+		doc = "Namespaced operator bindings with full documentation. All operators also available flat on FVM.",
+	},
+}
 
 return FVM

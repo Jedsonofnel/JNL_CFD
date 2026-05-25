@@ -274,23 +274,29 @@ function M.face_normal(U_name)
 	})
 end
 
-function M.div(field)
+function M.div(field, opts)
 	V.field_name(field, "div field")
+	opts = opts or {}
+
 	return E.make_expr({
 		kind = "div",
 		field = field,
+		integratd = opts.integrated ~= false, -- default true
 		_dep_name = div_name(field),
 		_pretty = function() return pretty_div(field) end
 	})
 end
 
-function M.div_mwi(U_name, p_name)
+function M.div_mwi(U_name, p_name, opts)
 	V.field_name(U_name, "E.div_mwi U")
 	V.field_name(p_name, "E.div_mwi p")
+	opts = opts or {}
+
 	return E.make_expr({
 		kind = "div_mwi",
 		U = U_name,
 		p = p_name,
+		integratd = opts.integrated ~= false, -- default true
 		_dep_name = div_mwi_name(U_name, p_name),
 		_pretty = function() return pretty_div_mwi(U_name, p_name) end
 	})

@@ -19,6 +19,8 @@ local MODULES = {
 	"jnl.mesh2d.smesh",
 	"jnl.mesh2d.types",
 	"jnl.mesh2d.tri",
+	"jnl.fvm",
+	"jnl.fvm.operators",
 	"jnl.ui",
 	"jnl.doc",
 	"jnl.repl",
