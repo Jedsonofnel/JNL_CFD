@@ -312,4 +312,48 @@ end
 
 M.is_facewise = is_facewise
 
+--
+-- API
+--
+
+M._doc = "FVM expression constructors for face-valued and gradient quantities."
+
+M._doc_subsection =
+	"These produce Expr nodes with _dep_name fields the compiler resolves to intermediates. " ..
+	"mwi, face, and face_normal are facewise — only valid as the flux argument to Op.div. " ..
+	"grad and diag are cell-space and appear in su/sp source expressions. " ..
+	"All internal names use double-underscore mangling; M.names exposes the decoders."
+
+M._api = {
+	grad        = { args = "field:string, component:'x'|'y'", ret = "Expr", doc = "Green-Gauss gradient component; dep __grad_<comp>:<field>" },
+	diag        = { args = "field:string, component?", ret = "Expr", doc = "Matrix diagonal snapshot; dep __diag_<field>; component 'x'|'y' for vector diag" },
+	mwi         = { args = "U:string, p:string", ret = "Expr", doc = "Rhie-Chow momentum-weighted face flux; facewise; dep __mwi_<U>:<p>" },
+	face        = { args = "field:string", ret = "Expr", doc = "CDS face interpolation of a cell field; facewise; dep __face_<field>" },
+	face_normal = { args = "U:string", ret = "Expr", doc = "Face-normal velocity component; facewise; dep __facen_<U>" },
+	div         = { args = "field:string, opts?", ret = "Expr", doc = "Divergence of a cell field; dep __div_<field>" },
+	div_mwi     = { args = "U:string, p:string, opts?", ret = "Expr", doc = "Divergence of MWI face flux; dep __div_mwi_<U>:<p>" },
+	is_facewise = { args = "e:Expr", ret = "bool", doc = "True if expr is face-space (mwi, face, face_normal); controls Op.div dispatch" },
+}
+
+M._constants = {
+	names = {
+		doc    = "Name mangler and decoder functions for all FVM intermediate naming conventions",
+		values = {
+			grad        = { value = "function(field, comp?)", doc = "Encode grad dep name" },
+			face        = { value = "function(field)", doc = "Encode face dep name" },
+			face_normal = { value = "function(U)", doc = "Encode face-normal dep name" },
+			mwi         = { value = "function(U, p)", doc = "Encode MWI dep name" },
+			diag        = { value = "function(field, i?)", doc = "Encode diagonal dep name" },
+			div         = { value = "function(field)", doc = "Encode div dep name" },
+			div_mwi     = { value = "function(U, p)", doc = "Encode div-MWI dep name" },
+			is_grad     = { value = "function(name)", doc = "Decode grad name -> comp, field" },
+			is_face     = { value = "function(name)", doc = "Decode face name -> field" },
+			is_mwi      = { value = "function(name)", doc = "Decode MWI name -> U, p" },
+			is_diag     = { value = "function(name)", doc = "Decode diag name -> field, comp?" },
+			is_div      = { value = "function(name)", doc = "Decode div name -> field" },
+			is_div_mwi  = { value = "function(name)", doc = "Decode div-MWI name -> U, p" },
+		},
+	},
+}
+
 return M

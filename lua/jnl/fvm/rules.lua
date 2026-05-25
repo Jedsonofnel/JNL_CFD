@@ -353,31 +353,216 @@ function M.post_mortem(rules_list, opts)
 end
 
 --
+-- GENERAL POST MORTEM
+--
+
+-- Discover all field names that have produced facts of a given kind.
+-- Called once at post-mortem time so O(n) over facts is fine.
+local function fields_with(sage, kind)
+	local seen, out = {}, {}
+	for _, f in ipairs(sage:query({ kind = kind })) do
+		if f.field and not seen[f.field] then
+			seen[f.field] = true
+			out[#out + 1] = f.field
+		end
+	end
+	return out
+end
+
+-- Prefix-keyed advice table — matched against diagnosis codes dynamically.
+local ADVICE = {
+	["nan:"]               = "Check BCs and initial conditions; reduce relaxation or dt",
+	["blowup:"]            = "Reduce under-relaxation or dt; verify BC magnitudes",
+	["monotone_growth:"]   = "Pin a reference cell or add a Dirichlet BC to fix the level",
+	["stalled:"]           = "Reduce under-relaxation; inspect mesh quality and skewness",
+	["residual_growing:"]  = "Reduce under-relaxation or dt; check for oscillating BCs",
+	["neg_diagonal:"]      = "Check operator sign conventions and BC types",
+	["not_diag_dominant:"] = "Reduce convection or increase diffusion; check CFL",
+	["asymmetry:"]         = "Reduce TVD correction strength or switch to UDS temporarily",
+}
+
+local function prefix_advice(sage, f)
+	for prefix, msg in pairs(ADVICE) do
+		if f.code:sub(1, #prefix) == prefix then
+			sage:derive_once("advice:" .. f.code, {
+				kind     = "advice",
+				for_code = f.code,
+				message  = msg,
+				iter     = f.iter,
+			}, { f.id })
+			return
+		end
+	end
+end
+
+function M.general_post_mortem(opts)
+	opts                = opts or {}
+
+	local blowup_tol    = opts.blowup_threshold or 1e10
+	local stall_window  = opts.stall_window or 5
+	local stall_tol     = opts.stall_tol or 0.1
+	local traj_window   = opts.trajectory_window or 10
+	local growth_factor = opts.growth_factor or 10
+	local asym_tol      = opts.asymmetry_tol or 1e-6
+
+	local rules         = {
+
+		-- NaN in any monitored field
+		M.pm_rule("nan", function(sage, f, _, diag)
+			for _, name in ipairs(fields_with(sage, "field_norm")) do
+				local h = latest(sage, name, "field_norm")
+				if h[1] and h[1].value ~= h[1].value then
+					diag("nan:" .. name,
+						string.format("%s is NaN at iter %d", name, f.iter))
+				end
+			end
+		end),
+
+		-- Norm above blowup threshold
+		M.pm_rule("blowup", function(sage, f, _, diag)
+			for _, name in ipairs(fields_with(sage, "field_norm")) do
+				local h = latest(sage, name, "field_norm")
+				if h[1] and h[1].value > blowup_tol then
+					diag("blowup:" .. name,
+						string.format("%s norm = %.2e at iter %d", name, h[1].value, f.iter))
+				end
+			end
+		end),
+
+		-- Monotonically growing norm -> likely singular system.
+		-- h is sorted desc by iter: h[1] most recent, h[#h] oldest.
+		-- Growth means h[i-1].value > h[i].value (more recent > older).
+		M.pm_rule("monotone_growth", function(sage, _, _, diag)
+			for _, name in ipairs(fields_with(sage, "field_norm")) do
+				local h = latest(sage, name, "field_norm", 999)
+				if #h < 3 then goto continue end
+				local growing = true
+				for i = 2, #h do
+					if h[i - 1].value <= h[i].value then
+						growing = false; break
+					end
+				end
+				if growing then
+					diag("monotone_growth:" .. name,
+						string.format("%s norm grew monotonically over %d iters — possible singular system",
+							name, #h))
+				end
+				::continue::
+			end
+		end),
+
+		-- Residuals stuck high for stall_window consecutive iters
+		M.pm_rule("stalled_residuals", function(sage, _, _, diag)
+			for _, name in ipairs(fields_with(sage, "residual")) do
+				local h = latest(sage, name, "residual", stall_window)
+				if #h < stall_window then goto continue end
+				local stalled = true
+				for _, e in ipairs(h) do
+					if e.value < stall_tol then
+						stalled = false; break
+					end
+				end
+				if stalled then
+					diag("stalled:" .. name,
+						string.format("%s: residuals > %.2e for %d consecutive iters",
+							name, stall_tol, stall_window))
+				end
+				::continue::
+			end
+		end),
+
+		-- Residual growing faster than growth_factor over traj_window iters
+		M.pm_rule("residual_trajectory", function(sage, _, _, diag)
+			for _, name in ipairs(fields_with(sage, "residual")) do
+				local h = latest(sage, name, "residual", traj_window)
+				if #h < 2 then goto continue end
+				-- h[1] most recent, h[#h] oldest; growing if recent >> oldest
+				if h[1].value > h[#h].value * growth_factor then
+					local traj = {}
+					for i = #h, 1, -1 do
+						traj[#traj + 1] = string.format("%.2e", h[i].value)
+					end
+					diag("residual_growing:" .. name,
+						string.format("%s residual grew %.1fx: %s",
+							name,
+							h[1].value / (h[#h].value + 1e-300),
+							table.concat(traj, " -> ")))
+				end
+				::continue::
+			end
+		end),
+
+		-- Matrix health via diagnostics object — optional, degrades gracefully
+		M.pm_rule("matrix_health", function(sage, _, d, diag)
+			if not (d and d.sys_diag) then return end
+			for _, name in ipairs(fields_with(sage, "field_norm")) do
+				local s = d.sys_diag(name)
+				if not s then goto continue end
+				if not s.all_diagonals_positive then
+					diag("neg_diagonal:" .. name,
+						string.format("%s: non-positive diagonal — check operator signs and BCs", name))
+				end
+				if s.diagonal_dominance < 0 then
+					diag("not_diag_dominant:" .. name,
+						string.format("%s: diagonal dominance = %.3e — matrix may be singular",
+							name, s.diagonal_dominance))
+				end
+				if s.max_asymmetry > asym_tol then
+					diag("asymmetry:" .. name,
+						string.format("%s: max asymmetry = %.3e — TVD/UDS correction may be too large",
+							name, s.max_asymmetry))
+				end
+				::continue::
+			end
+		end),
+
+		-- Emit advice for any diagnosis fact whose code matches a known prefix
+		{
+			name  = "pm:advice",
+			match = function(f) return f.kind == "diagnosis" end,
+			fire  = function(sage, f) prefix_advice(sage, f) end,
+		},
+	}
+
+	return {
+		rules = rules,
+		init  = function(sage) sage:ensure_cache(BY_FIELD_KEY, by_field_key_fn) end,
+	}
+end
+
+--
 -- API
 --
 
 M._doc = "Rule helpers and rulesets for FVM convergence monitoring via Sage."
 
+M._doc_subsection = "The d argument passed to pm_rule callbacks is sim.diag — the same Diag object " ..
+	"documented in jnl.fvm.sim. Use d.field(name), d.max(name), and d.sys_diag(name) " ..
+	"to inspect field state at the point of divergence."
+
+
 M._api = {
 	-- predicates
-	residual_below     = "(tol, n_consec?) -> pred  true if last n residuals all < tol",
-	field_above        = "(threshold) -> pred  true if latest field_norm > threshold or NaN",
-	field_is_nan       = "() -> pred  true if latest field_norm is NaN",
-	field_change_below = "(tol, n_consec?) -> pred  true if last n normL2_rel_diff < tol",
-	field_stagnant     = "(tol, window?) -> pred  true if field_norm range < tol*lo over window iters",
-	field_norm_below   = "(tol, n_consec?) -> pred  true if last n field_norm values all < tol",
-	any_of             = "(...preds) -> pred  true if any child predicate is true",
+	residual_below      = "(tol, n_consec?) -> pred  true if last n residuals all < tol",
+	field_above         = "(threshold) -> pred  true if latest field_norm > threshold or NaN",
+	field_is_nan        = "() -> pred  true if latest field_norm is NaN",
+	field_change_below  = "(tol, n_consec?) -> pred  true if last n normL2_rel_diff < tol",
+	field_stagnant      = "(tol, window?) -> pred  true if field_norm range < tol*lo over window iters",
+	field_norm_below    = "(tol, n_consec?) -> pred  true if last n field_norm values all < tol",
+	any_of              = "(...preds) -> pred  true if any child predicate is true",
 	-- criteria
-	all_fields         = "(predicates:{field->pred}) -> criterion  true if all fields satisfy pred",
-	any_field          = "(predicates:{field->pred}) -> criterion  true if any field satisfies pred",
+	all_fields          = "(predicates:{field->pred}) -> criterion  true if all fields satisfy pred",
+	any_field           = "(predicates:{field->pred}) -> criterion  true if any field satisfies pred",
 	-- rulesets
-	stopping           = "(criteria, opts?) -> ruleset  convergence/divergence stopping rules",
-	tabular_progress   = "(columns:{{field,kind}}, opts?) -> ruleset  periodic tabular log",
-	post_mortem        = "(rules_list, opts?) -> ruleset  post-mortem diagnosis ruleset",
+	stopping            = "(criteria, opts?) -> ruleset  convergence/divergence stopping rules",
+	tabular_progress    = "(columns:{{field,kind}}, opts?) -> ruleset  periodic tabular log",
+	post_mortem         = "(rules_list, opts?) -> ruleset  post-mortem diagnosis ruleset",
 	-- rule factories
-	pm_rule            = "(name, fn) -> rule  fire fn on post_mortem fact; fn calls diag() only when significant",
-	pm_advice          = "(code, msg) -> rule  derive advice fact when diagnosis code seen",
-	pm_print           = "() -> rule  print all diagnosis and advice facts",
+	pm_rule             = "(name, fn) -> rule  fire fn on post_mortem fact; fn calls diag() only when significant",
+	pm_advice           = "(code, msg) -> rule  derive advice fact when diagnosis code seen",
+	pm_print            = "() -> rule  print all diagnosis and advice facts",
+	general_post_mortem =
+	"(opts?) -> ruleset  field-agnostic post-mortem; discovers fields from sage history. opts: { blowup_threshold, stall_window, stall_tol, trajectory_window, growth_factor, asymmetry_tol }",
 }
 
 M._types = {

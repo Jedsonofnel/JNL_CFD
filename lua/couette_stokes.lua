@@ -16,8 +16,8 @@ local rho    = 1.0
 
 
 local mesh = mesh2d.new_smesh(L, H, Nx, Ny)
-local reg = canned.stokes_registry({ rho = rho, mu = mu })
-local alg = canned.SIMPLE()
+local reg = canned.reg_stokes({ rho = rho, mu = mu })
+local alg = canned.alg_simple()
 
 
 local bcs  = {

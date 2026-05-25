@@ -164,7 +164,7 @@ function TriSpec:set_require_named_baffles(enabled) end
 ---@param enabled boolean
 function TriSpec:set_require_named_regions(enabled) end
 
----@class Mesh
+---@class Mesh2D
 local Mesh = {}
 ---@return integer
 function Mesh:n_cells() end

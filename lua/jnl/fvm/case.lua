@@ -335,7 +335,8 @@ end
 
 function Case:make_sim(opts)
 	local FVMSim = require("jnl.fvm.sim")
-	return FVMSim.new(self:make_runner(), self.alg, opts)
+	assert(self.alg._alg, "Case:make_sim: alg is not an FvmAlg wrapper")
+	return FVMSim.new(self:make_runner(), self.alg._alg, opts)
 end
 
 --
@@ -384,5 +385,45 @@ function Case:print_warnings()
 		for _, w in ipairs(self.warnings) do print("WARNING: " .. w) end
 	end
 end
+
+--
+-- API
+--
+
+Case._doc = "Case manager: owns registry, algorithm, mesh, and BCs; drives compilation and allocation."
+
+Case._doc_subsection =
+	"Construct with Case.new(reg, alg, mesh, bcs); compilation runs immediately. " ..
+	"Call make_sim() to get a runnable Sim — this allocates field storage on first call. " ..
+	"Mutate physics, mesh, or BCs with set_physics/set_mesh/set_bcs; then call " ..
+	"reconcile() to preserve existing field data or reallocate() to start fresh." ..
+	"After allocate(), _field_map is a table of { [field_name] -> vec } giving direct " ..
+	"read access to cell field data for post-processing."
+
+Case._api = {
+	-- construction
+	new                = { args = "reg, alg, mesh, bcs?", ret = "Case", doc = "Compile registry+algorithm against mesh; bcs table is { [field]={BC,...} }" },
+	-- running
+	make_runner        = { args = "", ret = "Runner", doc = "Allocate fields if needed and return a low-level Runner" },
+	make_sim           = { args = "opts?", ret = "Sim", doc = "Allocate fields if needed and return a Sim ready to call :run()" },
+	-- allocation
+	allocate           = { args = "", ret = "nil", doc = "Allocate ctx, fields, and systems from scratch; errors if already allocated" },
+	reconcile          = { args = "", ret = "nil", doc = "Diff old and new manifests; preserve existing field data where possible" },
+	reallocate         = { args = "", ret = "nil", doc = "Tear down and reallocate from scratch; loses all field data" },
+	-- mutation
+	set_mesh           = { args = "mesh:Mesh", ret = "nil", doc = "Replace mesh; recompiles and marks realloc needed" },
+	set_physics        = { args = "reg, alg?", ret = "nil", doc = "Replace registry and optionally algorithm; recompiles and marks reconcile needed" },
+	set_bcs            = { args = "bcs:table", ret = "nil", doc = "Replace BC table and recompile; no allocation change needed" },
+	-- query
+	is_allocated       = { args = "", ret = "bool", doc = "True if allocate() has been called" },
+	needs_realloc      = { args = "", ret = "bool", doc = "True if mesh changed and reallocate() is required" },
+	needs_reconcile    = { args = "", ret = "bool", doc = "True if physics changed and reconcile() should be called" },
+	is_unsteady        = { args = "", ret = "bool", doc = "True if any field equation contains a ddt term" },
+	-- diagnostics
+	print_algorithm    = { args = "", ret = "nil", doc = "Print the expanded algorithm step list" },
+	print_instructions = { args = "", ret = "nil", doc = "Print the compiled instruction listing (pre/main/post)" },
+	print_resources    = { args = "", ret = "nil", doc = "Print manifest resource counts: fields, systems, scratch" },
+	print_warnings     = { args = "", ret = "nil", doc = "Print BC defaulting warnings from last compile" },
+}
 
 return Case

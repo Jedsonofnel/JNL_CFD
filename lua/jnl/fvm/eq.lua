@@ -313,4 +313,56 @@ end
 
 M.Eq = eq
 
+--
+-- API
+--
+
+M._doc = "FVM differential operator constructors and equation assembler."
+
+M._doc_subsection =
+	"Build equations by passing Op.* terms to FVM.eq(). All operators take the field " ..
+	"being solved as their last positional argument; a trailing config table is optional. " ..
+	"Op.div requires exactly one facewise flux expression (FVMe.mwi or FVMe.face) among " ..
+	"its arguments. The result of FVM.eq() is passed as the eq field in reg:field()."
+
+M._types = {
+	Op = {
+		doc         = "FVM differential operator constructors; all return Term for use in FVM.eq()",
+		constructor = "available as FVM.Op or local Op = FVM.Op",
+		kind        = "table",
+		methods     = {
+			ddt = { args = "coeff?, ..., field, config?", ret = "Term", doc = "Implicit time derivative; config: { scheme='implicit' }" },
+			div = { args = "flux:Expr, coeff?, field, config?", ret = "Term", doc = "Convection; flux must be facewise (mwi/face); config: { scheme='uds'|'cds'|'minmod'|'superbee'|'van-leer' }" },
+			lap = { args = "coeff?, field, config?", ret = "Term", doc = "Laplacian; config: { gamma_scheme='linear'|'harmonic', non_ortho=false }" },
+			su  = { args = "expr, config?", ret = "Term", doc = "Explicit source added to RHS; config: { integrated=false }" },
+			sp  = { args = "coeff, config?", ret = "Term", doc = "Linearised implicit source added to diagonal; config: { integrated=false }" },
+		},
+	},
+	Term = {
+		doc         = "Assembled operator term; carry kind, coeff, phi, and _deps",
+		constructor = "Op.ddt / Op.div / Op.lap / Op.su / Op.sp",
+		kind        = "table",
+		methods     = {
+			pretty    = { args = "field_name?", ret = "string", doc = "Render term to human-readable string" },
+			deps      = { args = "", ret = "string[]", doc = "Sorted field names this term depends on" },
+			has_dep   = { args = "name:string", ret = "bool", doc = "True if name is a direct dependency" },
+			is_linear = { args = "", ret = "bool", doc = "True for ddt/lap/div; false for su/sp unless overridden" },
+		},
+	},
+	Eq = {
+		doc         = "Assembled field equation holding terms, solver, and relaxation",
+		constructor = "FVM.eq(...terms, config?)",
+		kind        = "table",
+		methods     = {
+			pretty       = { args = "field_name?", ret = "string", doc = "Render equation block to string" },
+			deps         = { args = "", ret = "string[]", doc = "Union of all term dependencies, sorted" },
+			has_dep      = { args = "name:string", ret = "bool", doc = "True if any term depends on name" },
+			terms_of     = { args = "kind:string", ret = "fun():Term?", doc = "Iterator over terms of a specific kind" },
+			is_nonlinear = { args = "", ret = "bool", doc = "True if any term is nonlinear in phi" },
+		},
+	},
+}
+
+-- Note: FVM.eq itself is documented on the FVM facade (jnl.fvm)
+
 return M

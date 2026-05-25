@@ -233,5 +233,43 @@ function M.sample(fn, x0, x1, n)
 	return xs, ys
 end
 
-return M
+--
+-- API
+--
 
+M._doc = "Gnuplot driver via popen; supports interactive display, file output, and CSV export."
+
+M._doc_subsection =
+	"Build a Figure with M.figure(opts), chain :add(xs, ys, opts) calls, then call " ..
+	":show() for an interactive window or :save(path) for file output. Extension on " ..
+	"the save path selects the terminal automatically (.png .svg .pdf .eps). " ..
+	"M.sample(fn, x0, x1, n) generates xs/ys from a Lua function for quick plotting."
+
+M._api = {
+	figure    = { args = "opts?",                   ret = "Figure",   doc = "Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key, logx, logy }" },
+	series    = { args = "xs, ys, opts?",           ret = "Series",   doc = "Build a series struct explicitly; opts: { title, style, color, lw, pt, ps, dt }" },
+	sample    = { args = "fn, x0, x1, n?",          ret = "xs, ys",   doc = "Sample fn over [x0,x1] at n+1 points (default 200); returns two arrays" },
+	write_csv = { args = "path, xs_or_series, ys?", ret = "nil",      doc = "Write xs/ys or a list of Series structs to a CSV file" },
+}
+
+M._types = {
+	Figure = {
+		doc         = "Chainable figure builder; holds series list and display options",
+		constructor = "M.figure(opts?)",
+		kind        = "table",
+		methods     = {
+			add       = { args = "xs, ys, opts?  |  series:Series", ret = "Figure", doc = "Append a data series; accepts raw arrays or a Series struct; chainable" },
+			show      = { args = "",                                 ret = "nil",    doc = "Open a persistent interactive gnuplot window" },
+			save      = { args = "path:string, opts?",              ret = "nil",    doc = "Save to file; terminal inferred from extension; opts: { size={w,h}, terminal }" },
+			write_csv = { args = "path:string",                     ret = "Figure", doc = "Dump all series to CSV; chainable" },
+		},
+	},
+	Series = {
+		doc         = "Data series descriptor table",
+		constructor = "M.series(xs, ys, opts?) or fig:add(xs, ys, opts)",
+		kind        = "table",
+		methods     = {},
+	},
+}
+
+return M

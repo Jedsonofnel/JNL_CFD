@@ -657,4 +657,66 @@ function Expr:eval(pool, n)
 	return self._ud:eval(pool, n)
 end
 
+--
+-- API
+--
+
+M._doc = "Arithmetic expression graphs for symbolic computation and C codegen."
+
+M._doc_subsection =
+	"Construct expressions with add/mul/div/neg/pow and leaves sym/const/cx/cy/cV. " ..
+	"Strings and numbers coerce automatically via from(). E.prime/expl/prev create " ..
+	"mangled-name references for correction and lagged quantities. Call compile(bindings) " ..
+	"then eval(pool, n) to evaluate over a mesh array."
+
+M._api = {
+	-- coercion / low-level
+	from          = { args = "v:number|string|Expr", ret = "Expr", doc = "Coerce number, string, or Expr to Expr" },
+	make_expr     = { args = "t:table", ret = "Expr", doc = "Stamp Expr metatable onto t and collect deps into t._deps" },
+	collect_deps  = { args = "e:Expr, into:table?", ret = "table<string,true>", doc = "Walk expression tree and accumulate symbol name dependencies" },
+	pretty        = { args = "e:Expr", ret = "string", doc = "Render expression to string with correct operator precedence" },
+	scratch_depth = { args = "e:Expr", ret = "int", doc = "Sethi-Ullman register count needed to evaluate this expression" },
+	-- leaf constructors
+	sym           = { args = "name:string", ret = "Expr", doc = "Named symbol reference" },
+	const         = { args = "value:number", ret = "Expr", doc = "Numeric constant" },
+	cx            = { args = "", ret = "Expr", doc = "Cell centre x coordinate" },
+	cy            = { args = "", ret = "Expr", doc = "Cell centre y coordinate" },
+	cV            = { args = "", ret = "Expr", doc = "Cell volume" },
+	-- arithmetic
+	add           = { args = "...:number|string|Expr", ret = "Expr", doc = "Sum; variadic; ignores zero addends" },
+	sub           = { args = "a, b", ret = "Expr", doc = "Difference a - b" },
+	mul           = { args = "...:number|string|Expr", ret = "Expr", doc = "Product; variadic; ignores unit factors" },
+	div           = { args = "a, b", ret = "Expr", doc = "Quotient a / b" },
+	neg           = { args = "a", ret = "Expr", doc = "Unary negation" },
+	pow           = { args = "base, exp", ret = "Expr", doc = "base^exp" },
+	-- lagged / correction references
+	prime         = { args = "field:string", ret = "Expr", doc = "Pressure-correction value; dep name __prime_<field>" },
+	expl          = { args = "field:string", ret = "Expr", doc = "Explicit lagged value, fixed during inner iterations; dep __expl_<field>" },
+	prev          = { args = "field:string", ret = "Expr", doc = "Value from previous time step; dep __prev_<field>" },
+	-- name manglers
+	prime_name    = { args = "field:string", ret = "string", doc = "Return __prime_<field>" },
+	expl_name     = { args = "field:string", ret = "string", doc = "Return __expl_<field>" },
+	prev_name     = { args = "field:string", ret = "string", doc = "Return __prev_<field>" },
+	is_prime      = { args = "name:string", ret = "string?", doc = "Return base field name if name is a prime mangling, else nil" },
+	is_expl       = { args = "name:string", ret = "string?", doc = "Return base field name if name is an expl mangling, else nil" },
+	is_prev       = { args = "name:string", ret = "string?", doc = "Return base field name if name is a prev mangling, else nil" },
+	pretty_sym    = { args = "name:string", ret = "string", doc = "Expand mangled names to unicode glyphs for display" },
+}
+
+M._types = {
+	Expr = {
+		doc         = "Arithmetic expression node; all E.* constructors return Expr",
+		constructor = "E.sym / E.const / E.add / E.mul / E.prime etc.",
+		kind        = "table",
+		methods     = {
+			pretty        = { args = "", ret = "string", doc = "Render to human-readable string" },
+			deps          = { args = "", ret = "string[]", doc = "Sorted symbol names this expression depends on" },
+			scratch_depth = { args = "", ret = "int", doc = "Scratch buffers needed for evaluation" },
+			compile       = { args = "bindings:table<string,vec>", ret = "Expr", doc = "Compile against symbol->vec bindings; required before eval()" },
+			eval          = { args = "pool:ScratchPool, n:int", ret = "vec", doc = "Evaluate compiled expression over n elements" },
+			walk          = { args = "visitor:fun(node:Expr)", ret = "nil", doc = "Call visitor on every node in the expression tree" },
+		},
+	},
+}
+
 return M

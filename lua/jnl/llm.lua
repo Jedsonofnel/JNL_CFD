@@ -55,6 +55,7 @@ local SECTIONS = {
 		bullet("Use local functions for internal helpers."),
 		bullet("Keep public module functions easy to find."),
 		bullet("Use minimal comments. Comment only to explain non-obvious behaviour, constraints, or design choices."),
+		bullet("Do not use unicode in comments, like arrows or mathematical symbols"),
 		bullet("Do not add decorative comment banners beyond the standard section header style."),
 		bullet(
 			"Keep module metadata such as _doc, _api, _types, and _constants accurate when adding or changing public API."),
@@ -78,6 +79,7 @@ local SECTIONS = {
 			"_doc_subsection should explain how to use the module correctly, not duplicate the function-by-function API docs."),
 		bullet(
 			"_doc_subsection may be a string or an array of short paragraphs, and should stay concise enough to appear before _api output."),
+		bullet("_doc_subsection must not end with a newline due to usage of [[ ]] in lua"),
 	}),
 
 	section("File headers", {

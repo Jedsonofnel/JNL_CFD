@@ -75,6 +75,7 @@ function Sim:run()
 
 	local sage = self._core._sage
 	local conclusion = sage:last_one({ kind = "diverging" })
+
 	if conclusion then
 		sage:derive({
 			kind = "post_mortem",
@@ -103,5 +104,43 @@ function Sim:add_rules(...)
 		self._core:sage():add_rule(r.name, r.match, r.fire)
 	end
 end
+
+--
+-- API
+--
+
+Sim._doc = "FVM simulation wrapper: wires runner callbacks into Sage and drives the solver loop."
+
+Sim._doc_subsection =
+	"Obtain via Case:make_sim() rather than constructing directly. Call :run() for a " ..
+	"full solve, or :step() / :is_finished() for manual iteration. Post-mortem rules " ..
+	"fire automatically on divergence. Access field data and matrix diagnostics through " ..
+	"the diag object for custom rules and post-processing."
+
+Sim._api = {
+	new         = { args = "runner, alg, opts?", ret = "Sim", doc = "Wire FVM callbacks onto runner and construct core sim; prefer Case:make_sim()" },
+	run         = { args = "", ret = "nil", doc = "Run until convergence or divergence; fires post-mortem rules on divergence" },
+	step        = { args = "", ret = "nil", doc = "Advance one outer iteration" },
+	is_finished = { args = "", ret = "bool", doc = "True if the solver has converged, diverged, or hit max_iters" },
+	sage        = { args = "", ret = "Sage", doc = "Return the underlying Sage fact store for custom rule queries" },
+	add_rule    = { args = "name, match_fn, fire_fn", ret = "nil", doc = "Register a custom Sage rule" },
+	add_rules   = { args = "...rules", ret = "nil", doc = "Register multiple rules from { name, match, fire } tables" },
+}
+
+Sim._types = {
+	Diag = {
+		doc         = "Diagnostic accessor passed to post-mortem rule functions as f.diagnostics",
+		constructor = "available as sim.diag after Sim.new()",
+		kind        = "table",
+		methods     = {
+			field    = { args = "name:string", ret = "vec", doc = "Raw cell field vec for the named field" },
+			residual = { args = "name:string", ret = "number", doc = "Last linear solver residual for the named field" },
+			is_nan   = { args = "name:string", ret = "bool", doc = "True if field contains any NaN values" },
+			max      = { args = "name:string", ret = "number", doc = "L-infinity norm of field (max absolute value)" },
+			iter     = { args = "", ret = "int", doc = "Current outer iteration count" },
+			sys_diag = { args = "name:string", ret = "table?", doc = "Matrix diagnostics: { diagonal_dominance, all_diagonals_positive, max_asymmetry, residual_norm } or nil if no system" },
+		},
+	},
+}
 
 return Sim

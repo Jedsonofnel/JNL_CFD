@@ -5,6 +5,20 @@ local M = {}
 
 M._doc = "Documentation aggregator and API auditor for JNL suite"
 
+M._doc_subsection = {
+	"Three metadata tables drive documentation. _api is a flat map of function name to " ..
+	"{ args, ret, doc } — args and ret are plain strings, doc is one sentence.",
+	"_types is a map of type name to { doc, constructor, kind?, methods } where methods " ..
+	"is itself a flat map of method name to { args, ret, doc }. constructor is a string " ..
+	"showing how the type is obtained. kind is an optional tag such as 'table' or 'userdata'.",
+	"_constants is a map of constant group name to { doc, values } where values is a map " ..
+	"of key to { value, doc }. value should be the Lua literal as a string for display.",
+	"_doc is a single short sentence. _doc_subsection is a string or array of strings " ..
+	"printed before _api; keep each paragraph to 2-3 lines.",
+	"The d argument passed to pm_rule callbacks is sim.diag — the same Diag object " ..
+	"documented in jnl.fvm.sim. Use d.field(name), d.max(name), and d.sys_diag(name) " ..
+	"to inspect field state at the point of divergence."
+}
 
 
 --
@@ -12,20 +26,37 @@ M._doc = "Documentation aggregator and API auditor for JNL suite"
 --
 
 local MODULES = {
+	-- geo2d
 	"jnl.geo2d.shapes",
 	"jnl.geo2d.domain",
 	"jnl.geo2d.types",
+	-- mesh2d
 	"jnl.mesh2d",
 	"jnl.mesh2d.smesh",
 	"jnl.mesh2d.types",
 	"jnl.mesh2d.tri",
+	-- fvm
 	"jnl.fvm",
 	"jnl.fvm.operators",
+	"jnl.fvm.rules",
+	"jnl.fvm.algorithm",
+	"jnl.fvm.expr",
+	"jnl.fvm.eq",
+	"jnl.fvm.canned",
+	"jnl.fvm.case",
+	"jnl.fvm.bc",
+	-- core
+	"jnl.core.algorithm",
+	"jnl.core.registry",
+	"jnl.core.expr",
+	-- jnl
+	"jnl.sage",
 	"jnl.ui",
 	"jnl.doc",
 	"jnl.repl",
 	"jnl.llm",
 	"jnl.term_printer",
+	"jnl.gp",
 }
 
 local function load_modules()

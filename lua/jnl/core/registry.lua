@@ -1,4 +1,4 @@
--- registry.lua - registry of symbols for physics problems
+-- fvm/core/registry.lua - registry of symbols for physics problems
 -- <jed@nelson.ac> // 2026-05-11
 
 -- deps
@@ -199,6 +199,41 @@ function R:intermediate(name, itype, deps, opts)
 end
 
 --
+-- Mutation
+--
+
+function R:add_term(field_name, term)
+	local sym = self:expect(field_name)
+	assert(sym.kind == "field" and sym.eq,
+		"R:add_term: '" .. field_name .. "' has no equation")
+	sym.eq.terms[#sym.eq.terms + 1] = term
+	for dep in pairs(term._deps or {}) do
+		sym.eq._deps[dep] = true
+	end
+end
+
+function R:set_relax(field_name, alpha)
+	local sym = self:expect(field_name)
+	assert(sym.kind == "field" and sym.eq,
+		"R:set_relax: '" .. field_name .. "' has no equation")
+	sym.eq.relax = alpha
+end
+
+function R:set_solver(field_name, solver)
+	local sym = self:expect(field_name)
+	assert(sym.kind == "field" and sym.eq,
+		"R:set_solver: '" .. field_name .. "' has no equation")
+	sym.eq.solver = solver
+end
+
+function R:set_initial(field_name, value)
+	local sym = self:expect(field_name)
+	assert(sym.kind == "field",
+		"R:set_initial: '" .. field_name .. "' is not a field")
+	sym.initial = value
+end
+
+--
 -- Helpers
 --
 
@@ -317,5 +352,57 @@ function R:validate()
 		error("registry validation failed:\n" .. table.concat(errors, "\n"), 2)
 	end
 end
+
+--
+-- API
+--
+
+R._doc = "Registry of named symbols for a CFD physics problem: fields, constants, expressions, and corrections."
+
+R._doc_subsection =
+	"Register constants, fields, and expressions in dependency order; forward references " ..
+	"are not allowed. Fields from canned registries can be amended with add_term, " ..
+	"set_relax, set_solver, and set_initial rather than re-registering. Call validate() " ..
+	"before handing the registry to an algorithm to catch missing deps early."
+
+R._api = {
+	-- construction
+	new          = { args = "", ret = "Registry", doc = "Create an empty registry" },
+	define       = { args = "name, sym, proto?", ret = "nil", doc = "Low-level symbol insert; sets name and _type on sym" },
+	-- symbol registration
+	constant     = { args = "name, value", ret = "nil", doc = "Register a named numeric constant" },
+	uniform      = { args = "name, value", ret = "nil", doc = "Register a uniform field initialised to value; emitted as a pre-step" },
+	field        = { args = "name, spec?", ret = "nil", doc = "Register a field; spec: { eq, bcs, initial, region, clip }" },
+	vector       = { args = "name, components", ret = "nil", doc = "Register a named vector over already-registered scalar fields" },
+	expression   = { args = "name, expr", ret = "nil", doc = "Register a derived expression; re-evaluated when deps change" },
+	correction   = { args = "name, expr", ret = "nil", doc = "Register a correction for field 'name'; stored as __correct_<name>" },
+	intermediate = { args = "name, itype, deps, opts?", ret = "nil", doc = "Register a compiler-managed synthetic; opts: { accessor=false }" },
+	-- amendment
+	add_term     = { args = "field, term", ret = "nil", doc = "Append a term to an existing field equation and merge its deps" },
+	set_relax    = { args = "field, alpha", ret = "nil", doc = "Set under-relaxation factor on an existing field equation" },
+	set_solver   = { args = "field, solver", ret = "nil", doc = "Set linear solver on an existing field equation" },
+	set_initial  = { args = "field, value", ret = "nil", doc = "Set initial field value" },
+	-- query
+	query        = { args = "name", ret = "sym?", doc = "Return symbol or nil if absent" },
+	expect       = { args = "name", ret = "sym", doc = "Return symbol or error if absent" },
+	deps_of      = { args = "name", ret = "string[]", doc = "Direct dependencies of a symbol" },
+	depends_on   = { args = "name", ret = "string[]", doc = "All symbols that directly depend on name" },
+	validate     = { args = "", ret = "nil", doc = "Error if any symbol has missing deps or malformed corrections" },
+	-- display
+	listing      = { args = "", ret = "string", doc = "Pretty-printed symbol table sorted by name" },
+	dep_listing  = { args = "", ret = "string", doc = "Dependency listing: each symbol with its direct deps" },
+	print        = { args = "", ret = "nil", doc = "Print listing() to stdout" },
+}
+
+R._types = {
+	sym = {
+		doc         = "Tagged symbol table stored in the registry; kind field selects behaviour",
+		constructor = "R:field / R:constant / R:expression etc.",
+		kind        = "table",
+		methods     = {
+			_pretty = { args = "", ret = "string", doc = "Human-readable one-line (or block) description of the symbol" },
+		},
+	},
+}
 
 return R

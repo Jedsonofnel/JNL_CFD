@@ -8,6 +8,8 @@ local E = require("jnl.core.expr")
 local A = {}
 A.__index = A
 
+A._doc = "Core algorithmic step list dependency expansion"
+
 --
 -- Step constructors (internal)
 --
@@ -770,5 +772,53 @@ function hooks.silent(alg)
 end
 
 A.hooks = hooks
+
+--
+-- API
+--
+
+A._doc_subsection =
+	"Define steps inside loop() or linear() using the Builder DSL. Symbols not " ..
+	"explicitly listed are classified as pre/main/post by expand() and emitted " ..
+	"just-in-time. For FVM cases with convergence and progress monitoring use " ..
+	"jnl.fvm.algorithm, which wraps this and delegates to expand()."
+
+A._api = {
+	new         = { args = "", ret = "Algorithm", doc = "Create a new algorithm" },
+	loop        = { args = "cb, config?", ret = "nil", doc = "Define a looping step sequence; config: { max_iters, linalg_tol, linalg_max_iters }" },
+	linear      = { args = "cb, config?", ret = "nil", doc = "Define a one-shot step sequence; config: { linalg_tol, linalg_max_iters }" },
+	expand      = { args = "reg, inserted?, fresh?", ret = "Algorithm", doc = "Classify registry symbols, emit pre/main/post steps, return expanded algorithm" },
+	monitor     = { args = "field, config?", ret = "nil", doc = "Push a monitor step outside the builder; config: { norm='normL2' }" },
+	add_ruleset = { args = "ruleset", ret = "nil", doc = "Append a ruleset table { rules, init? } for sage integration" },
+	add_rule    = { args = "rule", ret = "nil", doc = "Append a single rule { name, match, fire }" },
+	add_rules   = { args = "...rules", ret = "nil", doc = "Append multiple rules in one call" },
+	print       = { args = "", ret = "nil", doc = "Pretty-print the step list" },
+}
+
+A._types = {
+	Builder = {
+		doc         = "Step DSL available inside loop() and linear() callbacks; all methods return self",
+		constructor = "passed as argument to loop(cb) or linear(cb)",
+		kind        = "table",
+		methods     = {
+			solve   = { args = "field", ret = "Builder", doc = "Solve the named field or vector" },
+			correct = { args = "field", ret = "Builder", doc = "Apply correction for field" },
+			zero    = { args = "field", ret = "Builder", doc = "Zero the field before solve" },
+			clip    = { args = "field, lo, hi", ret = "Builder", doc = "Clamp field values to [lo, hi] after solve" },
+			monitor = { args = "field, norm?", ret = "Builder", doc = "Record field norm; norm default 'normL2'" },
+			inner   = { args = "cb, config?", ret = "Builder", doc = "Nest an inner loop; inherits outer fresh/inserted state" },
+		},
+	},
+}
+
+A._constants = {
+	hooks = {
+		doc    = "Diagnostic hook presets; attach before expand() to trace classification and emission",
+		values = {
+			verbose = { value = "function(alg)", doc = "Print classify/emit/invalidate events to stdout" },
+			silent  = { value = "function(alg)", doc = "Clear all hooks" },
+		},
+	},
+}
 
 return A
