@@ -4,11 +4,7 @@
 local mesh2d = require("jnl.mesh2d_internal")
 local M = {}
 
-M._doc = [[
-Fluent triangulation spec builder. Wraps mesh2d_internal spec/opts with a
-chainable API. Consumes a registry from geo2d.domain:build() or can be
-populated manually. Produces a jnl.mesh via :triangulate(pslg).
-]]
+M._doc = "Fluent triangulation spec builder for PSLG meshing"
 
 M._api = {
 	spec = {

@@ -4,11 +4,7 @@
 local geo2d = require("jnl.geo2d_internal")
 local M = {}
 
-M._doc = [[
-Composite 2D domain builder. Assembles a PSLG from named boundary shapes,
-internal lines, holes, and region seeds. Produces a registry of name→marker
-mappings consumed by mesh2d.tri.
-]]
+M._doc = "Build named 2D PSLG domains from shapes, holes, lines, and regions"
 
 M._api = {
 	new             = {

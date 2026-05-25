@@ -6,7 +6,7 @@ local geo2d = require("jnl.geo2d_internal")
 
 local M = {}
 
-M._doc = "2D shape primitives with bbox, containment, and PSLG discretisation"
+M._doc = "2D shape primitives for geometry and PSLG construction"
 
 M._api = {
 	line    = {

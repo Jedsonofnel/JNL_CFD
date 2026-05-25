@@ -4,7 +4,7 @@
 local mesh2d_internal = require("jnl.mesh2d_internal")
 local M = {}
 
-M._doc = "2D meshing facade: structured mesh generation, PSLG triangulation, and patch utilities"
+M._doc = "2D meshing facade for structured and PSLG meshes"
 M._api = {
 	new_smesh       = { args = "width, height:number, nx, ny:int", ret = "Mesh", doc = "Generate a structured rectangular mesh" },
 	patch_list      = { args = "mesh:Mesh", ret = "table", doc = "Ordered array of {id, name, n_faces} for all patches" },

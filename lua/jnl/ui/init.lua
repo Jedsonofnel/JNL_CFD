@@ -5,7 +5,8 @@ local ui_internal = require("jnl.ui_internal")
 
 local M = {}
 
-M._doc = "UI window facade: spawn and manage visualiser windows for PSLGs and meshes"
+M._doc = "UI facade for displaying PSLGs and meshes"
+
 M._api = {
 	spawn        = { args = "", ret = "UIHandle", doc = "Spawn a new UI window; first call also sets the module default" },
 	default      = { args = "", ret = "UIHandle", doc = "Return the default window, spawning one if none exists" },

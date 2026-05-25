@@ -300,18 +300,21 @@ function REPL:_register_builtins()
 			width = _self._help_width or 72,
 		}
 
-		if arg ~= "" then
-			local ok, mod = pcall(require, arg)
-
-			if ok then
-				doc.dump({ [arg] = mod }, opts)
-			else
-				io.write("unknown module: " .. arg .. "\n")
-			end
+		if arg == "" then
+			doc.dump_modules(opts)
+		elseif arg == "all" then
+			doc.dump_all(opts)
 		else
-			doc.dump(nil, opts)
+			doc.dump_module(arg, opts)
 		end
-	end, ",doc [module]", "Print API reference, optionally for one module")
+	end, ",doc [module|all]", "List documented modules, or show docs for one module")
+
+	self:command("llm", function(_self, _)
+		local llm = require("jnl.llm")
+		io.write(llm.context_string({
+			width = _self._help_width or 72,
+		}))
+	end, ",llm", "Print full JNLCFD coding context for an LLM")
 end
 
 --
@@ -407,6 +410,15 @@ function REPL:_help_topic(name)
 	p:line(string.format("no help for '%s'", name))
 end
 
+function REPL.llm_string(opts)
+	local llm = require("jnl.llm")
+	return llm.context_string(opts or {})
+end
+
+function REPL.llm(opts)
+	io.write(REPL.llm_string(opts or {}))
+end
+
 --
 -- Convenience: post-script summary
 --
@@ -444,6 +456,16 @@ REPL._api = {
 		args = "script_path:string",
 		ret = "nil",
 		doc = "Print globals that a script introduced",
+	},
+	llm_string = {
+		args = "opts:table?",
+		ret = "string",
+		doc = "Return full JNLCFD coding context for LLMs",
+	},
+	llm = {
+		args = "opts:table?",
+		ret = "nil",
+		doc = "Print full JNLCFD coding context for LLMs",
 	},
 }
 

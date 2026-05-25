@@ -3,50 +3,7 @@
 local Printer = {}
 Printer.__index = Printer
 
-Printer._doc = "Terminal text printer with wrapping, indentation, and line limits"
-
-Printer._api = {
-	new = {
-		args = "opts:table?",
-		ret = "Printer",
-		doc = "Create a terminal printer",
-	},
-}
-
-Printer._types = {
-	Printer = {
-		kind = "table",
-		constructor = "jnl.term_printer.new",
-		doc = "Printer object for wrapped terminal output",
-		methods = {
-			line = {
-				args = "text:string?",
-				ret = "nil",
-				doc = "Print one line",
-			},
-			blank = {
-				args = "",
-				ret = "nil",
-				doc = "Print a blank line",
-			},
-			wrap = {
-				args = "first_indent:string, rest_indent:string, text:string",
-				ret = "nil",
-				doc = "Print wrapped text with separate first/rest indentation",
-			},
-			columns = {
-				args = "left:string, right:string, opts:table?",
-				ret = "nil",
-				doc = "Print a wrapped two-column row",
-			},
-			string = {
-				args = "",
-				ret = "string",
-				doc = "Return collected output when using the default buffer sink",
-			},
-		},
-	},
-}
+Printer._doc = "Terminal text printer with wrapping and indentation"
 
 local function default_out(self)
 	return function(s)
@@ -188,8 +145,79 @@ function Printer:columns(left, right, opts)
 	end
 end
 
+function Printer:item(name, fields, opts)
+	opts = opts or {}
+
+	local indent = opts.indent or "   "
+	local field_indent = opts.field_indent or (indent .. "  ")
+	local label_width = opts.label_width or 5
+
+	self:wrap(indent, indent, tostring(name or ""))
+
+	for _, field in ipairs(fields or {}) do
+		local label = tostring(field[1] or "")
+		local text = tostring(field[2] or "")
+
+		local first = string.format(
+			"%s%-" .. tostring(label_width) .. "s ",
+			field_indent,
+			label .. ":"
+		)
+
+		local rest = string.rep(" ", #first)
+		self:wrap(first, rest, text)
+	end
+end
+
 function Printer:string()
 	return table.concat(self._buf)
 end
+
+--
+-- API
+--
+
+Printer._api = {
+	new = {
+		args = "opts:table?",
+		ret = "Printer",
+		doc = "Create a terminal printer",
+	},
+}
+
+Printer._types = {
+	Printer = {
+		kind = "table",
+		constructor = "jnl.term_printer.new",
+		doc = "Printer object for wrapped terminal output",
+		methods = {
+			line = {
+				args = "text:string?",
+				ret = "nil",
+				doc = "Print one line",
+			},
+			blank = {
+				args = "",
+				ret = "nil",
+				doc = "Print a blank line",
+			},
+			wrap = {
+				args = "first_indent:string, rest_indent:string, text:string",
+				ret = "nil",
+				doc = "Print wrapped text with separate first/rest indentation",
+			},
+			columns = {
+				args = "left:string, right:string, opts:table?",
+				ret = "nil",
+				doc = "Print a wrapped two-column row",
+			},
+			string = {
+				args = "",
+				ret = "string",
+				doc = "Return collected output when using the default buffer sink",
+			},
+		},
+	},
+}
 
 return Printer

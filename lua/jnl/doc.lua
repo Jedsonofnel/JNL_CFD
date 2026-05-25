@@ -4,11 +4,7 @@
 local M = {}
 
 M._doc = "Documentation aggregator and API auditor for JNL suite"
-M._api = {
-	audit       = { args = "modules:table?", ret = "number", doc = "Audit modules for stale/missing docs; returns warning count" },
-	dump        = { args = "modules:table?", ret = "nil", doc = "Print full API reference to stdout" },
-	dump_string = { args = "modules:table?", ret = "string", doc = "Return full API reference as a string" },
-}
+
 
 
 --
@@ -26,6 +22,8 @@ local MODULES = {
 	"jnl.ui",
 	"jnl.doc",
 	"jnl.repl",
+	"jnl.llm",
+	"jnl.term_printer",
 }
 
 local function load_modules()
@@ -115,6 +113,56 @@ function M.audit(modules)
 end
 
 --
+-- Queries
+--
+
+function M.modules()
+	local names = {}
+
+	for _, name in ipairs(MODULES) do
+		names[#names + 1] = name
+	end
+
+	table.sort(names)
+	return names
+end
+
+local function suffix_match(name, suffix)
+	return name == suffix or name:sub(- #suffix) == suffix
+end
+
+function M.load(name)
+	if not name or name == "" then
+		return nil, "missing module name"
+	end
+
+	local matches = {}
+
+	for _, mod_name in ipairs(MODULES) do
+		if suffix_match(mod_name, name) then
+			matches[#matches + 1] = mod_name
+		end
+	end
+
+	if #matches == 0 then
+		return nil, "unknown documented module: " .. name
+	end
+
+	if #matches > 1 then
+		return nil, "ambiguous module '" .. name .. "': " .. table.concat(matches, ", ")
+	end
+
+	local mod_name = matches[1]
+	local ok, mod = pcall(require, mod_name)
+
+	if not ok then
+		return nil, "could not load module '" .. mod_name .. "': " .. tostring(mod)
+	end
+
+	return mod, nil, mod_name
+end
+
+--
 -- Dump
 --
 
@@ -124,16 +172,33 @@ local function dump_api(mod_name, api, p)
 	table.sort(fns)
 
 	for _, fn_name in ipairs(fns) do
-		local e   = api[fn_name]
+		local e = api[fn_name]
 		local sig = string.format("%s.%s(%s)", mod_name, fn_name, e.args or "")
 		local ret = e.ret and (" -> " .. e.ret) or ""
 
-		p:columns(sig .. ret, e.doc or "", {
+		p:item(fn_name, {
+			{ "sig", sig .. ret },
+			{ "doc", e.doc or "" },
+		}, {
 			indent = "   ",
-			left_width = 34,
-			doc_indent = "        ",
+			field_indent = "      ",
+			label_width = 4,
 		})
 	end
+end
+
+local function dump_method(tname, mname, e, p)
+	local sig = string.format("%s:%s(%s)", tname, mname, e.args or "")
+	local ret = e.ret and (" -> " .. e.ret) or ""
+
+	p:item(tname .. ":" .. mname, {
+		{ "sig", sig .. ret },
+		{ "doc", e.doc or "" },
+	}, {
+		indent = "      ",
+		field_indent = "         ",
+		label_width = 4,
+	})
 end
 
 local function dump_types(types, p)
@@ -160,15 +225,7 @@ local function dump_types(types, p)
 			table.sort(mnames)
 
 			for _, mname in ipairs(mnames) do
-				local e   = t.methods[mname]
-				local sig = string.format("%s:%s(%s)", tname, mname, e.args or "")
-				local ret = e.ret and (" -> " .. e.ret) or ""
-
-				p:columns(sig .. ret, e.doc or "", {
-					indent = "      ",
-					left_width = 34,
-					doc_indent = "        ",
-				})
+				dump_method(tname, mname, t.methods[mname], p)
 			end
 		end
 	end
@@ -233,6 +290,41 @@ local function dump_module(mod_name, mod, p)
 	p:blank()
 end
 
+function M.dump_modules(opts)
+	opts = opts or {}
+
+	local Printer = require("jnl.term_printer")
+	local p = Printer.new({
+		width = opts.width or 72,
+		out = opts.out or function(s) io.write(s) end,
+	})
+
+	p:line("Documented modules")
+	p:blank()
+
+	for _, name in ipairs(M.modules()) do
+		local ok, mod = pcall(require, name)
+		local desc = ok and type(mod) == "table" and mod._doc or ""
+
+		p:columns(name, desc, {
+			indent = "   ",
+			left_width = 24,
+			doc_indent = "      ",
+		})
+	end
+end
+
+function M.dump_module(name, opts)
+	local mod, err, mod_name = M.load(name)
+
+	if not mod then
+		io.write(err .. "\n")
+		return
+	end
+
+	io.write(M.dump_string({ [mod_name] = mod }, opts))
+end
+
 function M.dump_string(modules, opts)
 	modules = modules or load_modules()
 	opts = opts or {}
@@ -259,8 +351,55 @@ function M.dump_string(modules, opts)
 	return p:string()
 end
 
-function M.dump(modules, opts)
+function M.dump_all(modules, opts)
 	io.write(M.dump_string(modules, opts or {}))
 end
+
+--
+-- API
+--
+
+M._api = {
+	audit = {
+		args = "modules:table?",
+		ret = "number",
+		doc = "Audit modules for stale/missing docs; returns warning count",
+	},
+	modules = {
+		args = "",
+		ret = "string[]",
+		doc = "Return documented module names",
+	},
+	load = {
+		args = "name:string",
+		ret = "module:table?, err:string?",
+		doc = "Load one documented module by exact or unique suffix name",
+	},
+	dump_modules = {
+		args = "opts:table?",
+		ret = "nil",
+		doc = "Print documented module names",
+	},
+	dump_module = {
+		args = "name:string, opts:table?",
+		ret = "nil",
+		doc = "Print API reference for one module",
+	},
+	dump_all = {
+		args = "opts:table?",
+		ret = "nil",
+		doc = "Print full API reference",
+	},
+	dump_string = {
+		args = "modules:table?, opts:table?",
+		ret = "string",
+		doc = "Return API reference as a string",
+	},
+	llm_string = {
+		args = "opts:table?",
+		ret = "string",
+		doc = "Return full JNLCFD programming context for LLMs",
+	},
+}
 
 return M
