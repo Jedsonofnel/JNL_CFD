@@ -106,6 +106,24 @@ int main(void)
 
 	printf("Couette-Stokes: %d cells, %d faces\n", n_cells, n_faces);
 
+	// BC sets — defined once, reused throughout
+	static const struct jnl_bc_entry ux_entries[] = {
+	    JNL_BC_D("north", 1.0),
+	    JNL_BC_D("south", 0.0),
+	    JNL_BC_N("west", 0.0),
+	    JNL_BC_N("east", 0.0),
+	};
+	static const struct jnl_bc_entry uy_entries[] = {
+	    JNL_BC_D("north", 0.0),
+	    JNL_BC_D("south", 0.0),
+	    JNL_BC_N("west", 0.0),
+	    JNL_BC_N("east", 0.0),
+	};
+	static const struct jnl_bc_set ux_bcs = JNL_BC_SET(ux_entries, 4);
+	static const struct jnl_bc_set uy_bcs = JNL_BC_SET(uy_entries, 4);
+	static const struct jnl_bc_set p_bcs = JNL_BC_SET_ALL(JNL_BC_NEUMANN, 0.0);
+	static const struct jnl_bc_set pp_bcs = JNL_BC_SET_ALL(JNL_BC_NEUMANN, 0.0);
+
 	// scratch pool - BiCGSTAB needs 9, give 12
 	i32 n_scratch = 12;
 	jnl_arena *sp_arena =
@@ -162,18 +180,12 @@ int main(void)
 	for (i32 iter = 0; iter < MAX_ITERS; iter++) {
 		// 1. Pressure face interp + gradient
 		jnl_face_interp_cds(mesh, p, p_face);
-		jnl_bc_neumann_face_const(mesh, p, p_face, "north", 0.0);
-		jnl_bc_neumann_face_const(mesh, p, p_face, "south", 0.0);
-		jnl_bc_neumann_face_const(mesh, p, p_face, "west", 0.0);
-		jnl_bc_neumann_face_const(mesh, p, p_face, "east", 0.0);
+		jnl_bc_set_apply_face(&p_bcs, mesh, p, p_face);
 		jnl_grad_green_gauss(mesh, p_face, grad_px, grad_py);
 
 		// 2. Rhie-Chow face flux
 		jnl_rhie_chow(mesh, Ux, Uy, p, grad_px, grad_py, ap_x, ap_y, un_mwi);
-		jnl_bc_dirichlet_face_normal(mesh, un_mwi, "north", 1.0, 0.0);
-		jnl_bc_dirichlet_face_normal(mesh, un_mwi, "south", 0.0, 0.0);
-		jnl_bc_neumann_face_normal(mesh, Ux, Uy, un_mwi, "west", 0.0, 0.0);
-		jnl_bc_neumann_face_normal(mesh, Ux, Uy, un_mwi, "east", 0.0, 0.0);
+		jnl_bc_set_apply_face_normal(&ux_bcs, &uy_bcs, mesh, Ux, Uy, un_mwi);
 
 		// 3. Ux Momentum
 		jnl_fvsys_reset(ux_sys);
@@ -181,25 +193,21 @@ int main(void)
 		for (i32 i = 0; i < n_cells; i++)
 			neg_src[i] = -grad_px[i];
 		jnl_su_field(ux_sys, mesh, neg_src);
-		jnl_bc_dirichlet_const(ux_sys, mesh, "north", 1.0);
-		jnl_bc_dirichlet_const(ux_sys, mesh, "south", 0.0);
-		jnl_bc_neumann_const(ux_sys, mesh, "west", 0.0);
-		jnl_bc_neumann_const(ux_sys, mesh, "east", 0.0);
+		jnl_bc_set_apply_sys(&ux_bcs, ux_sys, mesh);
+
 		copy_diag(ux_sys, ap_x);
 		jnl_fvsys_under_relax(ux_sys, Ux, ALPHA_U);
 		jnl_fvsys_solve_bicgstab_into(ux_sys, pool, Ux, 1e-6, 200);
 		f64 res_Ux = jnl_fvsys_residual_norm(ux_sys, Ux);
 
-		// 4. Uy Moomentum
+		// 4. Uy Momentum
 		jnl_fvsys_reset(uy_sys);
 		jnl_laplacian_const(uy_sys, mesh, MU);
 		for (i32 i = 0; i < n_cells; i++)
 			neg_src[i] = -grad_py[i];
 		jnl_su_field(uy_sys, mesh, neg_src);
-		jnl_bc_dirichlet_const(uy_sys, mesh, "north", 0.0);
-		jnl_bc_dirichlet_const(uy_sys, mesh, "south", 0.0);
-		jnl_bc_neumann_const(uy_sys, mesh, "west", 0.0);
-		jnl_bc_neumann_const(uy_sys, mesh, "east", 0.0);
+		jnl_bc_set_apply_sys(&uy_bcs, uy_sys, mesh);
+
 		copy_diag(uy_sys, ap_y);
 		jnl_fvsys_under_relax(uy_sys, Uy, ALPHA_U);
 		jnl_fvsys_solve_bicgstab_into(uy_sys, pool, Uy, 1e-6, 200);
@@ -207,10 +215,8 @@ int main(void)
 
 		// 5. Rhie-Chow + div U
 		jnl_rhie_chow(mesh, Ux, Uy, p, grad_px, grad_py, ap_x, ap_y, un_mwi);
-		jnl_bc_dirichlet_face_normal(mesh, un_mwi, "north", 1.0, 0.0);
-		jnl_bc_dirichlet_face_normal(mesh, un_mwi, "south", 0.0, 0.0);
-		jnl_bc_neumann_face_normal(mesh, Ux, Uy, un_mwi, "west", 0.0, 0.0);
-		jnl_bc_neumann_face_normal(mesh, Ux, Uy, un_mwi, "east", 0.0, 0.0);
+		jnl_bc_set_apply_face_normal(&ux_bcs, &uy_bcs, mesh, Ux, Uy, un_mwi);
+
 		jnl_divergence(mesh, un_mwi, divU);
 
 		// 6. inv_d = vol * 2 / (ap_x + ap_y)
@@ -224,19 +230,14 @@ int main(void)
 		for (i32 i = 0; i < n_cells; i++)
 			neg_src[i] = -divU[i];
 		jnl_su_field(pp_sys, mesh, neg_src);
-		jnl_bc_neumann_const(pp_sys, mesh, "north", 0.0);
-		jnl_bc_neumann_const(pp_sys, mesh, "south", 0.0);
-		jnl_bc_neumann_const(pp_sys, mesh, "west", 0.0);
-		jnl_bc_neumann_const(pp_sys, mesh, "east", 0.0);
+		jnl_bc_set_apply_sys(&pp_bcs, pp_sys, mesh);
+
 		jnl_fvsys_solve_cg_into(pp_sys, pool, pp, 1e-6, 500);
 		f64 res_pp = jnl_fvsys_residual_norm(pp_sys, pp);
 
 		// 8. Corrections
 		jnl_face_interp_cds(mesh, pp, pp_face);
-		jnl_bc_neumann_face_const(mesh, pp, pp_face, "north", 0.0);
-		jnl_bc_neumann_face_const(mesh, pp, pp_face, "south", 0.0);
-		jnl_bc_neumann_face_const(mesh, pp, pp_face, "west", 0.0);
-		jnl_bc_neumann_face_const(mesh, pp, pp_face, "east", 0.0);
+		jnl_bc_set_apply_face(&pp_bcs, mesh, pp, pp_face);
 		jnl_grad_green_gauss(mesh, pp_face, grad_ppx, grad_ppy);
 
 		for (i32 i = 0; i < n_cells; i++) {
