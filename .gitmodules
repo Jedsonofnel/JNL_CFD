@@ -1,3 +1,6 @@
 [submodule "vendor/Triangle"]
 	path = vendor/Triangle
 	url = https://github.com/wo80/Triangle.git
+[submodule "vendor/fennel"]
+	path = vendor/fennel
+	url = https://git.sr.ht/~technomancy/fennel

@@ -28,6 +28,10 @@ else
 	TRIANGLE_CMAKE_BUILD_TYPE := Debug
 endif
 
+# vendor/fennel
+FENNEL_SRC := vendor/fennel/bootstrap/fennel.lua
+FENNEL_DST := $(LUADIR)/fennel.lua
+
 # compiler vars
 CC = gcc
 CFLAGS_LUA := $(shell pkg-config --cflags lua5.5) \
@@ -88,7 +92,7 @@ endif
 
 .PHONY: all clean test release debug triangle
 
-all: $(CMD_BINS)
+all: $(FENNEL_DST) $(CMD_BINS)
 
 debug:
 	$(MAKE) BUILD=debug all
@@ -175,6 +179,13 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(TRIANGLE_LIBS)
 	@mkdir -p $(dir $@)
 	$(LOG_CC)
 	$(Q)$(CC) $(CFLAGS) -c -o $@ $<
+
+#
+# Fennel
+#
+
+$(FENNEL_DST): $(FENNEL_SRC)
+	$(Q)cp $< $@
 
 #
 # dirs

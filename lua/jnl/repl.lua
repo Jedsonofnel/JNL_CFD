@@ -83,6 +83,15 @@ function REPL:run()
 		self._globals_at_start[k] = true
 	end
 
+	self._mode = "fennel"
+	local ok, fennel = pcall(require, "fennel")
+	if not ok then
+		io.write("warning: fennel not available, defaulting to lua mode\n")
+		self._mode = "lua"
+		fennel = nil
+	end
+	self._fennel = fennel
+
 	local read = readline or function(prompt)
 		io.write(prompt)
 		io.flush()
@@ -90,7 +99,8 @@ function REPL:run()
 	end
 
 	while true do
-		local line = read("> ")
+		local prompt = self._mode == "fennel" and "fnl> " or "lua> "
+		local line = read(prompt)
 		if line == nil then
 			io.write("\n")
 			break
@@ -164,6 +174,19 @@ function REPL:_register_builtins()
 			end
 		end
 	end, ",globals", "List user-defined globals (and registered values)")
+
+	self:command("fennel", function(_self, _)
+		if not _self._fennel then
+			io.write("fennel not available\n"); return
+		end
+		_self._mode = "fennel"
+		io.write("fennel mode\n")
+	end, ",fennel", "Switch to Fennel evaluation mode")
+
+	self:command("lua", function(_self, _)
+		_self._mode = "lua"
+		io.write("lua mode\n")
+	end, ",lua", "Switch to Lua evaluation mode")
 end
 
 --
@@ -181,23 +204,32 @@ function REPL:_dispatch(cmd, rest)
 end
 
 function REPL:_eval(line)
-	local fn, err = load("return " .. line, "repl", "t")
-	if not fn then
-		fn, err = load(line, "repl", "t")
-	end
-
-	if fn then
-		local ok, res = pcall(fn)
+	if self._mode == "fennel" and self._fennel then
+		local ok, res = pcall(self._fennel.eval, line, { compilerEnv = _G })
 		if ok then
-			if res ~= nil then
-				-- use tostring but handle multiple returns via select
-				io.write(tostring(res) .. "\n")
-			end
+			if res ~= nil then io.write(tostring(res) .. "\n") end
 		else
 			io.write("error: " .. tostring(res) .. "\n")
 		end
 	else
-		io.write("error: " .. tostring(err) .. "\n")
+		local fn, err = load("return " .. line, "repl", "t")
+		if not fn then
+			fn, err = load(line, "repl", "t")
+		end
+
+		if fn then
+			local ok, res = pcall(fn)
+			if ok then
+				if res ~= nil then
+					-- use tostring but handle multiple returns via select
+					io.write(tostring(res) .. "\n")
+				end
+			else
+				io.write("error: " .. tostring(res) .. "\n")
+			end
+		else
+			io.write("error: " .. tostring(err) .. "\n")
+		end
 	end
 end
 

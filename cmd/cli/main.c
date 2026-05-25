@@ -110,21 +110,37 @@ int main(int argc, char **argv)
 	// run user script
 	if (script) {
 		const char *ext = strrchr(script, '.');
-		if (!ext || strcmp(ext, ".lua") != 0) {
-			fprintf(stderr, "error: script must be a .lua file\n");
-			lua_close(L);
-			return EXIT_FAILURE;
-		}
 
-		// Expose the script path so Lua can reference it if wanted
+		int is_fennel = ext && strcmp(ext, ".fnl") == 0;
+		int is_lua = ext && strcmp(ext, ".lua") == 0;
+
 		lua_pushstring(L, script);
 		lua_setglobal(L, "_script");
 
-		if (luaL_dofile(L, script) != LUA_OK) {
-			fprintf(stderr, "error running script: %s\n", lua_tostring(L, -1));
-			lua_close(L);
-			return EXIT_FAILURE;
+		if (is_fennel) {
+			lua_getglobal(L, "require");
+			lua_pushstring(L, "fennel");
+			lua_call(L, 1, 1);
+			lua_getfield(L, -1, "dofile");
+			lua_pushstring(L, script);
+			if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+				fprintf(stderr, "error running fennel script: %s\n",
+				        lua_tostring(L, -1));
+				lua_close(L);
+				return EXIT_FAILURE;
+			}
+		} else if (is_lua) {
+			if (luaL_dofile(L, script) != LUA_OK) {
+				fprintf(stderr, "error running script: %s\n",
+				        lua_tostring(L, -1));
+				lua_close(L);
+				return EXIT_FAILURE;
+			}
 		}
+
+		fprintf(stderr, "error: script must be a .lua or .fnl file\n");
+		lua_close(L);
+		return EXIT_FAILURE;
 	}
 
 	// bare REPL

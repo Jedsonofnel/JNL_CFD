@@ -4,6 +4,9 @@ bin/
 build/
 out/
 
+# vendored fennel
+lua/fennel.lua
+
 *.d
 *.o
 .DS_STORE
@@ -21,3 +24,4 @@ logs/
 *.vtk
 
 *.png
+
