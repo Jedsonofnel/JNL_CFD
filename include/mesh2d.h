@@ -255,6 +255,14 @@ struct jnl_tri_opts jnl_tri_opts_set_min_angle(struct jnl_tri_opts opts,
 struct jnl_tri_opts jnl_tri_opts_set_global_max_area(struct jnl_tri_opts opts,
                                                      f64 max_area);
 
+struct jnl_tri_opts jnl_tri_opts_set_cell_count(struct jnl_tri_opts opts,
+                                                const struct jnl_pslg *pslg,
+                                                i32 target_cells);
+
+struct jnl_tri_opts jnl_tri_opts_set_resolution(struct jnl_tri_opts opts,
+                                                const struct jnl_pslg *pslg,
+                                                double resolution);
+
 struct jnl_tri_opts jnl_tri_opts_enable_region_areas(struct jnl_tri_opts opts,
                                                      bool enabled);
 

@@ -1,8 +1,12 @@
 -- repl.lua - Configurable REPL for the JNL suite
 -- <jed@nelson.ac> // 2026-05-21
 
+local Printer = require("jnl.term_printer")
+
 local REPL = {}
 REPL.__index = REPL
+
+REPL._doc = "Configurable Fennel REPL with comma commands and help system"
 
 -- Lua stdlib names
 local STDLIB = {
@@ -52,10 +56,23 @@ function REPL.new()
 	local self = setmetatable({
 		_registry = {},
 		_commands = {},
+		_help_width = 72,
 	}, REPL)
 
 	self:_register_builtins()
 	return self
+end
+
+-- printer helper
+function REPL:_printer(opts)
+	opts = opts or {}
+
+	return Printer.new({
+		width = opts.width or self._help_width or 72,
+		out = opts.out or function(s)
+			io.write(s)
+		end,
+	})
 end
 
 --
@@ -75,51 +92,138 @@ function REPL:command(name, fn, usage, doc)
 	}
 end
 
-function REPL:run()
-	io.write("JNLCFD |  type ,help for help, ,quit or ctrl-D to exit\n")
+--
+-- Fennel REPL helpers
+--
 
+function REPL:_require_fennel()
+	local ok, fennel = pcall(require, "fennel")
+
+	if not ok then
+		error("fennel not available; install/require fennel before starting REPL")
+	end
+
+	self._fennel = fennel
+	return fennel
+end
+
+function REPL:_capture_globals_at_start()
 	self._globals_at_start = {}
+
 	for k, _ in pairs(_G) do
 		self._globals_at_start[k] = true
 	end
+end
 
-	self._mode = "fennel"
-	local ok, fennel = pcall(require, "fennel")
-	if not ok then
-		io.write("warning: fennel not available, defaulting to lua mode\n")
-		self._mode = "lua"
-		fennel = nil
-	end
-	self._fennel = fennel
-
-	local read = readline or function(prompt)
-		io.write(prompt)
+function REPL:_readline(prompt)
+	local read = readline or function(p)
+		io.write(p)
 		io.flush()
 		return io.read("l")
 	end
 
+	return read(prompt)
+end
+
+function REPL:_fennel_prompt(state)
+	if state and state["stack-size"] and state["stack-size"] > 0 then
+		return ".... "
+	end
+
+	return "jnlcfd> "
+end
+
+function REPL:_at_top_level(state)
+	return not (state and state["stack-size"] and state["stack-size"] > 0)
+end
+
+function REPL:_handle_comma_line(line, state)
+	if not self:_at_top_level(state) then
+		io.write("error: comma commands are only available at top level\n")
+		return
+	end
+
+	local cmd, rest = line:match("^,(%S+)%s*(.*)")
+
+	if cmd then
+		self:_dispatch(cmd, rest or "")
+	else
+		io.write("error: bare comma — did you mean ,help?\n")
+	end
+end
+
+function REPL:_read_fennel_chunk(state)
 	while true do
-		local prompt = self._mode == "fennel" and "fnl> " or "lua> "
-		local line = read(prompt)
+		if self._quit then
+			return nil
+		end
+
+		local line = self:_readline(self:_fennel_prompt(state))
+
 		if line == nil then
 			io.write("\n")
-			break
+			return nil
 		end
 
 		line = line:match("^%s*(.-)%s*$")
-		if line:sub(1, 1) == "," then
-			-- comma command
-			local cmd, rest = line:match("^,(%S+)%s*(.*)")
-			if cmd then
-				self:_dispatch(cmd, rest)
-			else
-				io.write("error: bare comma — did you mean ,help?\n")
-			end
-		elseif line ~= "" then
-			-- Lua expression/statement
-			self:_eval(line)
+
+		if line == "" then
+			-- Ignore blank lines.
+		elseif line:sub(1, 1) == "," then
+			self:_handle_comma_line(line, state)
+		else
+			return line .. "\n"
 		end
 	end
+end
+
+function REPL:_print_fennel_values(values)
+	for _, value in ipairs(values) do
+		io.write(value)
+		io.write("\n")
+	end
+end
+
+function REPL:_print_fennel_error(err_type, err, _)
+	io.write(string.format("error [%s]: %s\n", err_type, tostring(err)))
+end
+
+function REPL:_fennel_view_opts()
+	return {
+		["line-length"] = self._help_width or 72,
+		depth = 8,
+	}
+end
+
+function REPL:_fennel_repl_options()
+	return {
+		env = _G,
+		compilerEnv = _G,
+
+		readChunk = function(state)
+			return self:_read_fennel_chunk(state)
+		end,
+
+		onValues = function(values)
+			return self:_print_fennel_values(values)
+		end,
+
+		onError = function(err_type, err, lua_source)
+			return self:_print_fennel_error(err_type, err, lua_source)
+		end,
+
+		["view-opts"] = self:_fennel_view_opts(),
+	}
+end
+
+function REPL:run()
+	io.write("JNLCFD | type ,help for help, ,quit or ctrl-D to exit\n")
+
+	self._quit = false
+	self:_capture_globals_at_start()
+
+	local fennel = self:_require_fennel()
+	fennel.repl(self:_fennel_repl_options())
 end
 
 --
@@ -127,9 +231,9 @@ end
 --
 
 function REPL:_register_builtins()
-	self:command("quit", function(_, _)
+	self:command("quit", function(_self, _)
 		io.write("bye\n")
-		os.exit(0)
+		_self._quit = true
 	end, ",quit", "Exit the REPL")
 
 	self:command("help", function(_self, arg)
@@ -143,66 +247,71 @@ function REPL:_register_builtins()
 
 	self:command("globals", function(_self, _)
 		local user = {}
+
 		for k, _ in pairs(_G) do
 			if not STDLIB[k] and not (_self._globals_at_start and _self._globals_at_start[k]) then
 				table.insert(user, k)
 			end
 		end
 
-		-- also include anything registered before run()
 		for k, _ in pairs(_self._registry) do
 			user[#user + 1] = k
 		end
 
-		-- deduplicate and sort
 		local seen = {}
 		local dedup = {}
+
 		for _, k in ipairs(user) do
 			if not seen[k] then
-				seen[k] = true; dedup[#dedup + 1] = k
+				seen[k] = true
+				dedup[#dedup + 1] = k
 			end
 		end
 
 		table.sort(dedup)
+
 		if #dedup == 0 then
 			io.write("no user globals defined\n")
 		else
+			local p = _self:_printer()
+
 			for _, k in ipairs(dedup) do
 				local entry = _self._registry[k]
-				local doc   = entry and entry.doc ~= "" and ("  -- " .. entry.doc) or ""
-				io.write(string.format("  %-20s %s\n", k, doc))
+				local doc = entry and entry.doc or ""
+
+				if doc ~= "" then
+					p:columns(k, doc, {
+						indent = "  ",
+						left_width = 20,
+						gap = "  ",
+					})
+				else
+					p:line(string.format("  %s", k))
+				end
 			end
 		end
-	end, ",globals", "List user-defined globals (and registered values)")
+	end, ",globals", "List user-defined globals and registered values")
 
-	self:command("fennel", function(_self, _)
-		if not _self._fennel then
-			io.write("fennel not available\n"); return
-		end
-		_self._mode = "fennel"
-		io.write("fennel mode\n")
-	end, ",fennel", "Switch to Fennel evaluation mode")
-
-	self:command("lua", function(_self, _)
-		_self._mode = "lua"
-		io.write("lua mode\n")
-	end, ",lua", "Switch to Lua evaluation mode")
-
-	self:command("doc", function(_, arg)
+	self:command("doc", function(_self, arg)
 		local doc = require("jnl.doc")
 		arg = arg:match("^%s*(.-)%s*$")
+
+		local opts = {
+			width = _self._help_width or 72,
+		}
+
 		if arg ~= "" then
-			-- ,doc jnl.mesh2d -> just that module
 			local ok, mod = pcall(require, arg)
+
 			if ok then
-				doc.dump({ [arg] = mod })
+				doc.dump({ [arg] = mod }, opts)
 			else
 				io.write("unknown module: " .. arg .. "\n")
 			end
 		else
-			doc.dump()
+			doc.dump(nil, opts)
 		end
-	end, ",doc [module]", "Print API reference (optionally for one module)")
+	end, ",doc [module]", "Print API reference, optionally for one module")
 end
 
 --
@@ -219,99 +328,88 @@ function REPL:_dispatch(cmd, rest)
 	end
 end
 
-function REPL:_eval(line)
-	if self._mode == "fennel" and self._fennel then
-		local ok, res = pcall(self._fennel.eval, line, { compilerEnv = _G })
-		if ok then
-			if res ~= nil then io.write(tostring(res) .. "\n") end
-		else
-			io.write("error: " .. tostring(res) .. "\n")
-		end
-	else
-		local fn, err = load("return " .. line, "repl", "t")
-		if not fn then
-			fn, err = load(line, "repl", "t")
-		end
-
-		if fn then
-			local ok, res = pcall(fn)
-			if ok then
-				if res ~= nil then
-					-- use tostring but handle multiple returns via select
-					io.write(tostring(res) .. "\n")
-				end
-			else
-				io.write("error: " .. tostring(res) .. "\n")
-			end
-		else
-			io.write("error: " .. tostring(err) .. "\n")
-		end
-	end
-end
-
 function REPL:_help_overview()
-	io.write("\n")
-	io.write("  Comma commands\n")
-	io.write("  --------------\n")
-	-- collect and sort command names
+	local p = self:_printer()
+
+	p:blank()
+	p:line("  Comma commands")
+	p:line("  --------------")
+
 	local names = {}
 	for k in pairs(self._commands) do names[#names + 1] = k end
 	table.sort(names)
+
 	for _, name in ipairs(names) do
 		local c = self._commands[name]
-		io.write(string.format("  %-24s %s\n", c.usage, c.doc))
+
+		p:columns(c.usage, c.doc, {
+			indent = "  ",
+			left_width = 24,
+			gap = "  ",
+		})
 	end
-	-- registered values
+
 	local reg_names = {}
 	for k in pairs(self._registry) do reg_names[#reg_names + 1] = k end
 	table.sort(reg_names)
+
 	if #reg_names > 0 then
-		io.write("\n")
-		io.write("  Registered globals (,help <name> for detail)\n")
-		io.write("  --------------------------------------------\n")
+		p:blank()
+		p:line("  Registered globals (,help <name> for detail)")
+		p:line("  --------------------------------------------")
+
 		for _, name in ipairs(reg_names) do
 			local e = self._registry[name]
-			io.write(string.format("  %-24s %s\n", name, e.doc))
+
+			p:columns(name, e.doc, {
+				indent = "  ",
+				left_width = 24,
+				gap = "  ",
+			})
 		end
 	end
-	io.write("\n")
-	io.write("  ctrl-D or ,quit to exit\n")
-	io.write("\n")
+
+	p:blank()
+	p:line("  ctrl-D or ,quit to exit")
+	p:blank()
 end
 
 function REPL:_help_topic(name)
-	-- check registered values first
+	local p = self:_printer()
+
 	local entry = self._registry[name]
 	if entry then
-		io.write(string.format("\n  %s\n", name))
+		p:blank()
+		p:line("  " .. name)
 
 		if entry.doc ~= "" then
-			io.write(string.format("  %s\n", entry.doc))
+			p:wrap("  ", "  ", entry.doc)
 		end
 
-		io.write(string.format("  type: %s\n\n", type(entry.value)))
+		p:line("  type: " .. type(entry.value))
+		p:blank()
 		return
 	end
 
-	-- check commands
 	local cmd = self._commands[name]
 	if cmd then
-		io.write(string.format("\n  %s\n", cmd.usage))
+		p:blank()
+		p:line("  " .. cmd.usage)
 
 		if cmd.doc ~= "" then
-			io.write(string.format("  %s\n\n", cmd.doc))
+			p:wrap("  ", "  ", cmd.doc)
+			p:blank()
 		end
 
 		return
 	end
 
-	io.write(string.format("no help for '%s'\n", name))
+	p:line(string.format("no help for '%s'", name))
 end
 
 --
 -- Convenience: post-script summary
 --
-
 
 ---Print globals that a script introduced, for the "ran <script>" summary.
 function REPL.script_summary(script_path)
@@ -331,5 +429,47 @@ function REPL.script_summary(script_path)
 		print("note: script set no globals")
 	end
 end
+
+--
+-- API
+--
+
+REPL._api = {
+	new = {
+		args = "",
+		ret = "Repl",
+		doc = "Create a new REPL instance with built-in commands registered",
+	},
+	script_summary = {
+		args = "script_path:string",
+		ret = "nil",
+		doc = "Print globals that a script introduced",
+	},
+}
+
+REPL._types = {
+	Repl = {
+		kind = "table",
+		constructor = "jnl.repl.new",
+		doc = "Configurable Fennel REPL object",
+		methods = {
+			register = {
+				args = "name:string, value:any, doc:string?",
+				ret = "nil",
+				doc = "Expose a value as a global and add it to the help system",
+			},
+			command = {
+				args = "name:string, fn:function, usage:string?, doc:string?",
+				ret = "nil",
+				doc = "Register a custom comma command",
+			},
+			run = {
+				args = "",
+				ret = "nil",
+				doc = "Start the Fennel REPL loop",
+			},
+		},
+	},
+}
 
 return REPL

@@ -4,6 +4,15 @@
 local mesh2d_internal = require("jnl.mesh2d_internal")
 local M = {}
 
+M._doc = "2D meshing facade: structured mesh generation, PSLG triangulation, and patch utilities"
+M._api = {
+	new_smesh       = { args = "width, height:number, nx, ny:int", ret = "Mesh", doc = "Generate a structured rectangular mesh" },
+	patch_list      = { args = "mesh:Mesh", ret = "table", doc = "Ordered array of {id, name, n_faces} for all patches" },
+	patch_lookup    = { args = "mesh:Mesh", ret = "table", doc = "Dual-keyed table of patch descriptors; keyed by both marker int and name string" },
+	patch_name_set  = { args = "mesh:Mesh", ret = "table", doc = "Set of patch name strings: {[name]=true}" },
+	patch_name_list = { args = "mesh:Mesh", ret = "table", doc = "Ordered array of patch name strings" },
+}
+
 function M.new_smesh(width, height, nx, ny)
 	return mesh2d_internal.smesh_gen(width, height, nx, ny)
 end

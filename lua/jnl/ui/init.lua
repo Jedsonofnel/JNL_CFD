@@ -5,6 +5,15 @@ local ui_internal = require("jnl.ui_internal")
 
 local M = {}
 
+M._doc = "UI window facade: spawn and manage visualiser windows for PSLGs and meshes"
+M._api = {
+	spawn        = { args = "", ret = "UIHandle", doc = "Spawn a new UI window; first call also sets the module default" },
+	default      = { args = "", ret = "UIHandle", doc = "Return the default window, spawning one if none exists" },
+	display_pslg = { args = "g:PSLG, handle:UIHandle?", ret = "bool", doc = "Send a PSLG to the given window (or default); focuses window first" },
+	display_mesh = { args = "mesh:Mesh, handle:UIHandle?", ret = "bool", doc = "Send a mesh to the given window (or default); focuses window first" },
+	close        = { args = "handle:UIHandle?", ret = "nil", doc = "Close the given window (or default) and clear the default if it matches" },
+}
+
 local default_ui = nil
 
 function M.spawn()

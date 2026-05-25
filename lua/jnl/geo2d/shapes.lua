@@ -9,6 +9,11 @@ local M = {}
 M._doc = "2D shape primitives with bbox, containment, and PSLG discretisation"
 
 M._api = {
+	line    = {
+		args = "pts:number[][] | x0,y0,x1,y1:number",
+		ret = "Line",
+		doc = "Open polyline. No closing edge. Used for named boundary segments and internal lines."
+	},
 	circle  = { args = "cx, cy, r:number, n:int?", ret = "Circle", doc = "Circle centred at cx,cy; n polygon segments (default 64)" },
 	rect    = { args = "x0, y0, x1, y1:number", ret = "Rect", doc = "Axis-aligned rectangle from two corners" },
 	polygon = { args = "pts:number[][]", ret = "Polygon", doc = "Arbitrary polygon; min 3 points, consistent winding" },
@@ -115,6 +120,62 @@ end
 ---Discretise this shape onto an existing PSLG.
 function Shape:discretise_onto(_, _, _)
 	error("Shape:discretise_onto: should not be using a raw shape")
+end
+
+--
+-- Line
+--
+
+---@class Line : Shape
+---@field pts number[][]
+local Line = setmetatable({}, { __index = Shape })
+Line.__index = Line
+
+---Construct a polyline from a list of points, or two-point shorthand.
+---@overload fun(pts: number[][]): Line
+---@overload fun(x0: number, y0: number, x1: number, y1: number): Line
+function M.line(pts_or_x0, y0, x1, y1)
+	local pts
+	if type(pts_or_x0) == "table" then
+		assert(#pts_or_x0 >= 2, "line requires at least 2 points")
+		pts = pts_or_x0
+	else
+		pts = { { pts_or_x0, y0 }, { x1, y1 } }
+	end
+	return setmetatable({ pts = pts }, Line)
+end
+
+---Return the vertices (no closing point).
+---@return number[][]
+function Line:vertices()
+	return self.pts
+end
+
+---Return the bounding box.
+---@return BBox
+function Line:bbox()
+	local min_x, min_y = math.huge, math.huge
+	local max_x, max_y = -math.huge, -math.huge
+	for _, p in ipairs(self.pts) do
+		if p[1] < min_x then min_x = p[1] end
+		if p[1] > max_x then max_x = p[1] end
+		if p[2] < min_y then min_y = p[2] end
+		if p[2] > max_y then max_y = p[2] end
+	end
+	return { min_x = min_x, min_y = min_y, max_x = max_x, max_y = max_y }
+end
+
+---Discretise onto an existing PSLG (adds nodes and edges, no closing edge).
+---@param g PSLG
+---@param marker integer
+function Line:discretise_onto(g, marker, _)
+	marker = marker or 0
+	local prev
+	for _, p in ipairs(self.pts) do
+		local idx = g:node_find_or_add(p[1], p[2], 0)
+		if prev then g:edge_add(prev, idx, marker) end
+		prev = idx
+	end
 end
 
 --
