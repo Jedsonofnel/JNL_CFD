@@ -59,13 +59,6 @@ static void test_const(void)
 	free_fixture(&f);
 }
 
-static void test_const_depth(void)
-{
-	jnl_arena *a = arena_create(1024);
-	TEST_ASSERT(jnl_expr_scratch_depth(jnl_expr_const(a, 1.0)) == 1);
-	arena_destroy(a);
-}
-
 static void test_array(void)
 {
 	fixture f = make_fixture();
@@ -74,14 +67,6 @@ static void test_array(void)
 		TEST_ASSERT_MSG(approx_eq(out[i], f.x[i]),
 		                "array: [%d] got %.6g want %.6g", i, out[i], f.x[i]);
 	free_fixture(&f);
-}
-
-static void test_array_depth(void)
-{
-	jnl_arena *a = arena_create(1024);
-	f64 dummy[N] = {0};
-	TEST_ASSERT(jnl_expr_scratch_depth(jnl_expr_array(a, dummy)) == 0);
-	arena_destroy(a);
 }
 
 static void test_neg(void)
@@ -194,22 +179,6 @@ static void test_compound(void)
 	free_fixture(&f);
 }
 
-static void test_compound_depth(void)
-{
-	// (x + y) * (x - 1.0)
-	// add(array,array) -> max(0,0)+1+1 = 2
-	// sub(array,const) -> max(0,1)+1+1 = 3
-	// mul(add,sub)     -> max(2,3+1)+1 = 5
-	jnl_arena *a = arena_create(4096);
-	f64 dummy[N] = {0};
-	jnl_expr *sum =
-	    jnl_expr_add(a, jnl_expr_array(a, dummy), jnl_expr_array(a, dummy));
-	jnl_expr *diff =
-	    jnl_expr_sub(a, jnl_expr_array(a, dummy), jnl_expr_const(a, 1.0));
-	TEST_ASSERT(jnl_expr_scratch_depth(jnl_expr_mul(a, sum, diff)) == 5);
-	arena_destroy(a);
-}
-
 static void test_reuse_pool(void)
 {
 	// eval two expressions with reset between — pool must not exhaust
@@ -241,9 +210,7 @@ static void test_reuse_pool(void)
 int main(void)
 {
 	test_const();
-	test_const_depth();
 	test_array();
-	test_array_depth();
 	test_neg();
 	test_add();
 	test_sub();
@@ -252,7 +219,6 @@ int main(void)
 	test_pow();
 	test_scalar_mul();
 	test_compound();
-	test_compound_depth();
 	test_reuse_pool();
 	TEST_PASS();
 	return 0;

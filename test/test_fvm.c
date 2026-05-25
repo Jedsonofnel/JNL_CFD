@@ -8,7 +8,7 @@
 #include "fvm/operators.h"
 #include "fvm/bc.h"
 #include "fvm/ctx.h"
-#include "fvm/interp.h"
+#include "fvm/field.h"
 
 #define NX 80
 #define NY 1
