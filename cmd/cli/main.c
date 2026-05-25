@@ -27,13 +27,15 @@ static void usage(const char *prog)
 {
 	fprintf(
 	    stderr,
-	    "usage: %s [--repl] [script.lua]\n"
+	    "usage: %s [--repl] [--llm] [script.lua|script.fnl]\n"
 	    "\n"
-	    "  script.lua   run a Lua script (script may call repl:run() itself)\n"
-	    "  --repl       start the REPL after the script (or immediately if\n"
-	    "               no script is given)\n"
+	    "  script.lua   run a Lua script\n"
+	    "  script.fnl   run a Fennel script\n"
+	    "  --repl       start the REPL after the script, or immediately if\n"
+	    "               no script is given\n"
+	    "  --llm        print full LLM coding context and API reference\n"
 	    "\n"
-	    "  Inside the REPL: ,help  ,quit  ctrl-D\n",
+	    "  Inside the REPL: ,help  ,doc  ,llm  ,quit  ctrl-D\n",
 	    prog);
 }
 
@@ -64,11 +66,14 @@ int main(int argc, char **argv)
 {
 	const char *script = NULL;
 	int want_repl = 0;
+	int want_llm = 0;
 
 	// arg parsing
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--repl") == 0) {
 			want_repl = 1;
+		} else if (strcmp(argv[i], "--llm") == 0) {
+			want_llm = 1;
 		} else if (strcmp(argv[i], "--help") == 0 ||
 		           strcmp(argv[i], "-h") == 0) {
 			usage(argv[0]);
@@ -86,7 +91,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!script && !want_repl) {
+	if (!script && !want_repl && !want_llm) {
 		usage(argv[0]);
 		return EXIT_FAILURE;
 	}
@@ -120,15 +125,25 @@ int main(int argc, char **argv)
 		if (is_fennel) {
 			lua_getglobal(L, "require");
 			lua_pushstring(L, "fennel");
-			lua_call(L, 1, 1);
+
+			if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
+				fprintf(stderr, "error loading fennel: %s\n",
+				        lua_tostring(L, -1));
+				lua_close(L);
+				return EXIT_FAILURE;
+			}
+
 			lua_getfield(L, -1, "dofile");
 			lua_pushstring(L, script);
+
 			if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
 				fprintf(stderr, "error running fennel script: %s\n",
 				        lua_tostring(L, -1));
 				lua_close(L);
 				return EXIT_FAILURE;
 			}
+
+			lua_pop(L, 1); // fennel module
 		} else if (is_lua) {
 			if (luaL_dofile(L, script) != LUA_OK) {
 				fprintf(stderr, "error running script: %s\n",
@@ -136,11 +151,29 @@ int main(int argc, char **argv)
 				lua_close(L);
 				return EXIT_FAILURE;
 			}
+		} else {
+			fprintf(stderr, "error: script must be a .lua or .fnl file\n");
+			lua_close(L);
+			return EXIT_FAILURE;
+		}
+	}
+
+	// LLM context dump
+	if (want_llm) {
+		const char *boot = "local llm = require('jnl.llm')\n"
+		                   "io.write(llm.context_string({ width = 88 }))\n";
+
+		if (luaL_dostring(L, boot) != LUA_OK) {
+			fprintf(stderr, "error generating LLM context: %s\n",
+			        lua_tostring(L, -1));
+			lua_close(L);
+			return EXIT_FAILURE;
 		}
 
-		fprintf(stderr, "error: script must be a .lua or .fnl file\n");
-		lua_close(L);
-		return EXIT_FAILURE;
+		if (!want_repl) {
+			lua_close(L);
+			return EXIT_SUCCESS;
+		}
 	}
 
 	// bare REPL
