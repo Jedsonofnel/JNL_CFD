@@ -77,6 +77,8 @@
 #include "jnl/arena.h"
 #include "geo2d.h"
 
+#define JNL_MESH2D_NAME_CAP 64
+
 //
 // Topology
 //
@@ -129,7 +131,7 @@ struct jnl_mesh_interp {
 //
 
 struct jnl_patch {
-	char name[64];
+	char name[JNL_MESH2D_NAME_CAP];
 	i32 start_face;
 	i32 n_faces;
 	i32 marker;
@@ -145,7 +147,7 @@ struct jnl_patches {
 //
 
 struct jnl_region {
-	char name[64];
+	char name[JNL_MESH2D_NAME_CAP];
 	i32 start_cell;
 	i32 n_cells;
 	i32 marker;
@@ -161,7 +163,7 @@ struct jnl_regions {
 //
 
 struct jnl_baffle {
-	char name[64];
+	char name[JNL_MESH2D_NAME_CAP];
 	i32 start_face;
 	i32 n_faces;
 	i32 marker;
@@ -189,7 +191,7 @@ struct jnl_mesh {
 };
 
 //
-// Mesh generation and lifecycle
+// Error Enum
 //
 
 enum jnl_mesh_err {
@@ -197,13 +199,24 @@ enum jnl_mesh_err {
 	JNL_MESH_ERR_UNKNOWN_PATCH = 1,
 	JNL_MESH_ERR_UNKNOWN_BAFFLE = 2,
 	JNL_MESH_ERR_UNKNOWN_REGION = 3,
+
+	JNL_MESH_ERR_ALLOC = 4,
+	JNL_MESH_ERR_INVALID_INPUT = 5,
+	JNL_MESH_ERR_TRIANGLE_FAILED = 6,
+	JNL_MESH_ERR_INVALID_BAFFLE = 7,
+	JNL_MESH_ERR_DUPLICATE_MARKER = 8,
 };
 
+//
+// Structured mesh generation + lifecycle
+//
+
 struct jnl_mesh *jnl_smesh_gen(f64 width, f64 height, u32 nx, u32 ny);
+
 void jnl_mesh_free(struct jnl_mesh *mesh);
 
 //
-// Triangle PSLG meshing
+// Triangle Options
 //
 
 enum jnl_tri_quality_mode {
@@ -251,7 +264,67 @@ jnl_tri_opts_set_conforming_delaunay(struct jnl_tri_opts opts, bool enabled);
 struct jnl_tri_opts jnl_tri_opts_set_quiet(struct jnl_tri_opts opts,
                                            bool enabled);
 
-struct jnl_mesh *jnl_mesh2d_from_pslg_tri(const struct jnl_pslg *pslg,
-                                          struct jnl_tri_opts opts);
+//
+// Triangle marker metadata
+//
+
+struct jnl_tri_marker_name {
+	i32 marker;
+	char name[JNL_MESH2D_NAME_CAP];
+};
+
+struct jnl_tri_marker_map {
+	struct jnl_tri_marker_name *data;
+	u32 len, cap;
+};
+
+struct jnl_tri_tags {
+	struct jnl_tri_marker_map patches;
+	struct jnl_tri_marker_map baffles;
+	struct jnl_tri_marker_map regions;
+
+	// If true, Triangle output using an unknown marker is an error.
+	bool require_named_patches;
+	bool require_named_baffles;
+	bool require_named_regions;
+};
+
+struct jnl_tri_mesh_spec {
+	struct jnl_tri_opts opts;
+	struct jnl_tri_tags tags;
+};
+
+struct jnl_tri_mesh_spec jnl_tri_mesh_spec_default(void);
+
+void jnl_tri_tags_init(struct jnl_tri_tags *tags);
+void jnl_tri_tags_free(struct jnl_tri_tags *tags);
+
+enum jnl_mesh_err jnl_tri_tags_add_patch(struct jnl_tri_tags *tags, i32 marker,
+                                         const char *name);
+
+enum jnl_mesh_err jnl_tri_tags_add_baffle(struct jnl_tri_tags *tags, i32 marker,
+                                          const char *name);
+
+enum jnl_mesh_err jnl_tri_tags_add_region(struct jnl_tri_tags *tags, i32 marker,
+                                          const char *name);
+
+const char *jnl_tri_tags_find_patch(const struct jnl_tri_tags *tags,
+                                    i32 marker);
+
+const char *jnl_tri_tags_find_baffle(const struct jnl_tri_tags *tags,
+                                     i32 marker);
+
+const char *jnl_tri_tags_find_region(const struct jnl_tri_tags *tags,
+                                     i32 marker);
+
+bool jnl_tri_tags_is_baffle_marker(const struct jnl_tri_tags *tags, i32 marker);
+
+//
+// Triangle mesh generation from PSLG
+//
+
+enum jnl_mesh_err jnl_mesh2d_from_pslg_tri(const struct jnl_pslg *pslg,
+                                           const struct jnl_tri_mesh_spec *spec,
+                                           struct jnl_mesh **out_mesh);
 
 #endif
