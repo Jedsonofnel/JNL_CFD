@@ -15,12 +15,13 @@ local U_wall = 1.0
 local mu     = 1e-2
 local rho    = 1.0
 
-local mesh   = mesh2d.new_smesh(L, H, Nx, Ny)
 
-local reg    = canned.stokes_registry({ rho = rho, mu = mu })
-local alg    = canned.SIMPLE({ max_iters = 50 })
+local mesh = mesh2d.new_smesh(L, H, Nx, Ny)
+local reg = canned.incompressible_registry({ rho = rho, mu = mu })
+local alg = canned.SIMPLE({ max_iters = 50 })
 
-local bcs    = {
+
+local bcs  = {
 	Ux = {
 		BC.dirichlet(P.TOP, U_wall),
 		BC.dirichlet(P.BOTTOM, 0.0),
@@ -41,7 +42,7 @@ local bcs    = {
 	},
 }
 
-local case   = require("jnl.fvm.case").new(reg, alg, mesh, bcs)
+local case = require("jnl.fvm.case").new(reg, alg, mesh, bcs)
 case:print_algorithm()
 
 os.exit(0)

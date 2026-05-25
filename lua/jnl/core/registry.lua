@@ -47,6 +47,11 @@ function Field:_pretty()
 	local flag_str = #flags > 0 and ("  [" .. table.concat(flags, ", ") .. "]") or ""
 	line(self.name .. flag_str)
 
+	if self.passive then
+		line(self.name .. "  [passive - correction driven]")
+		return table.concat(lines, "\n")
+	end
+
 	-- equation block
 	if self.eq and self.eq._pretty then
 		line(self.eq:_pretty(self.name, G.indent))
@@ -143,18 +148,16 @@ function R:correction(name, expr)
 end
 
 function R:field(name, spec)
+	spec = spec or {}
 	V.field_name(name, "R:field name")
 
 	if spec.region ~= nil then
 		V.typeof(spec.region, "string", "field '" .. name .. "' region")
 	end
 
-	if spec.eq == nil then
-		error("R:field expects an equation field", 2)
-	end
-
 	self:define(name, {
 		kind = "field",
+		passive = spec.eq == nil,
 		initial = spec.initial or 0.0,
 		bcs = spec.bcs,
 		region = spec.region,

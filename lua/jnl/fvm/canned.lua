@@ -53,12 +53,8 @@ function M.incompressible_registry(props)
 	reg:expression("inv_d",
 		E.mul(E.cV(), E.div(2, E.add(FVMe.diag("Ux"), FVMe.diag("Uy")))))
 
-	reg:field("p", {
-		eq = FVM.eq(
-			Op.lap("inv_d", "p"),
-			{ relax = 0.3, solver = "cg" }
-		)
-	})
+	-- passive - driven by correction
+	reg:field("p")
 
 	local pp = E.prime_name("p")
 	reg:field(pp, {
@@ -110,12 +106,7 @@ function M.stokes_registry(props)
 	reg:expression("inv_d",
 		E.mul(E.cV(), E.div(2, E.add(FVMe.diag("Ux"), FVMe.diag("Uy")))))
 
-	reg:field("p", {
-		eq = FVM.eq(
-			Op.lap("inv_d", "p"),
-			{ relax = 0.3, solver = "cg" }
-		)
-	})
+	reg:field("p")
 
 	local pp = E.prime_name("p")
 	reg:field(pp, {
@@ -160,13 +151,14 @@ M.SIMPLEConvergence = rules.stopping({
 
 function M.SIMPLE(opts)
 	opts = opts or {}
+	local pp = E.prime_name("p")
 	local alg = A.new()
+
 	alg:loop(function(a)
 		a:solve("U")
-		a:solve("p")
 		a:monitor("divU")
-		a:zero(E.prime_name("p"))
-		a:solve(E.prime_name("p"))
+		a:zero(pp)
+		a:solve(pp)
 		a:correct("U")
 		a:correct("p")
 	end, {

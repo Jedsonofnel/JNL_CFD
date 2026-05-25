@@ -315,7 +315,6 @@ end
 local function elaborate_mwi(reg, _, U, p)
 	local deps = {}
 	for _, uc in ipairs(scalars_of(reg, U)) do
-		deps[#deps + 1] = names.face(uc)
 		deps[#deps + 1] = names.diag(uc)
 	end
 	deps[#deps + 1] = names.face(p)
@@ -828,6 +827,7 @@ end
 local function emit_solve(reg, name, alg_ctx, out)
 	local sym = reg[name]
 	assert(sym and sym.kind == "field", "emit_solve: not a field: " .. name)
+	assert(not sym.passive, "emit_solve: '" .. name .. "' is a passive field — cannot be solved")
 	local eq = sym.eq
 
 	out[#out + 1] = Inst.comment("solve " .. E.pretty_sym(name)

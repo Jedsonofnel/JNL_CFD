@@ -447,6 +447,11 @@ local function emit_implicit(reg, name, inserted, fresh, expanded, hooks)
 		return
 	end
 
+	if sym.kind == "field" and sym.passive then
+		fresh_mark(fresh, inserted, name)
+		return
+	end
+
 	if sym.kind == "field" then
 		local step = step_solve(name, true)
 		expanded:_push(step)
