@@ -218,8 +218,8 @@ dispatch.apply_bc_face_normal = function(r, inst)
 		local Ux, Uy = reg_U.components[1], reg_U.components[2]
 		FVM.bc_neumann_face_normal(
 			r.mesh,
-			r:_field(names.face(Ux)),
-			r:_field(names.face(Uy)),
+			r:_field(Ux),
+			r:_field(Uy),
 			r:_field(inst.face_field),
 			inst.patch, inst.ux or 0.0, inst.uy or 0.0)
 	else

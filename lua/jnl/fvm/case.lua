@@ -2,7 +2,6 @@
 -- <jed@nelson.ac> // 2026-05-23
 
 local compile = require("jnl.fvm.compile")
-local names = require("jnl.fvm.expr").names
 local mesh2d = require("jnl.mesh2d")
 local BC = require("jnl.fvm.bc")
 
@@ -163,15 +162,16 @@ end
 -- Perform full case allocation from scratch
 function Case:allocate()
 	assert(not self._allocated, "Case:allocate: already allocated — use reconcile()")
-	local FVM          = require("jnl.fvm")
-	local man          = self.compiled.manifest
-	local reg          = self.compiled.expanded_reg
+	local FVM = require("jnl.fvm")
+	local man = self.compiled.manifest
+	local reg = self.compiled.expanded_reg
 
-	self._ctx          = FVM.ctx_new(self.mesh,
+	self._ctx = FVM.ctx_new(self.mesh,
 		man.n_fields, man.n_face_fields, man.n_systems, {
 			cell_scratch = man.n_cell_scratch,
 			face_scratch = man.n_face_scratch,
 		})
+
 
 	self._ctx_manifest = {
 		n_fields       = man.n_fields,

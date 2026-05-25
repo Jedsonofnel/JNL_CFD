@@ -126,9 +126,11 @@ void jnl_divergence(const struct jnl_mesh *mesh, const f64 *un_face, f64 *div)
 {
 	const struct jnl_mesh_topo *topo = &mesh->topo;
 	const struct jnl_mesh_geom *geom = &mesh->geom;
+
 	for (i32 c = 0; c < topo->n_cells; c++) {
 		div[c] = 0.0;
 	}
+
 	for (i32 f = 0; f < topo->n_faces; f++) {
 		i32 owner = topo->owner[f];
 		i32 neigh = topo->neighbour[f];

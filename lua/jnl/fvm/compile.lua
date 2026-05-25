@@ -417,7 +417,10 @@ local function register_intermediate(reg, name, itype, deps, accessor, component
 			end
 		end
 	end
-	reg:intermediate(name, itype, deps, { accessor = accessor })
+
+	reg:intermediate(name, itype, deps, {
+		accessor = accessor,
+	})
 
 	local diag_field = names.is_diag(name)
 	if diag_field and reg[diag_field] then
@@ -513,7 +516,7 @@ local function count_resources(reg)
 				record(name, "mwi", true)
 			elseif itype == "div" or itype == "div_mwi" then
 				record(name, "div", false)
-			elseif itype == "diag" and not sym.accessor then
+			elseif itype == "diag" then
 				record(name, "diag_snapshot", false)
 			end
 		end
@@ -865,7 +868,7 @@ local function emit_solve(reg, name, alg_ctx, out)
 
 	-- snapshot diag before relaxation
 	local dname = names.diag(name)
-	if reg[dname] and not reg[dname].accessor then
+	if reg[dname] then
 		out[#out + 1] = Inst.new("diag_snapshot", { field = name, out = dname })
 	end
 

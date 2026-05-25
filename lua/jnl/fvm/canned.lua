@@ -66,12 +66,11 @@ function M.incompressible_registry(props)
 		bcs = { BC.neumann_all(0.0) },
 	})
 
-	reg:correction("Ux", E.sub(E.expl("Ux"),
+	reg:correction("Ux", E.neg(
 		E.mul(E.cV(), E.div(FVMe.grad(pp, "x"), FVMe.diag("Ux")))))
-	reg:correction("Uy", E.sub(E.expl("Uy"),
+	reg:correction("Uy", E.neg(
 		E.mul(E.cV(), E.div(FVMe.grad(pp, "y"), FVMe.diag("Uy")))))
-	reg:correction("p", E.add(E.expl("p"),
-		E.mul("alpha_p", E.prime("p"))))
+	reg:correction("p", E.mul("alpha_p", E.prime("p")))
 
 	return reg
 end
@@ -118,12 +117,11 @@ function M.stokes_registry(props)
 		bcs = { BC.neumann_all(0.0) },
 	})
 
-	reg:correction("Ux", E.sub(E.expl("Ux"),
+	reg:correction("Ux", E.neg(
 		E.mul(E.cV(), E.div(FVMe.grad(pp, "x"), FVMe.diag("Ux")))))
-	reg:correction("Uy", E.sub(E.expl("Uy"),
+	reg:correction("Uy", E.neg(
 		E.mul(E.cV(), E.div(FVMe.grad(pp, "y"), FVMe.diag("Uy")))))
-	reg:correction("p", E.add(E.expl("p"),
-		E.mul("alpha_p", E.prime("p"))))
+	reg:correction("p", E.mul("alpha_p", E.prime("p")))
 
 	return reg
 end
@@ -165,7 +163,7 @@ function M.SIMPLE(opts)
 		max_iters = opts.max_iters or 1000,
 		linalg_max_iters = opts.linalg_max_iters or 20,
 	})
-	-- alg:add_ruleset(M.SIMPLEConvergence)
+	alg:add_ruleset(M.SIMPLEConvergence)
 	alg:add_ruleset(M.SIMPLEPostMortem)
 	return alg
 end
