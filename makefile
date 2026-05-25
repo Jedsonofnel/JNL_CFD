@@ -50,7 +50,7 @@ endif
 
 LDFLAGS_LUA := $(shell pkg-config --libs lua5.5)
 LDFLAGS_TEST := -lm
-LDFLAGS := -lraylib $(LDFLAGS_LUA) -lm
+LDFLAGS := -lraylib $(LDFLAGS_LUA) -lm -lreadline
 
 # src/ vars
 SRCS := $(shell find $(SRCDIR) -name '*.c')
@@ -78,7 +78,7 @@ ifeq ($(V), 0)
 	Q := @
 	LOG_CC = @printf "  CC    %s\n" $@
 	LOG_LD = @printf "  LD    %s\n" $@
-	LOG_CMAKE = @printf "  CMAKE %s \n $(TRIANGLE_BUILD_DIR)
+	LOG_CMAKE = @printf "  CMAKE %s \n" $(TRIANGLE_BUILD_DIR)
 else
 	Q :=
 	LOG_CC :=
@@ -112,7 +112,7 @@ test: $(TEST_BINS)
 
 $(TRIANGLE_CORE_LIB) $(TRIANGLE_API_LIB):
 	$(LOG_CMAKE)
-	$(Q)@mkdir -p $(TRIANGLE_BUILD_DIR)
+	$(Q)mkdir -p $(TRIANGLE_BUILD_DIR)
 	$(Q)cmake -S $(TRIANGLE_SRC_DIR) \
 	      -B $(TRIANGLE_BUILD_DIR) \
 	      -DCMAKE_BUILD_TYPE=$(TRIANGLE_CMAKE_BUILD_TYPE) \
@@ -121,6 +121,11 @@ $(TRIANGLE_CORE_LIB) $(TRIANGLE_API_LIB):
 	      -DBUILD_EXAMPLES=OFF \
 	      -DTRIANGLE_ENABLE_ACUTE=ON
 	$(Q)cmake --build $(TRIANGLE_BUILD_DIR)
+	@for lib in $(TRIANGLE_LIBS); do \
+		objcopy --redefine-sym readline=triangle_readline \
+		        --redefine-sym writeline=triangle_writeline \
+		        $$lib; \
+	done
 
 #
 # test/ build

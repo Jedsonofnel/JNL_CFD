@@ -2,12 +2,18 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #include "lua_bindings.h"
 
 #ifndef LUA_ASSET_PATH
 #define LUA_ASSET_PATH "../lua" // fallback default
 #endif
+
+//
+// Helpers
+//
 
 static void set_lua_path(lua_State *L)
 {
@@ -17,42 +23,123 @@ static void set_lua_path(lua_State *L)
 	lua_pop(L, 1);
 }
 
-int main(int argc, char **argv)
+static void usage(const char *prog)
 {
-	lua_State *L = luaL_newstate();
-	luaL_openlibs(L);
+	fprintf(
+	    stderr,
+	    "usage: %s [--repl] [script.lua]\n"
+	    "\n"
+	    "  script.lua   run a Lua script (script may call repl:run() itself)\n"
+	    "  --repl       start the REPL after the script (or immediately if\n"
+	    "               no script is given)\n"
+	    "\n"
+	    "  Inside the REPL: ,help  ,quit  ctrl-D\n",
+	    prog);
+}
 
-	set_lua_path(L);
-	register_preloaders(L);
+// readline
+static int l_readline(lua_State *L)
+{
+	const char *prompt = luaL_optstring(L, 1, "");
+	char *line = readline(prompt);
 
-	const char *repl_path = LUA_ASSET_PATH "/jnl/repl.lua";
-
-	if (argc > 1) {
-		const char *script = argv[1];
-		const char *ext = strrchr(script, '.');
-		if (!ext || strcmp(ext, ".lua") != 0) {
-			fprintf(stderr, "Error: script must be a .lua file\n");
-			lua_close(L);
-			return 1;
-		}
-
-		if (luaL_dofile(L, script) != LUA_OK) {
-			fprintf(stderr, "Error running script: %s\n", lua_tostring(L, -1));
-			lua_close(L);
-			return 1;
-		}
-
-		lua_pushstring(L, script);
-		lua_setglobal(L, "_script");
-	}
-
-	if (luaL_dofile(L, repl_path) != LUA_OK) {
-		fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
-		lua_close(L);
+	if (!line) {
+		lua_pushnil(L);
 		return 1;
 	}
 
-	lua_close(L);
+	if (*line)
+		add_history(line);
 
+	lua_pushstring(L, line);
+	free(line);
+	return 1;
+}
+
+//
+// Main
+//
+
+int main(int argc, char **argv)
+{
+	const char *script = NULL;
+	int want_repl = 0;
+
+	// arg parsing
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--repl") == 0) {
+			want_repl = 1;
+		} else if (strcmp(argv[i], "--help") == 0 ||
+		           strcmp(argv[i], "-h") == 0) {
+			usage(argv[0]);
+			return EXIT_SUCCESS;
+		} else if (argv[i][0] == '-') {
+			fprintf(stderr, "unknown option: %s\n", argv[i]);
+			usage(argv[0]);
+			return EXIT_FAILURE;
+		} else if (!script) {
+			script = argv[i];
+		} else {
+			fprintf(stderr, "too many arguments\n");
+			usage(argv[0]);
+			return EXIT_FAILURE;
+		}
+	}
+
+	if (!script && !want_repl) {
+		usage(argv[0]);
+		return EXIT_FAILURE;
+	}
+
+	// Lua initialisation
+	lua_State *L = luaL_newstate();
+	if (!L) {
+		fprintf(stderr, "failed to create Lua state\n");
+		return EXIT_FAILURE;
+	}
+
+	luaL_openlibs(L);
+	set_lua_path(L);
+	register_preloaders(L);
+
+	rl_instream = stdin;
+	rl_outstream = stdout;
+	lua_pushcfunction(L, l_readline);
+	lua_setglobal(L, "readline");
+
+	// run user script
+	if (script) {
+		const char *ext = strrchr(script, '.');
+		if (!ext || strcmp(ext, ".lua") != 0) {
+			fprintf(stderr, "error: script must be a .lua file\n");
+			lua_close(L);
+			return EXIT_FAILURE;
+		}
+
+		// Expose the script path so Lua can reference it if wanted
+		lua_pushstring(L, script);
+		lua_setglobal(L, "_script");
+
+		if (luaL_dofile(L, script) != LUA_OK) {
+			fprintf(stderr, "error running script: %s\n", lua_tostring(L, -1));
+			lua_close(L);
+			return EXIT_FAILURE;
+		}
+	}
+
+	// bare REPL
+	if (want_repl) {
+		const char *boot = "local REPL = require('jnl.repl')\n"
+		                   "local repl = REPL.new()\n"
+		                   "repl:run()\n";
+
+		if (luaL_dostring(L, boot) != LUA_OK) {
+			fprintf(stderr, "error starting REPL: %s\n", lua_tostring(L, -1));
+			lua_close(L);
+			return EXIT_FAILURE;
+		}
+	}
+
+	lua_close(L);
 	return EXIT_SUCCESS;
 }

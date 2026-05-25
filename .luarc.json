@@ -1,5 +1,5 @@
 {
 	"diagnostics": {
-		"globals": ["_script"]
+		"globals": ["_script", "readline"]
 	}
 }
