@@ -72,6 +72,20 @@ TEST_LIB_SRCS := $(filter-out %_lua.c $(SRCDIR)/ui.c $(SRCDIR)/ui_%.c, $(SRCS))
 TEST_LIB_OBJS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(TEST_LIB_SRCS))
 DEPS          += $(TEST_OBJS:.o=.d)
 
+# verbosity: make V=1 for full commands
+V ?= 0
+ifeq ($(V), 0)
+	Q := @
+	LOG_CC = @printf "  CC    %s\n" $@
+	LOG_LD = @printf "  LD    %s\n" $@
+	LOG_CMAKE = @printf "  CMAKE %s \n $(TRIANGLE_BUILD_DIR)
+else
+	Q :=
+	LOG_CC :=
+	LOG_LD :=
+	LOG_CMAKE :=
+endif
+
 .PHONY: all clean test release debug triangle
 
 all: $(CMD_BINS)
@@ -97,22 +111,24 @@ test: $(TEST_BINS)
 #
 
 $(TRIANGLE_CORE_LIB) $(TRIANGLE_API_LIB):
-	@mkdir -p $(TRIANGLE_BUILD_DIR)
-	cmake -S $(TRIANGLE_SRC_DIR) \
+	$(LOG_CMAKE)
+	$(Q)@mkdir -p $(TRIANGLE_BUILD_DIR)
+	$(Q)cmake -S $(TRIANGLE_SRC_DIR) \
 	      -B $(TRIANGLE_BUILD_DIR) \
 	      -DCMAKE_BUILD_TYPE=$(TRIANGLE_CMAKE_BUILD_TYPE) \
 	      -DBUILD_SHARED_LIBS=OFF \
 	      -DBUILD_TESTING=OFF \
 	      -DBUILD_EXAMPLES=OFF \
 	      -DTRIANGLE_ENABLE_ACUTE=ON
-	cmake --build $(TRIANGLE_BUILD_DIR)
+	$(Q)cmake --build $(TRIANGLE_BUILD_DIR)
 
 #
 # test/ build
 #
 
 $(BINDIR)/test/%: $(OBJDIR)/test/%.o $(TEST_LIB_OBJS) $(TRIANGLE_LIBS) | $(BINDIR)/test
-	$(CC) $(CFLAGS) -o $@ \
+	$(LOG_LD)
+	$(Q)$(CC) $(CFLAGS) -o $@ \
 		$(OBJDIR)/test/$*.o \
 		$(TEST_LIB_OBJS) \
 		$(TRIANGLE_LIBS) \
@@ -120,7 +136,8 @@ $(BINDIR)/test/%: $(OBJDIR)/test/%.o $(TEST_LIB_OBJS) $(TRIANGLE_LIBS) | $(BINDI
 
 $(OBJDIR)/test/%.o: $(TESTDIR)/%.c | $(TRIANGLE_LIBS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(LOG_CC)
+	$(Q)$(CC) $(CFLAGS) -c -o $@ $<
 
 #
 # cmd/ build
@@ -131,7 +148,8 @@ $(BINDIR)/%: $(OBJDIR)/$(CMDDIR)/%/main.o \
                $(filter $(OBJDIR)/$(CMDDIR)/$*/%.o, $(CMD_OBJS))) \
              $(OBJS) \
              $(TRIANGLE_LIBS) | $(BINDIR) $(OUTDIR)
-	$(CC) $(CFLAGS) -o $@ \
+	$(LOG_LD)
+	$(Q)$(CC) $(CFLAGS) -o $@ \
 		$(OBJDIR)/$(CMDDIR)/$*/main.o \
 		$(filter-out $(OBJDIR)/$(CMDDIR)/$*/main.o, \
 		  $(filter $(OBJDIR)/$(CMDDIR)/$*/%.o, $(CMD_OBJS))) \
@@ -141,7 +159,8 @@ $(BINDIR)/%: $(OBJDIR)/$(CMDDIR)/%/main.o \
 
 $(OBJDIR)/$(CMDDIR)/%.o: $(CMDDIR)/%.c | $(TRIANGLE_LIBS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(LOG_CC)
+	$(Q)$(CC) $(CFLAGS) -c -o $@ $<
 
 #
 # src/ build
@@ -149,7 +168,8 @@ $(OBJDIR)/$(CMDDIR)/%.o: $(CMDDIR)/%.c | $(TRIANGLE_LIBS)
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(TRIANGLE_LIBS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(LOG_CC)
+	$(Q)$(CC) $(CFLAGS) -c -o $@ $<
 
 #
 # dirs
