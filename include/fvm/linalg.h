@@ -89,7 +89,9 @@ struct jnl_solve_result jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 // Useful diagnostics
 //
 
-f64 jnl_fvsys_residual_norm(const struct jnl_fvsys *sys, const f64 *x);
+f64 jnl_fvsys_residual_norm(const struct jnl_fvsys *sys,
+                            struct jnl_scratch_pool *pool, const f64 *x);
+
 f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys);
 bool jnl_fvsys_all_diagonals_positive(const struct jnl_fvsys *sys);
 f64 jnl_fvsys_max_asymmetry(const struct jnl_fvsys *sys);

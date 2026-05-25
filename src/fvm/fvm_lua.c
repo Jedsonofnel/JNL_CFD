@@ -63,7 +63,7 @@ static int l_fvsys_residual_norm(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
-	lua_pushnumber(L, jnl_fvsys_residual_norm(s->sys, x->data));
+	lua_pushnumber(L, jnl_fvsys_residual_norm(s->sys, s->pool, x->data));
 	return 1;
 }
 

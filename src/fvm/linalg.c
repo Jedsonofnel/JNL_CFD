@@ -61,6 +61,7 @@ void jnl_fvsys_reset(struct jnl_fvsys *sys)
 {
 	jnl_ldu_zero(&sys->matrix);
 	memset(sys->rhs, 0, sys->matrix.n_cells * sizeof(f64));
+	sys->singularity = JNL_SING_UNCHECKED;
 }
 
 void jnl_fvsys_reset_singularity(struct jnl_fvsys *sys)
@@ -92,8 +93,6 @@ void jnl_fvsys_pin_cell(struct jnl_fvsys *sys, i32 cell_idx, f64 value)
 
 	m->diag[cell_idx] = 1.0;
 	sys->rhs[cell_idx] = value;
-	sys->matrix.diag[cell_idx] += 1.0;
-	sys->rhs[cell_idx] += value;
 }
 
 void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
@@ -114,8 +113,6 @@ void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
 	for (i32 p = 0; p < n_cells; p++) {
 		m->diag[cells[p]] = 1.0;
 		sys->rhs[cells[p]] = value;
-		sys->matrix.diag[cells[p]] += 1.0;
-		sys->rhs[cells[p]] += value;
 	}
 }
 
@@ -421,24 +418,24 @@ u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_conns)
 // Diagnostics
 //
 
-f64 jnl_fvsys_residual_norm(const struct jnl_fvsys *sys, const f64 *x)
+f64 jnl_fvsys_residual_norm(const struct jnl_fvsys *sys,
+                            struct jnl_scratch_pool *pool, const f64 *x)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
-	f64 sum = 0.0;
+	i32 n = m->n_cells;
 
-	for (i32 i = 0; i < m->n_cells; i++) {
-		f64 ax = m->diag[i] * x[i];
-		for (i32 k = 0; k < m->n_conns; k++) {
-			if (m->owner[k] == i && m->neighbour[k] >= 0)
-				ax += m->upper[k] * x[m->neighbour[k]];
-			if (m->neighbour[k] == i)
-				ax += m->lower[k] * x[m->owner[k]];
-		}
+	jnl_scratch_reset(pool);
 
-		f64 r = ax - sys->rhs[i];
-		sum += r * r;
-	}
-	return sqrt(sum);
+	f64 *r = jnl_scratch_acquire(pool);
+
+	/* r = A*x */
+	jnl_ldu_matvec(m, x, r);
+
+	/* r = A*x - b */
+	for (i32 i = 0; i < n; i++)
+		r[i] -= sys->rhs[i];
+
+	return sqrt(jnl_vec_dot(r, r, n));
 }
 
 f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys)

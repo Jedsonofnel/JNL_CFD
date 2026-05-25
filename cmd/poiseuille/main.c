@@ -207,7 +207,7 @@ int main(void)
 		copy_diag(ux_sys, ap_x);
 		jnl_fvsys_under_relax(ux_sys, Ux, ALPHA_U);
 		jnl_fvsys_solve_bicgstab_into(ux_sys, pool, Ux, 1e-6, 200);
-		f64 res_Ux = jnl_fvsys_residual_norm(ux_sys, Ux);
+		f64 res_Ux = jnl_fvsys_residual_norm(ux_sys, pool, Ux);
 
 		// 4. Uy momentum — diffusion + convection (UDS) + pressure source
 		jnl_fvsys_reset(uy_sys);
@@ -219,7 +219,7 @@ int main(void)
 		copy_diag(uy_sys, ap_y);
 		jnl_fvsys_under_relax(uy_sys, Uy, ALPHA_U);
 		jnl_fvsys_solve_bicgstab_into(uy_sys, pool, Uy, 1e-6, 200);
-		f64 res_Uy = jnl_fvsys_residual_norm(uy_sys, Uy);
+		f64 res_Uy = jnl_fvsys_residual_norm(uy_sys, pool, Uy);
 
 		// 5. Rhie-Chow + div U (recompute after momentum update)
 		jnl_rhie_chow(mesh, Ux, Uy, p, grad_px, grad_py, ap_x, ap_y, un_mwi);
@@ -239,7 +239,7 @@ int main(void)
 		jnl_bc_set_apply_sys(&pp_bcs, pp_sys, mesh);
 
 		jnl_fvsys_solve_cg_into(pp_sys, pool, pp, 1e-6, 500);
-		f64 res_pp = jnl_fvsys_residual_norm(pp_sys, pp);
+		f64 res_pp = jnl_fvsys_residual_norm(pp_sys, pool, pp);
 
 		// 8. Corrections
 		jnl_face_interp_cds(mesh, pp, pp_face);

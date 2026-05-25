@@ -1,22 +1,34 @@
 # filesystem vars
 CMDDIR  = cmd
-BINDIR  = bin
 SRCDIR  = src
-OBJDIR  = build
 HDIR    = include
 TESTDIR = test
 LUADIR  = lua
 OUTDIR  = out
 
+BUILD ?= debug
+BUILDDIR = build/$(BUILD)
+BINDIR   = bin/$(BUILD)
+OBJDIR   = $(BUILDDIR)
+
 # compiler vars
 CC = gcc
 CFLAGS_LUA := $(shell pkg-config --cflags lua5.5) \
 				-DLUA_ASSET_PATH='"$(LUADIR)"'
-CFLAGS := -g -Wall -pedantic -MMD -MP -I$(HDIR) $(CFLAGS_LUA)
+CFLAGS_COMMON := -Wall -pedantic -MMD -MP -I$(HDIR) $(CFLAGS_LUA)
+
+CFLAGS_DEBUG := -O0 -g3
+CFLAGS_RELEASE := -O3 -march=native -flto -ffast-math -DNDEBUG
+
+ifeq ($(BUILD), release)
+	CFLAGS := $(CFLAGS_COMMON) $(CFLAGS_RELEASE)
+else
+	CFLAGS := $(CFLAGS_COMMON) $(CFLAGS_DEBUG)
+endif
 
 LDFLAGS_LUA := $(shell pkg-config --libs lua5.5)
 LDFLAGS_TEST := -lm
-LDFLAGS := -lraylib -lm $(LDFLAGS_LUA)
+LDFLAGS := -lraylib $(LDFLAGS_LUA) -lm
 
 # src/ vars
 SRCS := $(shell find $(SRCDIR) -name '*.c')
@@ -38,9 +50,16 @@ TEST_LIB_SRCS := $(filter-out %_lua.c $(SRCDIR)/ui.c $(SRCDIR)/ui_%.c, $(SRCS))
 TEST_LIB_OBJS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(TEST_LIB_SRCS))
 DEPS          += $(TEST_OBJS:.o=.d)
 
-.PHONY: all clean test
+.PHONY: all clean test release debug
 
 all: $(CMD_BINS)
+
+debug:
+	$(MAKE) BUILD=debug all
+
+
+release:
+	$(MAKE) BUILD=release all
 
 test: $(TEST_BINS)
 	@failed=0; \
@@ -51,7 +70,7 @@ test: $(TEST_BINS)
 	exit $$failed
 
 $(BINDIR)/test/%: $(OBJDIR)/test/%.o $(TEST_LIB_OBJS) | $(BINDIR)/test
-	$(CC) $(LDFLAGS_TEST) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS_TEST)
 
 $(OBJDIR)/test/%.o: $(TESTDIR)/%.c
 	@mkdir -p $(dir $@)
@@ -60,7 +79,7 @@ $(OBJDIR)/test/%.o: $(TESTDIR)/%.c
 $(BINDIR)/%: $(OBJDIR)/$(CMDDIR)/%/main.o \
              $(filter $(OBJDIR)/$(CMDDIR)/$*/%.o, $(CMD_OBJS)) \
              $(OBJS) | $(BINDIR) $(OUTDIR)
-	$(CC) $(LDFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(OBJDIR)/$(CMDDIR)/%.o: $(CMDDIR)/%.c
 	@mkdir -p $(dir $@)
@@ -82,4 +101,4 @@ $(OUTDIR):
 -include $(DEPS)
 
 clean:
-	rm -rf $(OBJDIR) $(BINDIR) $(OUTDIR)
+	rm -rf build bin $(OUTDIR)
