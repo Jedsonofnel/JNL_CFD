@@ -120,17 +120,22 @@ local SECTIONS = {
 		bullet("Prefer small callable steps such as build_domain, build_mesh, show_mesh, or run_demo."),
 		bullet("When there is a natural demo path, provide a no-argument function such as demo(), run(), or show()."),
 		bullet("Print a short post-load message explaining the available entry point."),
+		bullet(
+			"Prefer paragraph-style scripts over one large constructor call; each paragraph should introduce one concept or workflow step."),
 	}),
 
 	section("REPL script entry points", {
-		bullet("Interactive showcase scripts should normally create and run a JNL REPL."),
-		bullet("Require the REPL with local repl = require(\"jnl.repl\").new()."),
-		bullet("Register demo values and functions with repl:register(name, value, doc)."),
 		bullet(
-			"End the script with return repl:run() unless the script is explicitly intended to be required as a module."),
-		bullet("Remember that the REPL language is Fennel, even when the loaded script is written in Lua."),
+			"Interactive showcase scripts should normally create and run a JNL REPL directly, or use a Study helper that does this for them."),
+		bullet("For plain REPL scripts, require the REPL with local repl = require(\"jnl.repl\").new()."),
 		bullet(
-			"When telling users what to type after loading a Lua script, give Fennel-friendly calls such as (demo), (show-pslg :rocket), or (mesh-pslg :rocket {:resolution 0.05})."),
+			"For FVM studies, prefer local study = require(\"jnl.fvm.study\").new(\"Title\") when the script has mesh, registry, algorithm, bcs, evaluate, outputs, or validation helpers."),
+		bullet(
+			"Register demo values and functions with repl:register(name, value, doc), or with study:expose(name, value, doc)."),
+		bullet("End a plain script with return repl:run(). End a Study script with return study:repl()."),
+		bullet("Remember that the REPL language is Fennel, even when the loaded script itself is written in Lua."),
+		bullet(
+			"When telling users what to type after loading a Lua script, give Fennel-friendly calls such as (demo), (show-mesh), (inspect-registry), or (run {:scheme \"cds\"})."),
 		bullet(
 			"If registered Lua function names contain underscores, mention the exact registered REPL name the user should call."),
 	}),
@@ -144,8 +149,42 @@ local SECTIONS = {
 	}),
 
 	section("CFD case guidance", {
-		"Detailed CFD case-writing conventions have not been defined yet.",
-		"Do not invent project-specific case structure beyond the documented API.",
+		bullet("Write CFD cases as readable Lua scripts, not as large JSON-like configuration blobs."),
+		bullet(
+			"Structure the file in short paragraphs using section headers: metadata, defaults, geometry/mesh, physics, algorithm, boundary conditions, outputs, and entry points."),
+		bullet(
+			"Prefer ordinary named Lua functions over nested tables of callbacks. Users should be able to copy, modify, call, loop over, or optimise these functions directly."),
+		bullet("Start by listing key parameters and defaults near the top of the file."),
+		bullet(
+			"Use jnl.fvm.study when available to make the case self-guiding in the REPL, but do not hide important logic inside the study object."),
+		bullet(
+			"A good CFD case usually has a function that builds geometry and/or mesh from design variables and options."),
+		bullet(
+			"A good FVM case usually has functions that build the registry, algorithm, boundary conditions, and final Case object."),
+		bullet(
+			"Do not launch expensive computation on load. Loading the script should register helpers, print a short entry message, and start the REPL."),
+		bullet(
+			"Provide a main evaluate or run function that takes optional design-variable overrides and returns a result table."),
+		bullet(
+			"Keep evaluate ordinary and composable: it should be suitable for direct calls, for loops, sweeps, optimisation, or uncertainty studies."),
+		bullet(
+			"Expose useful intermediate helpers such as show-geometry, show-mesh, inspect-registry, inspect-deps, inspect-algorithm, inspect-instructions, inspect-resources, and inspect-warnings."),
+		bullet(
+			"If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically."),
+		bullet(
+			"Use study:about, study:defaults, study:design, study:options, and study:evaluate in separate paragraphs rather than passing one large table of options."),
+		bullet(
+			"Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format."),
+		bullet(
+			"Return result tables with predictable keys when useful: x for design variables, opts for options, case, sim, mesh, metrics, fields, profiles, plots, and files."),
+		bullet(
+			"For validation cases, expose plotting and writing helpers that compare numerical results with analytical or reference data, but keep the reference-data lookup separate from the solver setup."),
+		bullet(
+			"For parameter studies, sweeps, optimisation, or UQ, make the design variables explicit and pass them through the geometry, mesh, physics, and post-processing functions."),
+		bullet(
+			"Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise."),
+		bullet(
+			"Always provide at least one safe no-argument entry point such as demo, instructions, show-mesh, or evaluate. demo should not perform a long solve unless clearly documented."),
 	}),
 }
 

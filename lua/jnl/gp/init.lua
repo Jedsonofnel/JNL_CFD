@@ -1,4 +1,4 @@
--- jnl/gp.lua - gnuplot driver via popen
+-- jnl/gp/init.lua - gnuplot driver via popen
 -- <jed@nelson> // 2026-05-22
 
 local M = {}
@@ -180,6 +180,10 @@ function Figure:show()
 	pipe:close()
 end
 
+function Figure:series()
+	return self._series
+end
+
 -- fig:save(path, opts?)
 --   auto-detects terminal from extension: .png .svg .pdf .eps
 --   opts.size = {w, h}  (pixels for raster, pts for vector)
@@ -246,10 +250,10 @@ M._doc_subsection =
 	"M.sample(fn, x0, x1, n) generates xs/ys from a Lua function for quick plotting."
 
 M._api = {
-	figure    = { args = "opts?",                   ret = "Figure",   doc = "Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key, logx, logy }" },
-	series    = { args = "xs, ys, opts?",           ret = "Series",   doc = "Build a series struct explicitly; opts: { title, style, color, lw, pt, ps, dt }" },
-	sample    = { args = "fn, x0, x1, n?",          ret = "xs, ys",   doc = "Sample fn over [x0,x1] at n+1 points (default 200); returns two arrays" },
-	write_csv = { args = "path, xs_or_series, ys?", ret = "nil",      doc = "Write xs/ys or a list of Series structs to a CSV file" },
+	figure    = { args = "opts?", ret = "Figure", doc = "Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key, logx, logy }" },
+	series    = { args = "xs, ys, opts?", ret = "Series", doc = "Build a series struct explicitly; opts: { title, style, color, lw, pt, ps, dt }" },
+	sample    = { args = "fn, x0, x1, n?", ret = "xs, ys", doc = "Sample fn over [x0,x1] at n+1 points (default 200); returns two arrays" },
+	write_csv = { args = "path, xs_or_series, ys?", ret = "nil", doc = "Write xs/ys or a list of Series structs to a CSV file" },
 }
 
 M._types = {
@@ -258,10 +262,15 @@ M._types = {
 		constructor = "M.figure(opts?)",
 		kind        = "table",
 		methods     = {
-			add       = { args = "xs, ys, opts?  |  series:Series", ret = "Figure", doc = "Append a data series; accepts raw arrays or a Series struct; chainable" },
-			show      = { args = "",                                 ret = "nil",    doc = "Open a persistent interactive gnuplot window" },
-			save      = { args = "path:string, opts?",              ret = "nil",    doc = "Save to file; terminal inferred from extension; opts: { size={w,h}, terminal }" },
-			write_csv = { args = "path:string",                     ret = "Figure", doc = "Dump all series to CSV; chainable" },
+			series_list = {
+				args = "",
+				ret = "Series[]",
+				doc = "Return the figure's series list",
+			},
+			add         = { args = "xs, ys, opts?  |  series:Series", ret = "Figure", doc = "Append a data series; accepts raw arrays or a Series struct; chainable" },
+			show        = { args = "", ret = "nil", doc = "Open a persistent interactive gnuplot window" },
+			save        = { args = "path:string, opts?", ret = "nil", doc = "Save to file; terminal inferred from extension; opts: { size={w,h}, terminal }" },
+			write_csv   = { args = "path:string", ret = "Figure", doc = "Dump all series to CSV; chainable" },
 		},
 	},
 	Series = {

@@ -15,9 +15,6 @@ M._doc_subsection = {
 	"of key to { value, doc }. value should be the Lua literal as a string for display.",
 	"_doc is a single short sentence. _doc_subsection is a string or array of strings " ..
 	"printed before _api; keep each paragraph to 2-3 lines.",
-	"The d argument passed to pm_rule callbacks is sim.diag — the same Diag object " ..
-	"documented in jnl.fvm.sim. Use d.field(name), d.max(name), and d.sys_diag(name) " ..
-	"to inspect field state at the point of divergence."
 }
 
 
@@ -45,18 +42,23 @@ local MODULES = {
 	"jnl.fvm.canned",
 	"jnl.fvm.case",
 	"jnl.fvm.bc",
+	"jnl.fvm.study",
 	-- core
 	"jnl.core.algorithm",
 	"jnl.core.registry",
 	"jnl.core.expr",
+	-- repl
+	"jnl.repl",
+	"jnl.repl.study",
+	-- gp
+	"jnl.gp",
+	"jnl.gp.compare",
 	-- jnl
 	"jnl.sage",
 	"jnl.ui",
 	"jnl.doc",
-	"jnl.repl",
 	"jnl.llm",
 	"jnl.term_printer",
-	"jnl.gp",
 }
 
 local function load_modules()

@@ -1,4 +1,4 @@
--- repl.lua - Configurable REPL for the JNL suite
+-- jnl/repl/init.lua - Configurable REPL for the JNL suite
 -- <jed@nelson.ac> // 2026-05-21
 
 local Printer = require("jnl.term_printer")
@@ -13,6 +13,7 @@ REPL._doc_subsection = {
 	"The REPL evaluates Fennel input, even when the startup script itself is written in Lua.",
 	"Registered names should be user-facing and Fennel-friendly; prefer names like show-mesh while optionally adding Lua-style aliases.",
 	"Comma commands are for REPL control and discovery; registered globals are for user-callable demo functions and objects.",
+	"Scripts can call repl:usage(text_or_fn) to provide a study-specific ,usage guide alongside the general ,help command.",
 }
 
 -- Lua stdlib names
@@ -97,6 +98,38 @@ function REPL:command(name, fn, usage, doc)
 		usage = usage or ("," .. name),
 		doc   = doc or "",
 	}
+end
+
+function REPL:usage(spec)
+	self._usage = spec
+end
+
+function REPL:usage_string()
+	if type(self._usage) == "function" then
+		return self._usage(self)
+	end
+
+	if type(self._usage) == "string" then
+		return self._usage
+	end
+
+	if type(self._usage) == "table" and type(self._usage.string) == "function" then
+		return self._usage:string()
+	end
+
+	if type(self._usage) == "table" and type(self._usage.usage_string) == "function" then
+		return self._usage:usage_string()
+	end
+
+	return "No study-specific usage has been registered.\nUse ,help for REPL commands.\n"
+end
+
+function REPL:print_usage()
+	local s = self:usage_string()
+	io.write(s)
+	if s:sub(-1) ~= "\n" then
+		io.write("\n")
+	end
 end
 
 --
@@ -282,6 +315,10 @@ function REPL:_register_builtins()
 	self:register("pp", function(value, opts)
 		return self:pp(value, opts)
 	end, "Pretty-print a Lua/Fennel value: (pp value)")
+
+	self:command("usage", function(_self, _)
+		_self:print_usage()
+	end, ",usage", "Show study-specific workflow, entry points, and options")
 
 	self:command("quit", function(_self, _)
 		io.write("bye\n")
@@ -541,6 +578,21 @@ REPL._types = {
 				args = "",
 				ret = "nil",
 				doc = "Start the Fennel REPL loop",
+			},
+			usage = {
+				args = "spec:string|table|function",
+				ret = "nil",
+				doc = "Register study-specific usage text or a usage provider for ,usage",
+			},
+			usage_string = {
+				args = "",
+				ret = "string",
+				doc = "Return registered study-specific usage text",
+			},
+			print_usage = {
+				args = "",
+				ret = "nil",
+				doc = "Print registered study-specific usage text",
 			},
 			pp = {
 				args = "value:any, opts:table?",
