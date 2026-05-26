@@ -223,53 +223,53 @@ function FvmStudy:install(repl)
 	if self.mesh_fn then
 		self:expose("build-mesh", function(arg)
 			return self:build_mesh(arg)
-		end, "Build the mesh for the current design")
+		end, "Build the mesh for the current design", { hidden = true })
 
 		self:expose("show-mesh", function(arg)
 			return self:show_mesh(arg)
-		end, "Build and display the mesh")
+		end, "Build and display the mesh", { hidden = true })
 	end
 
 	if self.registry_fn then
 		self:expose("build-registry", function(arg)
 			return self:build_registry(arg)
-		end, "Build the physics registry")
+		end, "Build the physics registry", { hidden = true })
 
 		self:expose("inspect-registry", function(arg)
 			return self:inspect_registry(arg)
-		end, "Print the registry listing")
+		end, "Print the registry listing", { hidden = true })
 
 		self:expose("inspect-deps", function(arg)
 			return self:inspect_deps(arg)
-		end, "Print the registry dependency listing")
+		end, "Print the registry dependency listing", { hidden = true })
 	end
 
 	if self.algorithm_fn then
 		self:expose("build-algorithm", function(arg)
 			return self:build_algorithm(arg)
-		end, "Build the algorithm")
+		end, "Build the algorithm", { hidden = true })
 
 		self:expose("inspect-algorithm", function(arg)
 			return self:inspect_algorithm(arg)
-		end, "Print the expanded algorithm")
+		end, "Print the expanded algorithm", { hidden = true })
 	end
 
 	if self.case_fn or self.mesh_fn and self.registry_fn and self.algorithm_fn then
 		self:expose("build-case", function(arg)
 			return self:build_case(arg)
-		end, "Compile the FVM case without running it")
+		end, "Compile the FVM case without running it", { hidden = true })
 
 		self:expose("inspect-instructions", function(arg)
 			return self:inspect_instructions(arg)
-		end, "Print compiled FVM instructions")
+		end, "Print compiled FVM instructions", { hidden = true })
 
 		self:expose("inspect-resources", function(arg)
 			return self:inspect_resources(arg)
-		end, "Print compiled resource counts")
+		end, "Print compiled resource counts", { hidden = true })
 
 		self:expose("inspect-warnings", function(arg)
 			return self:inspect_warnings(arg)
-		end, "Print compile warnings")
+		end, "Print compile warnings", { hidden = true })
 	end
 
 	if not self.evaluate_fn and (self.case_fn or self.mesh_fn and self.registry_fn and self.algorithm_fn) then

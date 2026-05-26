@@ -174,11 +174,14 @@ function Study:check_bounds(x)
 	end
 end
 
-function Study:expose(name, value, doc)
+function Study:expose(name, value, doc, opts)
+	opts = opts or {}
+
 	self.exposed[#self.exposed + 1] = {
 		name = normalise_name(name),
 		value = value,
 		doc = doc,
+		hidden = opts.hidden,
 	}
 
 	return self
@@ -281,8 +284,10 @@ function Study:usage_string()
 	p:line("Start here:")
 
 	if self.entry then
-		p:line("  " .. self.entry)
-	elseif self.evaluate_fn then
+		p:line("  (" .. self.entry .. ")")
+	end
+
+	if self.evaluate_fn then
 		p:line("  (evaluate)")
 
 		-- inline sample call: up to 3 design keys
@@ -328,7 +333,9 @@ function Study:usage_string()
 		p:columns("  (" .. item.name .. ")", item.doc or "Run optimisation helper")
 	end
 	for _, item in ipairs(self.exposed) do
-		p:columns("  (" .. item.name .. ")", item.doc or "Study helper")
+		if not item.hidden then
+			p:columns("  (" .. item.name .. ")", item.doc or "Study helper")
+		end
 	end
 
 	print_options(p, self.defaults_table, self.options_table)

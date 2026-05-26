@@ -54,6 +54,7 @@ local MODULES = {
 	-- gp
 	"jnl.gp",
 	"jnl.gp.compare",
+	"jnl.gp.mesh",
 	-- jnl
 	"jnl.sage",
 	"jnl.ui",
