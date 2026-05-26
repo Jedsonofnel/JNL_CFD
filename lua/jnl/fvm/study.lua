@@ -14,8 +14,8 @@ M._doc = "FVM-specific study helper with automatic case builders and inspectors"
 
 M._doc_subsection = {
 	"Use jnl.fvm.study when a script can expose mesh, registry, algorithm, and boundary-condition builders.",
-	"The helper registers standard REPL inspectors such as inspect-registry, inspect-deps, inspect-instructions, and run.",
-	"Users can still provide their own evaluate function, outputs, plots, writers, sweeps, or optimisation helpers.",
+	"Builders receive design variables first and run options second: fn(design, opts). Use design for sweep/optimisation variables, and defaults/options for ordinary run configuration.",
+	"The helper registers standard REPL inspectors such as inspect-registry, inspect-deps, inspect-instructions, and run, while still allowing custom evaluate, output, plot, write, and optimisation functions.",
 }
 
 local function as_callable(name, fn)
@@ -127,18 +127,9 @@ function FvmStudy:inspect_deps(arg)
 end
 
 function FvmStudy:inspect_algorithm(arg)
-	local reg = self:build_registry(arg)
-	local alg = self:build_algorithm(arg)
-
-	if alg.expand then
-		alg:expand(reg)
-	end
-
-	if alg.print then
-		alg:print()
-	end
-
-	return alg
+	local case = self:build_case(arg)
+	case:print_algorithm()
+	return case
 end
 
 function FvmStudy:inspect_instructions(arg)
@@ -171,6 +162,14 @@ function FvmStudy:default_evaluate(x, opts)
 		case = case,
 		sim = sim,
 		mesh = case.mesh,
+
+		field = function(name)
+			return case:field(name)
+		end,
+
+		fields = function()
+			return case:fields()
+		end,
 	}
 end
 
@@ -329,8 +328,8 @@ M._types = {
 			},
 			inspect_algorithm = {
 				args = "design_overrides:table?",
-				ret = "Algorithm",
-				doc = "Expand and print the algorithm",
+				ret = "Case",
+				doc = "Build the case, print the expanded algorithm used for compilation, and return the case",
 			},
 			inspect_instructions = {
 				args = "design_overrides:table?",

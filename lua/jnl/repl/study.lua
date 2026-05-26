@@ -5,6 +5,7 @@ local repl_mod = require("jnl.repl")
 local printer_mod = require("jnl.term_printer")
 
 local M = {}
+
 local Study = {}
 Study.__index = Study
 
@@ -12,8 +13,8 @@ M._doc = "Generic study helper for exposing scripted workflows through the REPL"
 
 M._doc_subsection = {
 	"Use jnl.repl.study for scripts that are ordinary Lua/Fennel programs but should present a friendly REPL surface.",
-	"A Study stores defaults, design variables, outputs, plots, writers, optimisers, and exposed helpers.",
-	"Call study:repl() at the end of a script to install generated usage, registered globals, and then run the REPL.",
+	"Put run configuration such as nx, tolerance, scheme, output paths, and selected Reynolds number in defaults(). Put design variables such as geometry dimensions, shape parameters, or optimisation variables in design().",
+	"A Study stores ordinary functions, not a rigid case schema: use evaluate(), expose(), output(), plot(), write(), and optimise() to make useful behaviour discoverable in the REPL.",
 }
 
 local function shallow_copy(t)
@@ -543,5 +544,7 @@ M._types = {
 		},
 	},
 }
+
+M.Study = Study
 
 return M

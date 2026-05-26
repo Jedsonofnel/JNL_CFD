@@ -154,7 +154,7 @@ local SECTIONS = {
 			"Structure the file in short paragraphs using section headers: metadata, defaults, geometry/mesh, physics, algorithm, boundary conditions, outputs, and entry points."),
 		bullet(
 			"Prefer ordinary named Lua functions over nested tables of callbacks. Users should be able to copy, modify, call, loop over, or optimise these functions directly."),
-		bullet("Start by listing key parameters and defaults near the top of the file."),
+		bullet("Start by listing defaults and, when relevant, design variables near the top of the file."),
 		bullet(
 			"Use jnl.fvm.study when available to make the case self-guiding in the REPL, but do not hide important logic inside the study object."),
 		bullet(
@@ -175,6 +175,12 @@ local SECTIONS = {
 			"Use study:about, study:defaults, study:design, study:options, and study:evaluate in separate paragraphs rather than passing one large table of options."),
 		bullet(
 			"Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format."),
+		bullet(
+			"Use study:defaults for run configuration such as mesh resolution, solver tolerances, scheme names, selected Reynolds number, and output paths."),
+		bullet(
+			"Use study:design for actual design variables such as geometry dimensions, shape parameters, operating-point variables to sweep, or optimisation variables."),
+		bullet(
+			"Study builders should usually accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides."),
 		bullet(
 			"Return result tables with predictable keys when useful: x for design variables, opts for options, case, sim, mesh, metrics, fields, profiles, plots, and files."),
 		bullet(

@@ -96,6 +96,7 @@ function Op.div(...)
 	local flux_expr, flux_idx
 	for i, a in ipairs(args) do
 		local e = E.from(a)
+
 		if FVexpr.is_facewise(e) then
 			assert(flux_idx == nil,
 				"Op.div: only one facewise flux argument is allowed")
@@ -103,6 +104,7 @@ function Op.div(...)
 			flux_idx  = i
 		end
 	end
+
 	assert(flux_expr ~= nil,
 		"Op.div: no facewise flux argument found (wrap your flux with FVMe.mwi or FVMe.face)")
 	table.remove(args, flux_idx)

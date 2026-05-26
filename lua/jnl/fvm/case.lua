@@ -343,6 +343,52 @@ end
 -- Queries
 --
 
+function Case:field(name)
+	assert(type(name) == "string", "Case:field: name must be a string")
+
+	if not self._allocated then
+		error("Case:field: case is not allocated; call allocate(), make_runner(), or make_sim() first")
+	end
+
+	local field = self._field_map and self._field_map[name]
+	if not field then
+		error("Case:field: no allocated field named '" .. name .. "'")
+	end
+
+	return field
+end
+
+function Case:fields()
+	if not self._allocated then
+		error("Case:fields: case is not allocated; call allocate(), make_runner(), or make_sim() first")
+	end
+
+	return self._field_map
+end
+
+function Case:system(name)
+	assert(type(name) == "string", "Case:system: name must be a string")
+
+	if not self._allocated then
+		error("Case:system: case is not allocated; call allocate(), make_runner(), or make_sim() first")
+	end
+
+	local sys = self._sys_map and self._sys_map[name]
+	if not sys then
+		error("Case:system: no allocated system named '" .. name .. "'")
+	end
+
+	return sys
+end
+
+function Case:systems()
+	if not self._allocated then
+		error("Case:systems: case is not allocated; call allocate(), make_runner(), or make_sim() first")
+	end
+
+	return self._sys_map
+end
+
 function Case:is_allocated() return self._allocated end
 
 function Case:needs_realloc() return self._needs_realloc end
@@ -396,9 +442,10 @@ Case._doc_subsection =
 	"Construct with Case.new(reg, alg, mesh, bcs); compilation runs immediately. " ..
 	"Call make_sim() to get a runnable Sim — this allocates field storage on first call. " ..
 	"Mutate physics, mesh, or BCs with set_physics/set_mesh/set_bcs; then call " ..
-	"reconcile() to preserve existing field data or reallocate() to start fresh." ..
-	"After allocate(), _field_map is a table of { [field_name] -> vec } giving direct " ..
-	"read access to cell field data for post-processing."
+	"reconcile() to preserve existing field data or reallocate() to start fresh. " ..
+	"After allocation, use field(name) or fields() to read allocated field vectors " ..
+	"for post-processing; use system(name) or systems() for allocated linear systems."
+
 
 Case._api = {
 	-- construction
@@ -415,6 +462,26 @@ Case._api = {
 	set_physics        = { args = "reg, alg?", ret = "nil", doc = "Replace registry and optionally algorithm; recompiles and marks reconcile needed" },
 	set_bcs            = { args = "bcs:table", ret = "nil", doc = "Replace BC table and recompile; no allocation change needed" },
 	-- query
+	field              = {
+		args = "name:string",
+		ret = "vec",
+		doc = "Return an allocated field vector by name; errors if the case is not allocated or the field is absent",
+	},
+	fields             = {
+		args = "",
+		ret = "table",
+		doc = "Return the allocated field map { [field_name] = vec }; errors if the case is not allocated",
+	},
+	system             = {
+		args = "name:string",
+		ret = "FvSystem",
+		doc = "Return an allocated linear system by field name; errors if absent or unallocated",
+	},
+	systems            = {
+		args = "",
+		ret = "table",
+		doc = "Return the allocated system map { [field_name] = FvSystem }; errors if the case is not allocated",
+	},
 	is_allocated       = { args = "", ret = "bool", doc = "True if allocate() has been called" },
 	needs_realloc      = { args = "", ret = "bool", doc = "True if mesh changed and reallocate() is required" },
 	needs_reconcile    = { args = "", ret = "bool", doc = "True if physics changed and reconcile() should be called" },
