@@ -10,10 +10,6 @@ Sim.__index = Sim
 -- Diagnostics
 --
 
---
--- Diagnostics
---
-
 local function make_diag(runner)
 	local function try_field(name)
 		if runner.try_field then return runner:try_field(name) end
@@ -107,99 +103,144 @@ end
 function Sim.new(runner, alg, opts)
 	opts = opts or {}
 
-	-- wire FVM-specific callbacks onto runner
-	local sage_getter -- set after core construction
-
-	runner.on_solve = function(field, residual, n_iters, iter, depth)
-		sage_getter():assert({
-			kind = "residual",
-			field = field,
-			value = residual,
-			iters = n_iters,
-			iter = iter,
-			loop_depth = depth
-		})
+	local sim
+	local function sage()
+		return sim:sage()
 	end
 
-	runner.on_monitor = function(field, value, iter, depth, kind)
-		sage_getter():assert({
-			kind = kind,
-			field = field,
-			value = value,
-			iter = iter,
+	-- Wire FVM-specific callbacks onto runner.
+	--
+	-- Runner remains Sage-agnostic: it only calls these callbacks.
+	-- The FVM sim wrapper translates callback observations into Sage facts.
+	runner.on_solve = function(field, residual, n_iters, iter, depth)
+		sage():assert({
+			kind       = "residual",
+			field      = field,
+			value      = residual,
+			iters      = n_iters,
+			iter       = iter,
 			loop_depth = depth,
 		})
 	end
 
-	local sim = CoreSim.new(runner, alg, { sage = opts.sage })
-	sage_getter = function() return sim._sage end
+	runner.on_monitor = function(field, value, iter, depth, kind)
+		sage():assert({
+			kind       = kind,
+			field      = field,
+			value      = value,
+			iter       = iter,
+			loop_depth = depth,
+		})
+	end
+
+	sim = CoreSim.new(runner, alg, {
+		sage    = opts.sage,
+		on_iter = opts.on_iter,
+	})
 
 	return setmetatable({
 		_core = sim,
-		diag = make_diag(runner),
+		diag  = make_diag(runner),
 	}, Sim)
 end
 
 --
--- Methods
+-- Public API
 --
 
--- delegate to core
+function Sim:step()
+	return self._core:step()
+end
+
 function Sim:run()
 	self._core:run()
 
-	local sage = self._core._sage
+	local sage = self._core:sage()
 	local conclusion = sage:last_one({ kind = "diverging" })
 
 	if conclusion then
 		sage:derive({
-			kind = "post_mortem",
-			iter = conclusion.iter,
+			kind        = "post_mortem",
+			iter        = conclusion.iter,
 			diagnostics = self.diag,
 		}, { conclusion.id })
 	end
 end
 
-function Sim:step() return self._core:step() end
+function Sim:is_done()
+	return self._core:is_done()
+end
 
-function Sim:is_finished() return self._core:is_finished() end
-
-function Sim:sage() return self._core:sage() end
-
---
--- Rules
---
+function Sim:sage()
+	return self._core:sage()
+end
 
 function Sim:add_rule(name, match_fn, fire_fn)
-	self._core:sage():add_rule(name, match_fn, fire_fn)
+	self:sage():add_rule(name, match_fn, fire_fn)
 end
 
 function Sim:add_rules(...)
 	for _, r in ipairs({ ... }) do
-		self._core:sage():add_rule(r.name, r.match, r.fire)
+		self:sage():add_rule(r.name, r.match, r.fire)
 	end
 end
 
 --
--- API
+-- API docs
 --
 
-Sim._doc = "FVM simulation wrapper: wires runner callbacks into Sage and drives the solver loop."
+Sim._doc =
+"FVM simulation wrapper: wires runner callbacks into Sage and drives the evented solver lifecycle."
 
 Sim._doc_subsection =
 	"Obtain via Case:make_sim() rather than constructing directly. Call :run() for a " ..
-	"full solve, or :step() / :is_finished() for manual iteration. Post-mortem rules " ..
-	"fire automatically on divergence. Access field data and matrix diagnostics through " ..
-	"the diag object for custom rules and post-processing."
+	"full solve, or :step() / :is_done() for manual stepping. Runner steps are granular " ..
+	"and return lifecycle events internally; the public Sim API only exposes whether more " ..
+	"work remains. Post-mortem rules fire automatically on divergence. Access field data " ..
+	"and matrix diagnostics through the diag object for custom rules and post-processing."
 
 Sim._api = {
-	new         = { args = "runner, alg, opts?", ret = "Sim", doc = "Wire FVM callbacks onto runner and construct core sim; prefer Case:make_sim()" },
-	run         = { args = "", ret = "nil", doc = "Run until convergence or divergence; fires post-mortem rules on divergence" },
-	step        = { args = "", ret = "nil", doc = "Advance one outer iteration" },
-	is_finished = { args = "", ret = "bool", doc = "True if the solver has converged, diverged, or hit max_iters" },
-	sage        = { args = "", ret = "Sage", doc = "Return the underlying Sage fact store for custom rule queries" },
-	add_rule    = { args = "name, match_fn, fire_fn", ret = "nil", doc = "Register a custom Sage rule" },
-	add_rules   = { args = "...rules", ret = "nil", doc = "Register multiple rules from { name, match, fire } tables" },
+	new = {
+		args = "runner, alg, opts?",
+		ret  = "Sim",
+		doc  = "Wire FVM callbacks onto runner and construct core sim; prefer Case:make_sim()",
+	},
+
+	run = {
+		args = "",
+		ret  = "nil",
+		doc  = "Run until the runner is fully done, including post/finalization; fires post-mortem rules on divergence",
+	},
+
+	step = {
+		args = "",
+		ret  = "bool",
+		doc  = "Advance one small runner step; returns true while more work remains, false once done",
+	},
+
+	is_done = {
+		args = "",
+		ret  = "bool",
+		doc  = "True once the runner has fully completed, including post/finalization",
+	},
+
+	sage = {
+		args = "",
+		ret  = "Sage",
+		doc  = "Return the underlying Sage fact store for custom rule queries",
+	},
+
+	add_rule = {
+		args = "name, match_fn, fire_fn",
+		ret  = "nil",
+		doc  = "Register a custom Sage rule",
+	},
+
+	add_rules = {
+		args = "...rules",
+		ret  = "nil",
+		doc  = "Register multiple rules from { name, match, fire } tables",
+	},
 }
 
 Sim._types = {
@@ -213,46 +254,55 @@ Sim._types = {
 				ret  = "bool",
 				doc  = "True if a field handle exists for name",
 			},
+
 			has_system = {
 				args = "name:string",
 				ret  = "bool",
 				doc  = "True if a linear system exists for name",
 			},
+
 			field_names = {
 				args = "",
 				ret  = "string[]",
 				doc  = "Allocated field names, including intermediates",
 			},
+
 			system_names = {
 				args = "",
 				ret  = "string[]",
 				doc  = "Names with allocated linear systems",
 			},
+
 			field = {
 				args = "name:string",
 				ret  = "vec?",
 				doc  = "Raw cell field vector, or nil if absent",
 			},
+
 			residual = {
 				args = "name:string",
 				ret  = "number?",
 				doc  = "Last linear solver residual for name, or nil if none has been recorded",
 			},
+
 			is_nan = {
 				args = "name:string",
 				ret  = "bool?",
 				doc  = "True if the field has NaN norm; nil if absent",
 			},
+
 			max = {
 				args = "name:string",
 				ret  = "number?",
 				doc  = "L-infinity norm of the field, or nil if absent",
 			},
+
 			iter = {
 				args = "",
 				ret  = "int",
-				doc  = "Current outer iteration count",
+				doc  = "Current outer iteration index",
 			},
+
 			sys_diag = {
 				args = "name:string",
 				ret  = "table?",
@@ -260,6 +310,7 @@ Sim._types = {
 			},
 		},
 	},
+
 	SysDiag = {
 		doc         =
 		"Table { diagonal_dominance, all_diagonals_positive, max_asymmetry, residual_norm } returned by Diag:sys_diag(name)",

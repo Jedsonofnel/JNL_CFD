@@ -1,4 +1,4 @@
--- fvm/runner.lua - state-machine executor for compiled Case instructions
+-- fvm/runner.lua - granular state-machine executor for compiled Case instructions
 -- <jed@nelson.ac> // 2026-05-23
 
 local FVM = require("jnl.fvm")
@@ -38,7 +38,10 @@ function Runner.new(compiled, field_map, sys_map, mesh, ctx)
 		_max_iters        = compiled.expanded_alg.max_iters or math.huge,
 
 		-- execution state
+		-- Public lifecycle phases are owned entirely by Runner:
+		--   pre -> main -> between_iterations -> main -> ... -> post -> done
 		_phase            = "pre",
+		_is_inner         = false,
 		_pc               = 1,
 		_inner_runners    = {},
 		_loop_depth       = 1,
@@ -46,7 +49,9 @@ function Runner.new(compiled, field_map, sys_map, mesh, ctx)
 		_last_coeff_vec   = nil,
 		_residuals        = {}, -- name -> last residual scalar
 		_iter             = 0, -- outer iteration count
-		_solver_opts      = {},
+		_stop_requested   = false,
+		_stop_reason      = nil,
+		_done_emitted     = false,
 
 		-- unsteady state
 		_dt               = nil, -- nil = ddt terms are no-ops
@@ -77,11 +82,6 @@ function Runner.new(compiled, field_map, sys_map, mesh, ctx)
 	return r
 end
 
-function Runner.from_case(case, opts)
-	assert(case:is_allocated(), "Runner.from_case: case must be allocated")
-	return Runner.new(case.compiled, case._field_map, case._sys_map, case.mesh, opts)
-end
-
 --
 -- Inner runner construction: shares handles, own execution state
 --
@@ -99,7 +99,11 @@ function Runner._make_inner(parent, inst)
 		_face_pool        = parent._face_pool,
 		_n_cells          = parent._n_cells,
 		_n_faces          = parent._n_faces,
+
+		-- Inner runners execute only a body. They do not own outer
+		-- iteration lifecycle, pre/post phases, or stop/finalisation.
 		_phase            = "main",
+		_is_inner         = true,
 		_pc               = 1,
 		_pass             = 1,
 		_inner_runners    = {},
@@ -111,7 +115,6 @@ function Runner._make_inner(parent, inst)
 		_dt               = parent._dt,
 		on_monitor        = parent.on_monitor,
 		on_solve          = parent.on_solve,
-		_solver_opts      = parent._solver_opts,
 		warn_missing      = parent.warn_missing,
 		bindings          = parent.bindings,
 	}, Runner)
@@ -445,13 +448,12 @@ dispatch.under_relax = function(r, inst)
 end
 
 dispatch.solve = function(r, inst)
-	local sys       = r:_sys(inst.field)
-	local phi       = r:_field(inst.field)
-	local solver    = (inst.solver or "bicgstab"):lower()
+	local sys    = r:_sys(inst.field)
+	local phi    = r:_field(inst.field)
+	local solver = (inst.solver or "bicgstab"):lower()
 
-	local per_field = r._solver_opts[inst.field] or {}
-	local tol       = per_field.tol or inst.tol or 1e-6
-	local iters     = per_field.max_iters or inst.max_iters or 1000
+	local tol    = inst.tol or 1e-6
+	local iters  = inst.max_iters or 1000
 
 	local new, n_iters
 	if solver == "bicgstab" then
@@ -468,6 +470,7 @@ dispatch.solve = function(r, inst)
 
 	r._last_iters = n_iters
 	r._residuals[inst.field] = sys:residual_norm(phi)
+
 	if r.on_solve then
 		r.on_solve(inst.field, r._residuals[inst.field], n_iters, r._iter, r._loop_depth)
 	end
@@ -551,19 +554,22 @@ dispatch.inner_loop = function(r, inst)
 		r._inner_runners[key] = inner
 	end
 
-	-- step the inner runner once to keep outer run_step() granular
-	local more = inner:run_step()
-	if not more then
+	-- Step the inner body once to keep the outer runner granular.
+	-- Sim never sees these body boundaries; nested loop mechanics are
+	-- wholly owned by Runner.
+	local event = inner:_step_body()
+
+	if event.kind == "body_end" then
 		local exhausted = inner._pass >= (inst.max_iters or 1000)
 		if exhausted then
-			r._inner_runners[key] = nil -- release, outer pc will advance
+			r._inner_runners[key] = nil -- release; outer pc will advance
 		else
 			inner._pass = inner._pass + 1
-			inner:reset()
+			inner:_reset_body()
 			r._pc = r._pc - 1 -- re-visit this instruction
 		end
 	else
-		r._pc = r._pc - 1 -- still running, hold outer pc
+		r._pc = r._pc - 1 -- still running; hold outer pc
 	end
 end
 
@@ -571,60 +577,189 @@ end
 -- State machine
 --
 
-function Runner:run_step()
-	if self._phase == "done" then return false end
+-- Public runner API:
+--
+--   runner:step()
+--     Execute one small unit of work and return an event table:
+--       { kind = "running",       iter = n, phase = phase }
+--       { kind = "iteration_end", iter = n }
+--       { kind = "done",          iter = n, reason = reason? }
+--
+--   runner:request_stop(reason?)
+--     Ask the runner to terminate gracefully at the next outer
+--     iteration boundary. This still runs post instructions.
+--
+--   runner:is_done()
+--     True only once post has completed and no work remains.
+--
+-- Sim owns Sage/policy. Runner owns _phase, _pc, _iter, inner loops,
+-- and the transition into post/done.
 
-	local list = (self._phase == "pre" and self.pre_instructions)
-		or (self._phase == "main" and self.instructions)
-		or self.post_instructions
+function Runner:_event(kind)
+	return {
+		kind   = kind,
+		iter   = self._iter,
+		phase  = self._phase,
+		reason = self._stop_reason,
+	}
+end
 
-	local inst = list[self._pc]
-
-	if not inst then
-		if self._phase == "pre" then
-			self._phase = "main"
-			self._pc = 1
-			return true
-		end
-
-		if self._phase == "main" then
-			if self._op == "loop" then
-				return false
-			end
-
-			if #self.post_instructions > 0 then
-				self._phase = "post"
-				self._pc = 1
-				return true
-			end
-
-			self._phase = "done"
-			return false
-		end
-
-		if self._phase == "post" then
-			self._phase = "done"
-			return false
-		end
-
-		self._phase = "done"
-		return false
+function Runner:_current_list()
+	if self._phase == "pre" then
+		return self.pre_instructions
+	elseif self._phase == "main" then
+		return self.instructions
+	elseif self._phase == "post" then
+		return self.post_instructions
 	end
 
+	return {}
+end
+
+function Runner:_dispatch(inst)
 	local fn = dispatch[inst.op]
 	if fn then
 		fn(self, inst)
 	else
 		io.stderr:write("runner: unknown op '" .. tostring(inst.op) .. "'\n")
 	end
+end
 
+function Runner:_begin_post_or_done(default_reason)
+	if not self._stop_reason then
+		self._stop_reason = default_reason
+	end
+
+	self._inner_runners = {}
+
+	if #self.post_instructions > 0 then
+		self._phase = "post"
+		self._pc = 1
+	else
+		self._phase = "done"
+		self._pc = 1
+	end
+end
+
+function Runner:_begin_next_iteration()
+	self._iter = self._iter + 1
+	self._phase = "main"
+	self._pc = 1
+	self._inner_runners = {}
+end
+
+function Runner:_handle_list_end()
+	if self._phase == "pre" then
+		self._phase = "main"
+		self._pc = 1
+		return self:_event("running")
+	end
+
+	if self._phase == "main" then
+		if self._op == "loop" then
+			-- Main sweep complete. Sim may now assert iter_end and decide
+			-- whether to call request_stop(). Runner does not start the
+			-- next sweep until a later step.
+			self._phase = "between_iterations"
+			self._pc = 1
+			self._inner_runners = {}
+			return self:_event("iteration_end")
+		end
+
+		-- Non-loop algorithm: main runs once, then finalises.
+		self:_begin_post_or_done("completed")
+		if self._phase == "done" then
+			return self:_event("done")
+		end
+		return self:_event("running")
+	end
+
+	if self._phase == "post" then
+		self._phase = "done"
+		self._pc = 1
+		return self:_event("done")
+	end
+
+	if self._phase == "between_iterations" then
+		return self:_event("running")
+	end
+
+	error("runner: invalid phase '" .. tostring(self._phase) .. "'")
+end
+
+function Runner:step()
+	if self._phase == "done" then
+		return self:_event("done")
+	end
+
+	if self._is_inner then
+		error("runner: public step() called on an inner runner")
+	end
+
+	if self._phase == "between_iterations" then
+		if self._stop_requested then
+			self:_begin_post_or_done(self._stop_reason or "requested")
+		elseif self._iter + 1 >= self._max_iters then
+			self:_begin_post_or_done("max_iters")
+		else
+			self:_begin_next_iteration()
+		end
+
+		if self._phase == "done" then
+			return self:_event("done")
+		end
+		return self:_event("running")
+	end
+
+	local list = self:_current_list()
+	local inst = list[self._pc]
+
+	if not inst then
+		return self:_handle_list_end()
+	end
+
+	self:_dispatch(inst)
 	self._pc = self._pc + 1
-	return true
+
+	return self:_event("running")
+end
+
+-- Step an inner-loop body once. This is intentionally not part of the
+-- public lifecycle API: inner bodies have no pre/post/between_iterations.
+function Runner:_step_body()
+	local inst = self.instructions[self._pc]
+	if not inst then
+		return { kind = "body_end", iter = self._iter, phase = self._phase }
+	end
+
+	self:_dispatch(inst)
+	self._pc = self._pc + 1
+	return { kind = "running", iter = self._iter, phase = self._phase }
+end
+
+function Runner:_reset_body()
+	self._phase = "main"
+	self._pc = 1
+	self._inner_runners = {}
 end
 
 function Runner:run_all()
-	self._iter = self._iter + 1
-	while self:run_step() do end
+	while not self:is_done() do
+		self:step()
+	end
+end
+
+function Runner:request_stop(reason)
+	self._stop_requested = true
+	self._stop_reason = reason or self._stop_reason or "requested"
+end
+
+function Runner:is_done()
+	return self._phase == "done"
+end
+
+function Runner:stop_reason()
+	return self._stop_reason
 end
 
 --
@@ -663,50 +798,21 @@ function Runner:iteration()
 	return self._iter
 end
 
-function Runner:is_finished()
-	if self._op ~= "loop" then
-		return self._phase == "done"
-	end
-	return self._phase == "done" and self._iter >= self._max_iters
-end
-
-function Runner:is_stopped()
-	return self._stopped == true
-end
-
-function Runner:stop()
-	self._stopped = true
-	self._phase   = "done"
+function Runner:phase()
+	return self._phase
 end
 
 --
 -- Reset
 --
 
-function Runner:reset_full()
-	self._phase   = #self.pre_instructions > 0 and "pre" or "main"
-	self._pc      = 1
-	self._stopped = false
-end
-
-function Runner:reset_iteration()
-	if self:is_finished() then return end
-
-	self._phase   = "main"
-	self._pc      = 1
-	self._stopped = false
-end
-
 function Runner:reset()
-	self:reset_full()
-end
-
---
--- Mutation
---
-
-function Runner:set_solver_opts(field, opts)
-	self._solver_opts[field] = opts
+	self._phase = #self.pre_instructions > 0 and "pre" or "main"
+	self._pc = 1
+	self._inner_runners = {}
+	self._iter = 0
+	self._stop_requested = false
+	self._stop_reason = nil
 end
 
 return Runner

@@ -111,6 +111,24 @@ Holds three step lists
 
 --]]
 
+local function default_linalg()
+	return {
+		pre = {
+			tol = 1e-6,
+			max_iters = 1000,
+		},
+		main = {
+			tol = 1e-6,
+			max_iters = 20,
+		},
+		post = {
+			tol = 1e-6,
+			max_iters = 1000,
+		},
+		fields = {},
+	}
+end
+
 function A.new()
 	return setmetatable({
 		pre = {},
@@ -119,6 +137,7 @@ function A.new()
 		op = "linear",
 		rulesets = {},
 		on = {},
+		linalg = default_linalg(),
 	}, A)
 end
 
@@ -153,24 +172,23 @@ end
 function A:linear(cb, config)
 	config = config or {}
 	self.op = "linear"
-	self.linalg_tol = config.linalg_tol or 1e-6
-	self.linalg_max_iters = config.linalg_max_iters or 1000
 	cb(Builder.new(self))
+	return self
 end
 
 function A:loop(cb, config)
 	self.op = "loop"
 	config = config or {}
 	self.max_iters = config.max_iters or 1000
-	self.linalg_tol = config.linalg_tol or 1e-6
-	self.linalg_max_iters = config.linalg_max_iters or 1000
 	cb(Builder.new(self))
+	return self
 end
 
 function A:monitor(field, config)
 	config = config or {}
 	V.field_name(field, "alg:monitor field")
 	self:_push(step_monitor(field, config.norm))
+	return self
 end
 
 function A:__tostring()
@@ -190,54 +208,58 @@ end
 -- Config
 --
 
---
--- Config mutators
---
-
-function A:set_config(opts)
+local function clean_linalg_opts(opts, where)
 	opts = opts or {}
+	assert(type(opts) == "table", where .. ": opts must be a table")
 
-	if opts.max_iters ~= nil then
-		self.max_iters = opts.max_iters
-	end
-
-	if opts.linalg_tol ~= nil then
-		self.linalg_tol = opts.linalg_tol
-	end
-
-	if opts.linalg_max_iters ~= nil then
-		self.linalg_max_iters = opts.linalg_max_iters
-	end
-
-	return self
-end
-
-function A:set_linalg(opts)
-	opts = opts or {}
+	local out = {}
 
 	if opts.tol ~= nil then
-		self.linalg_tol = opts.tol
+		assert(type(opts.tol) == "number", where .. ": opts.tol must be a number")
+		out.tol = opts.tol
 	end
 
 	if opts.max_iters ~= nil then
-		self.linalg_max_iters = opts.max_iters
+		assert(type(opts.max_iters) == "number", where .. ": opts.max_iters must be a number")
+		out.max_iters = opts.max_iters
 	end
 
+	return out
+end
+
+local function update_linalg(dst, opts, where)
+	opts = clean_linalg_opts(opts, where)
+
+	if opts.tol ~= nil then
+		dst.tol = opts.tol
+	end
+
+	if opts.max_iters ~= nil then
+		dst.max_iters = opts.max_iters
+	end
+end
+
+function A:pre_linalg(opts)
+	update_linalg(self.linalg.pre, opts, "alg:pre_linalg")
 	return self
 end
 
-function A:set_max_iters(max_iters)
-	self.max_iters = max_iters
+function A:main_linalg(opts)
+	update_linalg(self.linalg.main, opts, "alg:main_linalg")
 	return self
 end
 
-function A:set_linalg_tol(tol)
-	self.linalg_tol = tol
+function A:post_linalg(opts)
+	update_linalg(self.linalg.post, opts, "alg:post_linalg")
 	return self
 end
 
-function A:set_linalg_max_iters(max_iters)
-	self.linalg_max_iters = max_iters
+function A:field_linalg(field, opts)
+	V.field_name(field, "alg:field_linalg field")
+
+	self.linalg.fields[field] = self.linalg.fields[field] or {}
+	update_linalg(self.linalg.fields[field], opts, "alg:field_linalg")
+
 	return self
 end
 
@@ -703,6 +725,7 @@ function A:expand(reg, inserted, fresh)
 	local expanded     = A.new()
 	expanded.op        = self.op
 	expanded.max_iters = self.max_iters
+	expanded.linalg    = self.linalg
 
 	local explicit_set = build_explicit_set(self.steps, reg)
 	local pre_names,
@@ -842,51 +865,102 @@ A.hooks = hooks
 -- API
 --
 
-A._doc_subsection =
-	"Define steps inside loop() or linear() using the Builder DSL. Symbols not " ..
-	"explicitly listed are classified as pre/main/post by expand() and emitted " ..
-	"just-in-time. For FVM cases with convergence and progress monitoring use " ..
-	"jnl.fvm.algorithm, which wraps this and delegates to expand()."
+A._doc_subsection = {
+	"Build a high-level solve sequence with loop() or linear(); the compiler expands dependencies and emits required pre, main, and post work automatically.",
+	"Fields that are not coupled into an active solve, such as derived quantities, gradients, face fields, or passive post-processing dependencies, do not need to be manually inserted into the algorithm. If they are registered and depended on, expansion classifies them and emits them in the appropriate phase.",
+	"Linear-solver controls are phase-specific: pre_linalg and post_linalg default to larger one-shot budgets, while main_linalg defaults to a smaller repeated-solve budget.",
+	"Use field_linalg(field, opts) for per-field overrides; field-specific controls take precedence over phase defaults.",
+}
 
 A._api = {
-	new                  = { args = "", ret = "Algorithm", doc = "Create a new algorithm" },
-	loop                 = { args = "cb, config?", ret = "nil", doc = "Define a looping step sequence; config: { max_iters, linalg_tol, linalg_max_iters }" },
-	linear               = { args = "cb, config?", ret = "nil", doc = "Define a one-shot step sequence; config: { linalg_tol, linalg_max_iters }" },
-	expand               = { args = "reg, inserted?, fresh?", ret = "Algorithm", doc = "Classify registry symbols, emit pre/main/post steps, return expanded algorithm" },
-	monitor              = { args = "field, config?", ret = "nil", doc = "Push a monitor step outside the builder; config: { norm='normL2' }" },
-	add_ruleset          = { args = "ruleset", ret = "nil", doc = "Append a ruleset table { rules, init? } for sage integration" },
-	add_rule             = { args = "rule", ret = "nil", doc = "Append a single rule { name, match, fire }" },
-	add_rules            = { args = "...rules", ret = "nil", doc = "Append multiple rules in one call" },
-	set_config           = {
+	new = {
+		args = "",
+		ret  = "Algorithm",
+		doc  = "Create a new algorithm with empty pre/main/post step lists and default phase-specific linalg controls",
+	},
+
+	loop = {
+		args = "cb:function, config:table?",
+		ret  = "Algorithm",
+		doc  =
+		"Define an iterative main-loop step sequence; config: { max_iters = 1000 }. Linear-solver controls are configured separately with pre_linalg/main_linalg/post_linalg/field_linalg",
+	},
+
+	linear = {
+		args = "cb:function, config:table?",
+		ret  = "Algorithm",
+		doc  =
+		"Define a one-shot step sequence. Linear-solver controls are configured separately with pre_linalg/main_linalg/post_linalg/field_linalg",
+	},
+
+	monitor = {
+		args = "field:string, config:table?",
+		ret  = "nil",
+		doc  = "Push a monitor step outside the builder; config: { norm = 'normL2' }",
+	},
+
+	add_ruleset = {
+		args = "ruleset:table",
+		ret  = "Algorithm",
+		doc  = "Append a ruleset table { rules, init? } for Sage integration",
+	},
+
+	add_rule = {
+		args = "rule:table",
+		ret  = "Algorithm",
+		doc  = "Append a single rule { name, match, fire } for Sage integration",
+	},
+
+	add_rules = {
+		args = "...rules",
+		ret  = "Algorithm",
+		doc  = "Append multiple Sage rules as a single ruleset",
+	},
+
+	pre_linalg = {
 		args = "opts:table",
 		ret  = "Algorithm",
-		doc  = "Update loop configuration in place; opts: { max_iters, linalg_tol, linalg_max_iters }",
+		doc  =
+		"Update default linear-solver controls for solves emitted in the pre phase; opts: { tol:number?, max_iters:number? }. Defaults are { tol = 1e-6, max_iters = 1000 }",
 	},
-	set_linalg           = {
+
+	main_linalg = {
 		args = "opts:table",
 		ret  = "Algorithm",
-		doc  = "Update default linear-solver controls in place; opts: { tol, max_iters }",
+		doc  =
+		"Update default linear-solver controls for solves emitted in the main phase; opts: { tol:number?, max_iters:number? }. Defaults are { tol = 1e-6, max_iters = 20 }",
 	},
-	set_max_iters        = {
-		args = "max_iters:int",
+
+	post_linalg = {
+		args = "opts:table",
 		ret  = "Algorithm",
-		doc  = "Set maximum loop iterations and return self",
+		doc  =
+		"Update default linear-solver controls for solves emitted in the post phase; opts: { tol:number?, max_iters:number? }. Defaults are { tol = 1e-6, max_iters = 1000 }",
 	},
-	set_linalg_tol       = {
-		args = "tol:number",
+
+	field_linalg = {
+		args = "field:string, opts:table",
 		ret  = "Algorithm",
-		doc  = "Set default linear solver tolerance and return self",
+		doc  =
+		"Update field-specific linear-solver controls; opts: { tol:number?, max_iters:number? }. Field controls override the phase default when solving that field",
 	},
-	set_linalg_max_iters = {
-		args = "max_iters:int",
+
+	expand = {
+		args = "reg:Registry, inserted:table?, fresh:table?",
 		ret  = "Algorithm",
-		doc  = "Set default maximum linear solver iterations and return self",
+		doc  = "Expand registry dependencies into pre/main/post work for coupled and uncoupled symbols",
 	},
-	print                = { args = "", ret = "nil", doc = "Pretty-print the step list" },
-	__tostring           = {
+
+	print = {
+		args = "",
+		ret  = "nil",
+		doc  = "Pretty-print the algorithm step list",
+	},
+
+	__tostring = {
 		args = "self",
-		ret = "string",
-		doc = "Return a compact one-line algorithm summary for REPL display",
+		ret  = "string",
+		doc  = "Return a compact one-line algorithm summary for REPL display",
 	},
 }
 

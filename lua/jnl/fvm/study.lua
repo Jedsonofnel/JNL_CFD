@@ -15,9 +15,9 @@ setmetatable(FvmStudy, { __index = base.Study })
 M._doc = "FVM-specific study helper with automatic case builders and inspectors"
 
 M._doc_subsection = {
-	"Use jnl.fvm.study when a script can expose mesh, registry, algorithm, and boundary-condition builders.",
-	"Builders receive design variables first and run options second: fn(design, opts). Use design for sweep/optimisation variables, and defaults/options for ordinary run configuration.",
-	"The helper registers standard REPL inspectors such as inspect-registry, inspect-deps, inspect-instructions, and run, while still allowing custom evaluate, output, plot, write, and optimisation functions.",
+	"Study builders register mesh, registry, algorithm, and BC construction separately so cases remain inspectable in the REPL.",
+	"The registry declares physics and derived quantities; the algorithm declares high-level solves and stopping rules. Do not manually schedule gradients, face fields, or other uncoupled post-processing intermediates.",
+	"For convergence, pass predicates from jnl.fvm.rules to alg:converge and alg:guard. These predicates read Sage history such as residual, field_norm, and field_change facts.",
 }
 
 local function as_callable(name, fn)

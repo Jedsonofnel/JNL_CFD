@@ -82,12 +82,25 @@ end
 -- Audit
 --
 
+local function audit_api_entry(mod_name, fn_name, e, warn)
+	if e.sig then
+		warn("%s._api.%s uses 'sig'; use 'args' and optional 'ret' instead", mod_name, fn_name)
+	end
+
+	if not e.doc then
+		warn("%s._api.%s missing doc string", mod_name, fn_name)
+	end
+end
+
 local function audit_api(mod_name, mod, api, warn)
-	for fn_name, _ in pairs(api) do
+	for fn_name, e in pairs(api) do
+		audit_api_entry(mod_name, fn_name, e, warn)
+
 		if type(mod[fn_name]) ~= "function" then
 			warn("%s._api.%s documented but function not found (stale?)", mod_name, fn_name)
 		end
 	end
+
 	for fn_name, v in pairs(mod) do
 		if fn_name:sub(1, 1) ~= "_" and type(v) == "function" and not api[fn_name] then
 			warn("%s.%s is undocumented", mod_name, fn_name)

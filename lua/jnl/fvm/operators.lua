@@ -119,59 +119,189 @@ M.patch_gradient_flux = b.patch_gradient_flux
 --
 
 M._api = {
-	ddt_const                  = { sig = "ddt_const(sys, mesh, rho:f64, dt:f64, phi_old:vec)", doc = "Implicit time derivative, constant density" },
-	ddt_field                  = { sig = "ddt_field(sys, mesh, rho:vec, dt:f64, phi_old:vec)", doc = "Implicit time derivative, field density" },
+	ddt_const = {
+		args = "sys, mesh, rho:f64, dt:f64, phi_old:vec",
+		doc  = "Implicit time derivative, constant density",
+	},
+	ddt_field = {
+		args = "sys, mesh, rho:vec, dt:f64, phi_old:vec",
+		doc  = "Implicit time derivative, field density",
+	},
 
-	laplacian_const            = { sig = "laplacian_const(sys, mesh, gamma:f64)", doc = "Laplacian with constant diffusivity" },
-	laplacian_field            = { sig = "laplacian_field(sys, mesh, gamma:vec)", doc = "Laplacian with linear-interpolated face diffusivity" },
-	laplacian_field_harmonic   = { sig = "laplacian_field_harmonic(sys, mesh, gamma:vec)", doc = "Laplacian with harmonic-mean face diffusivity" },
-	laplacian_nonorth_const    = { sig = "laplacian_nonorth_const(sys, mesh, gamma:f64, gx, gy:vec)", doc = "Non-orthogonality correction, constant gamma" },
-	laplacian_nonorth_field    = { sig = "laplacian_nonorth_field(sys, mesh, gamma, gx, gy:vec)", doc = "Non-orthogonality correction, field gamma" },
+	laplacian_const = {
+		args = "sys, mesh, gamma:f64",
+		doc  = "Laplacian with constant diffusivity",
+	},
+	laplacian_field = {
+		args = "sys, mesh, gamma:vec",
+		doc  = "Laplacian with linear-interpolated face diffusivity",
+	},
+	laplacian_field_harmonic = {
+		args = "sys, mesh, gamma:vec",
+		doc  = "Laplacian with harmonic-mean face diffusivity",
+	},
+	laplacian_nonorth_const = {
+		args = "sys, mesh, gamma:f64, gx:vec, gy:vec",
+		doc  = "Non-orthogonality correction, constant diffusivity",
+	},
+	laplacian_nonorth_field = {
+		args = "sys, mesh, gamma:vec, gx:vec, gy:vec",
+		doc  = "Non-orthogonality correction, field diffusivity",
+	},
 
-	div_cds_const              = { sig = "div_cds_const(sys, mesh, rho:f64, un:vec)", doc = "CDS convection, constant density" },
-	div_cds_field              = { sig = "div_cds_field(sys, mesh, rho, un:vec)", doc = "CDS convection, field density" },
-	div_uds_const              = { sig = "div_uds_const(sys, mesh, rho:f64, un:vec)", doc = "UDS convection, constant density" },
-	div_uds_field              = { sig = "div_uds_field(sys, mesh, rho, un:vec)", doc = "UDS convection, field density" },
-	div_tvd_minmod             = { sig = "div_tvd_minmod(sys, mesh, phi, gx, gy, un:vec)", doc = "TVD minmod limiter correction" },
-	div_tvd_van_leer           = { sig = "div_tvd_van_leer(sys, mesh, phi, gx, gy, un:vec)", doc = "TVD van Leer limiter correction" },
-	div_tvd_superbee           = { sig = "div_tvd_superbee(sys, mesh, phi, gx, gy, un:vec)", doc = "TVD Superbee limiter correction" },
+	div_cds_const = {
+		args = "sys, mesh, rho:f64, un:vec",
+		doc  = "CDS convection, constant density",
+	},
+	div_cds_field = {
+		args = "sys, mesh, rho:vec, un:vec",
+		doc  = "CDS convection, field density",
+	},
+	div_uds_const = {
+		args = "sys, mesh, rho:f64, un:vec",
+		doc  = "UDS convection, constant density",
+	},
+	div_uds_field = {
+		args = "sys, mesh, rho:vec, un:vec",
+		doc  = "UDS convection, field density",
+	},
+	div_tvd_minmod = {
+		args = "sys, mesh, phi:vec, gx:vec, gy:vec, un:vec",
+		doc  = "TVD minmod limiter correction",
+	},
+	div_tvd_van_leer = {
+		args = "sys, mesh, phi:vec, gx:vec, gy:vec, un:vec",
+		doc  = "TVD van Leer limiter correction",
+	},
+	div_tvd_superbee = {
+		args = "sys, mesh, phi:vec, gx:vec, gy:vec, un:vec",
+		doc  = "TVD Superbee limiter correction",
+	},
 
-	su_volumetric_const        = { sig = "su_volumetric_const(sys, mesh, coeff:f64)", doc = "Explicit source: coeff * V added to RHS" },
-	su_volumetric_field        = { sig = "su_volumetric_field(sys, mesh, f:vec)", doc = "Explicit source: f[c] * V[c] added to RHS" },
-	su_volumetric_field_scaled = { sig = "su_volumetric_field_scaled(sys, mesh, s:f64, f:vec)", doc = "Explicit source: s * f[c] * V[c] added to RHS" },
-	su_integrated_const        = { sig = "su_integrated_const(sys, mesh, coeff:f64)", doc = "Explicit source: coeff added to RHS (no volume weight)" },
-	su_integrated              = { sig = "su_integrated(sys, mesh, f:vec)", doc = "Explicit source: f[c] added to RHS (no volume weight)" },
-	su_integrated_scaled       = { sig = "su_integrated_scaled(sys, mesh, s:f64, f:vec)", doc = "Explicit source: s * f[c] added to RHS (no volume weight)" },
+	su_volumetric_const = {
+		args = "sys, mesh, coeff:f64",
+		doc  = "Explicit source: coeff * V added to RHS",
+	},
+	su_volumetric_field = {
+		args = "sys, mesh, f:vec",
+		doc  = "Explicit source: f[c] * V[c] added to RHS",
+	},
+	su_volumetric_field_scaled = {
+		args = "sys, mesh, s:f64, f:vec",
+		doc  = "Explicit source: s * f[c] * V[c] added to RHS",
+	},
+	su_integrated_const = {
+		args = "sys, mesh, coeff:f64",
+		doc  = "Explicit source: coeff added to RHS without volume weighting",
+	},
+	su_integrated = {
+		args = "sys, mesh, f:vec",
+		doc  = "Explicit source: f[c] added to RHS without volume weighting",
+	},
+	su_integrated_scaled = {
+		args = "sys, mesh, s:f64, f:vec",
+		doc  = "Explicit source: s * f[c] added to RHS without volume weighting",
+	},
 
-	sp_volumetric_const        = { sig = "sp_volumetric_const(sys, mesh, coeff:f64)", doc = "Linearised source: coeff * V added to diagonal" },
-	sp_volumetric_field        = { sig = "sp_volumetric_field(sys, mesh, f:vec)", doc = "Linearised source: f[c] * V[c] added to diagonal" },
-	sp_volumetric_field_scaled = { sig = "sp_volumetric_field_scaled(sys, mesh, s:f64, f:vec)", doc = "Linearised source: s * f[c] * V[c] added to diagonal" },
-	sp_integrated_const        = { sig = "sp_integrated_const(sys, mesh, coeff:f64)", doc = "Linearised source: coeff added to diagonal (no volume weight)" },
-	sp_integrated              = { sig = "sp_integrated(sys, mesh, f:vec)", doc = "Linearised source: f[c] added to diagonal (no volume weight)" },
-	sp_integrated_scaled       = { sig = "sp_integrated_scaled(sys, mesh, s:f64, f:vec)", doc = "Linearised source: s * f[c] added to diagonal (no volume weight)" },
+	sp_volumetric_const = {
+		args = "sys, mesh, coeff:f64",
+		doc  = "Linearised source: coeff * V added to diagonal",
+	},
+	sp_volumetric_field = {
+		args = "sys, mesh, f:vec",
+		doc  = "Linearised source: f[c] * V[c] added to diagonal",
+	},
+	sp_volumetric_field_scaled = {
+		args = "sys, mesh, s:f64, f:vec",
+		doc  = "Linearised source: s * f[c] * V[c] added to diagonal",
+	},
+	sp_integrated_const = {
+		args = "sys, mesh, coeff:f64",
+		doc  = "Linearised source: coeff added to diagonal without volume weighting",
+	},
+	sp_integrated = {
+		args = "sys, mesh, f:vec",
+		doc  = "Linearised source: f[c] added to diagonal without volume weighting",
+	},
+	sp_integrated_scaled = {
+		args = "sys, mesh, s:f64, f:vec",
+		doc  = "Linearised source: s * f[c] added to diagonal without volume weighting",
+	},
 
-	bc_dirichlet_const         = { sig = "bc_dirichlet_const(sys, mesh, patch:str, val:f64)", doc = "Dirichlet BC on cell field" },
-	bc_neumann_const           = { sig = "bc_neumann_const(sys, mesh, patch:str, flux:f64)", doc = "Neumann BC on cell field" },
-	bc_robin_const             = { sig = "bc_robin_const(sys, mesh, patch:str, h:f64, phi_ref:f64)", doc = "Robin BC on named patch: h·A added to diagonal, h·phi_ref·A to RHS; apply after Laplacian" },
+	bc_dirichlet_const = {
+		args = "sys, mesh, patch:str, val:f64",
+		doc  = "Dirichlet BC on cell field",
+	},
+	bc_neumann_const = {
+		args = "sys, mesh, patch:str, flux:f64",
+		doc  = "Neumann BC on cell field",
+	},
+	bc_robin_const = {
+		args = "sys, mesh, patch:str, h:f64, phi_ref:f64",
+		doc  = "Robin BC on named patch: h * A added to diagonal and h * phi_ref * A to RHS; apply after Laplacian",
+	},
 
-	bc_dirichlet_face_const    = { sig = "bc_dirichlet_face_const(mesh, face_f:vec, patch:str, val:f64)", doc = "Dirichlet BC on face field" },
-	bc_neumann_face_const      = { sig = "bc_neumann_face_const(mesh, field, face_f:vec, patch:str, flux:f64)", doc = "Neumann BC on face field" },
-	bc_robin_face_const        = { sig = "bc_robin_face_const(sys, mesh, field, face_field:vec, patch:str, h:f64, phi_ref:f64)", doc = "Robin face value on named patch: phi_face = (γδ·phi_P + h·phi_ref)/(γδ + h); γδ from sys.upper" },
+	bc_dirichlet_face_const = {
+		args = "mesh, face_f:vec, patch:str, val:f64",
+		doc  = "Dirichlet BC on face field",
+	},
+	bc_neumann_face_const = {
+		args = "mesh, field:vec, face_f:vec, patch:str, flux:f64",
+		doc  = "Neumann BC on face field",
+	},
+	bc_robin_face_const = {
+		args = "sys, mesh, field:vec, face_field:vec, patch:str, h:f64, phi_ref:f64",
+		doc  =
+		"Robin face value on named patch: phi_face = (gamma_delta * phi_P + h * phi_ref) / (gamma_delta + h); gamma_delta is read from sys.upper",
+	},
 
-	bc_dirichlet_face_normal   = { sig = "bc_dirichlet_face_normal(mesh, un:vec, patch:str, ux, uy:f64)", doc = "Dirichlet face-normal BC from velocity vector" },
-	bc_neumann_face_normal     = { sig = "bc_neumann_face_normal(mesh, ux_f, uy_f, un:vec, patch:str, ux, uy:f64)", doc = "Neumann face-normal BC" },
+	bc_dirichlet_face_normal = {
+		args = "mesh, un:vec, patch:str, ux:f64, uy:f64",
+		doc  = "Dirichlet face-normal BC from velocity vector",
+	},
+	bc_neumann_face_normal = {
+		args = "mesh, ux_f:vec, uy_f:vec, un:vec, patch:str, ux:f64, uy:f64",
+		doc  = "Neumann face-normal BC from velocity vector",
+	},
 
-	face_interp_cds            = { sig = "face_interp_cds(mesh, field, face_field:vec)", doc = "CDS face interpolation of a cell field" },
-	face_normal_component      = { sig = "face_normal_component(mesh, ux_face, uy_face, un_face:vec)", doc = "Project face velocity components onto face normal" },
-	rhie_chow                  = { sig = "rhie_chow(mesh, Ux, Uy, p, gx, gy, ap_x, ap_y, un:vec)", doc = "Rhie-Chow momentum-weighted face flux" },
+	face_interp_cds = {
+		args = "mesh, field:vec, face_field:vec",
+		doc  = "CDS face interpolation of a cell field",
+	},
+	face_normal_component = {
+		args = "mesh, ux_face:vec, uy_face:vec, un_face:vec",
+		doc  = "Project face velocity components onto face normal",
+	},
+	rhie_chow = {
+		args = "mesh, Ux:vec, Uy:vec, p:vec, gx:vec, gy:vec, ap_x:vec, ap_y:vec, un:vec",
+		doc  = "Rhie-Chow momentum-weighted face flux",
+	},
 
-	grad_green_gauss           = { sig = "grad_green_gauss(mesh, face_field, gx, gy:vec)", doc = "Green-Gauss gradient reconstruction from face field" },
+	grad_green_gauss = {
+		args = "mesh, face_field:vec, gx:vec, gy:vec",
+		doc  = "Green-Gauss gradient reconstruction from face field",
+	},
 
-	divergence_integrated      = { sig = "divergence_integrated(mesh, un_face, div:vec)", doc = "Face flux sum into cell field: div[c] = Σ(un·A)" },
-	divergence_volumetric      = { sig = "divergence_volumetric(mesh, un_face, div:vec)", doc = "Face flux sum divided by cell volume: div[c] = Σ(un·A)/V" },
+	divergence_integrated = {
+		args = "mesh, un_face:vec, div:vec",
+		doc  = "Face flux sum into cell field: div[c] = sum(un * A)",
+	},
+	divergence_volumetric = {
+		args = "mesh, un_face:vec, div:vec",
+		doc  = "Face flux sum divided by cell volume: div[c] = sum(un * A) / V",
+	},
 
-	vorticity_2d               = { sig = "vorticity_2d(mesh, grad_vy_x, grad_ux_y, omega:vec)", doc = "2D vorticity: omega = dVy/dx - dUx/dy" },
-	patch_gradient_flux        = { sig = "patch_gradient_flux(mesh, T, face_T, gx, gy:vec, gamma:f64, patch:str)", doc = "Non-orthogonal corrected heat flux integral over a named patch: ∫ γ (∇T · n̂) dA" },
+	vorticity_2d = {
+		args = "mesh, grad_vy_x:vec, grad_ux_y:vec, omega:vec",
+		doc  = "2D vorticity: omega = dVy/dx - dUx/dy",
+	},
+
+	patch_gradient_flux = {
+		args = "mesh, T:vec, face_T:vec, gx:vec, gy:vec, gamma:f64, patch:str",
+		ret  = "f64",
+		doc  =
+		"Return the non-orthogonal corrected diffusive flux integral over a named patch: integral gamma * grad(T) dot n dA",
+	},
 }
 
 return M

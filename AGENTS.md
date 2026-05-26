@@ -1,6 +1,3 @@
-doc: warning: could not load module 'jnl.fvm.study'
-doc: warning: could not load module 'jnl.repl'
-doc: warning: could not load module 'jnl.repl.study'
 
 # General role
 You are helping write code for JNLCFD, a small computational fluid
@@ -1904,6 +1901,90 @@ JNL API Reference
       constructor: Rules.stopping / Rules.tabular_progress / Rules.post_mortem etc.
 
 
+## jnl.fvm.study
+   FVM-specific study helper with automatic case builders and inspectors
+
+   Use jnl.fvm.study when a script can expose mesh, registry, algorithm, and
+   boundary-condition builders.
+
+   Builders receive design variables first and run options second: fn(design, opts). Use
+   design for sweep/optimisation variables, and defaults/options for ordinary run
+   configuration.
+
+   The helper registers standard REPL inspectors such as inspect-registry, inspect-deps,
+   inspect-instructions, and run, while still allowing custom evaluate, output, plot,
+   write, and optimisation functions.
+
+   new
+      sig: jnl.fvm.study.new(title:string?) -> FvmStudy
+      doc: Create an FVM REPL study object
+   type FvmStudy [table] — FVM-specific study object with automatic case builders and
+   inspectors
+      constructor: jnl.fvm.study.new(title)
+      FvmStudy:algorithm
+         sig: FvmStudy:algorithm(fn:function, opts:table?) -> FvmStudy
+         doc: Register an algorithm builder fn(design, opts) -> Algorithm
+      FvmStudy:bcs
+         sig: FvmStudy:bcs(fn:function, opts:table?) -> FvmStudy
+         doc: Register a boundary-condition builder fn(design, opts) -> table
+      FvmStudy:build_algorithm
+         sig: FvmStudy:build_algorithm(design_overrides:table?) -> Algorithm
+         doc: Build the algorithm for a design
+      FvmStudy:build_bcs
+         sig: FvmStudy:build_bcs(design_overrides:table?) -> table
+         doc: Build boundary conditions for a design
+      FvmStudy:build_case
+         sig: FvmStudy:build_case(design_overrides:table?) -> Case
+         doc: Build and compile an FVM case without running it
+      FvmStudy:build_case_with
+         sig: FvmStudy:build_case_with(design_overrides:table, option_overrides:table )
+              -> Case
+         doc: Build and compile an FVM case with option overrides
+      FvmStudy:build_mesh
+         sig: FvmStudy:build_mesh(design_overrides:table?) -> Mesh
+         doc: Build the mesh for a design
+      FvmStudy:build_registry
+         sig: FvmStudy:build_registry(design_overrides:table?) -> Registry
+         doc: Build the registry for a design
+      FvmStudy:case
+         sig: FvmStudy:case(fn:function, opts:table?) -> FvmStudy
+         doc: Register a custom case builder fn(design, opts) -> Case
+      FvmStudy:default_evaluate
+         sig: FvmStudy:default_evaluate(design:table, opts:table) -> table
+         doc: Build, run, and return a standard result table
+      FvmStudy:inspect_algorithm
+         sig: FvmStudy:inspect_algorithm(design_overrides:table?) -> Case
+         doc: Build the case, print the expanded algorithm used for compilation, and
+              return the case
+      FvmStudy:inspect_deps
+         sig: FvmStudy:inspect_deps(design_overrides:table?) -> Registry
+         doc: Print the registry dependency listing and return it
+      FvmStudy:inspect_instructions
+         sig: FvmStudy:inspect_instructions(design_overrides:table?) -> Case
+         doc: Print compiled FVM instructions and return the case
+      FvmStudy:inspect_registry
+         sig: FvmStudy:inspect_registry(design_overrides:table?) -> Registry
+         doc: Print the registry listing and return it
+      FvmStudy:inspect_resources
+         sig: FvmStudy:inspect_resources(design_overrides:table?) -> Case
+         doc: Print compiled resource counts and return the case
+      FvmStudy:inspect_warnings
+         sig: FvmStudy:inspect_warnings(design_overrides:table?) -> Case
+         doc: Print compile warnings and return the case
+      FvmStudy:install
+         sig: FvmStudy:install(repl:Repl?) -> Repl
+         doc: Install FVM inspectors and generic study helpers into a REPL
+      FvmStudy:mesh
+         sig: FvmStudy:mesh(fn:function, opts:table?) -> FvmStudy
+         doc: Register a mesh builder fn(design, opts) -> Mesh
+      FvmStudy:registry
+         sig: FvmStudy:registry(fn:function, opts:table?) -> FvmStudy
+         doc: Register a registry builder fn(design, opts) -> Registry
+      FvmStudy:show_mesh
+         sig: FvmStudy:show_mesh(design_overrides:table?) -> Mesh
+         doc: Build and display the mesh in the UI
+
+
 ## jnl.fvm.vtk
    Write FVM field data to VTK legacy ASCII unstructured grid files.
 
@@ -2435,6 +2516,61 @@ JNL API Reference
          doc: Error on unmapped region markers during meshing
 
 
+## jnl.repl
+   Configurable Fennel REPL with comma commands and help system
+
+   Use jnl.repl.new() in interactive scripts, register useful values with repl:register,
+   then end with return repl:run().
+
+   The REPL evaluates Fennel input, even when the startup script itself is written in
+   Lua.
+
+   Registered names should be user-facing and Fennel-friendly; prefer names like
+   show-mesh while optionally adding Lua-style aliases.
+
+   Comma commands are for REPL control and discovery; registered globals are for
+   user-callable demo functions and objects.
+
+   Scripts can call repl:usage(text_or_fn) to provide a study-specific ,usage guide
+   alongside the general ,help command.
+
+   llm
+      sig: jnl.repl.llm(opts:table?) -> nil
+      doc: Print full JNLCFD coding context for LLMs
+   llm_string
+      sig: jnl.repl.llm_string(opts:table?) -> string
+      doc: Return full JNLCFD coding context for LLMs
+   new
+      sig: jnl.repl.new() -> Repl
+      doc: Create a new REPL instance with built-in commands registered
+   script_summary
+      sig: jnl.repl.script_summary(script_path:string) -> nil
+      doc: Print globals that a script introduced
+   type Repl [table] — Configurable Fennel REPL object
+      constructor: jnl.repl.new
+      Repl:command
+         sig: Repl:command(name:string, fn:function, usage:string?, doc:string?) -> nil
+         doc: Register a custom comma command
+      Repl:pp
+         sig: Repl:pp(value:any, opts:table?) -> any
+         doc: Pretty-print a Lua/Fennel value and return it
+      Repl:print_usage
+         sig: Repl:print_usage() -> nil
+         doc: Print registered study-specific usage text
+      Repl:register
+         sig: Repl:register(name:string, value:any, doc:string?) -> nil
+         doc: Expose a value as a global and add it to the help system
+      Repl:run
+         sig: Repl:run() -> nil
+         doc: Start the Fennel REPL loop
+      Repl:usage
+         sig: Repl:usage(spec:string|table|function) -> nil
+         doc: Register study-specific usage text or a usage provider for ,usage
+      Repl:usage_string
+         sig: Repl:usage_string() -> string
+         doc: Return registered study-specific usage text
+
+
 ## jnl.repl.printer
    Terminal text printer with wrapping and indentation
 
@@ -2493,6 +2629,112 @@ JNL API Reference
       Printer.fmt:rule
          sig: Printer.fmt:rule(opts:table?) -> string
          doc: Horizontal rule; opts: { char='-', width=40 }
+
+
+## jnl.repl.study
+   Generic study helper for exposing scripted workflows through the REPL
+
+   Use jnl.repl.study for scripts that are ordinary Lua programs but should present a
+   friendly REPL surface.
+
+   Put run configuration such as nx, tolerance, scheme, and output paths in defaults().
+   Put design variables such as geometry dimensions or shape parameters in design().
+
+   evaluate() should register a function that runs ONE simulation and returns a uniform
+   result table: { x, opts, mesh, sim, case, field, fields }. This contract lets
+   sweep(), optimise(), and uq() call run() as a black box and operate on typed results.
+
+   sweep(), optimise(), and uq() each accept fn(study) -> any. Call study:run(overrides)
+   inside to get uniform result objects; use whatever parametric/optimisation/UQ library
+   you like for the outer loop. All three are registered as REPL callables.
+
+   new
+      sig: jnl.repl.study.new(title:string?) -> Study
+      doc: Create a generic REPL study object
+   type Study [table] — Generic study object for REPL-facing scripted workflows
+      constructor: jnl.repl.study.new(title)
+      Study:about
+         sig: Study:about(summary:string, opts:table?) -> Study
+         doc: Set study summary text; opts: { entry }
+      Study:after_run
+         sig: Study:after_run(fn:function) -> Study
+         doc: Register a hook called after evaluate
+      Study:before_run
+         sig: Study:before_run(fn:function) -> Study
+         doc: Register a hook called before evaluate
+      Study:bounds
+         sig: Study:bounds(bounds:table) -> Study
+         doc: Set design variable bounds as { name={lo,hi} }
+      Study:check_bounds
+         sig: Study:check_bounds(design:table) -> nil
+         doc: Error if design variables fall outside registered bounds
+      Study:defaults
+         sig: Study:defaults(defaults:table) -> Study
+         doc: Set default run options
+      Study:design
+         sig: Study:design(design:table) -> Study
+         doc: Set default design variables
+      Study:design_opts
+         sig: Study:design_opts(overrides:table?) -> table
+         doc: Return default design variables merged with overrides
+      Study:evaluate
+         sig: Study:evaluate(fn:function, meta:table?) -> Study
+         doc: Register the main evaluation function
+      Study:expose
+         sig: Study:expose(name:string, value:any, doc:string?) -> Study
+         doc: Expose a helper or value as a registered REPL global
+      Study:install
+         sig: Study:install(repl:Repl?) -> Repl
+         doc: Install usage and registered helpers into a REPL
+      Study:last_results
+         sig: Study:last_results() -> table?
+         doc: Return the last evaluated result, or nil if the study has not run
+      Study:optimise
+         sig: Study:optimise(name:string, fn:function(study), opts:table?) -> Study
+         doc: Register an optimisation; fn receives the study and calls run(overrides)
+              as its inner loop
+      Study:option
+         sig: Study:option(name:string, doc:string) -> Study
+         doc: Document one user-facing option
+      Study:options
+         sig: Study:options(options:table) -> Study
+         doc: Document user-facing options
+      Study:opts
+         sig: Study:opts(overrides:table?) -> table
+         doc: Return defaults merged with overrides
+      Study:output
+         sig: Study:output(name:string, fn:function, doc:string?) -> Study
+         doc: Register an output helper over the last result
+      Study:plot
+         sig: Study:plot(name:string, fn:function, opts:table?) -> Study
+         doc: Register a plot helper over the last result
+      Study:print_usage
+         sig: Study:print_usage() -> nil
+         doc: Print generated usage text for the study
+      Study:repl
+         sig: Study:repl(repl:Repl?) -> nil
+         doc: Install the study into a REPL and start it
+      Study:result_or_run
+         sig: Study:result_or_run() -> table
+         doc: Return last_result, or evaluate the default design if absent
+      Study:run
+         sig: Study:run(design_overrides:table?) -> table
+         doc: Evaluate the study, print non-default design variables unless opts.quiet
+              is true, and store result as last_result
+      Study:sweep
+         sig: Study:sweep(name:string, fn:function(study), opts:table?) -> Study
+         doc: Register a parameter sweep; fn receives the study and calls run(overrides)
+              in a loop
+      Study:uq
+         sig: Study:uq(name:string, fn:function(study), opts:table?) -> Study
+         doc: Register a UQ study; fn receives the study and calls run(overrides) per
+              sample
+      Study:usage_string
+         sig: Study:usage_string() -> string
+         doc: Return generated usage text for the study
+      Study:write
+         sig: Study:write(name:string, fn:function(result, path), opts:table?) -> Study
+         doc: Register a writer; REPL call is (write-name path result?)
 
 
 ## jnl.sage

@@ -125,9 +125,16 @@ local printers = {
 		return string.format("| EVAL_COEFF  %s", tostring(f.expr))
 	end,
 	solve = function(f)
-		local tol   = f.tol and string.format(" tol=%g", f.tol) or ""
-		local iters = f.max_iters and string.format(" iters=%d", f.max_iters) or ""
-		return string.format("SOLVE         %s  [%s%s%s]", fmt(f.field), f.solver, tol, iters)
+		local tol = f.tol ~= nil and string.format("%.1e", f.tol) or "-"
+		local max_iters = f.max_iters ~= nil and tostring(f.max_iters) or "-"
+
+		return string.format(
+			"SOLVE         %-16s [%s]  tol=%-9s max_iter=%s",
+			fmt(f.field),
+			f.solver or "?",
+			tol,
+			max_iters
+		)
 	end,
 	apply_bc_patch = function(f)
 		local patch = f.patch == true and "*" or f.patch
@@ -717,6 +724,7 @@ eval_emitters.face = function(reg, name, out)
 	local face_kind_map = {
 		dirichlet_const = "dirichlet_face_const",
 		neumann_const   = "neumann_face_const",
+		robin_const     = "robin_face_const",
 	}
 
 	if src_sym and src_sym.bcs and #src_sym.bcs > 0 then
@@ -1029,7 +1037,18 @@ local function emit_term(field, term, reg, out)
 	end
 end
 
-local function emit_solve(reg, name, alg_ctx, out)
+local function resolve_linalg(alg, phase, field)
+	local linalg = alg and alg.linalg or {}
+	local phase_opts = linalg[phase] or {}
+	local field_opts = (linalg.fields and linalg.fields[field]) or {}
+
+	return {
+		tol       = field_opts.tol or phase_opts.tol,
+		max_iters = field_opts.max_iters or phase_opts.max_iters,
+	}
+end
+
+local function emit_solve(reg, name, alg_ctx, phase, out)
 	local sym = reg[name]
 	assert(sym and sym.kind == "field", "emit_solve: not a field: " .. name)
 	assert(not sym.passive, "emit_solve: '" .. name .. "' is a passive field — cannot be solved")
@@ -1080,11 +1099,14 @@ local function emit_solve(reg, name, alg_ctx, out)
 		out[#out + 1] = Inst.new("under_relax", { field = name, alpha = eq.relax })
 	end
 
+	local lin = resolve_linalg(alg_ctx, phase, name)
+
 	out[#out + 1] = Inst.new("solve", {
 		field     = name,
 		solver    = (eq.solver or "BICGSTAB"):lower(),
-		tol       = alg_ctx and alg_ctx.linalg_tol,
-		max_iters = alg_ctx and alg_ctx.linalg_max_iters,
+		tol       = lin.tol,
+		max_iters = lin.max_iters,
+		phase     = phase,
 	})
 end
 
@@ -1097,7 +1119,7 @@ local function emit_correct(reg, name, out)
 	out[#out + 1] = Inst.new("apply_correction", { field = name, expr = csym.expr })
 end
 
-local function walk_steps(reg, alg, steps, out)
+local function walk_steps(reg, alg, phase, steps, out)
 	for _, step in ipairs(steps) do
 		if step.op == "evaluate" then
 			emit_eval(reg, step.field, out)
@@ -1106,19 +1128,18 @@ local function walk_steps(reg, alg, steps, out)
 			if sym and sym.kind == "expression" then
 				emit_eval(reg, step.field, out)
 			else
-				emit_solve(reg, step.field, alg, out)
+				emit_solve(reg, step.field, alg, phase, out)
 			end
 		elseif step.op == "zero" then
 			out[#out + 1] = Inst.new("zero", { field = step.field })
 		elseif step.op == "correct" then
 			emit_correct(reg, step.field, out)
 		elseif step.op == "clip" then
-			out[#out + 1] = {
-				op = "clip",
+			out[#out + 1] = Inst.new("clip", {
 				field = step.field,
 				lo = step.lo,
 				hi = step.hi
-			}
+			})
 		elseif step.op == "monitor" then
 			out[#out + 1] = Inst.new("monitor", {
 				field = step.field,
@@ -1126,13 +1147,11 @@ local function walk_steps(reg, alg, steps, out)
 			})
 		elseif step.op == "inner" then
 			local body = {}
-			walk_steps(reg, step.inner.steps, body)
+			walk_steps(reg, step.inner, "main", step.inner.steps, body)
 			out[#out + 1] = {
-				op               = "inner_loop",
-				max_iters        = step.inner.max_iters,
-				linalg_tol       = step.inner.linalg_tol,
-				linalg_max_iters = step.inner.linalg_max_iters,
-				body             = body
+				op        = "inner_loop",
+				max_iters = step.inner.max_iters,
+				body      = body
 			}
 		end
 	end
@@ -1195,9 +1214,9 @@ local function emit_instructions(reg, expanded_alg)
 
 	append_all(pre, emit_initialisers(reg))
 
-	walk_steps(reg, expanded_alg, expanded_alg.pre, pre)
-	walk_steps(reg, expanded_alg, expanded_alg.steps, main)
-	walk_steps(reg, expanded_alg, expanded_alg.post, post)
+	walk_steps(reg, expanded_alg, "pre", expanded_alg.pre, pre)
+	walk_steps(reg, expanded_alg, "main", expanded_alg.steps, main)
+	walk_steps(reg, expanded_alg, "post", expanded_alg.post, post)
 
 	return pre, main, post
 end

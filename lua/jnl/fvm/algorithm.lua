@@ -29,6 +29,7 @@ FvmAlg.__index    = FvmAlg
 
 function M.new(opts)
 	opts = opts or {}
+
 	return setmetatable({
 		_alg             = A.new(),
 		convergence      = {},
@@ -72,15 +73,21 @@ function FvmAlg:print()
 	self._alg:print()
 end
 
+local function count_keys(t)
+	local n = 0
+	for _ in pairs(t) do n = n + 1 end
+	return n
+end
+
 function FvmAlg:__tostring()
 	local alg = self._alg
 	local op = alg and alg.op or "?"
 	local n_steps = alg and alg.steps and #alg.steps or 0
 	local max_iters = alg and alg.max_iters or "?"
 
-	local n_converge = self._convergence and #self._convergence or 0
-	local n_guard = self._guards and #self._guards or 0
-	local n_watch = self._watch and #self._watch or 0
+	local n_converge = count_keys(self.convergence)
+	local n_guard = count_keys(self.divergence)
+	local n_watch = #self.progress_columns
 
 	return string.format(
 		"jnl.fvm.Algorithm(%s, %d steps, max_iters=%s, %d convergence, %d guards, %d watches)",
@@ -97,21 +104,28 @@ end
 -- Config mutation
 --
 
-function FvmAlg:set_linalg(opts)
-	self._alg:set_linalg(opts)
+function FvmAlg:max_iters(max_iters)
+	self._alg.max_iters = max_iters
 	return self
 end
 
-function FvmAlg:linalg_tol(tol)
-	return self:set_linalg({ tol = tol })
+function FvmAlg:pre_linalg(opts)
+	self._alg:pre_linalg(opts)
+	return self
 end
 
-function FvmAlg:linalg_max_iters(max_iters)
-	return self:set_linalg({ max_iters = max_iters })
+function FvmAlg:main_linalg(opts)
+	self._alg:main_linalg(opts)
+	return self
 end
 
-function FvmAlg:max_iters(max_iters)
-	self._alg.max_iters = max_iters
+function FvmAlg:post_linalg(opts)
+	self._alg:post_linalg(opts)
+	return self
+end
+
+function FvmAlg:field_linalg(field, opts)
+	self._alg:field_linalg(field, opts)
 	return self
 end
 
@@ -230,7 +244,8 @@ M._api = {
 	loop = {
 		args = "cb:function, config:table?",
 		ret  = "FvmAlg",
-		doc  = "Define a looping step sequence; config: { max_iters, linalg_tol, linalg_max_iters }",
+		doc  =
+		"Define an iterative main-loop step sequence; config: { max_iters = 1000 }. Linear-solver controls are configured with pre_linalg/main_linalg/post_linalg/field_linalg",
 	},
 	linear = {
 		args = "cb:function, config:table?",
@@ -267,25 +282,30 @@ M._api = {
 	-- Config mutation
 	--
 
-	set_linalg = {
-		args = "opts:table",
-		ret  = "FvmAlg",
-		doc  = "Set default linear-solver controls for solve steps; opts: { tol, max_iters }",
-	},
-	linalg_tol = {
-		args = "tol:number",
-		ret  = "FvmAlg",
-		doc  = "Set default linear solver tolerance for solve steps",
-	},
-	linalg_max_iters = {
-		args = "max_iters:int",
-		ret  = "FvmAlg",
-		doc  = "Set default maximum linear iterations for solve steps",
-	},
 	max_iters = {
 		args = "max_iters:int",
 		ret  = "FvmAlg",
 		doc  = "Set maximum outer loop iterations",
+	},
+	pre_linalg = {
+		args = "opts:table",
+		ret  = "FvmAlg",
+		doc  = "Set default linear-solver controls for solves emitted in the pre phase; opts: { tol, max_iters }",
+	},
+	main_linalg = {
+		args = "opts:table",
+		ret  = "FvmAlg",
+		doc  = "Set default linear-solver controls for solves emitted in the main phase; opts: { tol, max_iters }",
+	},
+	post_linalg = {
+		args = "opts:table",
+		ret  = "FvmAlg",
+		doc  = "Set default linear-solver controls for solves emitted in the post phase; opts: { tol, max_iters }",
+	},
+	field_linalg = {
+		args = "field:string, opts:table",
+		ret  = "FvmAlg",
+		doc  = "Set field-specific linear-solver controls; overrides the active phase default when solving that field",
 	},
 
 	--

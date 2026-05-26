@@ -557,10 +557,12 @@ end
 
 M._doc = "Rule helpers and rulesets for FVM convergence monitoring via Sage."
 
-M._doc_subsection =
-	"The d argument passed to pm_rule callbacks is sim.diag — the same Diag object " ..
-	"documented in jnl.fvm.sim. Use d.field(name), d.max(name), and d.sys_diag(name) " ..
-	"to inspect field state at the point of divergence."
+M._doc_subsection = {
+	"Use this module to build convergence, divergence, progress, and post-mortem rules for FVM algorithms.",
+	"Field predicates such as residual_below, field_change_below, and field_norm_below return functions of shape pred(field, sage, iter, depth). Pass them directly to alg:converge or alg:guard; do not write predicates expecting a raw residual value.",
+	"Use residual_below for solved fields, field_change_below when residuals are noisy, and field_norm_below for monitored derived fields such as divU.",
+	"The d argument passed to pm_rule callbacks is sim.diag — the same Diag object documented in jnl.fvm.sim. Use d.field(name), d.max(name), and d.sys_diag(name) to inspect field state at the point of divergence.",
+}
 
 M._api = {
 	-- predicates: return a pred fn(field, sage, iter, depth) -> bool
