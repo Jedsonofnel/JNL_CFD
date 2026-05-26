@@ -1794,9 +1794,14 @@ JNL API Reference
    Field extraction helpers for plotting mesh field data with jnl.gp.
 
    line_profile
-      sig: jnl.gp.mesh.line_profile(mesh:Mesh, field_vec:vec, axis:'x'|'y',
+      sig: jnl.gp.mesh.line_profile(mesh:Mesh2D, field_vec:VecUD, axis:'x'|'y',
            value:number, opts:table?) -> coords:number[], vals:number[]
       doc: Extract field values along a line slice; opts: { tol }
+   patch_profile
+      sig: jnl.gp.mesh.patch_profile(mesh:Mesh2D, field_vec:VecUD, patch_name:string,
+           coord:'x'|'y'|'s'|'snorm'?, opts:table?) -> coords:number[], vals:number[]
+      doc: Extract field values along a boundary patch; opts: { field_location =
+           'cell'|'face', sort = bool }
 
 ## jnl.llm
    LLM coding context and instructions for JNLCFD
@@ -1927,12 +1932,28 @@ JNL API Reference
       Mesh:cell_vol_vec
          sig: Mesh:cell_vol_vec() -> vec
          doc: Bulk cell volumes/areas as an owned vec
+      Mesh:face_area0
+         sig: Mesh:face_area0(f:int) -> number
+         doc: Length/area of 0-based face f
       Mesh:face_centre
          sig: Mesh:face_centre(i:int) -> number, number
          doc: Centroid (cx, cy) of 1-based face i
+      Mesh:face_centre0
+         sig: Mesh:face_centre0(f:int) -> number, number
+         doc: Centroid (cx, cy) of 0-based face f
+      Mesh:face_neighbour0
+         sig: Mesh:face_neighbour0(f:int) -> int
+         doc: Neighbour cell index for 0-based face f; boundary patches return encoded
+              negative marker
       Mesh:face_normal
          sig: Mesh:face_normal(i:int) -> number, number
          doc: Outward unit normal (nx, ny) of 1-based face i
+      Mesh:face_normal0
+         sig: Mesh:face_normal0(f:int) -> number, number
+         doc: Unit normal (nx, ny) of 0-based face f
+      Mesh:face_owner0
+         sig: Mesh:face_owner0(f:int) -> int
+         doc: Owner cell index for 0-based face f; returns a 0-based cell index
       Mesh:mean_cell_size
          sig: Mesh:mean_cell_size() -> number
          doc: RMS cell size: sqrt(total_area / n_cells)
@@ -1950,10 +1971,10 @@ JNL API Reference
          doc: Boundary patch count
       Mesh:patch_by_name
          sig: Mesh:patch_by_name(name:string) -> table?
-         doc: Find patch descriptor by name, or nil
+         doc: Find patch descriptor by name, or nil; start_face is 0-based
       Mesh:patches
          sig: Mesh:patches() -> table
-         doc: Array of {name, start_face, n_faces, marker} tables
+         doc: Array of {name, start_face, n_faces, marker} tables; start_face is 0-based
    type TriOpts — Immutable triangulation options; all setters return a new TriOpts
       constructor: mesh2d_internal.opts_default()
       TriOpts:enable_region_areas

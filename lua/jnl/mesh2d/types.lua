@@ -54,13 +54,23 @@ M._types = {
 			n_faces          = { args = "", ret = "int", doc = "Total face count (internal + boundary)" },
 			n_internal_faces = { args = "", ret = "int", doc = "Internal (non-boundary) face count" },
 			n_patches        = { args = "", ret = "int", doc = "Boundary patch count" },
-			patches          = { args = "", ret = "table", doc = "Array of {name, start_face, n_faces, marker} tables" },
-			patch_by_name    = { args = "name:string", ret = "table?", doc = "Find patch descriptor by name, or nil" },
+
+			patches          = { args = "", ret = "table", doc = "Array of {name, start_face, n_faces, marker} tables; start_face is 0-based" },
+			patch_by_name    = { args = "name:string", ret = "table?", doc = "Find patch descriptor by name, or nil; start_face is 0-based" },
+
 			cell_centre      = { args = "i:int", ret = "number, number", doc = "Centroid (cx, cy) of 1-based cell i" },
 			cell_vol         = { args = "i:int", ret = "number", doc = "Area of 1-based cell i" },
 			mean_cell_size   = { args = "", ret = "number", doc = "RMS cell size: sqrt(total_area / n_cells)" },
+
 			face_centre      = { args = "i:int", ret = "number, number", doc = "Centroid (cx, cy) of 1-based face i" },
 			face_normal      = { args = "i:int", ret = "number, number", doc = "Outward unit normal (nx, ny) of 1-based face i" },
+
+			face_owner0      = { args = "f:int", ret = "int", doc = "Owner cell index for 0-based face f; returns a 0-based cell index" },
+			face_neighbour0  = { args = "f:int", ret = "int", doc = "Neighbour cell index for 0-based face f; boundary patches return encoded negative marker" },
+			face_centre0     = { args = "f:int", ret = "number, number", doc = "Centroid (cx, cy) of 0-based face f" },
+			face_normal0     = { args = "f:int", ret = "number, number", doc = "Unit normal (nx, ny) of 0-based face f" },
+			face_area0       = { args = "f:int", ret = "number", doc = "Length/area of 0-based face f" },
+
 			cell_cx_vec      = { args = "", ret = "vec", doc = "Bulk cell centroid x-coordinates as an owned vec" },
 			cell_cy_vec      = { args = "", ret = "vec", doc = "Bulk cell centroid y-coordinates as an owned vec" },
 			cell_vol_vec     = { args = "", ret = "vec", doc = "Bulk cell volumes/areas as an owned vec" },
@@ -164,6 +174,12 @@ function TriSpec:set_require_named_baffles(enabled) end
 ---@param enabled boolean
 function TriSpec:set_require_named_regions(enabled) end
 
+---@class MeshPatch
+---@field name string
+---@field start_face integer 0-based global face index
+---@field n_faces integer
+---@field marker integer
+
 ---@class Mesh2D
 local Mesh = {}
 ---@return integer
@@ -178,11 +194,11 @@ function Mesh:n_internal_faces() end
 ---@return integer
 function Mesh:n_patches() end
 
----@return { name:string, start_face:integer, n_faces:integer, marker:integer }[]
+---@return MeshPatch[]
 function Mesh:patches() end
 
 ---@param name string
----@return { name:string, start_face:integer, n_faces:integer, marker:integer }?
+---@return MeshPatch?
 function Mesh:patch_by_name(name) end
 
 ---@param i integer
@@ -203,6 +219,26 @@ function Mesh:face_centre(i) end
 ---@param i integer
 ---@return number, number
 function Mesh:face_normal(i) end
+
+---@param f integer 0-based face index
+---@return integer owner 0-based cell index
+function Mesh:face_owner0(f) end
+
+---@param f integer 0-based face index
+---@return integer neighbour 0-based cell index, or encoded negative patch marker for boundary faces
+function Mesh:face_neighbour0(f) end
+
+---@param f integer 0-based face index
+---@return number, number
+function Mesh:face_centre0(f) end
+
+---@param f integer 0-based face index
+---@return number, number
+function Mesh:face_normal0(f) end
+
+---@param f integer 0-based face index
+---@return number
+function Mesh:face_area0(f) end
 
 ---@return VecUD
 function Mesh:cell_cx_vec() end

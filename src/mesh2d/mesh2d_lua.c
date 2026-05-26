@@ -609,6 +609,72 @@ static int l_mesh_face_normal(lua_State *L)
 }
 
 //
+// Zero based accessors
+//
+
+static int l_mesh_face_owner0(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	i32 f = (i32)luaL_checkinteger(L, 2);
+
+	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
+	              "face index out of range");
+
+	lua_pushinteger(L, m->topo.owner[f]);
+	return 1;
+}
+
+static int l_mesh_face_neighbour0(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	i32 f = (i32)luaL_checkinteger(L, 2);
+
+	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
+	              "face index out of range");
+
+	lua_pushinteger(L, m->topo.neighbour[f]);
+	return 1;
+}
+
+static int l_mesh_face_centre0(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	i32 f = (i32)luaL_checkinteger(L, 2);
+
+	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
+	              "face index out of range");
+
+	lua_pushnumber(L, m->geom.face_cx[f]);
+	lua_pushnumber(L, m->geom.face_cy[f]);
+	return 2;
+}
+
+static int l_mesh_face_normal0(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	i32 f = (i32)luaL_checkinteger(L, 2);
+
+	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
+	              "face index out of range");
+
+	lua_pushnumber(L, m->geom.face_nx[f]);
+	lua_pushnumber(L, m->geom.face_ny[f]);
+	return 2;
+}
+
+static int l_mesh_face_area0(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	i32 f = (i32)luaL_checkinteger(L, 2);
+
+	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
+	              "face index out of range");
+
+	lua_pushnumber(L, m->geom.face_area[f]);
+	return 1;
+}
+
+//
 // Bulk accessors
 //
 
@@ -634,17 +700,27 @@ static int l_mesh_cell_vol_vec(lua_State *L)
 }
 
 static const luaL_Reg mesh2d_methods[] = {
+    // key diagnostics
     {"n_cells", l_mesh_n_cells},
     {"n_faces", l_mesh_n_faces},
     {"n_internal_faces", l_mesh_n_internal_faces},
     {"patches", l_mesh_patches},
     {"n_patches", l_mesh_n_patches},
     {"patch_by_name", l_mesh_patch_by_name},
+    // 1-indexed cell queries
     {"cell_centre", l_mesh_cell_centre},
     {"cell_vol", l_mesh_cell_vol},
     {"mean_cell_size", l_mesh_mean_cell_size},
+    // 1-indexed face queries
     {"face_centre", l_mesh_face_centre},
     {"face_normal", l_mesh_face_normal},
+    // 0-indexed face queries
+    {"face_owner0", l_mesh_face_owner0},
+    {"face_neighbour0", l_mesh_face_neighbour0},
+    {"face_centre0", l_mesh_face_centre0},
+    {"face_normal0", l_mesh_face_normal0},
+    {"face_area0", l_mesh_face_area0},
+    // bulk accessors
     {"cell_cx_vec", l_mesh_cell_cx_vec},
     {"cell_cy_vec", l_mesh_cell_cy_vec},
     {"cell_vol_vec", l_mesh_cell_vol_vec},

@@ -43,14 +43,177 @@ function M.line_profile(mesh, field_vec, axis, value, opts)
 end
 
 --
+-- Patch profile
+--
+
+local function warn(fmt, ...)
+	io.stderr:write("[gp.mesh] " .. string.format(fmt, ...) .. "\n")
+end
+
+local function sort_by_coord(a, b)
+	return a.coord < b.coord
+end
+
+local function field_value_at_face(mesh, field_vec, f, field_location)
+	if field_location == "cell" then
+		local owner0 = mesh:face_owner0(f)
+		return field_vec[owner0 + 1]
+	end
+
+	if field_location == "face" then
+		return field_vec[f + 1]
+	end
+
+	error("patch_profile: opts.field_location must be 'cell' or 'face'")
+end
+
+local function face_coord(mesh, f, coord)
+	local x, y = mesh:face_centre0(f)
+
+	if coord == "x" then
+		return x
+	end
+
+	if coord == "y" then
+		return y
+	end
+
+	error("patch_profile: coord must be 'x', 'y', 's', or 'snorm'")
+end
+
+local function patch_length(mesh, patch)
+	local len = 0.0
+
+	for k = 0, patch.n_faces - 1 do
+		local f = patch.start_face + k
+		len = len + mesh:face_area0(f)
+	end
+
+	return len
+end
+
+local function points_to_arrays(pts)
+	local coords, vals = {}, {}
+
+	for _, p in ipairs(pts) do
+		coords[#coords + 1] = p.coord
+		vals[#vals + 1] = p.val
+	end
+
+	return coords, vals
+end
+
+local function patch_xy_points(mesh, field_vec, patch, coord, field_location)
+	local pts = {}
+
+	for k = 0, patch.n_faces - 1 do
+		local f = patch.start_face + k
+
+		pts[#pts + 1] = {
+			coord = face_coord(mesh, f, coord),
+			val = field_value_at_face(mesh, field_vec, f, field_location),
+		}
+	end
+
+	return pts
+end
+
+local function patch_s_points(mesh, field_vec, patch, coord, field_location)
+	local len = patch_length(mesh, patch)
+	if len == 0.0 then
+		return nil, "zero_length"
+	end
+
+	local pts = {}
+	local s = 0.0
+
+	for k = 0, patch.n_faces - 1 do
+		local f = patch.start_face + k
+		local ds = mesh:face_area0(f)
+		local sf = s + 0.5 * ds
+
+		if coord == "snorm" then
+			sf = sf / len
+		end
+
+		pts[#pts + 1] = {
+			coord = sf,
+			val = field_value_at_face(mesh, field_vec, f, field_location),
+		}
+
+		s = s + ds
+	end
+
+	return pts
+end
+
+local function patch_profile_points(mesh, field_vec, patch, coord, field_location)
+	if coord == "x" or coord == "y" then
+		return patch_xy_points(mesh, field_vec, patch, coord, field_location)
+	end
+
+	if coord == "s" or coord == "snorm" then
+		return patch_s_points(mesh, field_vec, patch, coord, field_location)
+	end
+
+	error("patch_profile: coord must be 'x', 'y', 's', or 'snorm'")
+end
+
+local function default_patch_sort(coord)
+	return coord == "x" or coord == "y"
+end
+
+-- Extract field values on a named boundary patch.
+function M.patch_profile(mesh, field_vec, patch_name, coord, opts)
+	opts = opts or {}
+	coord = coord or "s"
+
+	local patch = mesh:patch_by_name(patch_name)
+	if not patch then
+		warn("patch_profile: unknown patch '%s'", tostring(patch_name))
+		return {}, {}
+	end
+
+	if patch.n_faces == 0 then
+		warn("patch_profile: no faces on patch '%s'", tostring(patch_name))
+		return {}, {}
+	end
+
+	local field_location = opts.field_location or "cell"
+	local pts, err = patch_profile_points(mesh, field_vec, patch, coord, field_location)
+
+	if err == "zero_length" then
+		warn("patch_profile: patch '%s' has zero length", tostring(patch_name))
+		return {}, {}
+	end
+
+	local do_sort = opts.sort
+	if do_sort == nil then
+		do_sort = default_patch_sort(coord)
+	end
+
+	if do_sort then
+		table.sort(pts or {}, sort_by_coord)
+	end
+
+	return points_to_arrays(pts)
+end
+
+--
 -- API
 --
 
 M._api = {
 	line_profile = {
-		args = "mesh:Mesh, field_vec:vec, axis:'x'|'y', value:number, opts:table?",
+		args = "mesh:Mesh2D, field_vec:VecUD, axis:'x'|'y', value:number, opts:table?",
 		ret  = "coords:number[], vals:number[]",
 		doc  = "Extract field values along a line slice; opts: { tol }",
+	},
+
+	patch_profile = {
+		args = "mesh:Mesh2D, field_vec:VecUD, patch_name:string, coord:'x'|'y'|'s'|'snorm'?, opts:table?",
+		ret  = "coords:number[], vals:number[]",
+		doc  = "Extract field values along a boundary patch; opts: { field_location = 'cell'|'face', sort = bool }",
 	},
 }
 
