@@ -66,7 +66,7 @@ function FvmStudy:build_mesh(arg)
 		error("No mesh builder has been registered")
 	end
 
-	return self.mesh_fn(self:design_opts(arg), self:opts())
+	return self.mesh_fn(self:design_opts(arg), self:opts(arg))
 end
 
 function FvmStudy:build_registry(arg)
@@ -74,7 +74,7 @@ function FvmStudy:build_registry(arg)
 		error("No registry builder has been registered")
 	end
 
-	return self.registry_fn(self:design_opts(arg), self:opts())
+	return self.registry_fn(self:design_opts(arg), self:opts(arg))
 end
 
 function FvmStudy:build_algorithm(arg)
@@ -82,7 +82,7 @@ function FvmStudy:build_algorithm(arg)
 		error("No algorithm builder has been registered")
 	end
 
-	return self.algorithm_fn(self:design_opts(arg), self:opts())
+	return self.algorithm_fn(self:design_opts(arg), self:opts(arg))
 end
 
 function FvmStudy:build_bcs(arg)
@@ -90,7 +90,7 @@ function FvmStudy:build_bcs(arg)
 		return {}
 	end
 
-	return self.bcs_fn(self:design_opts(arg), self:opts())
+	return self.bcs_fn(self:design_opts(arg), self:opts(arg))
 end
 
 function FvmStudy:build_case(arg)
@@ -170,11 +170,15 @@ function FvmStudy:default_evaluate(x, opts)
 	local case = self:build_case(x)
 	local sim = case:make_sim()
 
+	local all_opts = {}
+	for k, v in pairs(opts) do all_opts[k] = v end
+	for k, v in pairs(x) do all_opts[k] = v end
+
 	sim:run()
 
-	return {
+	local res = {
 		x = x,
-		opts = opts,
+		opts = all_opts,
 		case = case,
 		sim = sim,
 		mesh = case.mesh,
@@ -187,6 +191,26 @@ function FvmStudy:default_evaluate(x, opts)
 			return case:fields()
 		end,
 	}
+
+	return setmetatable(res, {
+		__tostring = function(r)
+			local parts = {}
+			for _, name in ipairs(r.fields()) do
+				local resid = r.sim.diag.residual(name)
+				if resid then
+					parts[#parts + 1] = string.format("%s=%.3e", name, resid)
+				end
+			end
+			table.sort(parts)
+			local res_str = #parts > 0 and table.concat(parts, "  ") or "no residuals"
+			return string.format(
+				"<result: %s | iters=%d | %s>",
+				tostring(r.mesh),
+				r.sim.diag.iter(),
+				res_str
+			)
+		end
+	})
 end
 
 function FvmStudy:install(repl)
@@ -327,7 +351,7 @@ M._types = {
 				ret = "Case",
 				doc = "Build and compile an FVM case without running it",
 			},
-			{
+			build_case_with = {
 				args = "design_overrides:table, option_overrides:table ",
 				ret = "Case",
 				doc = "Build and compile an FVM case with option overrides",

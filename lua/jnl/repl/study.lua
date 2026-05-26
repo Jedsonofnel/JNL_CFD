@@ -12,9 +12,14 @@ Study.__index = Study
 M._doc = "Generic study helper for exposing scripted workflows through the REPL"
 
 M._doc_subsection = {
-	"Use jnl.repl.study for scripts that are ordinary Lua/Fennel programs but should present a friendly REPL surface.",
-	"Put run configuration such as nx, tolerance, scheme, output paths, and selected Reynolds number in defaults(). Put design variables such as geometry dimensions, shape parameters, or optimisation variables in design().",
-	"A Study stores ordinary functions, not a rigid case schema: use evaluate(), expose(), output(), plot(), write(), and optimise() to make useful behaviour discoverable in the REPL.",
+	"Use jnl.repl.study for scripts that are ordinary Lua programs but should present a friendly REPL surface.",
+	"Put run configuration such as nx, tolerance, scheme, and output paths in defaults(). Put design variables such as geometry dimensions or shape parameters in design().",
+	"evaluate() should register a function that runs ONE simulation and returns a uniform result table: " ..
+	"{ x, opts, mesh, sim, case, field, fields }. This contract lets sweep(), optimise(), and uq() " ..
+	"call run() as a black box and operate on typed results.",
+	"sweep(), optimise(), and uq() each accept fn(study) -> any. Call study:run(overrides) " ..
+	"inside to get uniform result objects; use whatever parametric/optimisation/UQ library " ..
+	"you like for the outer loop. All three are registered as REPL callables.",
 }
 
 local function shallow_copy(t)
@@ -31,6 +36,13 @@ local function shallow_copy(t)
 	return out
 end
 
+local function format_value(v)
+	if type(v) == "string" then
+		return string.format("%q", v)
+	end
+	return tostring(v)
+end
+
 local function merge(a, b)
 	local out = shallow_copy(a)
 
@@ -45,19 +57,24 @@ local function merge(a, b)
 	return out
 end
 
-local function sorted_keys(t)
+local function union_keys(primary, secondary)
+	local seen = {}
 	local keys = {}
 
-	for k in pairs(t or {}) do
-		keys[#keys + 1] = k
+	for k in pairs(primary) do
+		seen[k] = true; keys[#keys + 1] = k
 	end
 
-	table.sort(keys, function(a, b)
-		return tostring(a) < tostring(b)
-	end)
+	for k in pairs(secondary) do
+		if not seen[k] then
+			seen[k] = true; keys[#keys + 1] = k
+		end
+	end
 
+	table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
 	return keys
 end
+
 
 local function normalise_name(name)
 	return tostring(name):gsub("_", "-")
@@ -217,17 +234,37 @@ function Study:write(name, fn, opts)
 	return self
 end
 
-function Study:optimise(name, fn, opts)
-	opts = opts or {}
+local function print_options(p, defaults, docs)
+	local keys = union_keys(docs, defaults)
+	if #keys == 0 then return end
+	p:blank()
+	p:line("Options:")
+	for _, key in ipairs(keys) do
+		local default = defaults[key]
+		local doc     = docs[key] or ""
+		local lhs     = default ~= nil
+			and string.format("  %-16s = %s", tostring(key), format_value(default))
+			or string.format("  %s", tostring(key))
+		p:columns(lhs, doc, { indent = "", left_width = 28, gap = "  " })
+	end
+end
 
-	self.optimisers[#self.optimisers + 1] = {
-		name = normalise_name(name),
-		fn = fn,
-		doc = opts.doc,
-		entry = opts.entry,
-	}
-
-	return self
+local function print_design(p, design, bounds)
+	local keys = union_keys(design, bounds)
+	if #keys == 0 then return end
+	p:blank()
+	p:line("Design variables:")
+	for _, key in ipairs(keys) do
+		local default = design[key]
+		local range   = bounds[key]
+		local lhs     = default ~= nil
+			and string.format("  %-16s = %s", tostring(key), format_value(default))
+			or string.format("  %s", tostring(key))
+		local rhs     = range
+			and string.format("[%s, %s]", tostring(range[1]), tostring(range[2]))
+			or ""
+		p:columns(lhs, rhs, { indent = "", left_width = 28, gap = "  " })
+	end
 end
 
 function Study:usage_string()
@@ -242,22 +279,38 @@ function Study:usage_string()
 	end
 
 	p:line("Start here:")
+
 	if self.entry then
 		p:line("  " .. self.entry)
 	elseif self.evaluate_fn then
 		p:line("  (evaluate)")
+
+		-- inline sample call: up to 3 design keys
+		local keys = union_keys(self.design_table, self.defaults_table)
+		local parts = {}
+		for _, k in ipairs(keys) do
+			if #parts >= 3 then break end
+			local v = self.design_table[k] ~= nil and self.design_table[k] or self.defaults_table[k]
+			if v ~= nil then
+				parts[#parts + 1] = string.format(":%s %s", tostring(k), format_value(v))
+			end
+		end
+		if #parts > 0 then
+			local suffix = #keys > 3 and " ..." or ""
+			p:line("  e.g. (evaluate {" .. table.concat(parts, " ") .. suffix .. "})")
+		end
 	else
 		p:line("  (demo)")
 	end
-	p:blank()
 
+	p:blank()
 	p:line("Common calls:")
 	p:columns("  (instructions)", "Print this guide")
 	p:columns("  (defaults)", "Return the default run options")
 	p:columns("  (default-design)", "Return the default design variables")
 
 	if self.evaluate_fn then
-		p:columns("  (evaluate)", "Evaluate the default design")
+		p:columns("  (evaluate)", self.evaluate_meta.doc or "Evaluate the default design")
 		p:columns("  (evaluate {...})", "Evaluate with design-variable overrides")
 		p:columns("  (run)", "Alias for evaluate")
 	end
@@ -265,39 +318,23 @@ function Study:usage_string()
 	for _, item in ipairs(self.outputs) do
 		p:columns("  (" .. item.name .. ")", item.doc or "Return output from the last result")
 	end
-
 	for _, item in ipairs(self.plots) do
 		p:columns("  (plot-" .. item.name .. ")", item.doc or "Plot from the last result")
 	end
-
 	for _, item in ipairs(self.writers) do
-		p:columns("  (write-" .. item.name .. ")", item.doc or "Write from the last result")
+		p:columns("  (write-" .. item.name .. " \"path\")", item.doc or "Write from the last result")
 	end
-
 	for _, item in ipairs(self.optimisers) do
 		p:columns("  (" .. item.name .. ")", item.doc or "Run optimisation helper")
 	end
-
 	for _, item in ipairs(self.exposed) do
 		p:columns("  (" .. item.name .. ")", item.doc or "Study helper")
 	end
 
-	if next(self.options_table) then
-		p:blank()
-		p:line("Options:")
-		for _, key in ipairs(sorted_keys(self.options_table)) do
-			p:columns("  " .. tostring(key), tostring(self.options_table[key]))
-		end
-	end
+	print_options(p, self.defaults_table, self.options_table)
+	print_design(p, self.design_table, self.bounds_table)
 
-	if next(self.bounds_table) then
-		p:blank()
-		p:line("Design bounds:")
-		for _, key in ipairs(sorted_keys(self.bounds_table)) do
-			local range = self.bounds_table[key]
-			p:columns("  " .. tostring(key), tostring(range[1]) .. " to " .. tostring(range[2]))
-		end
-	end
+	p:blank()
 
 	return p:string()
 end
@@ -316,14 +353,14 @@ function Study:run(arg)
 	self:check_bounds(x)
 
 	for _, hook in ipairs(self.before_run_hooks) do
-		hook(x, self:opts())
+		hook(x, self:opts(arg))
 	end
 
-	local out = self.evaluate_fn(x, self:opts())
+	local out = self.evaluate_fn(x, self:opts(arg))
 	self.last_result = out
 
 	for _, hook in ipairs(self.after_run_hooks) do
-		hook(out, x, self:opts())
+		hook(out, x, self:opts(arg))
 	end
 
 	return out
@@ -380,9 +417,11 @@ function Study:install(repl)
 	end
 
 	for _, item in ipairs(self.writers) do
-		repl:register("write-" .. item.name, function(out)
-			out = out or self:result_or_run()
-			return item.fn(out)
+		repl:register("write-" .. item.name, function(path, result)
+			assert(type(path) == "string",
+				"write-" .. item.name .. " requires a path as first argument")
+			result = result or self:result_or_run()
+			return item.fn(result, path)
 		end, item.doc)
 	end
 
@@ -406,6 +445,41 @@ function Study:repl(repl)
 	print("Use ,usage for the study guide.")
 
 	return repl:run()
+end
+
+--
+-- Parametric studies
+--
+
+function Study:sweep(name, fn, opts)
+	opts = opts or {}
+	self.optimisers[#self.optimisers + 1] = {
+		name = normalise_name(name),
+		fn   = function() return fn(self) end,
+		doc  = opts.doc,
+	}
+	return self
+end
+
+function Study:uq(name, fn, opts)
+	opts = opts or {}
+	self.optimisers[#self.optimisers + 1] = {
+		name = normalise_name(name),
+		fn   = function() return fn(self) end,
+		doc  = opts.doc,
+	}
+	return self
+end
+
+function Study:optimise(name, fn, opts)
+	opts = opts or {}
+	self.optimisers[#self.optimisers + 1] = {
+		name  = normalise_name(name),
+		fn    = function() return fn(self) end,
+		doc   = opts.doc,
+		entry = opts.entry,
+	}
+	return self
 end
 
 --
@@ -502,14 +576,24 @@ M._types = {
 				doc = "Register a plot helper over the last result",
 			},
 			write = {
-				args = "name:string, fn:function, opts:table?",
-				ret = "Study",
-				doc = "Register a writer helper over the last result",
+				args = "name:string, fn:function(result, path), opts:table?",
+				ret  = "Study",
+				doc  = "Register a writer; REPL call is (write-name path result?)",
+			},
+			sweep = {
+				args = "name:string, fn:function(study), opts:table?",
+				ret  = "Study",
+				doc  = "Register a parameter sweep; fn receives the study and calls run(overrides) in a loop",
+			},
+			uq = {
+				args = "name:string, fn:function(study), opts:table?",
+				ret  = "Study",
+				doc  = "Register a UQ study; fn receives the study and calls run(overrides) per sample",
 			},
 			optimise = {
-				args = "name:string, fn:function, opts:table?",
-				ret = "Study",
-				doc = "Register an optimisation helper",
+				args = "name:string, fn:function(study), opts:table?",
+				ret  = "Study",
+				doc  = "Register an optimisation; fn receives the study and calls run(overrides) as its inner loop",
 			},
 			usage_string = {
 				args = "",

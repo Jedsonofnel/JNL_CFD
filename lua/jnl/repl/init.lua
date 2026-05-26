@@ -228,7 +228,7 @@ function REPL:_fennel_view_opts()
 	}
 end
 
-function REPL:_view_value(value, opts)
+function REPL:_fennel_view(value, opts)
 	local fennel = self._fennel
 	if not fennel then
 		local ok, f = pcall(require, "fennel")
@@ -243,6 +243,19 @@ function REPL:_view_value(value, opts)
 	opts = opts or self:_fennel_view_opts()
 	local ok_call, rendered = pcall(view, value, opts)
 	return ok_call and rendered or tostring(value)
+end
+
+function REPL:_view_value(value, opts)
+	local mt = type(value) == "table" and getmetatable(value)
+	if mt and mt.__tostring then
+		return tostring(value)
+	end
+	return self:_fennel_view(value, opts)
+end
+
+function REPL:pp(value, opts)
+	io.write(self:_fennel_view(value, opts))
+	io.write("\n")
 end
 
 function REPL:_print_fennel_values(values)
@@ -288,11 +301,6 @@ end
 --
 -- Built in commands
 --
-
-function REPL:pp(value, opts)
-	io.write(self:_view_value(value, opts))
-	io.write("\n")
-end
 
 function REPL:_register_builtins()
 	self:register("pp", function(value, opts)

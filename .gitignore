@@ -19,9 +19,3 @@ web/jnlisp
 
 # production logs
 logs/
-
-# VTK output
-*.vtk
-
-*.png
-
