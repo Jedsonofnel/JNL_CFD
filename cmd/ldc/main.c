@@ -52,8 +52,8 @@
 // linalg options
 #define MOM_TOL 1e-4
 #define PP_TOL 1e-4
-#define MOM_LIN_ITERS 50
-#define PP_LIN_ITERS 100
+#define MOM_LIN_ITERS 10
+#define PP_LIN_ITERS 10
 
 //
 // Helpers

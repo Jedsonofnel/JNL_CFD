@@ -639,6 +639,7 @@ local function emit_correct(reg, field, expanded, sorted_main, inserted, fresh, 
 		emit_deps_for(reg, cname, sorted_main, inserted, fresh, expanded, explicit_set, hooks)
 		expanded:_push(step_correct(f, false))
 		fresh_mark(fresh, inserted, cname)
+		fresh_invalidate_dependents(reg, f, fresh, inserted, hooks and hooks.invalidated)
 	end
 end
 

@@ -53,7 +53,7 @@ local function simple_monitoring(alg, opts, extra_scalars)
 	alg:converge("Ux", rules.residual_below(tol, n))
 	alg:converge("Uy", rules.residual_below(tol, n))
 	alg:converge(pp, rules.residual_below(tol, n))
-	alg:converge("divU", rules.field_norm_below(opts.divu_tol or 1e-9, n))
+	alg:converge("divU", rules.field_norm_below(opts.divu_tol or tol, n))
 
 	alg:guard("Ux", rules.any_of(rules.field_above(1e15), rules.field_is_nan()))
 	alg:guard("Uy", rules.any_of(rules.field_above(1e15), rules.field_is_nan()))
@@ -118,11 +118,13 @@ end
 
 function M.reg_stokes(props)
 	props         = props or {}
+	local rho     = props.rho or 1.0
 	local mu      = props.mu or 1e-3
 	local alpha_p = props.alpha_p or 0.3
 	local pp      = E.prime_name("p")
 
 	local reg     = R.new()
+	reg:constant("rho", rho)
 	reg:constant("mu", mu)
 	reg:constant("alpha_p", alpha_p)
 
@@ -177,11 +179,11 @@ function M.alg_simple(opts)
 
 	alg:loop(function(a)
 		a:solve("U")
-		a:monitor("divU")
 		a:zero(pp)
 		a:solve(pp)
 		a:correct("U")
 		a:correct("p")
+		a:monitor("divU")
 	end, {
 		max_iters        = opts.max_iters or 1000,
 		linalg_tol       = opts.linalg_tol,
@@ -202,11 +204,11 @@ function M.alg_simpler(opts)
 	alg:loop(function(a)
 		a:solve("p") -- explicit pressure from pseudo-velocity field
 		a:solve("U")
-		a:monitor("divU")
 		a:zero(pp)
 		a:solve(pp)
 		a:correct("U")
 		a:correct("p")
+		a:monitor("divU")
 	end, {
 		max_iters        = opts.max_iters or 1000,
 		linalg_tol       = opts.linalg_tol,
@@ -228,12 +230,12 @@ function M.alg_piso(opts)
 	alg:loop(function(a)
 		a:solve("U")
 		a:inner(function(b)
-			b:monitor("divU")
 			b:zero(pp)
 			b:solve(pp)
 			b:correct("U")
 			b:correct("p")
 		end, { max_iters = n_corr })
+		a:monitor("divU")
 	end, {
 		max_iters        = opts.max_iters or 1000,
 		linalg_tol       = opts.linalg_tol,
