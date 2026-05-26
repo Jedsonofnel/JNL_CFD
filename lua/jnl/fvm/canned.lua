@@ -179,11 +179,11 @@ function M.alg_simple(opts)
 
 	alg:loop(function(a)
 		a:solve("U")
+		a:monitor("divU")
 		a:zero(pp)
 		a:solve(pp)
 		a:correct("U")
 		a:correct("p")
-		a:monitor("divU")
 	end, {
 		max_iters        = opts.max_iters or 1000,
 		linalg_tol       = opts.linalg_tol,
@@ -204,11 +204,11 @@ function M.alg_simpler(opts)
 	alg:loop(function(a)
 		a:solve("p") -- explicit pressure from pseudo-velocity field
 		a:solve("U")
+		a:monitor("divU")
 		a:zero(pp)
 		a:solve(pp)
 		a:correct("U")
 		a:correct("p")
-		a:monitor("divU")
 	end, {
 		max_iters        = opts.max_iters or 1000,
 		linalg_tol       = opts.linalg_tol,
@@ -229,13 +229,13 @@ function M.alg_piso(opts)
 
 	alg:loop(function(a)
 		a:solve("U")
+		a:monitor("divU")
 		a:inner(function(b)
 			b:zero(pp)
 			b:solve(pp)
 			b:correct("U")
 			b:correct("p")
 		end, { max_iters = n_corr })
-		a:monitor("divU")
 	end, {
 		max_iters        = opts.max_iters or 1000,
 		linalg_tol       = opts.linalg_tol,
