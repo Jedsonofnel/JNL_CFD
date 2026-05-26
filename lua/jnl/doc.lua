@@ -337,7 +337,7 @@ local function dump_constants(constants, p)
 end
 
 local function dump_module(mod_name, mod, p)
-	p:line(string.format("== %s", mod_name))
+	p:line(string.format("## %s", mod_name))
 	p:wrap("   ", "   ", mod._doc or "(no description)")
 	p:blank()
 

@@ -1,3 +1,4 @@
+return [[
 -- lua/showcase/validate_conv_diff.lua - Convection-diffusion scheme validation
 -- <jed@nelson.llm> // 2026-05-26
 
@@ -10,10 +11,7 @@ local study = require("jnl.fvm.study").new("Validation: Convection-Diffusion")
 -- Defaults
 --
 
-study:about([[
-Validates UDS and CDS advection schemes against the analytical 1D convection-diffusion solution.
-Provides gnuplot comparison and PNG export.
-]])
+study:about("Validates UDS and CDS advection schemes against the analytical 1D convection-diffusion solution.")
 
 study:design({
 	pe     = 10.0,
@@ -244,3 +242,4 @@ study:write("schemes", function(res, path)
 end, { doc = "Save UDS/CDS/analytical comparison to path" })
 
 return study:repl()
+]]

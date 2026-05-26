@@ -109,7 +109,7 @@ CFD case guidance
 - Write CFD cases as readable Lua scripts, not as large JSON-like configuration blobs.
 - Structure the file in short paragraphs using section headers: metadata, defaults, geometry/mesh, physics, algorithm, boundary conditions, outputs, and entry points.
 - Prefer ordinary named Lua functions over nested tables of callbacks. Users should be able to copy, modify, call, loop over, or optimise these functions directly.
-- Start by listing key parameters and defaults near the top of the file.
+- Start by listing defaults and, when relevant, design variables near the top of the file.
 - Use jnl.fvm.study when available to make the case self-guiding in the REPL, but do not hide important logic inside the study object.
 - A good CFD case usually has a function that builds geometry and/or mesh from design variables and options.
 - A good FVM case usually has functions that build the registry, algorithm, boundary conditions, and final Case object.
@@ -120,18 +120,26 @@ CFD case guidance
 - If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically.
 - Use study:about, study:defaults, study:design, study:options, and study:evaluate in separate paragraphs rather than passing one large table of options.
 - Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format.
+- Use study:defaults for run configuration such as mesh resolution, solver tolerances, scheme names, selected Reynolds number, and output paths.
+- Use study:design for actual design variables such as geometry dimensions, shape parameters, operating-point variables to sweep, or optimisation variables.
+- Study builders should usually accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides.
 - Return result tables with predictable keys when useful: x for design variables, opts for options, case, sim, mesh, metrics, fields, profiles, plots, and files.
 - For validation cases, expose plotting and writing helpers that compare numerical results with analytical or reference data, but keep the reference-data lookup separate from the solver setup.
 - For parameter studies, sweeps, optimisation, or UQ, make the design variables explicit and pass them through the geometry, mesh, physics, and post-processing functions.
 - Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise.
 - Always provide at least one safe no-argument entry point such as demo, instructions, show-mesh, or evaluate. demo should not perform a long solve unless clearly documented.
+- res.opts in result tables is the merged design+defaults table; always read runtime values from res.opts, never from study:opts() inside plot or write functions.
+- write helpers always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller.
+- plot and output helpers receive a result table. write helpers receive (result, path). Keep these signatures consistent.
+- sweep(), uq(), and optimise() each take fn(study) -> any. Call study:run(overrides) inside for uniform result objects; use whatever library you like for the outer loop.
+- Use study:design for variables you would sweep or optimise. Use study:defaults for fixed run configuration like nx, tol, and print_every.
 
 Complete API reference
 ======================
 
 JNL API Reference
 
-== jnl.core.algorithm
+## jnl.core.algorithm
    Core algorithmic step list dependency expansion
 
    Define steps inside loop() or linear() using the Builder DSL. Symbols not explicitly
@@ -195,7 +203,7 @@ JNL API Reference
       verbose = "function(alg)"
         Print classify/emit/invalidate events to stdout
 
-== jnl.core.expr
+## jnl.core.expr
    Arithmetic expression graphs for symbolic computation and C codegen.
 
    Construct expressions with add/mul/div/neg/pow and leaves sym/const/cx/cy/cV. Strings
@@ -302,7 +310,7 @@ JNL API Reference
          sig: Expr:walk(visitor:fun(node:Expr)) -> nil
          doc: Call visitor on every node in the expression tree
 
-== jnl.core.registry
+## jnl.core.registry
    Registry of named symbols for a CFD physics problem: fields, constants, expressions,
    and corrections.
 
@@ -381,7 +389,7 @@ JNL API Reference
          sig: sym:_pretty() -> string
          doc: Human-readable one-line (or block) description of the symbol
 
-== jnl.doc
+## jnl.doc
    Documentation aggregator and API auditor for JNL suite
 
    Three metadata tables drive documentation. _api is a flat map of function name to {
@@ -423,7 +431,7 @@ JNL API Reference
       sig: jnl.doc.modules() -> string[]
       doc: Return documented module names
 
-== jnl.fvm
+## jnl.fvm
    FVM facade: equation DSL, compiler, case management, and operator bindings.
 
    Build a registry of fields and equations, compile it with an algorithm, then
@@ -459,7 +467,7 @@ JNL API Reference
       doc: Namespaced operator bindings with full documentation. All operators also
            available flat on FVM.
 
-== jnl.fvm.algorithm
+## jnl.fvm.algorithm
    FVM algorithm wrapper: adds converge/guard/watch monitoring to core Algorithm.
 
    Build the step sequence with loop() or linear(), then call converge/guard/watch
@@ -519,7 +527,7 @@ JNL API Reference
       sig: jnl.fvm.algorithm.watch()
       doc: 
 
-== jnl.fvm.bc
+## jnl.fvm.bc
    Boundary condition constructors for FVM field equations.
 
    BCs are plain tables { patch, kind, value } passed as lists under each field name in
@@ -555,7 +563,7 @@ JNL API Reference
       neumann_face_normal = "true"
         Neumann from velocity vector projected onto face normal
 
-== jnl.fvm.canned
+## jnl.fvm.canned
    Canned registries and algorithms for common laminar incompressible CFD problems.
 
    Registries return a plain Registry that can be amended with add_term, set_relax,
@@ -587,20 +595,28 @@ JNL API Reference
       sig: jnl.fvm.canned.reg_stokes(props?) -> Registry
       doc: Stokes flow (no convection); props: { mu, alpha_p }
 
-== jnl.fvm.case
+## jnl.fvm.case
    Case manager: owns registry, algorithm, mesh, and BCs; drives compilation and
    allocation.
 
    Construct with Case.new(reg, alg, mesh, bcs); compilation runs immediately. Call
    make_sim() to get a runnable Sim — this allocates field storage on first call.
    Mutate physics, mesh, or BCs with set_physics/set_mesh/set_bcs; then call reconcile()
-   to preserve existing field data or reallocate() to start fresh.After allocate(),
-   _field_map is a table of { [field_name] -> vec } giving direct read access to cell
-   field data for post-processing.
+   to preserve existing field data or reallocate() to start fresh. After allocation, use
+   field(name) or fields() to read allocated field vectors for post-processing; use
+   system(name) or systems() for allocated linear systems.
 
    allocate
       sig: jnl.fvm.case.allocate() -> nil
       doc: Allocate ctx, fields, and systems from scratch; errors if already allocated
+   field
+      sig: jnl.fvm.case.field(name:string) -> vec
+      doc: Return an allocated field vector by name; errors if the case is not allocated
+           or the field is absent
+   fields
+      sig: jnl.fvm.case.fields() -> table
+      doc: Return the allocated field map { [field_name] = vec }; errors if the case is
+           not allocated
    is_allocated
       sig: jnl.fvm.case.is_allocated() -> bool
       doc: True if allocate() has been called
@@ -650,8 +666,16 @@ JNL API Reference
       sig: jnl.fvm.case.set_physics(reg, alg?) -> nil
       doc: Replace registry and optionally algorithm; recompiles and marks reconcile
            needed
+   system
+      sig: jnl.fvm.case.system(name:string) -> FvSystem
+      doc: Return an allocated linear system by field name; errors if absent or
+           unallocated
+   systems
+      sig: jnl.fvm.case.systems() -> table
+      doc: Return the allocated system map { [field_name] = FvSystem }; errors if the
+           case is not allocated
 
-== jnl.fvm.eq
+## jnl.fvm.eq
    FVM differential operator constructors and equation assembler.
 
    Build equations by passing Op.* terms to FVM.eq(). All operators take the field being
@@ -710,7 +734,7 @@ JNL API Reference
          sig: Term:pretty(field_name?) -> string
          doc: Render term to human-readable string
 
-== jnl.fvm.expr
+## jnl.fvm.expr
    FVM expression constructors for face-valued and gradient quantities.
 
    These produce Expr nodes with _dep_name fields the compiler resolves to
@@ -770,7 +794,7 @@ JNL API Reference
         Decode MWI name -> U, p
       mwi = "function(U, p)"    Encode MWI dep name
 
-== jnl.fvm.operators
+## jnl.fvm.operators
    FVM operator bindings: implicit assembly, explicit evaluation, and interpolation.
 
    bc_dirichlet_const
@@ -891,7 +915,7 @@ JNL API Reference
       sig: jnl.fvm.operators.vorticity_2d()
       doc: 2D vorticity: omega = dVy/dx - dUx/dy
 
-== jnl.fvm.rules
+## jnl.fvm.rules
    Rule helpers and rulesets for FVM convergence monitoring via Sage.
 
    The d argument passed to pm_rule callbacks is sim.diag — the same Diag object
@@ -957,17 +981,19 @@ JNL API Reference
    type ruleset —
       constructor: (none)
 
-== jnl.fvm.study
+## jnl.fvm.study
    FVM-specific study helper with automatic case builders and inspectors
 
    Use jnl.fvm.study when a script can expose mesh, registry, algorithm, and
    boundary-condition builders.
 
-   The helper registers standard REPL inspectors such as inspect-registry, inspect-deps,
-   inspect-instructions, and run.
+   Builders receive design variables first and run options second: fn(design, opts). Use
+   design for sweep/optimisation variables, and defaults/options for ordinary run
+   configuration.
 
-   Users can still provide their own evaluate function, outputs, plots, writers, sweeps,
-   or optimisation helpers.
+   The helper registers standard REPL inspectors such as inspect-registry, inspect-deps,
+   inspect-instructions, and run, while still allowing custom evaluate, output, plot,
+   write, and optimisation functions.
 
    new
       sig: jnl.fvm.study.new(title:string?) -> FvmStudy
@@ -990,6 +1016,10 @@ JNL API Reference
       FvmStudy:build_case
          sig: FvmStudy:build_case(design_overrides:table?) -> Case
          doc: Build and compile an FVM case without running it
+      FvmStudy:build_case_with
+         sig: FvmStudy:build_case_with(design_overrides:table, option_overrides:table )
+              -> Case
+         doc: Build and compile an FVM case with option overrides
       FvmStudy:build_mesh
          sig: FvmStudy:build_mesh(design_overrides:table?) -> Mesh
          doc: Build the mesh for a design
@@ -1003,8 +1033,9 @@ JNL API Reference
          sig: FvmStudy:default_evaluate(design:table, opts:table) -> table
          doc: Build, run, and return a standard result table
       FvmStudy:inspect_algorithm
-         sig: FvmStudy:inspect_algorithm(design_overrides:table?) -> Algorithm
-         doc: Expand and print the algorithm
+         sig: FvmStudy:inspect_algorithm(design_overrides:table?) -> Case
+         doc: Build the case, print the expanded algorithm used for compilation, and
+              return the case
       FvmStudy:inspect_deps
          sig: FvmStudy:inspect_deps(design_overrides:table?) -> Registry
          doc: Print the registry dependency listing and return it
@@ -1033,7 +1064,7 @@ JNL API Reference
          sig: FvmStudy:show_mesh(design_overrides:table?) -> Mesh
          doc: Build and display the mesh in the UI
 
-== jnl.geo2d.domain
+## jnl.geo2d.domain
    Build named 2D PSLG domains from shapes, holes, lines, and regions
 
    Typical PSLG workflow: create an outer shape, pass it to domain.new, then add named
@@ -1074,7 +1105,7 @@ JNL API Reference
       sig: jnl.geo2d.domain.new(outer:Shape, opts:table?) -> Domain
       doc: Create domain with given outer boundary. opts: { default='wall' }
 
-== jnl.geo2d.shapes
+## jnl.geo2d.shapes
    2D shape primitives for geometry and PSLG construction
 
    circle
@@ -1091,7 +1122,7 @@ JNL API Reference
       sig: jnl.geo2d.shapes.rect(x0, y0, x1, y1:number) -> Rect
       doc: Axis-aligned rectangle from two corners
 
-== jnl.geo2d.types
+## jnl.geo2d.types
    Type stubs for userdata exposed by geo2d_internal
 
    type PSLG — Planar Straight-Line Graph; nodes, constrained edges, holes, and
@@ -1128,7 +1159,7 @@ JNL API Reference
          sig: PSLG:region_add(x, y:number, marker?, max_area?) -> int
          doc: Add a region seed with optional area constraint
 
-== jnl.gp
+## jnl.gp
    Gnuplot driver via popen; supports interactive display, file output, and CSV export.
 
    Build a Figure with M.figure(opts), chain :add(xs, ys, opts) calls, then call :show()
@@ -1172,7 +1203,7 @@ JNL API Reference
    type Series [table] — Data series descriptor table
       constructor: M.series(xs, ys, opts?) or fig:add(xs, ys, opts)
 
-== jnl.gp.compare
+## jnl.gp.compare
    Comparison plotting helpers for numerical, analytical, and reference profiles
 
    Use jnl.gp.compare for validation plots such as numerical versus analytical profiles.
@@ -1215,7 +1246,7 @@ JNL API Reference
    type Profile [table] — Profile data table for plotting and validation
       constructor: jnl.gp.compare.profile(coord, value, opts?)
 
-== jnl.llm
+## jnl.llm
    LLM coding context and instructions for JNLCFD
 
    context_string
@@ -1228,7 +1259,7 @@ JNL API Reference
       sig: jnl.llm.print(opts:table?) -> nil
       doc: Print the full LLM coding context to stdout
 
-== jnl.mesh2d
+## jnl.mesh2d
    2D meshing facade for structured and PSLG meshes
 
    new_smesh
@@ -1248,7 +1279,7 @@ JNL API Reference
       sig: jnl.mesh2d.patch_name_set(mesh:Mesh) -> table
       doc: Set of patch name strings: {[name]=true}
 
-== jnl.mesh2d.smesh
+## jnl.mesh2d.smesh
    Named patch string constants for structured (smesh) meshes
 
    PATCH — Canonical patch name strings for the four smesh boundaries; cardinal and
@@ -1263,7 +1294,7 @@ JNL API Reference
       WEST = "\"west\""         West boundary
    (no _api or _types)
 
-== jnl.mesh2d.tri
+## jnl.mesh2d.tri
    Fluent triangulation spec builder for PSLG meshing
 
    Create triangulation specs with tri.spec(), then usually call from_registry(registry)
@@ -1321,7 +1352,7 @@ JNL API Reference
          sig: Spec:triangulate(pslg:PSLG) -> Mesh, string
          doc: Run triangulation. Returns mesh+'ok' on success, nil+errmsg on failure.
 
-== jnl.mesh2d.types
+## jnl.mesh2d.types
    Type stubs for userdata exposed by mesh2d_internal
 
    type Mesh — Triangulated 2-D FVM mesh; owns topology, geometry, and patch data
@@ -1445,7 +1476,7 @@ JNL API Reference
          sig: TriTags:set_require_named_regions(enabled:bool) -> nil
          doc: Error on unmapped region markers during meshing
 
-== jnl.repl
+## jnl.repl
    Configurable Fennel REPL with comma commands and help system
 
    Use jnl.repl.new() in interactive scripts, register useful values with repl:register,
@@ -1499,17 +1530,22 @@ JNL API Reference
          sig: Repl:usage_string() -> string
          doc: Return registered study-specific usage text
 
-== jnl.repl.study
+## jnl.repl.study
    Generic study helper for exposing scripted workflows through the REPL
 
-   Use jnl.repl.study for scripts that are ordinary Lua/Fennel programs but should
-   present a friendly REPL surface.
+   Use jnl.repl.study for scripts that are ordinary Lua programs but should present a
+   friendly REPL surface.
 
-   A Study stores defaults, design variables, outputs, plots, writers, optimisers, and
-   exposed helpers.
+   Put run configuration such as nx, tolerance, scheme, and output paths in defaults().
+   Put design variables such as geometry dimensions or shape parameters in design().
 
-   Call study:repl() at the end of a script to install generated usage, registered
-   globals, and then run the REPL.
+   evaluate() should register a function that runs ONE simulation and returns a uniform
+   result table: { x, opts, mesh, sim, case, field, fields }. This contract lets
+   sweep(), optimise(), and uq() call run() as a black box and operate on typed results.
+
+   sweep(), optimise(), and uq() each accept fn(study) -> any. Call study:run(overrides)
+   inside to get uniform result objects; use whatever parametric/optimisation/UQ library
+   you like for the outer loop. All three are registered as REPL callables.
 
    new
       sig: jnl.repl.study.new(title:string?) -> Study
@@ -1550,8 +1586,9 @@ JNL API Reference
          sig: Study:install(repl:Repl?) -> Repl
          doc: Install usage and registered helpers into a REPL
       Study:optimise
-         sig: Study:optimise(name:string, fn:function, opts:table?) -> Study
-         doc: Register an optimisation helper
+         sig: Study:optimise(name:string, fn:function(study), opts:table?) -> Study
+         doc: Register an optimisation; fn receives the study and calls run(overrides)
+              as its inner loop
       Study:option
          sig: Study:option(name:string, doc:string) -> Study
          doc: Document one user-facing option
@@ -1579,14 +1616,22 @@ JNL API Reference
       Study:run
          sig: Study:run(design_overrides:table?) -> table
          doc: Evaluate the study and store the result as last_result
+      Study:sweep
+         sig: Study:sweep(name:string, fn:function(study), opts:table?) -> Study
+         doc: Register a parameter sweep; fn receives the study and calls run(overrides)
+              in a loop
+      Study:uq
+         sig: Study:uq(name:string, fn:function(study), opts:table?) -> Study
+         doc: Register a UQ study; fn receives the study and calls run(overrides) per
+              sample
       Study:usage_string
          sig: Study:usage_string() -> string
          doc: Return generated usage text for the study
       Study:write
-         sig: Study:write(name:string, fn:function, opts:table?) -> Study
-         doc: Register a writer helper over the last result
+         sig: Study:write(name:string, fn:function(result, path), opts:table?) -> Study
+         doc: Register a writer; REPL call is (write-name path result?)
 
-== jnl.sage
+## jnl.sage
    Lightweight rule engine with forward-chaining propagation, pattern queries, and
    indexed caches.
 
@@ -1652,7 +1697,7 @@ JNL API Reference
          sig: Sage:query((self, pattern:table, opts:table?) -> table) -> fact[]
          doc: Return all facts matching pattern. opts: { sort_by, desc, limit }.
 
-== jnl.term_printer
+## jnl.term_printer
    Terminal text printer with wrapping and indentation
 
    new
@@ -1676,7 +1721,7 @@ JNL API Reference
          sig: Printer:wrap(first_indent:string, rest_indent:string, text:string) -> nil
          doc: Print wrapped text with separate first/rest indentation
 
-== jnl.ui
+## jnl.ui
    UI facade for displaying PSLGs and meshes
 
    Use display_pslg and display_mesh for normal interactive work; they use the module

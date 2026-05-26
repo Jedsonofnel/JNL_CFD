@@ -90,7 +90,7 @@ else
 	LOG_CMAKE :=
 endif
 
-.PHONY: all clean test release debug triangle
+.PHONY: all clean test release debug triangle llm
 
 all: $(FENNEL_DST) $(CMD_BINS)
 
@@ -191,6 +191,18 @@ $(FENNEL_DST): $(wildcard $(FENNEL_VENDOR_DIR)/src/fennel/*.fnl) | $(LUADIR)
 
 $(LUADIR):
 	mkdir -p $@
+
+#
+# LLM context
+#
+
+LLM_SRCS := $(shell find $(LUADIR) -name '*.lua')
+
+AGENTS.md: $(LLM_SRCS) | $(BINDIR)/cli
+	@printf "  LLM   %s\n" $@
+	$(Q)$(BINDIR)/cli --llm > $@
+
+llm: AGENTS.md
 
 #
 # dirs

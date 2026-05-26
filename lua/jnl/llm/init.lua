@@ -1,4 +1,4 @@
--- lua/jnl/llm.lua - LLM context generator for the JNL suite
+-- jnl/llm/init.lua - LLM context generator for the JNL suite
 -- <jed@nelson.ac> // 2026-05-25
 
 local M = {}
