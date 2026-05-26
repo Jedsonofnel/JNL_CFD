@@ -47,11 +47,15 @@ function M.compile(reg, alg)
 	expanded_reg:validate()
 
 	local expanded_alg = alg:expand(expanded_reg)
+
 	local pre, main, post = M.emit(expanded_reg, expanded_alg)
+	local instructions = M.InstructionList.new(pre, main, post)
 	local man = M.manifest(expanded_reg)
+
 	return {
 		expanded_reg = expanded_reg,
 		expanded_alg = expanded_alg, -- kept for algorithm pretty printing
+		instructions = instructions,
 		pre = pre,
 		main = main,
 		post = post,
@@ -88,6 +92,10 @@ local printers = {
 	end,
 	zero = function(f)
 		return string.format("ZERO          %s", fmt(f.field))
+	end,
+	fill = function(f)
+		local why = f.reason and ("  [" .. f.reason .. "]") or ""
+		return string.format("FILL          %s  %g%s", fmt(f.field), f.value, why)
 	end,
 	monitor = function(f)
 		return string.format("MONITOR       %s  [%s]", fmt(f.field), f.norm)
@@ -247,6 +255,120 @@ function Inst:tostring(indent)
 		return indent .. printer(self.fields, indent)
 	end
 	return indent .. "?" .. self.op
+end
+
+--
+-- Instruction List object
+--
+
+local InstructionList = {}
+InstructionList.__index = InstructionList
+
+M.InstructionList = InstructionList
+
+function InstructionList.new(pre, main, post)
+	return setmetatable({
+		pre  = pre or {},
+		main = main or {},
+		post = post or {},
+	}, InstructionList)
+end
+
+local function append_section(lines, title, instructions)
+	if #instructions == 0 then return end
+
+	lines[#lines + 1] = "." .. title .. ":"
+	for _, inst in ipairs(instructions) do
+		lines[#lines + 1] = inst:tostring("  ")
+	end
+end
+
+local function count_ops(instructions, counts)
+	for _, inst in ipairs(instructions or {}) do
+		local op = inst.op or "?"
+		counts[op] = (counts[op] or 0) + 1
+
+		if op == "inner_loop" and inst.body then
+			count_ops(inst.body, counts)
+		end
+	end
+end
+
+local function count_solves(instructions)
+	local n = 0
+
+	for _, inst in ipairs(instructions or {}) do
+		if inst.op == "solve" then
+			n = n + 1
+		elseif inst.op == "inner_loop" and inst.body then
+			n = n + count_solves(inst.body)
+		end
+	end
+
+	return n
+end
+
+function InstructionList:n_pre()
+	return #self.pre
+end
+
+function InstructionList:n_main()
+	return #self.main
+end
+
+function InstructionList:n_post()
+	return #self.post
+end
+
+function InstructionList:n_total()
+	return #self.pre + #self.main + #self.post
+end
+
+function InstructionList:n_solves()
+	return count_solves(self.pre) + count_solves(self.main) + count_solves(self.post)
+end
+
+function InstructionList:op_counts()
+	local counts = {}
+
+	count_ops(self.pre, counts)
+	count_ops(self.main, counts)
+	count_ops(self.post, counts)
+
+	return counts
+end
+
+function InstructionList:summary()
+	return string.format(
+		"jnl.fvm.InstructionList(%d pre, %d main, %d post, %d solves)",
+		self:n_pre(),
+		self:n_main(),
+		self:n_post(),
+		self:n_solves()
+	)
+end
+
+function InstructionList:listing()
+	local lines = {}
+
+	append_section(lines, "PRE", self.pre)
+	append_section(lines, "INSTRUCTIONS", self.main)
+	append_section(lines, "POST", self.post)
+
+	if #lines == 0 then
+		return "(no instructions)"
+	end
+
+	lines[#lines + 1] = ".END"
+	return table.concat(lines, "\n")
+end
+
+function InstructionList:print()
+	print(self:listing())
+end
+
+function InstructionList:__tostring()
+	return self:summary()
 end
 
 --[[
@@ -962,8 +1084,6 @@ local function walk_steps(reg, alg, steps, out)
 			end
 		elseif step.op == "zero" then
 			out[#out + 1] = Inst.new("zero", { field = step.field })
-		elseif step.op == "init" then
-			-- handled at case allocation
 		elseif step.op == "correct" then
 			emit_correct(reg, step.field, out)
 		elseif step.op == "clip" then
@@ -992,11 +1112,67 @@ local function walk_steps(reg, alg, steps, out)
 	end
 end
 
+local function init_record(rank, inst)
+	return { rank = rank, inst = inst }
+end
+
+local function emit_initialisers(reg)
+	local records = {}
+
+	for name, sym in pairs(reg) do
+		if type(sym) ~= "table" then goto continue end
+
+		if sym.kind == "field" then
+			records[#records + 1] = init_record(1, Inst.new("fill", {
+				field = name,
+				value = sym.initial or 0.0,
+				reason = "initial",
+			}))
+		elseif sym.kind == "uniform" then
+			records[#records + 1] = init_record(2, Inst.new("fill", {
+				field = name,
+				value = sym.value,
+				reason = "uniform",
+			}))
+		elseif sym.kind == "intermediate" and sym.itype == "diag" then
+			records[#records + 1] = init_record(3, Inst.new("fill", {
+				field = name,
+				value = sym.initial or 1.0,
+				reason = "diag seed",
+			}))
+		end
+
+		::continue::
+	end
+
+	table.sort(records, function(a, b)
+		if a.rank ~= b.rank then return a.rank < b.rank end
+		return a.inst.field < b.inst.field
+	end)
+
+	local out = {}
+	for _, r in ipairs(records) do
+		out[#out + 1] = r.inst
+	end
+
+	return out
+end
+
+local function append_all(dst, src)
+	for _, item in ipairs(src) do
+		dst[#dst + 1] = item
+	end
+end
+
 local function emit_instructions(reg, expanded_alg)
 	local pre, main, post = {}, {}, {}
+
+	append_all(pre, emit_initialisers(reg))
+
 	walk_steps(reg, expanded_alg, expanded_alg.pre, pre)
 	walk_steps(reg, expanded_alg, expanded_alg.steps, main)
 	walk_steps(reg, expanded_alg, expanded_alg.post, post)
+
 	return pre, main, post
 end
 
@@ -1007,22 +1183,7 @@ M.emit = emit_instructions
 --
 
 function M.instruction_listing(pre, main, post)
-	local lines = { ".INSTRUCTIONS:" }
-	if pre and #pre > 0 then
-		lines[#lines + 1] = ".PRE:"
-		for _, inst in ipairs(pre) do lines[#lines + 1] = inst:tostring() end
-	end
-	for _, inst in ipairs(main) do
-		lines[#lines + 1] = inst:tostring()
-	end
-	if post and #post > 0 then
-		lines[#lines + 1] = ".POST:"
-		for _, inst in ipairs(post) do
-			lines[#lines + 1] = inst:tostring()
-		end
-	end
-	lines[#lines + 1] = ".END"
-	return table.concat(lines, "\n")
+	return InstructionList.new(pre, main, post):listing()
 end
 
 function M.resource_listing(res)
@@ -1061,5 +1222,102 @@ function M.resource_listing(res)
 	lines[#lines + 1] = ".END"
 	return table.concat(lines, "\n")
 end
+
+--
+-- API
+--
+
+M._types = {
+	InstructionList = {
+		doc = "Compiled pre, main, and post FVM instruction lists",
+		constructor = "compile.InstructionList.new(pre, main, post)",
+		kind = "table",
+		methods = {
+			n_pre = {
+				args = "self",
+				ret = "integer",
+				doc = "Return the number of pre-loop instructions",
+			},
+			n_main = {
+				args = "self",
+				ret = "integer",
+				doc = "Return the number of main-loop instructions",
+			},
+			n_post = {
+				args = "self",
+				ret = "integer",
+				doc = "Return the number of post-loop instructions",
+			},
+			n_total = {
+				args = "self",
+				ret = "integer",
+				doc = "Return the total number of top-level instructions",
+			},
+			n_solves = {
+				args = "self",
+				ret = "integer",
+				doc = "Return the number of solve instructions, including nested inner loops",
+			},
+			op_counts = {
+				args = "self",
+				ret = "table",
+				doc = "Return a map from instruction opcode to occurrence count",
+			},
+			summary = {
+				args = "self",
+				ret = "string",
+				doc = "Return a compact one-line instruction-list summary",
+			},
+			listing = {
+				args = "self",
+				ret = "string",
+				doc = "Return the full pre, main, and post instruction listing",
+			},
+			print = {
+				args = "self",
+				ret = "nil",
+				doc = "Print the full pre, main, and post instruction listing",
+			},
+			__tostring = {
+				args = "self",
+				ret = "string",
+				doc = "Return a compact one-line instruction-list summary for REPL display",
+			},
+		},
+	},
+}
+
+M._api = {
+	compile = {
+		args = "reg:Registry, alg:Algorithm|FvmAlg",
+		ret = "table",
+		doc = "Compile a registry and algorithm into expanded state, instructions, and resource manifest",
+	},
+	expand = {
+		args = "reg:Registry",
+		ret = "nil",
+		doc = "Expand synthetic FVM intermediates into the registry in place",
+	},
+	emit = {
+		args = "reg:Registry, expanded_alg:Algorithm",
+		ret = "pre:Instruction[], main:Instruction[], post:Instruction[]",
+		doc = "Emit executable instruction lists from an expanded registry and algorithm",
+	},
+	manifest = {
+		args = "reg:Registry",
+		ret = "table",
+		doc = "Return resource counts for fields, face fields, systems, and scratch storage",
+	},
+	instruction_listing = {
+		args = "pre:Instruction[], main:Instruction[], post:Instruction[]",
+		ret = "string",
+		doc = "Return the full pre, main, and post instruction listing",
+	},
+	resource_listing = {
+		args = "manifest:table",
+		ret = "string",
+		doc = "Return a formatted resource summary",
+	},
+}
 
 return M

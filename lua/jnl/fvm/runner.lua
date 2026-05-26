@@ -465,6 +465,10 @@ dispatch.zero = function(r, inst)
 	r:_field(inst.field):fill(0.0)
 end
 
+dispatch.fill = function(r, inst)
+	r:_field(inst.field):fill(inst.value or 0.0)
+end
+
 dispatch.clip = function(r, inst)
 	r:_field(inst.field):clip(inst.lo, inst.hi)
 end
@@ -523,8 +527,6 @@ end
 -- State machine
 --
 
-local phase_order = { pre = "main", main = "post" }
-
 function Runner:run_step()
 	if self._phase == "done" then return false end
 
@@ -535,16 +537,32 @@ function Runner:run_step()
 	local inst = list[self._pc]
 
 	if not inst then
-		local next_phase = phase_order[self._phase]
-		if next_phase then
-			local next_list = (next_phase == "main" and self.instructions)
-				or self.post_instructions
-			if #next_list > 0 then
-				self._phase = next_phase
-				self._pc    = 1
+		if self._phase == "pre" then
+			self._phase = "main"
+			self._pc = 1
+			return true
+		end
+
+		if self._phase == "main" then
+			if self._op == "loop" then
+				return false
+			end
+
+			if #self.post_instructions > 0 then
+				self._phase = "post"
+				self._pc = 1
 				return true
 			end
+
+			self._phase = "done"
+			return false
 		end
+
+		if self._phase == "post" then
+			self._phase = "done"
+			return false
+		end
+
 		self._phase = "done"
 		return false
 	end
@@ -617,11 +635,26 @@ function Runner:stop()
 	self._phase   = "done"
 end
 
-function Runner:reset()
-	if self:is_finished() then return end
+--
+-- Reset
+--
+
+function Runner:reset_full()
 	self._phase   = #self.pre_instructions > 0 and "pre" or "main"
 	self._pc      = 1
 	self._stopped = false
+end
+
+function Runner:reset_iteration()
+	if self:is_finished() then return end
+
+	self._phase   = "main"
+	self._pc      = 1
+	self._stopped = false
+end
+
+function Runner:reset()
+	self:reset_full()
 end
 
 --

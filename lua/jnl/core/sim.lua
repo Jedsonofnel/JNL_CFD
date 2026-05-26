@@ -53,7 +53,7 @@ function Sim:step()
 
 		if not self._stopped then
 			self._runner._iter = self._runner._iter + 1
-			self._runner:reset()
+			self._runner:reset_iteration()
 		end
 	end
 

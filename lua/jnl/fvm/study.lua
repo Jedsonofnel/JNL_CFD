@@ -145,19 +145,19 @@ end
 function FvmStudy:inspect_algorithm(arg)
 	local case = self:build_case(arg)
 	case:print_algorithm()
-	return case
+	return case.compiled.expanded_alg
 end
 
 function FvmStudy:inspect_instructions(arg)
 	local case = self:build_case(arg)
 	case:print_instructions()
-	return case
+	return case.compiled.instructions
 end
 
 function FvmStudy:inspect_resources(arg)
 	local case = self:build_case(arg)
 	case:print_resources()
-	return case
+	return case.compiled.manifest
 end
 
 function FvmStudy:inspect_warnings(arg)

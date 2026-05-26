@@ -44,6 +44,7 @@ local MODULES = {
 	"jnl.fvm.bc",
 	"jnl.fvm.study",
 	"jnl.fvm.vtk",
+	"jnl.fvm.compile",
 	-- core
 	"jnl.core.algorithm",
 	"jnl.core.registry",

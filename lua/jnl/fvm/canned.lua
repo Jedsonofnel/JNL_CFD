@@ -7,7 +7,6 @@ local R           = require("jnl.core.registry")
 local FVM         = require("jnl.fvm")
 local Op          = FVM.Op
 local FVMe        = FVM.Expr
-local BC          = require("jnl.fvm.bc")
 local rules       = require("jnl.fvm.rules")
 
 local M           = {}
@@ -24,9 +23,7 @@ M._doc_subsection =
 -- Shared helpers
 --
 
-local function ns_pressure_correction(reg, pp, props)
-	props = props or {}
-
+local function ns_pressure_correction(reg, pp)
 	reg:expression("divU", FVMe.div_mwi("U", "p"))
 	reg:expression("inv_d",
 		E.mul(E.cV(), E.div(2, E.add(FVMe.diag("Ux"), FVMe.diag("Uy")))))
@@ -38,7 +35,7 @@ local function ns_pressure_correction(reg, pp, props)
 			Op.su(E.neg(E.mul("rho", "divU")), { integrated = true }),
 			{ solver = "cg" }
 		),
-		bcs = props.pp_bcs or { BC.neumann_all(0.0) }
+		bcs_from = "p",
 	})
 
 	reg:correction("Ux", E.neg(
@@ -111,7 +108,7 @@ function M.reg_laminar_ns(props)
 	})
 	reg:vector("U", { "Ux", "Uy" })
 
-	ns_pressure_correction(reg, pp, props)
+	ns_pressure_correction(reg, pp)
 	return reg
 end
 

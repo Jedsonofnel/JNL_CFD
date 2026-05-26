@@ -13,80 +13,148 @@ Case.__index = Case
 -- BC Injection
 --
 
-local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
-	bcs_table = bcs_table or {}
+local function copy_list(list)
+	local out = {}
+	for i, item in ipairs(list or {}) do
+		local copy = {}
+		for k, v in pairs(item) do copy[k] = v end
+		out[i] = copy
+	end
+	return out
+end
 
-	-- Only "field" kind symbols get equation-level BCs
-	local field_names = {}
+local function field_names(reg)
+	local names = {}
+
 	for name, sym in pairs(reg) do
 		if type(sym) == "table" and sym.kind == "field" then
-			field_names[#field_names + 1] = name
+			names[#names + 1] = name
 		end
 	end
-	table.sort(field_names)
 
-	for _, field_name in ipairs(field_names) do
-		local sym           = reg[field_name]
-		local raw_list      = bcs_table[field_name] or sym.bcs or {}
+	table.sort(names)
+	return names
+end
 
-		-- any bc where patch = true gets the bc for ALL patches
-		local expanded_list = {}
-		for _, bc in ipairs(raw_list) do
-			if bc.patch == true then
-				for _, pname in ipairs(patch_names) do
-					local copy = {}
-					for k, v in pairs(bc) do copy[k] = v end
-					copy.patch = pname
-					expanded_list[#expanded_list + 1] = copy
-				end
-			else
-				expanded_list[#expanded_list + 1] = bc
-			end
-		end
-		raw_list        = expanded_list
+local function validate_bcs_from(reg, field_name, sym, warnings)
+	if not sym.bcs_from then return end
 
-		-- Validate entries and build a set of covered patches
-		local covered   = {}
-		local validated = {}
-		for i, bc in ipairs(raw_list) do
-			BC.validate(field_name, i, bc)
-			local loc = string.format("Case.new bcs['%s'][%d]", field_name, i)
-			if not patch_set[bc.patch] then
-				-- Hard error: user named a patch that doesn't exist
-				error(loc .. ": patch '" .. bc.patch
-					.. "' not found in mesh. Available: "
-					.. table.concat(patch_names, ", "))
-			end
-			covered[bc.patch] = true
-			validated[#validated + 1] = bc
-		end
-
-		-- Find uncovered patches -> default neumann 0, warn
-		local unspecified = {}
-		for _, pname in ipairs(patch_names) do
-			if not covered[pname] then
-				unspecified[#unspecified + 1] = pname
-				warnings[#warnings + 1] = string.format(
-					"field '%s' patch '%s': no bc specified, defaulting to neumann_const 0.0",
-					field_name, pname)
-			end
-		end
-
-		sym.bcs                 = validated -- list of explicit bc entries
-		sym.unspecified_patches = unspecified -- list of patch name strings
+	local parent = reg[sym.bcs_from]
+	if not parent then
+		error(string.format(
+			"field '%s': bcs_from references unknown field '%s'",
+			field_name,
+			tostring(sym.bcs_from)
+		))
 	end
 
-	-- make sure uniform fields have their BCs
+	if parent.kind ~= "field" then
+		error(string.format(
+			"field '%s': bcs_from references '%s', which is a %s, not a field",
+			field_name,
+			sym.bcs_from,
+			tostring(parent.kind)
+		))
+	end
+
+	if sym.bcs then
+		warnings[#warnings + 1] = string.format(
+			"field '%s': bcs overrides bcs_from='%s'",
+			field_name,
+			sym.bcs_from
+		)
+	end
+end
+
+local function raw_bcs_for(reg, bcs_table, field_name, resolving)
+	resolving = resolving or {}
+
+	local sym = reg[field_name]
+	if not sym then
+		error("bcs_from: unknown field '" .. tostring(field_name) .. "'")
+	end
+
+	if bcs_table[field_name] ~= nil then
+		return copy_list(bcs_table[field_name])
+	end
+
+	if sym.bcs ~= nil then
+		return copy_list(sym.bcs)
+	end
+
+	if sym.bcs_from then
+		if resolving[field_name] then
+			error("bcs_from cycle involving field '" .. field_name .. "'")
+		end
+
+		resolving[field_name] = true
+		local inherited = raw_bcs_for(reg, bcs_table, sym.bcs_from, resolving)
+		resolving[field_name] = nil
+
+		return inherited
+	end
+
+	return {}
+end
+
+local function expand_patch_wildcards(raw_list, patch_names)
+	local expanded = {}
+
+	for _, bc in ipairs(raw_list) do
+		if bc.patch == true then
+			for _, pname in ipairs(patch_names) do
+				local copy = {}
+				for k, v in pairs(bc) do copy[k] = v end
+				copy.patch = pname
+				expanded[#expanded + 1] = copy
+			end
+		else
+			expanded[#expanded + 1] = bc
+		end
+	end
+
+	return expanded
+end
+
+local function validate_bcs(field_name, raw_list, patch_names, patch_set, warnings)
+	local covered = {}
+	local validated = {}
+
+	for i, bc in ipairs(raw_list) do
+		BC.validate(field_name, i, bc)
+
+		local loc = string.format("Case.new bcs['%s'][%d]", field_name, i)
+		if not patch_set[bc.patch] then
+			error(loc .. ": patch '" .. bc.patch
+				.. "' not found in mesh. Available: "
+				.. table.concat(patch_names, ", "))
+		end
+
+		covered[bc.patch] = true
+		validated[#validated + 1] = bc
+	end
+
+	local unspecified = {}
+	for _, pname in ipairs(patch_names) do
+		if not covered[pname] then
+			unspecified[#unspecified + 1] = pname
+			warnings[#warnings + 1] = string.format(
+				"field '%s' patch '%s': no bc specified, defaulting to neumann_const 0.0",
+				field_name, pname)
+		end
+	end
+
+	return validated, unspecified
+end
+
+local function inject_uniform_bcs(reg, patch_names)
 	for name, sym in pairs(reg) do
 		if type(sym) ~= "table" then goto continue end
 		if sym.kind ~= "uniform" then goto continue end
 
-		-- find any face intermediates that interpolate this uniform
 		local face_name = "__face_" .. name
-		local face_sym  = reg[face_name]
-		if not face_sym then goto continue end
+		if not reg[face_name] then goto continue end
 
-		-- inject dirichlet of the uniform value on all patches
 		local bcs = {}
 		for _, pname in ipairs(patch_names) do
 			bcs[#bcs + 1] = {
@@ -95,11 +163,41 @@ local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
 				value = sym.value,
 			}
 		end
+
 		sym.bcs = bcs
 		sym.unspecified_patches = {}
 
 		::continue::
 	end
+end
+
+local function inject_bcs(reg, bcs_table, patch_names, patch_set, warnings)
+	bcs_table = bcs_table or {}
+
+	for _, field_name in ipairs(field_names(reg)) do
+		local sym = reg[field_name]
+
+		validate_bcs_from(reg, field_name, sym, warnings)
+
+		if bcs_table[field_name] and sym.bcs_from then
+			warnings[#warnings + 1] = string.format(
+				"field '%s': case bcs overrides bcs_from='%s'",
+				field_name,
+				sym.bcs_from
+			)
+		end
+
+		local raw_list = raw_bcs_for(reg, bcs_table, field_name)
+		raw_list = expand_patch_wildcards(raw_list, patch_names)
+
+		local validated, unspecified =
+			validate_bcs(field_name, raw_list, patch_names, patch_set, warnings)
+
+		sym.bcs = validated
+		sym.unspecified_patches = unspecified
+	end
+
+	inject_uniform_bcs(reg, patch_names)
 end
 
 --
@@ -118,6 +216,7 @@ function Case:_recompile()
 
 	local expanded_alg = self.alg:expand(reg)
 	local pre, main, post = compile.emit(reg, expanded_alg)
+
 	self.compiled = {
 		expanded_reg = reg,
 		expanded_alg = expanded_alg,
@@ -125,6 +224,7 @@ function Case:_recompile()
 		pre          = pre,
 		main         = main,
 		post         = post,
+		instructions = compile.InstructionList.new(pre, main, post),
 	}
 
 	for _, w in ipairs(self.warnings) do
@@ -144,18 +244,13 @@ local function ctx_sufficient(ctx_man, new_man)
 		and new_man.n_face_scratch <= ctx_man.n_face_scratch
 end
 
-local function alloc_field(ctx, sym, man_entry)
-	local f
+local function alloc_field(ctx, _, man_entry)
 	if man_entry.face then
-		f = ctx:face_field()
-	else
-		f = ctx:field()
-		local init = (man_entry.tag == "diag_snapshot" and 1.0)
-			or (sym and sym.kind == "uniform" and sym.value)
-			or (sym and sym.kind == "field" and (sym.initial or 0.0))
-			or 0.0
-		f:fill(init)
+		return ctx:face_field()
 	end
+
+	local f = ctx:field()
+	f:fill(0.0)
 	return f
 end
 
@@ -416,8 +511,7 @@ function Case:print_algorithm()
 end
 
 function Case:print_instructions()
-	local c = self.compiled
-	print(compile.instruction_listing(c.pre, c.main, c.post))
+	print(self.compiled.instructions:listing())
 end
 
 function Case:print_resources()
@@ -430,6 +524,29 @@ function Case:print_warnings()
 	else
 		for _, w in ipairs(self.warnings) do print("WARNING: " .. w) end
 	end
+end
+
+function Case:__tostring()
+	local mesh = self.mesh
+	local man = self.compiled and self.compiled.manifest
+
+	local n_cells = mesh and mesh:n_cells() or 0
+	local n_faces = mesh and mesh:n_faces() or 0
+	local n_fields = man and man.n_fields or 0
+	local n_face_fields = man and man.n_face_fields or 0
+	local n_systems = man and man.n_systems or 0
+
+	local state = self._allocated and "allocated" or "compiled"
+
+	return string.format(
+		"jnl.fvm.Case(%s, %d cells, %d faces, %d fields, %d face fields, %d systems)",
+		state,
+		n_cells,
+		n_faces,
+		n_fields,
+		n_face_fields,
+		n_systems
+	)
 end
 
 --
@@ -491,6 +608,11 @@ Case._api = {
 	print_instructions = { args = "", ret = "nil", doc = "Print the compiled instruction listing (pre/main/post)" },
 	print_resources    = { args = "", ret = "nil", doc = "Print manifest resource counts: fields, systems, scratch" },
 	print_warnings     = { args = "", ret = "nil", doc = "Print BC defaulting warnings from last compile" },
+	__tostring         = {
+		args = "self",
+		ret = "string",
+		doc = "Return a compact one-line case summary for REPL display",
+	},
 }
 
 return Case

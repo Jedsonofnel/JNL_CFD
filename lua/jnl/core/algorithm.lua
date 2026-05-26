@@ -173,6 +173,19 @@ function A:monitor(field, config)
 	self:_push(step_monitor(field, config.norm))
 end
 
+function A:__tostring()
+	local n_steps = self.steps and #self.steps or 0
+	local op = self.op or "?"
+	local max_iters = self.max_iters or "?"
+
+	return string.format(
+		"jnl.core.Algorithm(%s, %d steps, max_iters=%s)",
+		op,
+		n_steps,
+		tostring(max_iters)
+	)
+end
+
 --[[
 
 DEPENDENCY GRAPH
@@ -496,9 +509,7 @@ local function emit_pre(reg, expanded, pre_names, inserted, fresh)
 		if not sym then goto continue end
 
 		local step
-		if sym.kind == "uniform" then
-			step = { op = "init", field = name, value = sym.value, implicit = true }
-		elseif sym.kind == "expression" or sym.kind == "intermediate" then
+		if sym.kind == "expression" or sym.kind == "intermediate" then
 			step = step_evaluate(name, true)
 		end
 
@@ -689,8 +700,6 @@ local function pretty_step(s)
 		return string.format("  * ZERO    %s", E.pretty_sym(s.field))
 	elseif s.op == "monitor" then
 		return string.format("    MONITOR %s [%s]", E.pretty_sym(s.field), s.norm)
-	elseif s.op == "init" then
-		return string.format("  ~ INIT    %s = %g", E.pretty_sym(s.field), s.value or 0)
 	elseif s.op == "inner" then
 		return s.inner:_pretty("\n>>INNER", "<<END\n")
 	end
@@ -793,6 +802,11 @@ A._api = {
 	add_rule    = { args = "rule", ret = "nil", doc = "Append a single rule { name, match, fire }" },
 	add_rules   = { args = "...rules", ret = "nil", doc = "Append multiple rules in one call" },
 	print       = { args = "", ret = "nil", doc = "Pretty-print the step list" },
+	__tostring  = {
+		args = "self",
+		ret = "string",
+		doc = "Return a compact one-line algorithm summary for REPL display",
+	},
 }
 
 A._types = {

@@ -44,7 +44,7 @@ study:mesh(function(design, opts)
 	return mesh2d.new_smesh(design.L, design.H, opts.Nx, opts.Ny)
 end)
 
-study:algorithm(function(design, opts)
+study:algorithm(function(_, opts)
 	return canned.alg_simple({
 		tol         = opts.tol,
 		divu_tol    = opts.divu_tol,
@@ -53,21 +53,11 @@ study:algorithm(function(design, opts)
 	})
 end)
 
-local function pressure_bcs(design)
-	return {
-		BC.neumann(P.LEFT, 0.0),
-		BC.dirichlet(P.RIGHT, design.p_out),
-		BC.neumann(P.TOP, 0.0),
-		BC.neumann(P.BOTTOM, 0.0),
-	}
-end
-
-study:registry(function(design, opts)
+study:registry(function(design, _)
 	local reg = canned.reg_laminar_ns({
 		rho     = design.rho,
 		mu      = design.mu,
 		alpha_p = 0.3,
-		pp_bcs  = pressure_bcs(design),
 	})
 
 	reg:set_initial("Ux", design.U_mean)
@@ -77,7 +67,7 @@ study:registry(function(design, opts)
 	return reg
 end)
 
-study:bcs(function(design, opts)
+study:bcs(function(design, _)
 	return {
 		Ux = {
 			BC.dirichlet(P.LEFT, design.U_mean),
@@ -91,7 +81,12 @@ study:bcs(function(design, opts)
 			BC.dirichlet(P.TOP, 0.0),
 			BC.dirichlet(P.BOTTOM, 0.0),
 		},
-		p = pressure_bcs(design),
+		p = {
+			BC.neumann(P.LEFT, 0.0),
+			BC.dirichlet(P.RIGHT, design.p_out),
+			BC.neumann(P.TOP, 0.0),
+			BC.neumann(P.BOTTOM, 0.0),
+		}
 	}
 end)
 
@@ -243,7 +238,6 @@ end, { doc = "Write Ux, Uy, p, and U vector to VTK" })
 
 study:write("profile-png", function(result, path)
 	profile_figure(result):save(path)
-	print("Saved to " .. path)
 end, { doc = "Save inlet/outlet/analytical profile comparison plot" })
 
 study:write("profile-csv", function(result, path)

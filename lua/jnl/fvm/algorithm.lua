@@ -72,6 +72,27 @@ function FvmAlg:print()
 	self._alg:print()
 end
 
+function FvmAlg:__tostring()
+	local alg = self._alg
+	local op = alg and alg.op or "?"
+	local n_steps = alg and alg.steps and #alg.steps or 0
+	local max_iters = alg and alg.max_iters or "?"
+
+	local n_converge = self._convergence and #self._convergence or 0
+	local n_guard = self._guards and #self._guards or 0
+	local n_watch = self._watch and #self._watch or 0
+
+	return string.format(
+		"jnl.fvm.Algorithm(%s, %d steps, max_iters=%s, %d convergence, %d guards, %d watches)",
+		op,
+		n_steps,
+		tostring(max_iters),
+		n_converge,
+		n_guard,
+		n_watch
+	)
+end
+
 --
 -- Monitoring
 --
@@ -174,25 +195,106 @@ end
 --
 
 M._api = {
-	new                = "(opts?) -> FvmAlg  opts: { print_every=25 }",
-	-- core delegation
-	loop               = "(cb, config?) -> self  config: { max_iters, linalg_tol, linalg_max_iters }",
-	linear             = "(cb, config?) -> self",
-	monitor            = "(field, norm?) -> self  push a monitor step directly; norm default 'normL2'",
-	expand             = "(reg, inserted?, fresh?) -> Algorithm  seals monitoring then delegates to core expand",
-	add_ruleset        = "(ruleset) -> self",
-	add_rule           = "(rule) -> self",
-	print              = "() -> nil  pretty-print core step list",
-	-- monitoring — call before expand
-	converge           = "(field, pred) -> self  add field to AND convergence criterion",
-	guard              = "(field, pred) -> self  add field to OR divergence criterion",
-	watch              = "(field, kind?) -> self  append progress column; kind default 'residual'",
-	-- query
-	convergence_fields = "() -> string[]  sorted fields with convergence predicates",
-	divergence_fields  = "() -> string[]  sorted fields with divergence predicates",
-	progress_fields    = "() -> string[]  'field:kind' strings for each watch column",
-	summary            = "() -> string  human-readable monitoring configuration",
-	print_summary      = "() -> nil",
+	new = {
+		args = "opts?",
+		ret  = "FvmAlg",
+		doc  = "Create a new FVM algorithm wrapper; opts: { print_every = 25 }",
+	},
+
+	--
+	-- Core delegation
+	--
+
+	loop = {
+		args = "cb:function, config:table?",
+		ret  = "FvmAlg",
+		doc  = "Define a looping step sequence; config: { max_iters, linalg_tol, linalg_max_iters }",
+	},
+	linear = {
+		args = "cb:function, config:table?",
+		ret  = "FvmAlg",
+		doc  = "Define a one-shot step sequence",
+	},
+	monitor = {
+		args = "field:string, norm:string?",
+		ret  = "FvmAlg",
+		doc  = "Push a monitor step directly; norm defaults to 'normL2'",
+	},
+	expand = {
+		args = "reg:Registry, inserted:table?, fresh:table?",
+		ret  = "Algorithm",
+		doc  = "Seal monitoring rules, then delegate to core algorithm expansion",
+	},
+	add_ruleset = {
+		args = "ruleset:table",
+		ret  = "FvmAlg",
+		doc  = "Append a ruleset to the wrapped core algorithm",
+	},
+	add_rule = {
+		args = "rule:table",
+		ret  = "FvmAlg",
+		doc  = "Append a single rule to the wrapped core algorithm",
+	},
+	print = {
+		args = "",
+		ret  = "nil",
+		doc  = "Pretty-print the wrapped core algorithm step list",
+	},
+
+	--
+	-- Monitoring
+	--
+
+	converge = {
+		args = "field:string, pred:function",
+		ret  = "FvmAlg",
+		doc  = "Add a field predicate to the AND convergence criterion; call before expand",
+	},
+	guard = {
+		args = "field:string, pred:function",
+		ret  = "FvmAlg",
+		doc  = "Add a field predicate to the OR divergence criterion; call before expand",
+	},
+	watch = {
+		args = "field:string, kind:string?",
+		ret  = "FvmAlg",
+		doc  = "Append a progress column; kind defaults to 'residual'",
+	},
+
+	--
+	-- Queries and display
+	--
+
+	convergence_fields = {
+		args = "",
+		ret  = "string[]",
+		doc  = "Return sorted fields with convergence predicates",
+	},
+	divergence_fields = {
+		args = "",
+		ret  = "string[]",
+		doc  = "Return sorted fields with divergence guard predicates",
+	},
+	progress_fields = {
+		args = "",
+		ret  = "string[]",
+		doc  = "Return 'field:kind' strings for each progress watch column",
+	},
+	summary = {
+		args = "",
+		ret  = "string",
+		doc  = "Return a human-readable monitoring configuration summary",
+	},
+	print_summary = {
+		args = "",
+		ret  = "nil",
+		doc  = "Print the monitoring configuration summary",
+	},
+	__tostring = {
+		args = "self",
+		ret  = "string",
+		doc  = "Return a compact one-line FVM algorithm summary for REPL display",
+	},
 }
 
 return M

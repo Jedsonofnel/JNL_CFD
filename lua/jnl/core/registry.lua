@@ -63,7 +63,14 @@ function Field:_pretty()
 			{ "solver", self.eq.solver or "?" },
 			{ "relax",  self.eq.relax and string.format("%g", self.eq.relax) or "none" },
 		}
-		if self.bcs then props[#props + 1] = { "bcs", "<bc-table>" } end
+
+		-- bcs takes precedent over bcs_from
+		if self.bcs then
+			props[#props + 1] = { "bcs", "<bc-table>" }
+		elseif self.bcs_from then
+			props[#props + 1] = { "bcs_from", self.bcs_from }
+		end
+
 		if self.region then props[#props + 1] = { "region", self.region } end
 
 		local max_k = 0
@@ -155,11 +162,16 @@ function R:field(name, spec)
 		V.typeof(spec.region, "string", "field '" .. name .. "' region")
 	end
 
+	if spec.bcs_from ~= nil then
+		V.field_name(spec.bcs_from, "field '" .. name .. "' bcs_from")
+	end
+
 	self:define(name, {
 		kind = "field",
 		passive = spec.eq == nil,
 		initial = spec.initial or 0.0,
 		bcs = spec.bcs,
+		bcs_from = spec.bcs_from,
 		region = spec.region,
 		eq = spec.eq,
 		clip = spec.clip,
@@ -354,6 +366,37 @@ function R:validate()
 end
 
 --
+-- Metamethods
+--
+
+function R:__tostring()
+	local counts = {
+		constant = 0,
+		field = 0,
+		expression = 0,
+		correction = 0,
+		uniform = 0,
+		vector = 0,
+		intermediate = 0,
+	}
+
+	for _, sym in pairs(self) do
+		if type(sym) == "table" and sym.kind and counts[sym.kind] ~= nil then
+			counts[sym.kind] = counts[sym.kind] + 1
+		end
+	end
+
+	return string.format(
+		"jnl.core.Registry(%d fields, %d constants, %d expressions, %d corrections, %d intermediates)",
+		counts.field,
+		counts.constant,
+		counts.expression,
+		counts.correction,
+		counts.intermediate
+	)
+end
+
+--
 -- API
 --
 
@@ -372,7 +415,7 @@ R._api = {
 	-- symbol registration
 	constant     = { args = "name, value", ret = "nil", doc = "Register a named numeric constant" },
 	uniform      = { args = "name, value", ret = "nil", doc = "Register a uniform field initialised to value; emitted as a pre-step" },
-	field        = { args = "name, spec?", ret = "nil", doc = "Register a field; spec: { eq, bcs, initial, region, clip }" },
+	field        = { args = "name, spec?", ret = "nil", doc = "Register a field; spec: { eq, bcs, bcs_from, initial, region, clip }" },
 	vector       = { args = "name, components", ret = "nil", doc = "Register a named vector over already-registered scalar fields" },
 	expression   = { args = "name, expr", ret = "nil", doc = "Register a derived expression; re-evaluated when deps change" },
 	correction   = { args = "name, expr", ret = "nil", doc = "Register a correction for field 'name'; stored as __correct_<name>" },
@@ -392,6 +435,11 @@ R._api = {
 	listing      = { args = "", ret = "string", doc = "Pretty-printed symbol table sorted by name" },
 	dep_listing  = { args = "", ret = "string", doc = "Dependency listing: each symbol with its direct deps" },
 	print        = { args = "", ret = "nil", doc = "Print listing() to stdout" },
+	__tostring   = {
+		args = "self",
+		ret = "string",
+		doc = "Return a compact one-line registry summary for REPL display",
+	},
 }
 
 R._types = {
