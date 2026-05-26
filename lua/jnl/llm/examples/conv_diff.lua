@@ -1,9 +1,10 @@
 return [[
--- lua/showcase/validate_conv_diff.lua - Convection-diffusion scheme validation
+-- lua/showcase/conv_diff.lua - Convection-diffusion scheme validation
 -- <jed@nelson.llm> // 2026-05-26
 
 local fvm = require("jnl.fvm")
 local mesh2d = require("jnl.mesh2d")
+local gp = require("jnl.gp")
 local compare = require("jnl.gp.compare")
 local study = require("jnl.fvm.study").new("Validation: Convection-Diffusion")
 
@@ -138,9 +139,10 @@ end, "Return the analytical phi profile")
 local function comparison_figure(res)
 	local o = res.opts
 	return compare.figure(get_profile(res), get_analytical_profile(o.pe), {
-		title  = "1D Convection-Diffusion (Pe = " .. o.pe .. ")",
+		title  = string.format("1D Convection-Diffusion  Pe=%s=%.0f", gp.sym.eta, o.pe),
 		xlabel = "x",
-		ylabel = "phi",
+		ylabel = gp.sym.phi,
+		key    = "top left",
 	})
 end
 
@@ -182,18 +184,17 @@ local function run_pe_sweep(s)
 end
 
 local function plot_pe_sweep(sweep_results)
-	local gp  = require("jnl.gp")
+	local next_color = gp.cycler()
 	local fig = gp.figure({
-		title  = "Pe sweep: L2 error vs Peclet number",
-		xlabel = "Pe",
+		title  = string.format("Pe sweep: L2 error vs %s", gp.sym.eta),
+		xlabel = gp.sym.eta,
 		ylabel = "L2 error",
 		logx   = true,
 		logy   = true,
-		grid   = true,
 	})
 	for _, scheme in ipairs({ "uds", "cds" }) do
 		local t = sweep_results[scheme]
-		fig:add(t.pe, t.l2, { title = string.upper(scheme) })
+		fig:add(t.pe, t.l2, { title = string.upper(scheme), color = next_color() })
 	end
 	fig:show()
 end
@@ -210,26 +211,40 @@ end, "Run Pe sweep and plot L2 error vs Pe")
 --
 
 local function scheme_figure(pe)
-	local uds_res  = study:run({ pe = pe, scheme = "uds" })
-	local cds_res  = study:run({ pe = pe, scheme = "cds" })
-	local uds_errs = result_error(uds_res)
-	local cds_errs = result_error(cds_res)
-	local gp       = require("jnl.gp")
+	local uds_res    = study:run({ pe = pe, scheme = "uds" })
+	local cds_res    = study:run({ pe = pe, scheme = "cds" })
+	local uds_errs   = result_error(uds_res)
+	local cds_errs   = result_error(cds_res)
+	local next_color = gp.cycler()
 
 	return gp.figure({
 			title  = string.format(
-				"Convection-Diffusion Pe=%.0f  |  UDS L2=%.2e  CDS L2=%.2e",
-				pe, uds_errs.l2, cds_errs.l2),
+				"Convection-Diffusion %s=%.0f  |  UDS L2=%.2e  CDS L2=%.2e",
+				gp.sym.eta, pe, uds_errs.l2, cds_errs.l2),
 			xlabel = "x",
-			ylabel = "phi",
-			grid   = true,
+			ylabel = gp.sym.phi,
+			key    = "top left",
 		})
-		:add(get_analytical_profile(pe).coord, get_analytical_profile(pe).value,
-			{ title = "Analytical", style = "lines", lw = 2 })
-		:add(get_profile(uds_res).coord, get_profile(uds_res).value,
-			{ title = "UDS", style = "points", pt = 7, ps = 0.8 })
-		:add(get_profile(cds_res).coord, get_profile(cds_res).value,
-			{ title = "CDS", style = "points", pt = 5, ps = 0.8 })
+		:add(get_analytical_profile(pe).coord, get_analytical_profile(pe).value, {
+			title = "Analytical",
+			style = "lines",
+			lw    = 2,
+			color = gp.color.grey,
+		})
+		:add(get_profile(uds_res).coord, get_profile(uds_res).value, {
+			title = "UDS",
+			style = "points",
+			pt    = 7,
+			ps    = 0.8,
+			color = next_color(),
+		})
+		:add(get_profile(cds_res).coord, get_profile(cds_res).value, {
+			title = "CDS",
+			style = "points",
+			pt    = 5,
+			ps    = 0.8,
+			color = next_color(),
+		})
 end
 
 study:plot("schemes", function(res)

@@ -228,8 +228,12 @@ local SECTIONS = {
 
 local EXAMPLES = {
 	{
-		title = "FVM validation study (validate_conv_diff.lua)",
+		title = "FVM validation study (conv_diff.lua)",
 		source = require("jnl.llm.examples.conv_diff"),
+	},
+	{
+		title = "FVM couette validation (couette.lua)",
+		source = require("jnl.llm.examples.couette"),
 	},
 }
 

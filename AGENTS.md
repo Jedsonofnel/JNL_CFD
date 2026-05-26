@@ -158,14 +158,15 @@ Examples
 
 These are complete working scripts. Use them as templates.
 
-FVM validation study (validate_conv_diff.lua)
----------------------------------------------
+FVM validation study (conv_diff.lua)
+------------------------------------
 ```lua
--- lua/showcase/validate_conv_diff.lua - Convection-diffusion scheme validation
+-- lua/showcase/conv_diff.lua - Convection-diffusion scheme validation
 -- <jed@nelson.llm> // 2026-05-26
 
 local fvm = require("jnl.fvm")
 local mesh2d = require("jnl.mesh2d")
+local gp = require("jnl.gp")
 local compare = require("jnl.gp.compare")
 local study = require("jnl.fvm.study").new("Validation: Convection-Diffusion")
 
@@ -300,9 +301,10 @@ end, "Return the analytical phi profile")
 local function comparison_figure(res)
 	local o = res.opts
 	return compare.figure(get_profile(res), get_analytical_profile(o.pe), {
-		title  = "1D Convection-Diffusion (Pe = " .. o.pe .. ")",
+		title  = string.format("1D Convection-Diffusion  Pe=%s=%.0f", gp.sym.eta, o.pe),
 		xlabel = "x",
-		ylabel = "phi",
+		ylabel = gp.sym.phi,
+		key    = "top left",
 	})
 end
 
@@ -344,18 +346,17 @@ local function run_pe_sweep(s)
 end
 
 local function plot_pe_sweep(sweep_results)
-	local gp  = require("jnl.gp")
+	local next_color = gp.cycler()
 	local fig = gp.figure({
-		title  = "Pe sweep: L2 error vs Peclet number",
-		xlabel = "Pe",
+		title  = string.format("Pe sweep: L2 error vs %s", gp.sym.eta),
+		xlabel = gp.sym.eta,
 		ylabel = "L2 error",
 		logx   = true,
 		logy   = true,
-		grid   = true,
 	})
 	for _, scheme in ipairs({ "uds", "cds" }) do
 		local t = sweep_results[scheme]
-		fig:add(t.pe, t.l2, { title = string.upper(scheme) })
+		fig:add(t.pe, t.l2, { title = string.upper(scheme), color = next_color() })
 	end
 	fig:show()
 end
@@ -372,26 +373,40 @@ end, "Run Pe sweep and plot L2 error vs Pe")
 --
 
 local function scheme_figure(pe)
-	local uds_res  = study:run({ pe = pe, scheme = "uds" })
-	local cds_res  = study:run({ pe = pe, scheme = "cds" })
-	local uds_errs = result_error(uds_res)
-	local cds_errs = result_error(cds_res)
-	local gp       = require("jnl.gp")
+	local uds_res    = study:run({ pe = pe, scheme = "uds" })
+	local cds_res    = study:run({ pe = pe, scheme = "cds" })
+	local uds_errs   = result_error(uds_res)
+	local cds_errs   = result_error(cds_res)
+	local next_color = gp.cycler()
 
 	return gp.figure({
 			title  = string.format(
-				"Convection-Diffusion Pe=%.0f  |  UDS L2=%.2e  CDS L2=%.2e",
-				pe, uds_errs.l2, cds_errs.l2),
+				"Convection-Diffusion %s=%.0f  |  UDS L2=%.2e  CDS L2=%.2e",
+				gp.sym.eta, pe, uds_errs.l2, cds_errs.l2),
 			xlabel = "x",
-			ylabel = "phi",
-			grid   = true,
+			ylabel = gp.sym.phi,
+			key    = "top left",
 		})
-		:add(get_analytical_profile(pe).coord, get_analytical_profile(pe).value,
-			{ title = "Analytical", style = "lines", lw = 2 })
-		:add(get_profile(uds_res).coord, get_profile(uds_res).value,
-			{ title = "UDS", style = "points", pt = 7, ps = 0.8 })
-		:add(get_profile(cds_res).coord, get_profile(cds_res).value,
-			{ title = "CDS", style = "points", pt = 5, ps = 0.8 })
+		:add(get_analytical_profile(pe).coord, get_analytical_profile(pe).value, {
+			title = "Analytical",
+			style = "lines",
+			lw    = 2,
+			color = gp.color.grey,
+		})
+		:add(get_profile(uds_res).coord, get_profile(uds_res).value, {
+			title = "UDS",
+			style = "points",
+			pt    = 7,
+			ps    = 0.8,
+			color = next_color(),
+		})
+		:add(get_profile(cds_res).coord, get_profile(cds_res).value, {
+			title = "CDS",
+			style = "points",
+			pt    = 5,
+			ps    = 0.8,
+			color = next_color(),
+		})
 end
 
 study:plot("schemes", function(res)
@@ -402,6 +417,188 @@ study:write("schemes", function(res, path)
 	scheme_figure(res.opts.pe):save(path)
 	print("Saved to " .. path)
 end, { doc = "Save UDS/CDS/analytical comparison to path" })
+
+return study:repl()
+
+```
+FVM couette validation (couette.lua)
+------------------------------------
+```lua
+-- lua/couette.lua - Interactive Couette flow study: linear shear between parallel plates
+-- <your@email.llm> // 2026-05-26
+
+local FvmStudy = require("jnl.fvm.study")
+local canned   = require("jnl.fvm.canned")
+local mesh2d   = require("jnl.mesh2d")
+local BC       = require("jnl.fvm.bc")
+local gp       = require("jnl.gp")
+local gpm      = require("jnl.gp.mesh")
+local vtk      = require("jnl.fvm.vtk")
+local P        = mesh2d.smesh.PATCH
+
+local study    = FvmStudy.new("Couette Flow")
+
+study:about("Steady Couette flow: linear shear between two infinite parallel plates.")
+
+--
+-- Design and defaults
+--
+
+-- design: physics/geometry variables suitable for sweeping or optimisation
+study:design({
+	U_wall = 1.0,
+	mu     = 1e-2,
+	rho    = 1.0,
+	H      = 1.0,
+	L      = 2.0,
+})
+
+-- defaults: run configuration
+study:defaults({
+	Nx          = 10,
+	Ny          = 40,
+	tol         = 1e-6,
+	max_iters   = 2000,
+	print_every = 100,
+})
+
+--
+-- Builders
+--
+
+study:mesh(function(design, opts)
+	return mesh2d.new_smesh(design.L, design.H, opts.Nx, opts.Ny)
+end)
+
+study:registry(function(design, opts)
+	return canned.reg_stokes({ rho = design.rho, mu = design.mu })
+end)
+
+study:algorithm(function(design, opts)
+	return canned.alg_simple({
+		tol         = opts.tol,
+		max_iters   = opts.max_iters,
+		print_every = opts.print_every,
+	})
+end)
+
+study:bcs(function(design, opts)
+	return {
+		Ux = {
+			BC.dirichlet(P.TOP, design.U_wall),
+			BC.dirichlet(P.BOTTOM, 0.0),
+			BC.symmetry(P.LEFT),
+			BC.symmetry(P.RIGHT),
+		},
+		Uy = {
+			BC.dirichlet(P.TOP, 0.0),
+			BC.dirichlet(P.BOTTOM, 0.0),
+			BC.symmetry(P.LEFT),
+			BC.symmetry(P.RIGHT),
+		},
+		p = { BC.neumann_all() },
+	}
+end)
+
+--
+-- Helpers
+--
+
+local function reynolds(design)
+	return design.rho * design.U_wall * design.H / design.mu
+end
+
+-- analytical Couette solution: u(y) = U_wall * y / H
+local function analytical(design)
+	local n, ys, us = 200, {}, {}
+	for k = 1, n do
+		local y = (k - 0.5) / n * design.H
+		ys[k]   = y
+		us[k]   = design.U_wall * y / design.H
+	end
+	return ys, us
+end
+
+local function profile_figure(result)
+	local d            = result.x
+	local ana_y, ana_u = analytical(d)
+	local next_color   = gp.cycler()
+	return gp.figure({
+			title  = string.format("Couette flow   Re=%.1f   %s=%.4g",
+				result.Re, gp.sym.mu, d.mu),
+			xlabel = "U_x",
+			ylabel = "y",
+			key    = "bottom right",
+		})
+		:add(result.profile.u, result.profile.y, {
+			title = "Numerical (SIMPLE)",
+			style = "points",
+			pt    = 7,
+			color = next_color(),
+		})
+		:add(ana_u, ana_y, {
+			title = "Analytical (linear)",
+			style = "lines",
+			lw    = 2,
+			color = next_color(),
+		})
+end
+
+--
+-- Evaluate
+--
+
+study:evaluate(function(design, opts)
+	local result = study:default_evaluate(design, opts)
+	local fields = result.fields()
+
+
+	-- get profile from mesh
+	local prof_y, prof_u = gpm.line_profile(
+		result.mesh, fields.Ux, 'x', design.L / 2.0,
+		{ tol = design.L / opts.Nx * 0.6 }
+	)
+
+
+	result.profile = { y = prof_y, u = prof_u }
+	result.Re      = reynolds(design)
+	return result
+end)
+
+--
+-- Plots
+--
+
+study:plot("profile", function(result)
+	profile_figure(result):show()
+end)
+
+--
+-- Writes
+--
+
+study:write("vtk", function(result, path)
+	vtk.write(path, result.mesh,
+		{ Ux = result.fields.Ux, Uy = result.fields.Uy, p = result.fields.p },
+		{ U = { result.fields.Ux, result.fields.Uy } })
+end)
+
+study:write("profile-csv", function(result, path)
+	local rows = { "y,Ux_numerical,Ux_analytical" }
+	for i, y in ipairs(result.profile.y) do
+		local u_ana = result.x.U_wall * y / result.x.H
+		rows[#rows + 1] = string.format("%.8g,%.8g,%.8g", y, result.profile.u[i], u_ana)
+	end
+	local f, err = io.open(path, "w")
+	if not f then error("profile-csv: " .. err) end
+	f:write(table.concat(rows, "\n") .. "\n")
+	f:close()
+	print(string.format("wrote %s (%d rows)", path, #result.profile.y))
+end)
+
+study:write("profile-png", function(result, path)
+	profile_figure(result):save(path)
+end)
 
 return study:repl()
 
