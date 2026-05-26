@@ -24,7 +24,9 @@ M._doc_subsection =
 -- Shared helpers
 --
 
-local function ns_pressure_correction(reg, pp, _)
+local function ns_pressure_correction(reg, pp, props)
+	props = props or {}
+
 	reg:expression("divU", FVMe.div_mwi("U", "p"))
 	reg:expression("inv_d",
 		E.mul(E.cV(), E.div(2, E.add(FVMe.diag("Ux"), FVMe.diag("Uy")))))
@@ -33,10 +35,10 @@ local function ns_pressure_correction(reg, pp, _)
 	reg:field(pp, {
 		eq = FVM.eq(
 			Op.lap("inv_d", pp),
-			Op.su(E.neg("divU"), { integrated = true }),
+			Op.su(E.neg(E.mul("rho", "divU")), { integrated = true }),
 			{ solver = "cg" }
 		),
-		bcs = { BC.neumann_all(0.0) },
+		bcs = props.pp_bcs or { BC.neumann_all(0.0) }
 	})
 
 	reg:correction("Ux", E.neg(
@@ -109,7 +111,7 @@ function M.reg_laminar_ns(props)
 	})
 	reg:vector("U", { "Ux", "Uy" })
 
-	ns_pressure_correction(reg, pp)
+	ns_pressure_correction(reg, pp, props)
 	return reg
 end
 
