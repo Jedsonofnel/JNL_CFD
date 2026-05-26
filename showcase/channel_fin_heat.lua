@@ -1,0 +1,501 @@
+-- lua/showcase/channel_fin_heat.lua - Channel flow over a heated fin
+-- <jed@nelson.ac> // 2026-05-26
+
+local FvmStudy = require("jnl.fvm.study")
+local canned   = require("jnl.fvm.canned")
+local fvm      = require("jnl.fvm")
+local geo      = require("jnl.geo2d")
+local tri      = require("jnl.mesh2d.tri")
+local BC       = require("jnl.fvm.bc")
+local gp       = require("jnl.gp")
+local gpm      = require("jnl.gp.mesh")
+local vtk      = require("jnl.fvm.vtk")
+
+local E        = fvm.Expr
+local Op       = fvm.Op
+
+local shapes   = geo.shapes
+local domain   = geo.domain
+
+local study    = FvmStudy.new("Channel Fin Heat Transfer")
+
+--
+-- Description
+--
+
+study:about(
+	"Laminar channel flow over a bottom-mounted fin with passive temperature and Robin fin heating.",
+	{ entry = "show-summary" }
+)
+
+--
+-- Design and defaults
+--
+
+study:design({
+	U_mean     = 1.0,
+	rho        = 1.0,
+	mu         = 1e-3,
+	cp         = 1.0,
+	k          = 1e-3,
+
+	L          = 4.0,
+	H          = 1.0,
+
+	fin_x      = 2.0,
+	fin_width  = 0.2,
+	fin_height = 0.35,
+
+	T_in       = 0.0,
+	T_ref      = 1.0,
+	h_fin      = 10.0,
+	p_out      = 0.0,
+})
+
+study:bounds({
+	fin_width  = { 0.05, 0.6 },
+	fin_height = { 0.05, 0.8 },
+})
+
+study:defaults({
+	res                = 0.04,
+	min_angle          = 28.0,
+
+	tol                = 1e-7,
+	divu_tol           = 1e-8,
+	n_consec           = 3,
+	max_iters          = 2500,
+	print_every        = 100,
+
+	alpha_p            = 0.05,
+	alpha_U            = 0.2,
+	alpha_T_relax      = 0.9,
+	temperature_scheme = "uds",
+
+	profile_xs         = { 1.0, 2.0, 3.0, 4.0 },
+})
+
+--
+-- Geometry and mesh
+--
+
+local function fin_edges(d)
+	local x0 = d.fin_x - 0.5 * d.fin_width
+	local x1 = d.fin_x + 0.5 * d.fin_width
+	local y0 = 0.0
+	local y1 = d.fin_height
+
+	return x0, x1, y0, y1
+end
+
+local function channel_polygon(d)
+	local x0, x1, _, y1 = fin_edges(d)
+
+	return shapes.polygon({
+		{ 0.0, 0.0 },
+		{ x0,  0.0 },
+		{ x0,  y1 },
+		{ x1,  y1 },
+		{ x1,  0.0 },
+		{ d.L, 0.0 },
+		{ d.L, d.H },
+		{ 0.0, d.H },
+	})
+end
+
+local function build_domain(d)
+	local x0, x1, _, y1 = fin_edges(d)
+
+	local dom = domain.new(channel_polygon(d), { default = "wall" })
+
+	dom:name_boundary("inlet", shapes.line(0.0, 0.0, 0.0, d.H))
+	dom:name_boundary("outlet", shapes.line(d.L, 0.0, d.L, d.H))
+	dom:name_boundary("top", shapes.line(d.L, d.H, 0.0, d.H))
+
+	dom:name_boundary("fin", shapes.line({
+		{ x0, 0.0 },
+		{ x0, y1 },
+		{ x1, y1 },
+		{ x1, 0.0 },
+	}))
+
+	local ok, err = dom:check()
+	if not ok then
+		error("domain check failed: " .. tostring(err))
+	end
+
+	return dom
+end
+
+study:mesh(function(d, o)
+	local dom = build_domain(d)
+	local pslg, registry = dom:build()
+
+	local mesh, status = tri.spec()
+		:from_registry(registry)
+		:resolution(pslg, o.res)
+		:min_angle(o.min_angle)
+		:quiet(true)
+		:triangulate(pslg)
+
+	if not mesh then
+		error("triangulation failed: " .. tostring(status))
+	end
+
+	return mesh
+end)
+
+--
+-- Physics
+--
+
+local function reynolds_h(d)
+	return d.rho * d.U_mean * d.H / d.mu
+end
+
+local function prandtl(d)
+	return d.mu * d.cp / d.k
+end
+
+local function thermal_diffusivity(d)
+	return d.k / (d.rho * d.cp)
+end
+
+local function insert_temperature_postproc_symbols(reg)
+	reg:expression("face_T", E.face("T"))
+	reg:expression("grad_T_x", E.grad("T", "x"))
+	reg:expression("grad_T_y", E.grad("T", "y"))
+end
+
+study:registry(function(d, o)
+	local reg = canned.reg_laminar_ns({
+		rho     = d.rho,
+		mu      = d.mu,
+		alpha_p = o.alpha_p,
+		alpha_U = o.alpha_U,
+	})
+
+	reg:set_initial("Ux", 0)
+	reg:set_initial("Uy", 0.0)
+	reg:set_initial("p", 0)
+
+	reg:constant("alpha_T", thermal_diffusivity(d))
+
+
+	reg:field("T", {
+		eq      = fvm.eq(
+			Op.div(E.mwi("U", "p"), "T", { scheme = o.temperature_scheme }),
+			Op.lap("alpha_T", "T")
+		),
+		initial = d.T_in,
+		relax   = o.alpha_T_relax,
+	})
+
+	insert_temperature_postproc_symbols(reg)
+
+	return reg
+end)
+
+--
+-- Algorithm
+--
+
+study:algorithm(function(_, o)
+	return canned.alg_simple({
+		tol         = o.tol,
+		divu_tol    = o.divu_tol,
+		n_consec    = o.n_consec,
+		max_iters   = o.max_iters,
+		print_every = o.print_every,
+	})
+end)
+
+--
+-- Boundary conditions
+--
+
+study:bcs(function(d, _)
+	return {
+		Ux = {
+			BC.dirichlet("inlet", d.U_mean),
+			BC.neumann("outlet", 0.0),
+			BC.dirichlet("wall", 0.0),
+			BC.dirichlet("fin", 0.0),
+			BC.dirichlet("top", 0.0),
+		},
+		Uy = {
+			BC.dirichlet("inlet", 0.0),
+			BC.neumann("outlet", 0.0),
+			BC.dirichlet("wall", 0.0),
+			BC.dirichlet("fin", 0.0),
+			BC.dirichlet("top", 0.0),
+		},
+		p = {
+			BC.neumann("inlet", 0.0),
+			BC.dirichlet("outlet", d.p_out),
+			BC.neumann("wall", 0.0),
+			BC.neumann("fin", 0.0),
+			BC.neumann("top", 0.0),
+		},
+		T = {
+			BC.dirichlet("inlet", d.T_in),
+			BC.neumann("outlet", 0.0),
+			BC.neumann("wall", 0.0),
+			BC.neumann("top", 0.0),
+			BC.robin("fin", d.h_fin, d.T_ref),
+		},
+	}
+end)
+
+--
+-- Metrics
+--
+
+local function mean(xs)
+	if not xs or #xs == 0 then return nil end
+
+	local s = 0.0
+	for _, x in ipairs(xs) do
+		s = s + x
+	end
+
+	return s / #xs
+end
+
+local function line_tol(d, o)
+	return d.L * 0.5 * o.res
+end
+
+local function pressure_drop(result)
+	local d        = result.x
+	local o        = result.opts
+	local fields   = result.fields()
+
+	local _, p_in  = gpm.line_profile(
+		result.mesh,
+		fields.p,
+		"x",
+		0.0,
+		{ tol = line_tol(d, o) }
+	)
+
+	local _, p_out = gpm.line_profile(
+		result.mesh,
+		fields.p,
+		"x",
+		d.L,
+		{ tol = line_tol(d, o) }
+	)
+
+	return mean(p_in) - mean(p_out), mean(p_in), mean(p_out)
+end
+
+local function patch_gradient_flux(result, patch)
+	local fields = result.fields()
+
+	return fvm.operators.patch_gradient_flux(
+		result.mesh,
+		fields.T,
+		fields.face_T,
+		fields.grad_T_x,
+		fields.grad_T_y,
+		result.x.k,
+		patch
+	)
+end
+
+local function heat_metrics(result)
+	local fin_flux = patch_gradient_flux(result, "fin")
+
+	return {
+		fin_flux     = fin_flux,
+		heat_removed = -fin_flux,
+	}
+end
+
+local function scalar_metrics(result)
+	local dp, p_in, p_out = pressure_drop(result)
+	local heat            = heat_metrics(result)
+
+	return {
+		Re_H           = reynolds_h(result.x),
+		Pr             = prandtl(result.x),
+
+		p_in_mean      = p_in,
+		p_out_mean     = p_out,
+		delta_p        = dp,
+
+		fin_flux       = heat.fin_flux,
+		heat_removed   = heat.heat_removed,
+
+		objective_hint = heat.heat_removed / math.max(dp, 1e-12),
+	}
+end
+
+local function metrics_table(result)
+	return {
+		columns = {
+			"fin_height",
+			"fin_width",
+			"Re_H",
+			"Pr",
+			"delta_p",
+			"fin_flux",
+			"heat_removed",
+			"objective_hint",
+		},
+		rows = {
+			{
+				fin_height     = result.x.fin_height,
+				fin_width      = result.x.fin_width,
+				Re_H           = result.metrics.Re_H,
+				Pr             = result.metrics.Pr,
+				delta_p        = result.metrics.delta_p,
+				fin_flux       = result.metrics.fin_flux,
+				heat_removed   = result.metrics.heat_removed,
+				objective_hint = result.metrics.objective_hint,
+			},
+		},
+	}
+end
+
+--
+-- Profiles and figures
+--
+
+local function extract_temperature_profiles(result)
+	local d      = result.x
+	local o      = result.opts
+	local fields = result.fields()
+	local out    = {}
+
+	for _, x in ipairs(o.profile_xs) do
+		local y, T = gpm.line_profile(
+			result.mesh,
+			fields.T,
+			"x",
+			x,
+			{ tol = line_tol(d, o) }
+		)
+
+		out[#out + 1] = {
+			x = x,
+			y = y,
+			T = T,
+		}
+	end
+
+	return out
+end
+
+local function temperature_figure(result)
+	local next_colour = gp.cycler()
+
+	local fig = gp.figure({
+		title  = string.format(
+			"Channel fin temperature   h=%.3g   w=%.3g",
+			result.x.fin_height,
+			result.x.fin_width
+		),
+		xlabel = "T",
+		ylabel = "y",
+		key    = "top right",
+	})
+
+	for _, prof in ipairs(result.profiles.temperature) do
+		fig:add(prof.T, prof.y, {
+			title  = string.format("x=%.3g", prof.x),
+			style  = "linespoints",
+			colour = next_colour(),
+		})
+	end
+
+	return fig
+end
+
+--
+-- Evaluate
+--
+
+study:evaluate(function(d, o)
+	local result = study:default_evaluate(d, o)
+
+	result.profiles = {
+		temperature = extract_temperature_profiles(result),
+	}
+
+	result.metrics = scalar_metrics(result)
+
+	return result
+end, {
+	doc = "Run one channel-fin simulation and return scalar pressure-drop and heat-flux metrics",
+})
+
+--
+-- Outputs
+--
+
+study:output("metrics")
+study:table("metrics-table", metrics_table)
+study:figure("temperature", temperature_figure)
+
+study:write("vtk", function(result, path)
+	local fields = result.fields()
+
+	vtk.write(path, result.mesh,
+		{
+			Ux = fields.Ux,
+			Uy = fields.Uy,
+			p  = fields.p,
+			T  = fields.T,
+		},
+		{
+			U = { fields.Ux, fields.Uy },
+		}
+	)
+
+	print("Saved to " .. path)
+end, { doc = "Write Ux, Uy, p, T, and U vector to VTK" })
+
+--
+-- Entry points
+--
+
+study:expose("run-safe", function()
+	return study:run({
+		U_mean  = 0.05,
+		mu      = 1e-2,
+		k       = 1e-2,
+		h_fin   = 1.0,
+		alpha_p = 0.05,
+	})
+end)
+
+study:expose("run-moderate", function()
+	return study:run({
+		U_mean  = 0.1,
+		mu      = 2e-3,
+		k       = 2e-3,
+		h_fin   = 1.0,
+		alpha_p = 0.03,
+	})
+end)
+
+study:expose("show-summary", function()
+	local result = study:run()
+	local m = result.metrics
+
+	print(string.format("Re_H          = %.6g", m.Re_H))
+	print(string.format("Pr            = %.6g", m.Pr))
+	print(string.format("delta_p       = %.8g", m.delta_p))
+	print(string.format("fin_flux      = %.8g", m.fin_flux))
+	print(string.format("heat_removed  = %.8g", m.heat_removed))
+	print(string.format("heat/delta_p  = %.8g", m.objective_hint))
+
+	return result
+end, "Run the default case and print pressure-drop and heat-removal metrics")
+
+print("Loaded channel-fin heat-transfer study.")
+print("Try (show-summary), (metrics), (write-metrics-table \"metrics.csv\"), or (write-vtk \"fin.vtk\").")
+
+return study:repl()
