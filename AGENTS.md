@@ -103,37 +103,309 @@ Fennel style
 - Use tables for options in the same shape expected by the Lua-facing API.
 - Use threading macros only when they improve readability.
 
-CFD case guidance
-=================
+CFD case structure
+==================
 
 - Write CFD cases as readable Lua scripts, not as large JSON-like configuration blobs.
 - Structure the file in short paragraphs using section headers: metadata, defaults, geometry/mesh, physics, algorithm, boundary conditions, outputs, and entry points.
 - Prefer ordinary named Lua functions over nested tables of callbacks. Users should be able to copy, modify, call, loop over, or optimise these functions directly.
 - Start by listing defaults and, when relevant, design variables near the top of the file.
-- Use jnl.fvm.study when available to make the case self-guiding in the REPL, but do not hide important logic inside the study object.
-- A good CFD case usually has a function that builds geometry and/or mesh from design variables and options.
-- A good FVM case usually has functions that build the registry, algorithm, boundary conditions, and final Case object.
 - Do not launch expensive computation on load. Loading the script should register helpers, print a short entry message, and start the REPL.
+- Always provide at least one safe no-argument entry point such as demo, instructions, show-mesh, or evaluate. demo should not perform a long solve unless clearly documented.
+
+CFD study API
+=============
+
+- Use jnl.fvm.study when available to make the case self-guiding in the REPL, but do not hide important logic inside the study object.
+- Use study:about, study:defaults, study:design, study:options, and study:evaluate in separate paragraphs rather than passing one large table of options.
+- Use study:defaults for run configuration such as mesh resolution, solver tolerances, scheme names, and output paths.
+- Use study:design for actual design variables such as geometry dimensions, shape parameters, or operating-point variables to sweep or optimise.
+- Study builders should accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides.
+- Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format.
+- Register write helpers with a single path-inferred writer (study:write) rather than separate write-png and write-pdf entries; gp Figure:save infers the terminal from the file extension.
+- If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically.
+- Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise.
+
+CFD evaluate and results
+========================
+
 - Provide a main evaluate or run function that takes optional design-variable overrides and returns a result table.
 - Keep evaluate ordinary and composable: it should be suitable for direct calls, for loops, sweeps, optimisation, or uncertainty studies.
-- Expose useful intermediate helpers such as show-geometry, show-mesh, inspect-registry, inspect-deps, inspect-algorithm, inspect-instructions, inspect-resources, and inspect-warnings.
-- If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically.
-- Use study:about, study:defaults, study:design, study:options, and study:evaluate in separate paragraphs rather than passing one large table of options.
-- Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format.
-- Use study:defaults for run configuration such as mesh resolution, solver tolerances, scheme names, selected Reynolds number, and output paths.
-- Use study:design for actual design variables such as geometry dimensions, shape parameters, operating-point variables to sweep, or optimisation variables.
-- Study builders should usually accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides.
-- Return result tables with predictable keys when useful: x for design variables, opts for options, case, sim, mesh, metrics, fields, profiles, plots, and files.
-- For validation cases, expose plotting and writing helpers that compare numerical results with analytical or reference data, but keep the reference-data lookup separate from the solver setup.
-- For parameter studies, sweeps, optimisation, or UQ, make the design variables explicit and pass them through the geometry, mesh, physics, and post-processing functions.
-- Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise.
-- Always provide at least one safe no-argument entry point such as demo, instructions, show-mesh, or evaluate. demo should not perform a long solve unless clearly documented.
+- Use study:evaluate to delegate to study:default_evaluate and augment the result, rather than rebuilding mesh/case/sim from scratch inside a custom evaluate.
+- Custom evaluate functions that need extra post-processing should call study:default_evaluate(design, opts) first, then append study-specific fields to the result table.
+- Return result tables with predictable keys: x for design variables, opts for options, case, sim, mesh, metrics, fields, profiles, plots, and files.
 - res.opts in result tables is the merged design+defaults table; always read runtime values from res.opts, never from study:opts() inside plot or write functions.
-- write helpers always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller.
 - plot and output helpers receive a result table. write helpers receive (result, path). Keep these signatures consistent.
-- sweep(), uq(), and optimise() each take fn(study) -> any. Call study:run(overrides) inside for uniform result objects; use whatever library you like for the outer loop.
-- Use study:design for variables you would sweep or optimise. Use study:defaults for fixed run configuration like nx, tol, and print_every.
+- write helpers always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller.
 
+CFD post-processing and output
+==============================
+
+- For validation cases, expose plotting and writing helpers that compare numerical results with analytical or reference data, but keep the reference-data lookup separate from the solver setup.
+- Use jnl.gp.mesh.line_profile to extract field profiles along axis-aligned slices rather than iterating cells manually.
+- Use gp.sym for greek letters in axis labels and titles, gp.color for named colours, and gp.cycler() for consistent colour cycling across multi-series plots.
+- Expose useful intermediate helpers such as show-geometry, show-mesh, inspect-registry, inspect-deps, inspect-algorithm, inspect-instructions, inspect-resources, and inspect-warnings.
+
+CFD parametric studies
+======================
+
+- For parameter studies, sweeps, optimisation, or UQ, make the design variables explicit and pass them through the geometry, mesh, physics, and post-processing functions.
+- Use study:design for variables you would sweep or optimise. Use study:defaults for fixed run configuration like nx, tol, and print_every.
+- sweep(), uq(), and optimise() each take fn(study) -> any. Call study:run(overrides) inside for uniform result objects; use whatever library you like for the outer loop.
+
+Examples
+========
+
+These are complete working scripts. Use them as templates.
+
+FVM validation study (validate_conv_diff.lua)
+---------------------------------------------
+```lua
+-- lua/showcase/validate_conv_diff.lua - Convection-diffusion scheme validation
+-- <jed@nelson.llm> // 2026-05-26
+
+local fvm = require("jnl.fvm")
+local mesh2d = require("jnl.mesh2d")
+local compare = require("jnl.gp.compare")
+local study = require("jnl.fvm.study").new("Validation: Convection-Diffusion")
+
+--
+-- Defaults
+--
+
+study:about("Validates UDS and CDS advection schemes against the analytical 1D convection-diffusion solution.")
+
+study:design({
+	pe     = 10.0,
+	scheme = "uds",
+})
+
+study:defaults({
+	nx = 50,
+})
+
+--
+-- Geometry and mesh
+--
+
+study:mesh(function(_, o)
+	return mesh2d.new_smesh(1.0, 0.1, o.nx, 1)
+end)
+
+--
+-- Physics
+--
+
+study:registry(function(_, o)
+	local reg = require("jnl.core.registry").new()
+	local E = fvm.Expr
+	local Op = fvm.Op
+
+	reg:constant("rho", 1.0)
+	reg:constant("Gamma", 1.0 / o.pe)
+
+	reg:uniform("Ux", 1.0)
+	reg:uniform("Uy", 0.0)
+	reg:vector("U", { "Ux", "Uy" })
+
+	reg:field("phi", {
+		eq = fvm.eq(
+			Op.div(E.face_normal("U"), "phi", { scheme = o.scheme }),
+			Op.lap("Gamma", "phi")
+		),
+		initial = 0.0
+	})
+
+	return reg
+end)
+
+--
+-- Algorithm
+--
+
+study:algorithm(function()
+	local alg = require("jnl.fvm.algorithm").new()
+	alg:linear(function(b)
+		b:solve("phi")
+	end)
+	return alg
+end)
+
+--
+-- Boundary conditions
+--
+
+study:bcs(function()
+	local bc = require("jnl.fvm.bc")
+	return {
+		phi = {
+			bc.dirichlet("west", 0.0),
+			bc.dirichlet("east", 1.0),
+			bc.symmetry("south"),
+			bc.symmetry("north")
+		}
+	}
+end)
+
+--
+-- Validation data
+--
+
+local function analytical_solution(x, pe)
+	if pe == 0.0 then
+		return x
+	end
+	return (math.exp(pe * x) - 1.0) / (math.exp(pe) - 1.0)
+end
+
+local function get_profile(res)
+	local xs = {}
+	local phis = {}
+	local phi_field = res.field("phi")
+
+	for i = 1, res.mesh:n_cells() do
+		local x, _ = res.mesh:cell_centre(i)
+		table.insert(xs, x)
+		table.insert(phis, phi_field[i])
+	end
+
+	return compare.profile(xs, phis, { label = string.upper(res.opts.scheme) .. " Numeric" })
+end
+
+local function get_analytical_profile(pe)
+	local xs = {}
+	local phis = {}
+
+	for i = 0, 100 do
+		local x = i / 100.0
+		table.insert(xs, x)
+		table.insert(phis, analytical_solution(x, pe))
+	end
+
+	return compare.profile(xs, phis, { label = "Analytical (Pe=" .. pe .. ")" })
+end
+
+--
+-- Outputs and entry points
+--
+
+study:output("numeric-profile", function(res)
+	return get_profile(res)
+end, "Return the numeric phi profile")
+
+study:output("analytical-profile", function(res)
+	return get_analytical_profile(res.opts.pe)
+end, "Return the analytical phi profile")
+
+local function comparison_figure(res)
+	local o = res.opts
+	return compare.figure(get_profile(res), get_analytical_profile(o.pe), {
+		title  = "1D Convection-Diffusion (Pe = " .. o.pe .. ")",
+		xlabel = "x",
+		ylabel = "phi",
+	})
+end
+
+study:plot("comparison", function(res)
+	comparison_figure(res):show()
+end, { doc = "Plot numeric result against analytical solution" })
+
+study:write("comparison", function(res, path)
+	comparison_figure(res):save(path)
+	print("Saved to " .. path)
+end, { doc = "Save comparison plot to path" })
+
+--
+-- Peclet Sweep
+--
+
+local function result_error(res)
+	local num   = get_profile(res)
+	local exact = get_analytical_profile(res.opts.pe)
+	local comp  = compare.sample_at_reference(num, exact)
+	return compare.error_norms(comp)
+end
+
+local function run_pe_sweep(s)
+	local pe_values = { 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 400.0 }
+	local results   = {}
+	for _, scheme in ipairs({ "uds", "cds" }) do
+		results[scheme] = { pe = {}, l2 = {}, linf = {} }
+		for _, pe in ipairs(pe_values) do
+			local res           = s:run({ pe = pe, scheme = scheme })
+			local errs          = result_error(res)
+			local t             = results[scheme]
+			t.pe[#t.pe + 1]     = pe
+			t.l2[#t.l2 + 1]     = errs.l2
+			t.linf[#t.linf + 1] = errs.linf
+		end
+	end
+	return results
+end
+
+local function plot_pe_sweep(sweep_results)
+	local gp  = require("jnl.gp")
+	local fig = gp.figure({
+		title  = "Pe sweep: L2 error vs Peclet number",
+		xlabel = "Pe",
+		ylabel = "L2 error",
+		logx   = true,
+		logy   = true,
+		grid   = true,
+	})
+	for _, scheme in ipairs({ "uds", "cds" }) do
+		local t = sweep_results[scheme]
+		fig:add(t.pe, t.l2, { title = string.upper(scheme) })
+	end
+	fig:show()
+end
+
+study:sweep("pe-sweep", run_pe_sweep,
+	{ doc = "Sweep Pe for UDS and CDS and return error tables" })
+
+study:expose("plot-pe-sweep", function()
+	plot_pe_sweep(run_pe_sweep(study))
+end, "Run Pe sweep and plot L2 error vs Pe")
+
+--
+-- Final plot
+--
+
+local function scheme_figure(pe)
+	local uds_res  = study:run({ pe = pe, scheme = "uds" })
+	local cds_res  = study:run({ pe = pe, scheme = "cds" })
+	local uds_errs = result_error(uds_res)
+	local cds_errs = result_error(cds_res)
+	local gp       = require("jnl.gp")
+
+	return gp.figure({
+			title  = string.format(
+				"Convection-Diffusion Pe=%.0f  |  UDS L2=%.2e  CDS L2=%.2e",
+				pe, uds_errs.l2, cds_errs.l2),
+			xlabel = "x",
+			ylabel = "phi",
+			grid   = true,
+		})
+		:add(get_analytical_profile(pe).coord, get_analytical_profile(pe).value,
+			{ title = "Analytical", style = "lines", lw = 2 })
+		:add(get_profile(uds_res).coord, get_profile(uds_res).value,
+			{ title = "UDS", style = "points", pt = 7, ps = 0.8 })
+		:add(get_profile(cds_res).coord, get_profile(cds_res).value,
+			{ title = "CDS", style = "points", pt = 5, ps = 0.8 })
+end
+
+study:plot("schemes", function(res)
+	scheme_figure(res.opts.pe):show()
+end, { doc = "Plot UDS, CDS, and analytical at the result Pe" })
+
+study:write("schemes", function(res, path)
+	scheme_figure(res.opts.pe):save(path)
+	print("Saved to " .. path)
+end, { doc = "Save UDS/CDS/analytical comparison to path" })
+
+return study:repl()
+
+```
 Complete API reference
 ======================
 
@@ -1189,10 +1461,13 @@ JNL API Reference
    selects the terminal automatically (.png .svg .pdf .eps). M.sample(fn, x0, x1, n)
    generates xs/ys from a Lua function for quick plotting.
 
+   cycler
+      sig: jnl.gp.cycler() -> fn:()->string
+      doc: Return a stateful function that cycles through M.palette colours on each call
    figure
       sig: jnl.gp.figure(opts?) -> Figure
       doc: Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key,
-           logx, logy }
+           logx, logy, font, size, xformat, yformat }
    sample
       sig: jnl.gp.sample(fn, x0, x1, n?) -> xs, ys
       doc: Sample fn over [x0,x1] at n+1 points (default 200); returns two arrays
@@ -1209,21 +1484,71 @@ JNL API Reference
       Figure:add
          sig: Figure:add(xs, ys, opts? | series:Series) -> Figure
          doc: Append a data series; accepts raw arrays or a Series struct; chainable
+      Figure:hline
+         sig: Figure:hline(y:number, opts?) -> Figure
+         doc: Add a horizontal reference line; opts: { lw, color, dt, title }
       Figure:save
          sig: Figure:save(path:string, opts?) -> nil
-         doc: Save to file; terminal inferred from extension; opts: { size={w,h},
+         doc: Save to file; terminal inferred from extension; opts: { size, font,
               terminal }
-      Figure:series_list
-         sig: Figure:series_list() -> Series[]
-         doc: Return the figure's series list
       Figure:show
          sig: Figure:show() -> nil
          doc: Open a persistent interactive gnuplot window
+      Figure:vline
+         sig: Figure:vline(x:number, opts?) -> Figure
+         doc: Add a vertical reference line; opts: { lw, color, dt, title }
       Figure:write_csv
          sig: Figure:write_csv(path:string) -> Figure
          doc: Dump all series to CSV; chainable
    type Series [table] — Data series descriptor table
       constructor: M.series(xs, ys, opts?) or fig:add(xs, ys, opts)
+   colour — Named hex colour strings for explicit series colouring
+      black = "\"#111111\""     Near black
+      blue = "\"#0077bb\""      Primary blue
+      green = "\"#22aa55\""     Primary green
+      grey = "\"#888888\""      Mid grey
+      orange = "\"#ff8800\""    Warm orange
+      pink = "\"#cc6677\""      Soft pink
+      purple = "\"#aa33cc\""    Mid purple
+      red = "\"#ee3333\""       Primary red
+      teal = "\"#009988\""      Cool teal
+   palette — Ordered colour cycle used by cycler(); blue-first, excludes black
+      1 = "\"#0077bb\""         1 blue
+      2 = "\"#ee3333\""         2 red
+      3 = "\"#22aa55\""         3 green
+      4 = "\"#ff8800\""         4 orange
+      5 = "\"#aa33cc\""         5 purple
+      6 = "\"#009988\""         6 teal
+      7 = "\"#cc6677\""         7 pink
+      8 = "\"#888888\""         8 grey
+   sym — Gnuplot enhanced-mode greek letter strings; use inside title/xlabel/ylabel
+   strings
+      Omega = "\"{/Symbol W}\""
+        uppercase Omega
+      Pi = "\"{/Symbol P}\""    uppercase Pi
+      Theta = "\"{/Symbol Q}\""
+        uppercase Theta
+      alpha = "\"{/Symbol a}\""
+        lowercase alpha
+      beta = "\"{/Symbol b}\""  lowercase beta
+      delta = "\"{/Symbol d}\""
+        lowercase delta
+      eta = "\"{/Symbol h}\""   lowercase eta
+      gamma = "\"{/Symbol g}\""
+        lowercase gamma
+      mu = "\"{/Symbol m}\""    lowercase mu
+      nu = "\"{/Symbol n}\""    lowercase nu
+      omega = "\"{/Symbol w}\""
+        lowercase omega
+      phi = "\"{/Symbol f}\""   lowercase phi
+      pi = "\"{/Symbol p}\""    lowercase pi
+      psi = "\"{/Symbol y}\""   lowercase psi
+      rho = "\"{/Symbol r}\""   lowercase rho
+      sigma = "\"{/Symbol s}\""
+        lowercase sigma
+      tau = "\"{/Symbol t}\""   lowercase tau
+      theta = "\"{/Symbol q}\""
+        lowercase theta
 
 ## jnl.gp.compare
    Comparison plotting helpers for numerical, analytical, and reference profiles
@@ -1268,12 +1593,23 @@ JNL API Reference
    type Profile [table] — Profile data table for plotting and validation
       constructor: jnl.gp.compare.profile(coord, value, opts?)
 
+## jnl.gp.mesh
+   Field extraction helpers for plotting mesh field data with jnl.gp.
+
+   line_profile
+      sig: jnl.gp.mesh.line_profile(mesh:Mesh, field_vec:vec, axis:'x'|'y',
+           value:number, opts:table?) -> coords:number[], vals:number[]
+      doc: Extract field values along a line slice; opts: { tol }
+
 ## jnl.llm
    LLM coding context and instructions for JNLCFD
 
    context_string
       sig: jnl.llm.context_string(opts:table?) -> string
       doc: Return LLM coding instructions plus the full API reference
+   examples_string
+      sig: jnl.llm.examples_string() -> string
+      doc: Return example scripts as a formatted string
    preamble_string
       sig: jnl.llm.preamble_string() -> string
       doc: Return LLM coding instructions without the API reference

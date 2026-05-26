@@ -148,7 +148,7 @@ local SECTIONS = {
 		bullet("Use threading macros only when they improve readability."),
 	}),
 
-	section("CFD case guidance", {
+	section("CFD case structure", {
 		bullet("Write CFD cases as readable Lua scripts, not as large JSON-like configuration blobs."),
 		bullet(
 			"Structure the file in short paragraphs using section headers: metadata, defaults, geometry/mesh, physics, algorithm, boundary conditions, outputs, and entry points."),
@@ -156,51 +156,69 @@ local SECTIONS = {
 			"Prefer ordinary named Lua functions over nested tables of callbacks. Users should be able to copy, modify, call, loop over, or optimise these functions directly."),
 		bullet("Start by listing defaults and, when relevant, design variables near the top of the file."),
 		bullet(
+			"Do not launch expensive computation on load. Loading the script should register helpers, print a short entry message, and start the REPL."),
+		bullet(
+			"Always provide at least one safe no-argument entry point such as demo, instructions, show-mesh, or evaluate. demo should not perform a long solve unless clearly documented."),
+	}),
+
+	section("CFD study API", {
+		bullet(
 			"Use jnl.fvm.study when available to make the case self-guiding in the REPL, but do not hide important logic inside the study object."),
 		bullet(
-			"A good CFD case usually has a function that builds geometry and/or mesh from design variables and options."),
+			"Use study:about, study:defaults, study:design, study:options, and study:evaluate in separate paragraphs rather than passing one large table of options."),
 		bullet(
-			"A good FVM case usually has functions that build the registry, algorithm, boundary conditions, and final Case object."),
+			"Use study:defaults for run configuration such as mesh resolution, solver tolerances, scheme names, and output paths."),
 		bullet(
-			"Do not launch expensive computation on load. Loading the script should register helpers, print a short entry message, and start the REPL."),
+			"Use study:design for actual design variables such as geometry dimensions, shape parameters, or operating-point variables to sweep or optimise."),
+		bullet(
+			"Study builders should accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides."),
+		bullet(
+			"Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format."),
+		bullet(
+			"Register write helpers with a single path-inferred writer (study:write) rather than separate write-png and write-pdf entries; gp Figure:save infers the terminal from the file extension."),
+		bullet(
+			"If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically."),
+		bullet(
+			"Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise."),
+	}),
+
+	section("CFD evaluate and results", {
 		bullet(
 			"Provide a main evaluate or run function that takes optional design-variable overrides and returns a result table."),
 		bullet(
 			"Keep evaluate ordinary and composable: it should be suitable for direct calls, for loops, sweeps, optimisation, or uncertainty studies."),
 		bullet(
-			"Expose useful intermediate helpers such as show-geometry, show-mesh, inspect-registry, inspect-deps, inspect-algorithm, inspect-instructions, inspect-resources, and inspect-warnings."),
+			"Use study:evaluate to delegate to study:default_evaluate and augment the result, rather than rebuilding mesh/case/sim from scratch inside a custom evaluate."),
 		bullet(
-			"If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically."),
+			"Custom evaluate functions that need extra post-processing should call study:default_evaluate(design, opts) first, then append study-specific fields to the result table."),
 		bullet(
-			"Use study:about, study:defaults, study:design, study:options, and study:evaluate in separate paragraphs rather than passing one large table of options."),
-		bullet(
-			"Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format."),
-		bullet(
-			"Use study:defaults for run configuration such as mesh resolution, solver tolerances, scheme names, selected Reynolds number, and output paths."),
-		bullet(
-			"Use study:design for actual design variables such as geometry dimensions, shape parameters, operating-point variables to sweep, or optimisation variables."),
-		bullet(
-			"Study builders should usually accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides."),
-		bullet(
-			"Return result tables with predictable keys when useful: x for design variables, opts for options, case, sim, mesh, metrics, fields, profiles, plots, and files."),
-		bullet(
-			"For validation cases, expose plotting and writing helpers that compare numerical results with analytical or reference data, but keep the reference-data lookup separate from the solver setup."),
-		bullet(
-			"For parameter studies, sweeps, optimisation, or UQ, make the design variables explicit and pass them through the geometry, mesh, physics, and post-processing functions."),
-		bullet(
-			"Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise."),
-		bullet(
-			"Always provide at least one safe no-argument entry point such as demo, instructions, show-mesh, or evaluate. demo should not perform a long solve unless clearly documented."),
+			"Return result tables with predictable keys: x for design variables, opts for options, case, sim, mesh, metrics, fields, profiles, plots, and files."),
 		bullet(
 			"res.opts in result tables is the merged design+defaults table; always read runtime values from res.opts, never from study:opts() inside plot or write functions."),
 		bullet(
-			"write helpers always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller."),
-		bullet(
 			"plot and output helpers receive a result table. write helpers receive (result, path). Keep these signatures consistent."),
 		bullet(
-			"sweep(), uq(), and optimise() each take fn(study) -> any. Call study:run(overrides) inside for uniform result objects; use whatever library you like for the outer loop."),
+			"write helpers always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller."),
+	}),
+
+	section("CFD post-processing and output", {
+		bullet(
+			"For validation cases, expose plotting and writing helpers that compare numerical results with analytical or reference data, but keep the reference-data lookup separate from the solver setup."),
+		bullet(
+			"Use jnl.gp.mesh.line_profile to extract field profiles along axis-aligned slices rather than iterating cells manually."),
+		bullet(
+			"Use gp.sym for greek letters in axis labels and titles, gp.color for named colours, and gp.cycler() for consistent colour cycling across multi-series plots."),
+		bullet(
+			"Expose useful intermediate helpers such as show-geometry, show-mesh, inspect-registry, inspect-deps, inspect-algorithm, inspect-instructions, inspect-resources, and inspect-warnings."),
+	}),
+
+	section("CFD parametric studies", {
+		bullet(
+			"For parameter studies, sweeps, optimisation, or UQ, make the design variables explicit and pass them through the geometry, mesh, physics, and post-processing functions."),
 		bullet(
 			"Use study:design for variables you would sweep or optimise. Use study:defaults for fixed run configuration like nx, tol, and print_every."),
+		bullet(
+			"sweep(), uq(), and optimise() each take fn(study) -> any. Call study:run(overrides) inside for uniform result objects; use whatever library you like for the outer loop."),
 	}),
 }
 
@@ -225,9 +243,9 @@ function M.examples_string()
 	for _, ex in ipairs(EXAMPLES) do
 		add_line(out, ex.title)
 		add_line(out, string.rep("-", #ex.title))
-		add_line(out, "")
+		add_line(out, "```lua")
 		add_line(out, ex.source)
-		add_line(out, "")
+		add_line(out, "```")
 	end
 	return table.concat(out, "\n")
 end
@@ -236,12 +254,14 @@ function M.context_string(opts)
 	opts = opts or {}
 	local out = {}
 	local doc = require("jnl.doc")
+
 	add_line(out, M.preamble_string())
 	add_line(out, M.examples_string())
 	add_line(out, "Complete API reference")
 	add_line(out, "======================")
 	add_line(out, "")
 	add_line(out, doc.dump_string(nil, { width = opts.width or 88 }))
+
 	return table.concat(out, "\n")
 end
 
@@ -255,23 +275,6 @@ function M.preamble_string()
 	for _, s in ipairs(SECTIONS) do
 		add_section(out, s)
 	end
-
-	return table.concat(out, "\n")
-end
-
-function M.context_string(opts)
-	opts = opts or {}
-
-	local out = {}
-	local doc = require("jnl.doc")
-
-	add_line(out, M.preamble_string())
-	add_line(out, "Complete API reference")
-	add_line(out, "======================")
-	add_line(out, "")
-	add_line(out, doc.dump_string(nil, {
-		width = opts.width or 88,
-	}))
 
 	return table.concat(out, "\n")
 end
@@ -294,6 +297,11 @@ M._api = {
 		args = "opts:table?",
 		ret = "string",
 		doc = "Return LLM coding instructions plus the full API reference",
+	},
+	examples_string = {
+		args = "",
+		ret  = "string",
+		doc  = "Return example scripts as a formatted string",
 	},
 	print = {
 		args = "opts:table?",
