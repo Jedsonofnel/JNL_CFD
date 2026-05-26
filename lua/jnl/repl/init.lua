@@ -1,7 +1,7 @@
 -- jnl/repl/init.lua - Configurable REPL for the JNL suite
 -- <jed@nelson.ac> // 2026-05-21
 
-local Printer = require("jnl.term_printer")
+local Printer = require("jnl.repl.printer")
 
 local REPL = {}
 REPL.__index = REPL

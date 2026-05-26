@@ -2,7 +2,8 @@
 -- <jed@nelson.ac> // 2026-05-26
 
 local repl_mod = require("jnl.repl")
-local printer_mod = require("jnl.term_printer")
+local printer_mod = require("jnl.repl.printer")
+local fmt = printer_mod.fmt
 
 local M = {}
 
@@ -378,11 +379,8 @@ function Study:run(arg)
 
 	if not opts.quiet then
 		local diff = format_overrides(self.design_table, arg)
-		if diff then
-			io.write("evaluating  " .. diff .. "\n")
-		else
-			io.write("evaluating defaults\n")
-		end
+		local text = diff and ("evaluating  " .. diff) or "evaluating defaults"
+		io.write(fmt.header(text, 2))
 	end
 
 	for _, hook in ipairs(self.before_run_hooks) do

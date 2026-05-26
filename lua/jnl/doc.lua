@@ -52,6 +52,7 @@ local MODULES = {
 	-- repl
 	"jnl.repl",
 	"jnl.repl.study",
+	"jnl.repl.printer",
 	-- gp
 	"jnl.gp",
 	"jnl.gp.compare",
@@ -61,7 +62,6 @@ local MODULES = {
 	"jnl.ui",
 	"jnl.doc",
 	"jnl.llm",
-	"jnl.term_printer",
 }
 
 local function load_modules()
@@ -340,7 +340,7 @@ local function dump_constants(constants, p)
 end
 
 local function dump_module(mod_name, mod, p)
-	p:line(string.format("## %s", mod_name))
+	p:header(mod_name, 2)
 	p:wrap("   ", "   ", mod._doc or "(no description)")
 	p:blank()
 
@@ -362,7 +362,7 @@ end
 function M.dump_modules(opts)
 	opts = opts or {}
 
-	local Printer = require("jnl.term_printer")
+	local Printer = require("jnl.repl.printer")
 	local p = Printer.new({
 		width = opts.width or 72,
 		out = opts.out or function(s) io.write(s) end,
@@ -398,7 +398,7 @@ function M.dump_string(modules, opts)
 	modules = modules or load_modules()
 	opts = opts or {}
 
-	local Printer = require("jnl.term_printer")
+	local Printer = require("jnl.repl.printer")
 	local p = Printer.new({
 		width = opts.width or 72,
 	})

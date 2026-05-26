@@ -1,13 +1,23 @@
-General role
-============
+doc: warning: could not load module 'jnl.fvm.study'
+doc: warning: could not load module 'jnl.repl'
+doc: warning: could not load module 'jnl.repl.study'
 
+# General role
 You are helping write code for JNLCFD, a small computational fluid
 dynamics and geometry/meshing environment. Prefer code that is easy
 to inspect, modify, and run interactively.
 
-Writing JNL library code
-========================
+If you are uncertain about any part of the API — method signatures,
+option names, return shapes, or how two modules interact — say so
+clearly and ask the user to clarify or paste the relevant source
+before writing code. A short question now is better than code that
+is plausible but wrong. Do not guess at API details.
 
+Once clarified suggest a concise change to the API documentation to
+remove the ambiguity in the future
+
+
+# Writing JNL library code
 - Prefer clear, shallow Lua code. Avoid unnecessary nesting.
 - Use tabs for indentation when writing code.
 - Use early returns to keep control flow flat.
@@ -19,9 +29,8 @@ Writing JNL library code
 - Do not add decorative comment banners beyond the standard section header style.
 - Keep module metadata such as _doc, _api, _types, and _constants accurate when adding or changing public API.
 
-Documentation metadata layout
-=============================
 
+# Documentation metadata layout
 - Put the short module _doc near the top of the file, immediately after module setup.
 - Keep _doc concise: one short sentence describing the module's purpose.
 - Put bulky documentation metadata such as _api, _types, and _constants at the bottom of the file.
@@ -38,9 +47,8 @@ Documentation metadata layout
 - _doc_subsection may be a string or an array of short paragraphs, and should stay concise enough to appear before _api output.
 - _doc_subsection must not end with a newline due to usage of [[ ]] in lua
 
-File headers
-============
 
+# File headers
 Every Lua source file should start with a filename/date/author comment
 in this style:
 
@@ -49,9 +57,8 @@ in this style:
 
 - Use <your@email.llm> for LLM-generated files until a human reviews and takes authorship.
 
-Section headers
-===============
 
+# Section headers
 Use this exact three-line style for major sections:
 
 --
@@ -60,9 +67,8 @@ Use this exact three-line style for major sections:
 
 Never add extra ruler lines, long ASCII dividers, or decorative boxes.
 
-Writing general JNLCFD scripts
-==============================
 
+# Writing general JNLCFD scripts
 - Use the same clean, shallow coding style as library code.
 - Register useful values and functions with the REPL as the script runs.
 - Add short documentation strings when registering REPL values.
@@ -72,9 +78,8 @@ Writing general JNLCFD scripts
 - Expose intermediate geometry, meshes, specs, or results when they are useful for exploration.
 - Avoid assuming the user knows the whole API. Make the script self-guiding through registered names and docs.
 
-Interactive exploration style
-=============================
 
+# Interactive exploration style
 - Make scripts friendly to the REPL.
 - Use descriptive names for registered globals.
 - Prefer small callable steps such as build_domain, build_mesh, show_mesh, or run_demo.
@@ -82,9 +87,8 @@ Interactive exploration style
 - Print a short post-load message explaining the available entry point.
 - Prefer paragraph-style scripts over one large constructor call; each paragraph should introduce one concept or workflow step.
 
-REPL script entry points
-========================
 
+# REPL script entry points
 - Interactive showcase scripts should normally create and run a JNL REPL directly, or use a Study helper that does this for them.
 - For plain REPL scripts, require the REPL with local repl = require("jnl.repl").new().
 - For FVM studies, prefer local study = require("jnl.fvm.study").new("Title") when the script has mesh, registry, algorithm, bcs, evaluate, outputs, or validation helpers.
@@ -94,18 +98,28 @@ REPL script entry points
 - When telling users what to type after loading a Lua script, give Fennel-friendly calls such as (demo), (show-mesh), (inspect-registry), or (run {:scheme "cds"}).
 - If registered Lua function names contain underscores, mention the exact registered REPL name the user should call.
 
-Fennel style
-============
 
+# Fennel style
 - Prefer Lua for runnable script files, but give user-facing REPL examples in Fennel syntax.
 - Implement the same comment system/style as Lua above but with ';'
 - Use local bindings for derived values.
 - Use tables for options in the same shape expected by the Lua-facing API.
 - Use threading macros only when they improve readability.
 
-CFD case structure
-==================
 
+# British English spelling
+The codebase uses British English spelling throughout. Always prefer:
+
+- colour not color
+- centre not center
+- neighbour not neighbor (already used in mesh topology naming)
+- initialise not initialize
+- organise not organize
+
+This applies to comments, doc strings, variable names, and any user-facing output.
+
+
+# CFD case structure
 - Write CFD cases as readable Lua scripts, not as large JSON-like configuration blobs.
 - Structure the file in short paragraphs using section headers: metadata, defaults, geometry/mesh, physics, algorithm, boundary conditions, outputs, and entry points.
 - Prefer ordinary named Lua functions over nested tables of callbacks. Users should be able to copy, modify, call, loop over, or optimise these functions directly.
@@ -113,22 +127,19 @@ CFD case structure
 - Do not launch expensive computation on load. Loading the script should register helpers, print a short entry message, and start the REPL.
 - Always provide at least one safe no-argument entry point such as demo, instructions, show-mesh, or evaluate. demo should not perform a long solve unless clearly documented.
 
-CFD study API
-=============
 
+# CFD study API
 - Use jnl.fvm.study when available to make the case self-guiding in the REPL, but do not hide important logic inside the study object.
 - Use study:about, study:defaults, study:design, study:options, and study:evaluate in separate paragraphs rather than passing one large table of options.
 - Use study:defaults for run configuration such as mesh resolution, solver tolerances, scheme names, and output paths.
 - Use study:design for actual design variables such as geometry dimensions, shape parameters, or operating-point variables to sweep or optimise.
 - Study builders should accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides.
 - Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format.
-- Register write helpers with a single path-inferred writer (study:write) rather than separate write-png and write-pdf entries; gp Figure:save infers the terminal from the file extension.
 - If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically.
 - Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise.
 
-CFD evaluate and results
-========================
 
+# CFD evaluate and results
 - Provide a main evaluate or run function that takes optional design-variable overrides and returns a result table.
 - Keep evaluate ordinary and composable: it should be suitable for direct calls, for loops, sweeps, optimisation, or uncertainty studies.
 - Use study:evaluate to delegate to study:default_evaluate and augment the result, rather than rebuilding mesh/case/sim from scratch inside a custom evaluate.
@@ -138,28 +149,34 @@ CFD evaluate and results
 - plot and output helpers receive a result table. write helpers receive (result, path). Keep these signatures consistent.
 - write helpers always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller.
 
-CFD post-processing and output
-==============================
 
+# CFD post-processing and output
 - For validation cases, expose plotting and writing helpers that compare numerical results with analytical or reference data, but keep the reference-data lookup separate from the solver setup.
 - Use jnl.gp.mesh.line_profile to extract field profiles along axis-aligned slices rather than iterating cells manually.
-- Use gp.sym for greek letters in axis labels and titles, gp.color for named colours, and gp.cycler() for consistent colour cycling across multi-series plots.
+- Use gp.sym for greek letters in axis labels and titles, gp.colour for named colours, and gp.cycler() for consistent colour cycling across multi-series plots.
 - Expose useful intermediate helpers such as show-geometry, show-mesh, inspect-registry, inspect-deps, inspect-algorithm, inspect-instructions, inspect-resources, and inspect-warnings.
 
-CFD parametric studies
-======================
+Plot and write pairing rules:
 
+- Every named plot should have a corresponding study:write entry that saves it as an image file. Figure:save infers the terminal from the file extension (.png, .svg, .pdf).
+- The figure-building logic should live in a local function (e.g. local function profile_figure(result)) shared by both the plot and write registrations. Never duplicate the series construction.
+- study:write for images takes a path argument: (write-profile "out/profile.png"). The write function calls figure:save(path).
+- CSV exports are a separate concern and should be named with an explicit -csv suffix: (write-profile-csv "out/profile.csv"). Do not conflate image writes and data exports.
+- A typical set for one plot is: local figure_fn, study:plot("name", ...), study:write("name", ...), study:write("name-csv", ...) — three registrations from one local function.
+
+
+# CFD parametric studies
 - For parameter studies, sweeps, optimisation, or UQ, make the design variables explicit and pass them through the geometry, mesh, physics, and post-processing functions.
 - Use study:design for variables you would sweep or optimise. Use study:defaults for fixed run configuration like nx, tol, and print_every.
 - sweep(), uq(), and optimise() each take fn(study) -> any. Call study:run(overrides) inside for uniform result objects; use whatever library you like for the outer loop.
 
-Examples
-========
 
+
+# Examples
 These are complete working scripts. Use them as templates.
 
-FVM validation study (conv_diff.lua)
-------------------------------------
+
+## FVM validation study (conv_diff.lua)
 ```lua
 -- lua/showcase/conv_diff.lua - Convection-diffusion scheme validation
 -- <jed@nelson.llm> // 2026-05-26
@@ -346,7 +363,7 @@ local function run_pe_sweep(s)
 end
 
 local function plot_pe_sweep(sweep_results)
-	local next_color = gp.cycler()
+	local next_colour = gp.cycler()
 	local fig = gp.figure({
 		title  = string.format("Pe sweep: L2 error vs %s", gp.sym.eta),
 		xlabel = gp.sym.eta,
@@ -356,7 +373,7 @@ local function plot_pe_sweep(sweep_results)
 	})
 	for _, scheme in ipairs({ "uds", "cds" }) do
 		local t = sweep_results[scheme]
-		fig:add(t.pe, t.l2, { title = string.upper(scheme), color = next_color() })
+		fig:add(t.pe, t.l2, { title = string.upper(scheme), colour = next_colour() })
 	end
 	fig:show()
 end
@@ -377,7 +394,7 @@ local function scheme_figure(pe)
 	local cds_res    = study:run({ pe = pe, scheme = "cds" })
 	local uds_errs   = result_error(uds_res)
 	local cds_errs   = result_error(cds_res)
-	local next_color = gp.cycler()
+	local next_colour = gp.cycler()
 
 	return gp.figure({
 			title  = string.format(
@@ -391,21 +408,21 @@ local function scheme_figure(pe)
 			title = "Analytical",
 			style = "lines",
 			lw    = 2,
-			color = gp.color.grey,
+			colour = gp.colour.grey,
 		})
 		:add(get_profile(uds_res).coord, get_profile(uds_res).value, {
 			title = "UDS",
 			style = "points",
 			pt    = 7,
 			ps    = 0.8,
-			color = next_color(),
+			colour = next_colour(),
 		})
 		:add(get_profile(cds_res).coord, get_profile(cds_res).value, {
 			title = "CDS",
 			style = "points",
 			pt    = 5,
 			ps    = 0.8,
-			color = next_color(),
+			colour = next_colour(),
 		})
 end
 
@@ -421,8 +438,8 @@ end, { doc = "Save UDS/CDS/analytical comparison to path" })
 return study:repl()
 
 ```
-FVM couette validation (couette.lua)
-------------------------------------
+
+## FVM couette validation (couette.lua)
 ```lua
 -- lua/couette.lua - Interactive Couette flow study: linear shear between parallel plates
 -- <your@email.llm> // 2026-05-26
@@ -522,7 +539,7 @@ end
 local function profile_figure(result)
 	local d            = result.x
 	local ana_y, ana_u = analytical(d)
-	local next_color   = gp.cycler()
+	local next_colour   = gp.cycler()
 	return gp.figure({
 			title  = string.format("Couette flow   Re=%.1f   %s=%.4g",
 				result.Re, gp.sym.mu, d.mu),
@@ -534,13 +551,13 @@ local function profile_figure(result)
 			title = "Numerical (SIMPLE)",
 			style = "points",
 			pt    = 7,
-			color = next_color(),
+			colour = next_colour(),
 		})
 		:add(ana_u, ana_y, {
 			title = "Analytical (linear)",
 			style = "lines",
 			lw    = 2,
-			color = next_color(),
+			colour = next_colour(),
 		})
 end
 
@@ -603,8 +620,8 @@ end)
 return study:repl()
 
 ```
-FVM poisueille validation (poiseuille.lua)
-------------------------------------------
+
+## FVM poisueille validation (poiseuille.lua)
 ```lua
 -- lua/showcase/poiseuille.lua - Interactive Poiseuille flow validation
 -- <jed@nelson.ac> // 2026-05-26
@@ -757,7 +774,7 @@ end
 local function profile_figure(result)
 	local d            = result.x
 	local ana_y, ana_u = analytical_profile(d)
-	local next_color   = gp.cycler()
+	local next_colour   = gp.cycler()
 
 	return gp.figure({
 			title  = string.format(
@@ -774,19 +791,19 @@ local function profile_figure(result)
 			title = "Inlet numerical",
 			style = "points",
 			pt    = 7,
-			color = next_color(),
+			colour = next_colour(),
 		})
 		:add(result.profiles.outlet.u, result.profiles.outlet.y, {
 			title = "Outlet numerical",
 			style = "points",
 			pt    = 5,
-			color = next_color(),
+			colour = next_colour(),
 		})
 		:add(ana_u, ana_y, {
 			title = "Analytical developed",
 			style = "lines",
 			lw    = 2,
-			color = next_color(),
+			colour = next_colour(),
 		})
 end
 
@@ -895,10 +912,11 @@ print("Loaded Poiseuille study. Try (run-demo), (run), (plot-profile), or (write
 return study:repl()
 
 ```
-Complete API reference
-======================
 
+
+# Complete API reference
 JNL API Reference
+
 
 ## jnl.core.algorithm
    Core algorithmic step list dependency expansion
@@ -982,6 +1000,7 @@ JNL API Reference
       silent = "function(alg)"  Clear all hooks
       verbose = "function(alg)"
         Print classify/emit/invalidate events to stdout
+
 
 ## jnl.core.expr
    Arithmetic expression graphs for symbolic computation and C codegen.
@@ -1090,6 +1109,7 @@ JNL API Reference
          sig: Expr:walk(visitor:fun(node:Expr)) -> nil
          doc: Call visitor on every node in the expression tree
 
+
 ## jnl.core.registry
    Registry of named symbols for a CFD physics problem: fields, constants, expressions,
    and corrections.
@@ -1172,6 +1192,7 @@ JNL API Reference
          sig: sym:_pretty() -> string
          doc: Human-readable one-line (or block) description of the symbol
 
+
 ## jnl.doc
    Documentation aggregator and API auditor for JNL suite
 
@@ -1214,6 +1235,7 @@ JNL API Reference
       sig: jnl.doc.modules() -> string[]
       doc: Return documented module names
 
+
 ## jnl.fvm
    FVM facade: equation DSL, compiler, case management, and operator bindings.
 
@@ -1249,6 +1271,7 @@ JNL API Reference
       sig: jnl.fvm.operators()
       doc: Namespaced operator bindings with full documentation. All operators also
            available flat on FVM.
+
 
 ## jnl.fvm.algorithm
    FVM algorithm wrapper: adds converge/guard/watch monitoring to core Algorithm.
@@ -1327,6 +1350,7 @@ JNL API Reference
       sig: jnl.fvm.algorithm.watch(field:string, kind:string?) -> FvmAlg
       doc: Append a progress column; kind defaults to 'residual'
 
+
 ## jnl.fvm.bc
    Boundary condition constructors for FVM field equations.
 
@@ -1373,6 +1397,7 @@ JNL API Reference
       robin_const = "true"      Mixed BC: h(phi - phi_ref); requires .h and .phi_ref;
                                 apply after Laplacian
 
+
 ## jnl.fvm.canned
    Canned registries and algorithms for common laminar incompressible CFD problems.
 
@@ -1404,6 +1429,7 @@ JNL API Reference
    reg_stokes
       sig: jnl.fvm.canned.reg_stokes(props?) -> Registry
       doc: Stokes flow (no convection); props: { mu, alpha_p }
+
 
 ## jnl.fvm.case
    Case manager: owns registry, algorithm, mesh, and BCs; drives compilation and
@@ -1488,6 +1514,7 @@ JNL API Reference
       doc: Return the allocated system map { [field_name] = FvSystem }; errors if the
            case is not allocated
 
+
 ## jnl.fvm.compile
    (no description)
 
@@ -1544,6 +1571,7 @@ JNL API Reference
       InstructionList:summary
          sig: InstructionList:summary(self) -> string
          doc: Return a compact one-line instruction-list summary
+
 
 ## jnl.fvm.eq
    FVM differential operator constructors and equation assembler.
@@ -1604,6 +1632,7 @@ JNL API Reference
          sig: Term:pretty(field_name?) -> string
          doc: Render term to human-readable string
 
+
 ## jnl.fvm.expr
    FVM expression constructors for face-valued and gradient quantities.
 
@@ -1663,6 +1692,7 @@ JNL API Reference
       is_mwi = "function(name)"
         Decode MWI name -> U, p
       mwi = "function(U, p)"    Encode MWI dep name
+
 
 ## jnl.fvm.operators
    FVM operator bindings: implicit assembly, explicit evaluation, and interpolation.
@@ -1797,6 +1827,7 @@ JNL API Reference
       sig: jnl.fvm.operators.vorticity_2d()
       doc: 2D vorticity: omega = dVy/dx - dUx/dy
 
+
 ## jnl.fvm.rules
    Rule helpers and rulesets for FVM convergence monitoring via Sage.
 
@@ -1805,146 +1836,73 @@ JNL API Reference
    inspect field state at the point of divergence.
 
    all_fields
-      sig: jnl.fvm.rules.all_fields()
-      doc: 
+      sig: jnl.fvm.rules.all_fields(predicates:table<string,pred>) -> criterion
+      doc: True if every field satisfies its predicate; use for AND convergence
    any_field
-      sig: jnl.fvm.rules.any_field()
-      doc: 
+      sig: jnl.fvm.rules.any_field(predicates:table<string,pred>) -> criterion
+      doc: True if any field satisfies its predicate; use for OR divergence guard
    any_of
-      sig: jnl.fvm.rules.any_of()
-      doc: 
+      sig: jnl.fvm.rules.any_of(...:pred) -> pred
+      doc: True if any supplied predicate returns true
    field_above
-      sig: jnl.fvm.rules.field_above()
-      doc: 
+      sig: jnl.fvm.rules.field_above(threshold:number) -> pred
+      doc: True if the latest field_norm fact exceeds threshold or is NaN
    field_change_below
-      sig: jnl.fvm.rules.field_change_below()
-      doc: 
+      sig: jnl.fvm.rules.field_change_below(tol:number, n_consec:int?) -> pred
+      doc: True if the last n_consec field_change facts are all below tol
    field_is_nan
-      sig: jnl.fvm.rules.field_is_nan()
-      doc: 
+      sig: jnl.fvm.rules.field_is_nan() -> pred
+      doc: True if the latest field_norm fact is NaN
    field_norm_below
-      sig: jnl.fvm.rules.field_norm_below()
-      doc: 
+      sig: jnl.fvm.rules.field_norm_below(tol:number, n_consec:int?) -> pred
+      doc: True if the last n_consec field_norm facts are all below tol; use for
+           MONITOR-tracked fields like divU
    field_stagnant
-      sig: jnl.fvm.rules.field_stagnant()
-      doc: 
+      sig: jnl.fvm.rules.field_stagnant(tol:number, window:int?) -> pred
+      doc: True if the field_norm range over window iters is below tol * lo; detects
+           stalled convergence
    general_post_mortem
-      sig: jnl.fvm.rules.general_post_mortem()
-      doc: 
+      sig: jnl.fvm.rules.general_post_mortem(opts:table?) -> ruleset
+      doc: Field-agnostic post-mortem; discovers fields from sage history; opts: {
+           blowup_threshold, stall_window, stall_tol, trajectory_window, growth_factor,
+           asymmetry_tol, residual_blowup_threshold }
    pm_advice
-      sig: jnl.fvm.rules.pm_advice()
-      doc: 
+      sig: jnl.fvm.rules.pm_advice(code:string, msg:string) -> rule
+      doc: Derive an advice fact when a diagnosis with the given code is seen
    pm_print
-      sig: jnl.fvm.rules.pm_print()
-      doc: 
+      sig: jnl.fvm.rules.pm_print() -> rule
+      doc: Print all diagnosis and advice facts to stdout
    pm_rule
-      sig: jnl.fvm.rules.pm_rule()
-      doc: 
+      sig: jnl.fvm.rules.pm_rule(name:string, fn:function) -> rule
+      doc: Rule that fires on post_mortem facts; fn(sage, fact, diagnostics, diag_fn)
+           should call diag_fn(code, msg) only when significant
    post_mortem
-      sig: jnl.fvm.rules.post_mortem()
-      doc: 
+      sig: jnl.fvm.rules.post_mortem(rules_list:rule[], opts:table?) -> ruleset
+      doc: Wrap a list of pm_rule entries into a ruleset; opts: { print=true }
    residual_below
-      sig: jnl.fvm.rules.residual_below()
-      doc: 
+      sig: jnl.fvm.rules.residual_below(tol:number, n_consec:int?) -> pred
+      doc: True if the last n_consec residual facts for the field are all below tol
    stopping
-      sig: jnl.fvm.rules.stopping()
-      doc: 
+      sig: jnl.fvm.rules.stopping(criteria:table, opts:table?) -> ruleset
+      doc: Stopping ruleset; criteria: { converged:criterion, diverged:criterion };
+           opts: { loop_depth=1 }
    tabular_progress
-      sig: jnl.fvm.rules.tabular_progress()
-      doc: 
-   type column —
-      constructor: (none)
-   type criterion —
-      constructor: (none)
-   type pred —
-      constructor: (none)
-   type rule —
-      constructor: (none)
-   type ruleset —
-      constructor: (none)
+      sig: jnl.fvm.rules.tabular_progress(columns:column[], opts:table?) -> ruleset
+      doc: Periodic tabular log; opts: { loop_depth=1, every=25, header_every=20 }
+   type column [table] — Two-element array { field, kind } describing one
+   tabular_progress column
+      constructor: { 'divU', 'field_norm' } or { 'Ux', 'residual' }
+   type criterion [function] — Aggregate criterion over multiple fields; passed to
+   stopping()
+      constructor: Rules.all_fields / Rules.any_field
+   type pred [function] — Field predicate passed to alg:converge or alg:guard
+      constructor: Rules.residual_below / Rules.field_norm_below / Rules.field_is_nan etc.
+   type rule [table] — Single named rule with match and fire functions
+      constructor: Rules.pm_rule / Rules.pm_advice / Rules.pm_print
+   type ruleset [table] — Table of rules with optional init; passed to
+   sage:add_ruleset or alg:add_ruleset
+      constructor: Rules.stopping / Rules.tabular_progress / Rules.post_mortem etc.
 
-## jnl.fvm.study
-   FVM-specific study helper with automatic case builders and inspectors
-
-   Use jnl.fvm.study when a script can expose mesh, registry, algorithm, and
-   boundary-condition builders.
-
-   Builders receive design variables first and run options second: fn(design, opts). Use
-   design for sweep/optimisation variables, and defaults/options for ordinary run
-   configuration.
-
-   The helper registers standard REPL inspectors such as inspect-registry, inspect-deps,
-   inspect-instructions, and run, while still allowing custom evaluate, output, plot,
-   write, and optimisation functions.
-
-   new
-      sig: jnl.fvm.study.new(title:string?) -> FvmStudy
-      doc: Create an FVM REPL study object
-   type FvmStudy [table] — FVM-specific study object with automatic case builders and
-   inspectors
-      constructor: jnl.fvm.study.new(title)
-      FvmStudy:algorithm
-         sig: FvmStudy:algorithm(fn:function, opts:table?) -> FvmStudy
-         doc: Register an algorithm builder fn(design, opts) -> Algorithm
-      FvmStudy:bcs
-         sig: FvmStudy:bcs(fn:function, opts:table?) -> FvmStudy
-         doc: Register a boundary-condition builder fn(design, opts) -> table
-      FvmStudy:build_algorithm
-         sig: FvmStudy:build_algorithm(design_overrides:table?) -> Algorithm
-         doc: Build the algorithm for a design
-      FvmStudy:build_bcs
-         sig: FvmStudy:build_bcs(design_overrides:table?) -> table
-         doc: Build boundary conditions for a design
-      FvmStudy:build_case
-         sig: FvmStudy:build_case(design_overrides:table?) -> Case
-         doc: Build and compile an FVM case without running it
-      FvmStudy:build_case_with
-         sig: FvmStudy:build_case_with(design_overrides:table, option_overrides:table )
-              -> Case
-         doc: Build and compile an FVM case with option overrides
-      FvmStudy:build_mesh
-         sig: FvmStudy:build_mesh(design_overrides:table?) -> Mesh
-         doc: Build the mesh for a design
-      FvmStudy:build_registry
-         sig: FvmStudy:build_registry(design_overrides:table?) -> Registry
-         doc: Build the registry for a design
-      FvmStudy:case
-         sig: FvmStudy:case(fn:function, opts:table?) -> FvmStudy
-         doc: Register a custom case builder fn(design, opts) -> Case
-      FvmStudy:default_evaluate
-         sig: FvmStudy:default_evaluate(design:table, opts:table) -> table
-         doc: Build, run, and return a standard result table
-      FvmStudy:inspect_algorithm
-         sig: FvmStudy:inspect_algorithm(design_overrides:table?) -> Case
-         doc: Build the case, print the expanded algorithm used for compilation, and
-              return the case
-      FvmStudy:inspect_deps
-         sig: FvmStudy:inspect_deps(design_overrides:table?) -> Registry
-         doc: Print the registry dependency listing and return it
-      FvmStudy:inspect_instructions
-         sig: FvmStudy:inspect_instructions(design_overrides:table?) -> Case
-         doc: Print compiled FVM instructions and return the case
-      FvmStudy:inspect_registry
-         sig: FvmStudy:inspect_registry(design_overrides:table?) -> Registry
-         doc: Print the registry listing and return it
-      FvmStudy:inspect_resources
-         sig: FvmStudy:inspect_resources(design_overrides:table?) -> Case
-         doc: Print compiled resource counts and return the case
-      FvmStudy:inspect_warnings
-         sig: FvmStudy:inspect_warnings(design_overrides:table?) -> Case
-         doc: Print compile warnings and return the case
-      FvmStudy:install
-         sig: FvmStudy:install(repl:Repl?) -> Repl
-         doc: Install FVM inspectors and generic study helpers into a REPL
-      FvmStudy:mesh
-         sig: FvmStudy:mesh(fn:function, opts:table?) -> FvmStudy
-         doc: Register a mesh builder fn(design, opts) -> Mesh
-      FvmStudy:registry
-         sig: FvmStudy:registry(fn:function, opts:table?) -> FvmStudy
-         doc: Register a registry builder fn(design, opts) -> Registry
-      FvmStudy:show_mesh
-         sig: FvmStudy:show_mesh(design_overrides:table?) -> Mesh
-         doc: Build and display the mesh in the UI
 
 ## jnl.fvm.vtk
    Write FVM field data to VTK legacy ASCII unstructured grid files.
@@ -1967,6 +1925,7 @@ JNL API Reference
       Writer:write
          sig: Writer:write(self) -> nil
          doc: Flush all fields to disk.
+
 
 ## jnl.geo2d.domain
    Build named 2D PSLG domains from shapes, holes, lines, and regions
@@ -2009,6 +1968,7 @@ JNL API Reference
       sig: jnl.geo2d.domain.new(outer:Shape, opts:table?) -> Domain
       doc: Create domain with given outer boundary. opts: { default='wall' }
 
+
 ## jnl.geo2d.shapes
    2D shape primitives for geometry and PSLG construction
 
@@ -2025,6 +1985,7 @@ JNL API Reference
    rect
       sig: jnl.geo2d.shapes.rect(x0, y0, x1, y1:number) -> Rect
       doc: Axis-aligned rectangle from two corners
+
 
 ## jnl.geo2d.types
    Type stubs for userdata exposed by geo2d_internal
@@ -2063,6 +2024,7 @@ JNL API Reference
          sig: PSLG:region_add(x, y:number, marker?, max_area?) -> int
          doc: Add a region seed with optional area constraint
 
+
 ## jnl.gp
    Gnuplot driver via popen; supports interactive display, file output, and CSV export.
 
@@ -2083,8 +2045,8 @@ JNL API Reference
       doc: Sample fn over [x0,x1] at n+1 points (default 200); returns two arrays
    series
       sig: jnl.gp.series(xs, ys, opts?) -> Series
-      doc: Build a series struct explicitly; opts: { title, style, color, lw, pt, ps, dt
-           }
+      doc: Build a series struct explicitly; opts: { title, style, colour, lw, pt, ps,
+           dt }
    write_csv
       sig: jnl.gp.write_csv(path, xs_or_series, ys?) -> nil
       doc: Write xs/ys or a list of Series structs to a CSV file
@@ -2096,7 +2058,7 @@ JNL API Reference
          doc: Append a data series; accepts raw arrays or a Series struct; chainable
       Figure:hline
          sig: Figure:hline(y:number, opts?) -> Figure
-         doc: Add a horizontal reference line; opts: { lw, color, dt, title }
+         doc: Add a horizontal reference line; opts: { lw, colour, dt, title }
       Figure:save
          sig: Figure:save(path:string, opts?) -> nil
          doc: Save to file; terminal inferred from extension; opts: { size, font,
@@ -2106,7 +2068,7 @@ JNL API Reference
          doc: Open a persistent interactive gnuplot window
       Figure:vline
          sig: Figure:vline(x:number, opts?) -> Figure
-         doc: Add a vertical reference line; opts: { lw, color, dt, title }
+         doc: Add a vertical reference line; opts: { lw, colour, dt, title }
       Figure:write_csv
          sig: Figure:write_csv(path:string) -> Figure
          doc: Dump all series to CSV; chainable
@@ -2160,6 +2122,7 @@ JNL API Reference
       theta = "\"{/Symbol q}\""
         lowercase theta
 
+
 ## jnl.gp.compare
    Comparison plotting helpers for numerical, analytical, and reference profiles
 
@@ -2203,6 +2166,7 @@ JNL API Reference
    type Profile [table] — Profile data table for plotting and validation
       constructor: jnl.gp.compare.profile(coord, value, opts?)
 
+
 ## jnl.gp.mesh
    Field extraction helpers for plotting mesh field data with jnl.gp.
 
@@ -2216,6 +2180,7 @@ JNL API Reference
       doc: Extract field values along a boundary patch; opts: { field_location =
            'cell'|'face', sort = bool }
 
+
 ## jnl.llm
    LLM coding context and instructions for JNLCFD
 
@@ -2226,11 +2191,12 @@ JNL API Reference
       sig: jnl.llm.examples_string() -> string
       doc: Return example scripts as a formatted string
    preamble_string
-      sig: jnl.llm.preamble_string() -> string
+      sig: jnl.llm.preamble_string(opts:table?) -> string
       doc: Return LLM coding instructions without the API reference
    print
       sig: jnl.llm.print(opts:table?) -> nil
       doc: Print the full LLM coding context to stdout
+
 
 ## jnl.mesh2d
    2D meshing facade for structured and PSLG meshes
@@ -2252,6 +2218,7 @@ JNL API Reference
       sig: jnl.mesh2d.patch_name_set(mesh:Mesh) -> table
       doc: Set of patch name strings: {[name]=true}
 
+
 ## jnl.mesh2d.smesh
    Named patch string constants for structured (smesh) meshes
 
@@ -2266,6 +2233,7 @@ JNL API Reference
       TOP = "\"north\""         Alias for NORTH
       WEST = "\"west\""         West boundary
    (no _api or _types)
+
 
 ## jnl.mesh2d.tri
    Fluent triangulation spec builder for PSLG meshing
@@ -2324,6 +2292,7 @@ JNL API Reference
       Spec:triangulate
          sig: Spec:triangulate(pslg:PSLG) -> Mesh, string
          doc: Run triangulation. Returns mesh+'ok' on success, nil+errmsg on failure.
+
 
 ## jnl.mesh2d.types
    Type stubs for userdata exposed by mesh2d_internal
@@ -2465,163 +2434,66 @@ JNL API Reference
          sig: TriTags:set_require_named_regions(enabled:bool) -> nil
          doc: Error on unmapped region markers during meshing
 
-## jnl.repl
-   Configurable Fennel REPL with comma commands and help system
 
-   Use jnl.repl.new() in interactive scripts, register useful values with repl:register,
-   then end with return repl:run().
-
-   The REPL evaluates Fennel input, even when the startup script itself is written in
-   Lua.
-
-   Registered names should be user-facing and Fennel-friendly; prefer names like
-   show-mesh while optionally adding Lua-style aliases.
-
-   Comma commands are for REPL control and discovery; registered globals are for
-   user-callable demo functions and objects.
-
-   Scripts can call repl:usage(text_or_fn) to provide a study-specific ,usage guide
-   alongside the general ,help command.
-
-   llm
-      sig: jnl.repl.llm(opts:table?) -> nil
-      doc: Print full JNLCFD coding context for LLMs
-   llm_string
-      sig: jnl.repl.llm_string(opts:table?) -> string
-      doc: Return full JNLCFD coding context for LLMs
-   new
-      sig: jnl.repl.new() -> Repl
-      doc: Create a new REPL instance with built-in commands registered
-   script_summary
-      sig: jnl.repl.script_summary(script_path:string) -> nil
-      doc: Print globals that a script introduced
-   type Repl [table] — Configurable Fennel REPL object
-      constructor: jnl.repl.new
-      Repl:command
-         sig: Repl:command(name:string, fn:function, usage:string?, doc:string?) -> nil
-         doc: Register a custom comma command
-      Repl:pp
-         sig: Repl:pp(value:any, opts:table?) -> any
-         doc: Pretty-print a Lua/Fennel value and return it
-      Repl:print_usage
-         sig: Repl:print_usage() -> nil
-         doc: Print registered study-specific usage text
-      Repl:register
-         sig: Repl:register(name:string, value:any, doc:string?) -> nil
-         doc: Expose a value as a global and add it to the help system
-      Repl:run
-         sig: Repl:run() -> nil
-         doc: Start the Fennel REPL loop
-      Repl:usage
-         sig: Repl:usage(spec:string|table|function) -> nil
-         doc: Register study-specific usage text or a usage provider for ,usage
-      Repl:usage_string
-         sig: Repl:usage_string() -> string
-         doc: Return registered study-specific usage text
-
-## jnl.repl.study
-   Generic study helper for exposing scripted workflows through the REPL
-
-   Use jnl.repl.study for scripts that are ordinary Lua programs but should present a
-   friendly REPL surface.
-
-   Put run configuration such as nx, tolerance, scheme, and output paths in defaults().
-   Put design variables such as geometry dimensions or shape parameters in design().
-
-   evaluate() should register a function that runs ONE simulation and returns a uniform
-   result table: { x, opts, mesh, sim, case, field, fields }. This contract lets
-   sweep(), optimise(), and uq() call run() as a black box and operate on typed results.
-
-   sweep(), optimise(), and uq() each accept fn(study) -> any. Call study:run(overrides)
-   inside to get uniform result objects; use whatever parametric/optimisation/UQ library
-   you like for the outer loop. All three are registered as REPL callables.
+## jnl.repl.printer
+   Terminal text printer with wrapping and indentation
 
    new
-      sig: jnl.repl.study.new(title:string?) -> Study
-      doc: Create a generic REPL study object
-   type Study [table] — Generic study object for REPL-facing scripted workflows
-      constructor: jnl.repl.study.new(title)
-      Study:about
-         sig: Study:about(summary:string, opts:table?) -> Study
-         doc: Set study summary text; opts: { entry }
-      Study:after_run
-         sig: Study:after_run(fn:function) -> Study
-         doc: Register a hook called after evaluate
-      Study:before_run
-         sig: Study:before_run(fn:function) -> Study
-         doc: Register a hook called before evaluate
-      Study:bounds
-         sig: Study:bounds(bounds:table) -> Study
-         doc: Set design variable bounds as { name={lo,hi} }
-      Study:check_bounds
-         sig: Study:check_bounds(design:table) -> nil
-         doc: Error if design variables fall outside registered bounds
-      Study:defaults
-         sig: Study:defaults(defaults:table) -> Study
-         doc: Set default run options
-      Study:design
-         sig: Study:design(design:table) -> Study
-         doc: Set default design variables
-      Study:design_opts
-         sig: Study:design_opts(overrides:table?) -> table
-         doc: Return default design variables merged with overrides
-      Study:evaluate
-         sig: Study:evaluate(fn:function, meta:table?) -> Study
-         doc: Register the main evaluation function
-      Study:expose
-         sig: Study:expose(name:string, value:any, doc:string?) -> Study
-         doc: Expose a helper or value as a registered REPL global
-      Study:install
-         sig: Study:install(repl:Repl?) -> Repl
-         doc: Install usage and registered helpers into a REPL
-      Study:last_results
-         sig: Study:last_results() -> table?
-         doc: Return the last evaluated result, or nil if the study has not run
-      Study:optimise
-         sig: Study:optimise(name:string, fn:function(study), opts:table?) -> Study
-         doc: Register an optimisation; fn receives the study and calls run(overrides)
-              as its inner loop
-      Study:option
-         sig: Study:option(name:string, doc:string) -> Study
-         doc: Document one user-facing option
-      Study:options
-         sig: Study:options(options:table) -> Study
-         doc: Document user-facing options
-      Study:opts
-         sig: Study:opts(overrides:table?) -> table
-         doc: Return defaults merged with overrides
-      Study:output
-         sig: Study:output(name:string, fn:function, doc:string?) -> Study
-         doc: Register an output helper over the last result
-      Study:plot
-         sig: Study:plot(name:string, fn:function, opts:table?) -> Study
-         doc: Register a plot helper over the last result
-      Study:print_usage
-         sig: Study:print_usage() -> nil
-         doc: Print generated usage text for the study
-      Study:repl
-         sig: Study:repl(repl:Repl?) -> nil
-         doc: Install the study into a REPL and start it
-      Study:result_or_run
-         sig: Study:result_or_run() -> table
-         doc: Return last_result, or evaluate the default design if absent
-      Study:run
-         sig: Study:run(design_overrides:table?) -> table
-         doc: Evaluate the study and store the result as last_result
-      Study:sweep
-         sig: Study:sweep(name:string, fn:function(study), opts:table?) -> Study
-         doc: Register a parameter sweep; fn receives the study and calls run(overrides)
-              in a loop
-      Study:uq
-         sig: Study:uq(name:string, fn:function(study), opts:table?) -> Study
-         doc: Register a UQ study; fn receives the study and calls run(overrides) per
-              sample
-      Study:usage_string
-         sig: Study:usage_string() -> string
-         doc: Return generated usage text for the study
-      Study:write
-         sig: Study:write(name:string, fn:function(result, path), opts:table?) -> Study
-         doc: Register a writer; REPL call is (write-name path result?)
+      sig: jnl.repl.printer.new(opts:table?) -> Printer
+      doc: Create a printer; opts: { width=72, out:fn? }; default out buffers to
+           string()
+   type Printer [table] — Builder that accumulates formatted terminal output; all emit
+   methods return nil
+      constructor: Printer.new(opts?)
+      Printer:blank
+         sig: Printer:blank() -> nil
+         doc: Emit a blank line
+      Printer:bullet
+         sig: Printer:bullet(text:string) -> nil
+         doc: Emit a single bullet item
+      Printer:columns
+         sig: Printer:columns(left, right:string, opts:table?) -> nil
+         doc: Emit a two-column row; opts: { indent, left_width=32, gap, doc_indent }
+      Printer:header
+         sig: Printer:header(text:string, level:int?) -> nil
+         doc: Emit a markdown heading (# = level 1); blank line before, none after
+      Printer:item
+         sig: Printer:item(name:string, fields:table, opts:table?) -> nil
+         doc: Emit a named item with labelled sub-fields
+      Printer:kv
+         sig: Printer:kv(key:string, value:string, opts:table?) -> nil
+         doc: Emit a key-value row; opts: { width=16 }
+      Printer:line
+         sig: Printer:line(text:string?) -> nil
+         doc: Emit one line
+      Printer:rule
+         sig: Printer:rule(opts:table?) -> nil
+         doc: Emit a horizontal rule; opts: { char='-', width=40 }
+      Printer:string
+         sig: Printer:string() -> string
+         doc: Return buffered output; only valid with the default buffer sink
+      Printer:wrap
+         sig: Printer:wrap(first_indent, rest_indent, text:string) -> nil
+         doc: Emit word-wrapped text with separate first/rest indentation
+   type Printer.fmt [table] — Pure string formatters; return complete strings with
+   newlines; safe to io.write() directly
+      constructor: Printer.fmt (static sub-table)
+      Printer.fmt:bullet
+         sig: Printer.fmt:bullet(text:string) -> string
+         doc: Single bullet item: ' - text'
+      Printer.fmt:header
+         sig: Printer.fmt:header(text:string, level:int?) -> string
+         doc: Markdown heading; blank line before; level defaults to 1
+      Printer.fmt:indent
+         sig: Printer.fmt:indent(text:string, n:int?) -> string
+         doc: Indent every line of a block by n spaces (default 2)
+      Printer.fmt:kv
+         sig: Printer.fmt:kv(key, value:string, opts:table?) -> string
+         doc: Key-value row; opts: { width=16 }
+      Printer.fmt:rule
+         sig: Printer.fmt:rule(opts:table?) -> string
+         doc: Horizontal rule; opts: { char='-', width=40 }
+
 
 ## jnl.sage
    Lightweight rule engine with forward-chaining propagation, pattern queries, and
@@ -2689,29 +2561,6 @@ JNL API Reference
          sig: Sage:query((self, pattern:table, opts:table?) -> table) -> fact[]
          doc: Return all facts matching pattern. opts: { sort_by, desc, limit }.
 
-## jnl.term_printer
-   Terminal text printer with wrapping and indentation
-
-   new
-      sig: jnl.term_printer.new(opts:table?) -> Printer
-      doc: Create a terminal printer
-   type Printer [table] — Printer object for wrapped terminal output
-      constructor: jnl.term_printer.new
-      Printer:blank
-         sig: Printer:blank() -> nil
-         doc: Print a blank line
-      Printer:columns
-         sig: Printer:columns(left:string, right:string, opts:table?) -> nil
-         doc: Print a wrapped two-column row
-      Printer:line
-         sig: Printer:line(text:string?) -> nil
-         doc: Print one line
-      Printer:string
-         sig: Printer:string() -> string
-         doc: Return collected output when using the default buffer sink
-      Printer:wrap
-         sig: Printer:wrap(first_indent:string, rest_indent:string, text:string) -> nil
-         doc: Print wrapped text with separate first/rest indentation
 
 ## jnl.ui
    UI facade for displaying PSLGs and meshes
@@ -2763,4 +2612,5 @@ JNL API Reference
       UIHandle:send_pslg
          sig: UIHandle:send_pslg(g:PSLG) -> bool
          doc: Send a PSLG to this UI window
+
 

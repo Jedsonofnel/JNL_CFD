@@ -3,11 +3,12 @@
 
 local base = require("jnl.repl.study")
 local Case = require("jnl.fvm.case")
-local ui = require("jnl.ui")
-local E = require("jnl.core.expr")
+local ui   = require("jnl.ui")
+local E    = require("jnl.core.expr")
 
-local M = {}
-local FvmStudy = {}
+
+local M          = {}
+local FvmStudy   = {}
 FvmStudy.__index = FvmStudy
 setmetatable(FvmStudy, { __index = base.Study })
 

@@ -212,14 +212,14 @@ local function wall_T_figure(result)
 			ylabel = "T",
 		})
 		:add(xs, Ts, {
-			title = "T (wall cells)",
-			style = "linespoints",
-			pt    = 7,
-			lw    = 1.5,
-			color = gp.color.blue,
+			title  = "T (wall cells)",
+			style  = "linespoints",
+			pt     = 7,
+			lw     = 1.5,
+			colour = gp.colour.blue,
 		})
 		-- show T_wall reference so the asymptote is visible
-		:hline(d.T_wall, { color = gp.color.grey, dt = 2, title = "T_wall" })
+		:hline(d.T_wall, { colour = gp.colour.grey, dt = 2, title = "T_wall" })
 end
 
 local function midplate_T_figure(result)
@@ -309,10 +309,10 @@ study:expose("h-sweep", function()
 		local fields = result.fields()
 		local xs, Ts = gpm.patch_profile(result.mesh, fields.T, "bottom", "x")
 		fig:add(xs, Ts, {
-			title = string.format("h=%.0f", h),
-			style = "lines",
-			lw    = 1.5,
-			color = next_c(),
+			title  = string.format("h=%.0f", h),
+			style  = "lines",
+			lw     = 1.5,
+			colour = next_c(),
 		})
 	end
 	fig:show()
