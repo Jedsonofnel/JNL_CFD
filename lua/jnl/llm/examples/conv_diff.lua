@@ -184,7 +184,7 @@ local function run_pe_sweep(s)
 end
 
 local function plot_pe_sweep(sweep_results)
-	local next_color = gp.cycler()
+	local next_colour = gp.cycler()
 	local fig = gp.figure({
 		title  = string.format("Pe sweep: L2 error vs %s", gp.sym.eta),
 		xlabel = gp.sym.eta,
@@ -194,7 +194,7 @@ local function plot_pe_sweep(sweep_results)
 	})
 	for _, scheme in ipairs({ "uds", "cds" }) do
 		local t = sweep_results[scheme]
-		fig:add(t.pe, t.l2, { title = string.upper(scheme), color = next_color() })
+		fig:add(t.pe, t.l2, { title = string.upper(scheme), colour = next_colour() })
 	end
 	fig:show()
 end
@@ -215,7 +215,7 @@ local function scheme_figure(pe)
 	local cds_res    = study:run({ pe = pe, scheme = "cds" })
 	local uds_errs   = result_error(uds_res)
 	local cds_errs   = result_error(cds_res)
-	local next_color = gp.cycler()
+	local next_colour = gp.cycler()
 
 	return gp.figure({
 			title  = string.format(
@@ -229,21 +229,21 @@ local function scheme_figure(pe)
 			title = "Analytical",
 			style = "lines",
 			lw    = 2,
-			color = gp.color.grey,
+			colour = gp.colour.grey,
 		})
 		:add(get_profile(uds_res).coord, get_profile(uds_res).value, {
 			title = "UDS",
 			style = "points",
 			pt    = 7,
 			ps    = 0.8,
-			color = next_color(),
+			colour = next_colour(),
 		})
 		:add(get_profile(cds_res).coord, get_profile(cds_res).value, {
 			title = "CDS",
 			style = "points",
 			pt    = 5,
 			ps    = 0.8,
-			color = next_color(),
+			colour = next_colour(),
 		})
 end
 

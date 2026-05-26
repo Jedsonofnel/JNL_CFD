@@ -712,18 +712,23 @@ local eval_emitters = {}
 eval_emitters.face = function(reg, name, out)
 	local src_name = names.is_face(name)
 	out[#out + 1] = Inst.new("face_interp_cds", { field = src_name, out = name })
+
 	local src_sym = reg[src_name]
 	local face_kind_map = {
 		dirichlet_const = "dirichlet_face_const",
 		neumann_const   = "neumann_face_const",
 	}
+
 	if src_sym and src_sym.bcs and #src_sym.bcs > 0 then
 		for _, bc in ipairs(src_sym.bcs) do
 			out[#out + 1] = Inst.new("apply_bc_face_scalar", {
 				face_field = name,
-				patch = bc.patch,
-				kind = face_kind_map[bc.kind] or bc.kind,
-				value = bc.value,
+				src_field  = src_name,
+				patch      = bc.patch,
+				kind       = face_kind_map[bc.kind] or bc.kind,
+				value      = bc.value,
+				h          = bc.h,
+				phi_ref    = bc.phi_ref,
 			})
 		end
 		for _, pname in ipairs(src_sym.unspecified_patches or {}) do
@@ -760,17 +765,16 @@ eval_emitters.mwi = function(reg, name, out)
 	local Ux, Uy = reg_U.components[1], reg_U.components[2]
 
 	out[#out + 1] = Inst.new("rhie_chow", {
-		Ux = Ux,
-		Uy = Uy,
-		p = p,
+		Ux      = Ux,
+		Uy      = Uy,
+		p       = p,
 		grad_px = names.grad(p, "x"),
 		grad_py = names.grad(p, "y"),
-		ap_x = names.diag(Ux),
-		ap_y = names.diag(Uy),
-		out = name,
+		ap_x    = names.diag(Ux),
+		ap_y    = names.diag(Uy),
+		out     = name,
 	})
 
-	-- Derive face-normal BCs from the Ux BCs
 	local ux_sym = reg[Ux]
 	local uy_sym = reg[Uy]
 	if not (ux_sym and ux_sym.bcs) then
@@ -787,21 +791,41 @@ eval_emitters.mwi = function(reg, name, out)
 				end
 			end
 		end
+
+		local face_kind, ux_val, uy_emit
+		if bc.kind == "neumann_const" then
+			face_kind = "neumann_face_normal"
+			ux_val    = 0.0
+			uy_emit   = 0.0
+		elseif bc.kind == "robin_const" then
+			-- partial slip: tangential handled by sys assembly,
+			-- enforce no penetration for Rhie-Chow
+			face_kind = "dirichlet_face_normal"
+			ux_val    = 0.0
+			uy_emit   = 0.0
+		else
+			-- dirichlet_const and anything else: prescribed velocity
+			face_kind = "dirichlet_face_normal"
+			ux_val    = bc.value or 0.0
+			uy_emit   = uy_val
+		end
+
 		out[#out + 1] = Inst.new("apply_bc_face_normal", {
 			face_field = name,
-			patch = bc.patch,
-			kind = bc.kind == "neumann_const" and "neumann_face_normal" or "dirichlet_face_normal",
-			ux = bc.kind == "neumann_const" and 0.0 or (bc.value or 0.0),
-			uy = bc.kind == "neumann_const" and 0.0 or uy_val,
+			patch      = bc.patch,
+			kind       = face_kind,
+			ux         = ux_val,
+			uy         = uy_emit,
 		})
 	end
+
 	for _, pname in ipairs(ux_sym.unspecified_patches or {}) do
 		out[#out + 1] = Inst.new("apply_bc_face_normal", {
 			face_field = name,
-			patch = pname,
-			kind = "dirichlet_face_normal",
-			ux = 0.0,
-			uy = 0.0,
+			patch      = pname,
+			kind       = "dirichlet_face_normal",
+			ux         = 0.0,
+			uy         = 0.0,
 		})
 	end
 end
@@ -1022,10 +1046,12 @@ local function emit_solve(reg, name, alg_ctx, out)
 	if sym.bcs and #sym.bcs > 0 then
 		for _, bc in ipairs(sym.bcs) do
 			out[#out + 1] = Inst.new("apply_bc_patch", {
-				field = name,
-				patch = bc.patch,
-				kind  = bc.kind,
-				value = bc.value,
+				field   = name,
+				patch   = bc.patch,
+				kind    = bc.kind,
+				value   = bc.value,
+				h       = bc.h,
+				phi_ref = bc.phi_ref,
 			})
 		end
 		for _, patch_name in ipairs(sym.unspecified_patches or {}) do

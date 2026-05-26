@@ -190,7 +190,7 @@ int main(void)
 	for (i32 iter = 0; iter < MAX_ITERS; iter++) {
 		// 1. Pressure face interp + gradient
 		jnl_face_interp_cds(mesh, p, p_face);
-		jnl_bc_set_apply_face(&p_bcs, mesh, p, p_face);
+		jnl_bc_set_apply_face(&p_bcs, pp_sys, mesh, p, p_face);
 		jnl_grad_green_gauss(mesh, p_face, grad_px, grad_py);
 
 		// 2. Rhie-Chow face flux
@@ -243,7 +243,7 @@ int main(void)
 
 		// 8. Corrections
 		jnl_face_interp_cds(mesh, pp, pp_face);
-		jnl_bc_set_apply_face(&pp_bcs, mesh, pp, pp_face);
+		jnl_bc_set_apply_face(&pp_bcs, pp_sys, mesh, pp, pp_face);
 		jnl_grad_green_gauss(mesh, pp_face, grad_ppx, grad_ppy);
 
 		for (i32 i = 0; i < n_cells; i++) {
@@ -255,7 +255,7 @@ int main(void)
 
 		// 9. Recompute divU_L2
 		jnl_face_interp_cds(mesh, p, p_face);
-		jnl_bc_set_apply_face(&p_bcs, mesh, p, p_face);
+		jnl_bc_set_apply_face(&p_bcs, pp_sys, mesh, p, p_face);
 		jnl_grad_green_gauss(mesh, p_face, grad_px, grad_py);
 
 		jnl_rhie_chow(mesh, Ux, Uy, p, grad_px, grad_py, ap_x, ap_y, un_mwi);

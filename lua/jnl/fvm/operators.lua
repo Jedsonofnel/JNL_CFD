@@ -72,8 +72,12 @@ M.sp_integrated_scaled       = b.sp_integrated_scaled
 
 M.bc_dirichlet_const       = b.bc_dirichlet_const
 M.bc_neumann_const         = b.bc_neumann_const
+M.bc_robin_const           = b.bc_robin_const
+
 M.bc_dirichlet_face_const  = b.bc_dirichlet_face_const
 M.bc_neumann_face_const    = b.bc_neumann_face_const
+M.bc_robin_face_const      = b.bc_robin_face_const
+
 M.bc_dirichlet_face_normal = b.bc_dirichlet_face_normal
 M.bc_neumann_face_normal   = b.bc_neumann_face_normal
 
@@ -106,8 +110,8 @@ M.divergence_volumetric = b.divergence_volumetric
 -- Post processing
 --
 
-M.vorticity_2d = b.vorticity_2d
-M.patch_gradient_flux   = b.patch_gradient_flux
+M.vorticity_2d        = b.vorticity_2d
+M.patch_gradient_flux = b.patch_gradient_flux
 
 
 --
@@ -148,8 +152,12 @@ M._api = {
 
 	bc_dirichlet_const         = { sig = "bc_dirichlet_const(sys, mesh, patch:str, val:f64)", doc = "Dirichlet BC on cell field" },
 	bc_neumann_const           = { sig = "bc_neumann_const(sys, mesh, patch:str, flux:f64)", doc = "Neumann BC on cell field" },
+	bc_robin_const             = { sig = "bc_robin_const(sys, mesh, patch:str, h:f64, phi_ref:f64)", doc = "Robin BC on named patch: h·A added to diagonal, h·phi_ref·A to RHS; apply after Laplacian" },
+
 	bc_dirichlet_face_const    = { sig = "bc_dirichlet_face_const(mesh, face_f:vec, patch:str, val:f64)", doc = "Dirichlet BC on face field" },
 	bc_neumann_face_const      = { sig = "bc_neumann_face_const(mesh, field, face_f:vec, patch:str, flux:f64)", doc = "Neumann BC on face field" },
+	bc_robin_face_const        = { sig = "bc_robin_face_const(sys, mesh, field, face_field:vec, patch:str, h:f64, phi_ref:f64)", doc = "Robin face value on named patch: phi_face = (γδ·phi_P + h·phi_ref)/(γδ + h); γδ from sys.upper" },
+
 	bc_dirichlet_face_normal   = { sig = "bc_dirichlet_face_normal(mesh, un:vec, patch:str, ux, uy:f64)", doc = "Dirichlet face-normal BC from velocity vector" },
 	bc_neumann_face_normal     = { sig = "bc_neumann_face_normal(mesh, ux_f, uy_f, un:vec, patch:str, ux, uy:f64)", doc = "Neumann face-normal BC" },
 

@@ -65,6 +65,24 @@ void jnl_bc_neumann_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 	}
 }
 
+void jnl_bc_robin_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                        const char *patch_name, f64 h, f64 phi_ref)
+{
+	const struct jnl_patch *patch = find_patch(mesh, patch_name);
+	if (!patch)
+		return;
+
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+	struct jnl_ldu_matrix *mat = &sys->matrix;
+
+	for (i32 f = patch->start_face; f < patch_end(patch); f++) {
+		i32 o = mat->owner[f];
+		f64 hA = h * geom->face_area[f];
+		mat->diag[o] += hA;
+		sys->rhs[o] += hA * phi_ref;
+	}
+}
+
 //
 // Face value BCs
 //
@@ -95,6 +113,26 @@ void jnl_bc_neumann_face_const(const struct jnl_mesh *mesh, const f64 *field,
 		i32 o = topo->owner[f];
 		f64 dist = 1.0 / interp->delta_coeff[f];
 		face_field[f] = field[o] + flux * dist;
+	}
+}
+
+void jnl_bc_robin_face_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                             const f64 *field, f64 *face_field,
+                             const char *patch_name, f64 h, f64 phi_ref)
+{
+	const struct jnl_patch *patch = find_patch(mesh, patch_name);
+	if (!patch)
+		return;
+
+	const struct jnl_mesh_topo *topo = &mesh->topo;
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+	struct jnl_ldu_matrix *mat = &sys->matrix;
+
+	for (i32 f = patch->start_face; f < patch_end(patch); f++) {
+		i32 o = topo->owner[f];
+		f64 gA = -mat->upper[f];
+		f64 hA = h * geom->face_area[f];
+		face_field[f] = (gA * field[o] + hA * phi_ref) / (gA + hA);
 	}
 }
 
@@ -173,6 +211,20 @@ void jnl_bc_neumann_all(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 	}
 }
 
+void jnl_bc_robin_all(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 h,
+                      f64 phi_ref)
+{
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+	struct jnl_ldu_matrix *mat = &sys->matrix;
+
+	for (i32 f = first_patch_face(mesh); f < mesh->topo.n_faces; f++) {
+		i32 o = mat->owner[f];
+		f64 hA = h * geom->face_area[f];
+		mat->diag[o] += hA;
+		sys->rhs[o] += hA * phi_ref;
+	}
+}
+
 void jnl_bc_dirichlet_face_all(const struct jnl_mesh *mesh, f64 *face_field,
                                f64 value)
 {
@@ -189,6 +241,22 @@ void jnl_bc_neumann_face_all(const struct jnl_mesh *mesh, const f64 *field,
 		i32 o = topo->owner[f];
 		f64 dist = 1.0 / interp->delta_coeff[f];
 		face_field[f] = field[o] + flux * dist;
+	}
+}
+
+void jnl_bc_robin_face_all(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+                           const f64 *field, f64 *face_field, f64 h,
+                           f64 phi_ref)
+{
+	const struct jnl_mesh_topo *topo = &mesh->topo;
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+	struct jnl_ldu_matrix *mat = &sys->matrix;
+
+	for (i32 f = first_patch_face(mesh); f < topo->n_faces; f++) {
+		i32 o = topo->owner[f];
+		f64 gA = -mat->upper[f];
+		f64 hA = h * geom->face_area[f];
+		face_field[f] = (gA * field[o] + hA * phi_ref) / (gA + hA);
 	}
 }
 
@@ -223,42 +291,72 @@ void jnl_bc_neumann_face_normal_all(const struct jnl_mesh *mesh, const f64 *ux,
 void jnl_bc_set_apply_sys(const struct jnl_bc_set *bcs, struct jnl_fvsys *sys,
                           const struct jnl_mesh *mesh)
 {
-	if (!bcs->entries) { // set all path
-		if (bcs->all_kind == JNL_BC_DIRICHLET)
+	if (!bcs->entries) {
+		switch (bcs->all_kind) {
+		case JNL_BC_DIRICHLET:
 			jnl_bc_dirichlet_all(sys, mesh, bcs->all_value);
-		else
+			break;
+		case JNL_BC_NEUMANN:
 			jnl_bc_neumann_all(sys, mesh, bcs->all_value);
+			break;
+		case JNL_BC_ROBIN:
+			jnl_bc_robin_all(sys, mesh, bcs->all_h, bcs->all_phi_ref);
+			break;
+		}
 		return;
 	}
 
 	for (i32 i = 0; i < bcs->n_entries; i++) {
 		const struct jnl_bc_entry *e = &bcs->entries[i];
-		if (e->kind == JNL_BC_DIRICHLET)
+		switch (e->kind) {
+		case JNL_BC_DIRICHLET:
 			jnl_bc_dirichlet_const(sys, mesh, e->patch, e->value);
-		else
+			break;
+		case JNL_BC_NEUMANN:
 			jnl_bc_neumann_const(sys, mesh, e->patch, e->value);
+			break;
+		case JNL_BC_ROBIN:
+			jnl_bc_robin_const(sys, mesh, e->patch, e->h, e->phi_ref);
+			break;
+		}
 	}
 }
 
-void jnl_bc_set_apply_face(const struct jnl_bc_set *bcs,
+void jnl_bc_set_apply_face(const struct jnl_bc_set *bcs, struct jnl_fvsys *sys,
                            const struct jnl_mesh *mesh, const f64 *field,
                            f64 *face_field)
 {
-	if (!bcs->entries) { // set all path
-		if (bcs->all_kind == JNL_BC_DIRICHLET)
+	if (!bcs->entries) {
+		switch (bcs->all_kind) {
+		case JNL_BC_DIRICHLET:
 			jnl_bc_dirichlet_face_all(mesh, face_field, bcs->all_value);
-		else
+			break;
+		case JNL_BC_NEUMANN:
 			jnl_bc_neumann_face_all(mesh, field, face_field, bcs->all_value);
+			break;
+		case JNL_BC_ROBIN:
+			jnl_bc_robin_face_all(sys, mesh, field, face_field, bcs->all_h,
+			                      bcs->all_phi_ref);
+			break;
+		}
 		return;
 	}
 
 	for (i32 i = 0; i < bcs->n_entries; i++) {
 		const struct jnl_bc_entry *e = &bcs->entries[i];
-		if (e->kind == JNL_BC_DIRICHLET)
+		switch (e->kind) {
+		case JNL_BC_DIRICHLET:
 			jnl_bc_dirichlet_face_const(mesh, face_field, e->patch, e->value);
-		else
+			break;
+		case JNL_BC_NEUMANN:
 			jnl_bc_neumann_face_const(mesh, field, face_field, e->patch,
 			                          e->value);
+			break;
+		case JNL_BC_ROBIN:
+			jnl_bc_robin_face_const(sys, mesh, field, face_field, e->patch,
+			                        e->h, e->phi_ref);
+			break;
+		}
 	}
 }
 
@@ -270,7 +368,6 @@ void jnl_bc_set_apply_face_normal(const struct jnl_bc_set *ux_bcs,
 	for (i32 i = 0; i < ux_bcs->n_entries; i++) {
 		const struct jnl_bc_entry *ex = &ux_bcs->entries[i];
 
-		// Find matching uy entry for this patch (linear scan; sets are tiny)
 		f64 vy = 0.0;
 		jnl_bc_kind ky = ex->kind;
 		for (i32 j = 0; j < uy_bcs->n_entries; j++) {
@@ -280,14 +377,22 @@ void jnl_bc_set_apply_face_normal(const struct jnl_bc_set *ux_bcs,
 				break;
 			}
 		}
+		(void)ky;
 
-		(void)ky; // kinds matched implicitly; mismatched kinds are unusual
-
-		if (ex->kind == JNL_BC_DIRICHLET)
+		switch (ex->kind) {
+		case JNL_BC_DIRICHLET:
 			jnl_bc_dirichlet_face_normal(mesh, un_face, ex->patch, ex->value,
 			                             vy);
-		else
+			break;
+		case JNL_BC_NEUMANN:
 			jnl_bc_neumann_face_normal(mesh, ux, uy, un_face, ex->patch,
 			                           ex->value, vy);
+			break;
+		case JNL_BC_ROBIN:
+			// Robin on velocity: partial slip affects tangential component
+			// only — enforce no penetration in normal direction for Rhie-Chow
+			jnl_bc_dirichlet_face_normal(mesh, un_face, ex->patch, 0.0, 0.0);
+			break;
+		}
 	}
 }

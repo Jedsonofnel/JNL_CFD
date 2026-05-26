@@ -150,7 +150,7 @@ end
 local function profile_figure(result)
 	local d            = result.x
 	local ana_y, ana_u = analytical_profile(d)
-	local next_color   = gp.cycler()
+	local next_colour   = gp.cycler()
 
 	return gp.figure({
 			title  = string.format(
@@ -167,19 +167,19 @@ local function profile_figure(result)
 			title = "Inlet numerical",
 			style = "points",
 			pt    = 7,
-			color = next_color(),
+			colour = next_colour(),
 		})
 		:add(result.profiles.outlet.u, result.profiles.outlet.y, {
 			title = "Outlet numerical",
 			style = "points",
 			pt    = 5,
-			color = next_color(),
+			colour = next_colour(),
 		})
 		:add(ana_u, ana_y, {
 			title = "Analytical developed",
 			style = "lines",
 			lw    = 2,
-			color = next_color(),
+			colour = next_colour(),
 		})
 end
 

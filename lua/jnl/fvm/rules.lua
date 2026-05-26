@@ -551,43 +551,71 @@ end
 -- API
 --
 
+--
+-- API
+--
+
 M._doc = "Rule helpers and rulesets for FVM convergence monitoring via Sage."
 
-M._doc_subsection = "The d argument passed to pm_rule callbacks is sim.diag — the same Diag object " ..
+M._doc_subsection =
+	"The d argument passed to pm_rule callbacks is sim.diag — the same Diag object " ..
 	"documented in jnl.fvm.sim. Use d.field(name), d.max(name), and d.sys_diag(name) " ..
 	"to inspect field state at the point of divergence."
 
-
 M._api = {
-	-- predicates
-	residual_below      = "(tol, n_consec?) -> pred  true if last n residuals all < tol",
-	field_above         = "(threshold) -> pred  true if latest field_norm > threshold or NaN",
-	field_is_nan        = "() -> pred  true if latest field_norm is NaN",
-	field_change_below  = "(tol, n_consec?) -> pred  true if last n normL2_rel_diff < tol",
-	field_stagnant      = "(tol, window?) -> pred  true if field_norm range < tol*lo over window iters",
-	field_norm_below    = "(tol, n_consec?) -> pred  true if last n field_norm values all < tol",
-	any_of              = "(...preds) -> pred  true if any child predicate is true",
-	-- criteria
-	all_fields          = "(predicates:{field->pred}) -> criterion  true if all fields satisfy pred",
-	any_field           = "(predicates:{field->pred}) -> criterion  true if any field satisfies pred",
+	-- predicates: return a pred fn(field, sage, iter, depth) -> bool
+	residual_below      = { args = "tol:number, n_consec:int?", ret = "pred", doc = "True if the last n_consec residual facts for the field are all below tol" },
+	field_above         = { args = "threshold:number", ret = "pred", doc = "True if the latest field_norm fact exceeds threshold or is NaN" },
+	field_is_nan        = { args = "", ret = "pred", doc = "True if the latest field_norm fact is NaN" },
+	field_change_below  = { args = "tol:number, n_consec:int?", ret = "pred", doc = "True if the last n_consec field_change facts are all below tol" },
+	field_norm_below    = { args = "tol:number, n_consec:int?", ret = "pred", doc = "True if the last n_consec field_norm facts are all below tol; use for MONITOR-tracked fields like divU" },
+	field_stagnant      = { args = "tol:number, window:int?", ret = "pred", doc = "True if the field_norm range over window iters is below tol * lo; detects stalled convergence" },
+	any_of              = { args = "...:pred", ret = "pred", doc = "True if any supplied predicate returns true" },
+	-- criteria: return a criterion fn(sage, iter, depth) -> bool
+	all_fields          = { args = "predicates:table<string,pred>", ret = "criterion", doc = "True if every field satisfies its predicate; use for AND convergence" },
+	any_field           = { args = "predicates:table<string,pred>", ret = "criterion", doc = "True if any field satisfies its predicate; use for OR divergence guard" },
 	-- rulesets
-	stopping            = "(criteria, opts?) -> ruleset  convergence/divergence stopping rules",
-	tabular_progress    = "(columns:{{field,kind}}, opts?) -> ruleset  periodic tabular log",
-	post_mortem         = "(rules_list, opts?) -> ruleset  post-mortem diagnosis ruleset",
+	stopping            = { args = "criteria:table, opts:table?", ret = "ruleset", doc = "Stopping ruleset; criteria: { converged:criterion, diverged:criterion }; opts: { loop_depth=1 }" },
+	tabular_progress    = { args = "columns:column[], opts:table?", ret = "ruleset", doc = "Periodic tabular log; opts: { loop_depth=1, every=25, header_every=20 }" },
+	post_mortem         = { args = "rules_list:rule[], opts:table?", ret = "ruleset", doc = "Wrap a list of pm_rule entries into a ruleset; opts: { print=true }" },
+	general_post_mortem = { args = "opts:table?", ret = "ruleset", doc = "Field-agnostic post-mortem; discovers fields from sage history; opts: { blowup_threshold, stall_window, stall_tol, trajectory_window, growth_factor, asymmetry_tol, residual_blowup_threshold }" },
 	-- rule factories
-	pm_rule             = "(name, fn) -> rule  fire fn on post_mortem fact; fn calls diag() only when significant",
-	pm_advice           = "(code, msg) -> rule  derive advice fact when diagnosis code seen",
-	pm_print            = "() -> rule  print all diagnosis and advice facts",
-	general_post_mortem =
-	"(opts?) -> ruleset  field-agnostic post-mortem; discovers fields from sage history. opts: { blowup_threshold, stall_window, stall_tol, trajectory_window, growth_factor, asymmetry_tol }",
+	pm_rule             = { args = "name:string, fn:function", ret = "rule", doc = "Rule that fires on post_mortem facts; fn(sage, fact, diagnostics, diag_fn) should call diag_fn(code, msg) only when significant" },
+	pm_advice           = { args = "code:string, msg:string", ret = "rule", doc = "Derive an advice fact when a diagnosis with the given code is seen" },
+	pm_print            = { args = "", ret = "rule", doc = "Print all diagnosis and advice facts to stdout" },
 }
 
 M._types = {
-	pred      = "(field:string, sage, iter, depth) -> bool",
-	criterion = "(sage, iter, depth) -> bool",
-	ruleset   = "{ rules:{rule}, init:fn? }  — passed to sage:add_ruleset or alg:add_ruleset",
-	rule      = "{ name:string, match:fn, fire:fn }",
-	column    = "{ [1]:field:string, [2]:kind:'residual'|'field_norm' }",
+	pred = {
+		doc         = "Field predicate passed to alg:converge or alg:guard",
+		constructor = "Rules.residual_below / Rules.field_norm_below / Rules.field_is_nan etc.",
+		kind        = "function",
+		methods     = {},
+	},
+	criterion = {
+		doc         = "Aggregate criterion over multiple fields; passed to stopping()",
+		constructor = "Rules.all_fields / Rules.any_field",
+		kind        = "function",
+		methods     = {},
+	},
+	ruleset = {
+		doc         = "Table of rules with optional init; passed to sage:add_ruleset or alg:add_ruleset",
+		constructor = "Rules.stopping / Rules.tabular_progress / Rules.post_mortem etc.",
+		kind        = "table",
+		methods     = {},
+	},
+	rule = {
+		doc         = "Single named rule with match and fire functions",
+		constructor = "Rules.pm_rule / Rules.pm_advice / Rules.pm_print",
+		kind        = "table",
+		methods     = {},
+	},
+	column = {
+		doc         = "Two-element array { field, kind } describing one tabular_progress column",
+		constructor = "{ 'divU', 'field_norm' } or { 'Ux', 'residual' }",
+		kind        = "table",
+		methods     = {},
+	},
 }
 
 return M

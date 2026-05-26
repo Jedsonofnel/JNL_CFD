@@ -97,7 +97,7 @@ end
 local function profile_figure(result)
 	local d            = result.x
 	local ana_y, ana_u = analytical(d)
-	local next_color   = gp.cycler()
+	local next_colour   = gp.cycler()
 	return gp.figure({
 			title  = string.format("Couette flow   Re=%.1f   %s=%.4g",
 				result.Re, gp.sym.mu, d.mu),
@@ -109,13 +109,13 @@ local function profile_figure(result)
 			title = "Numerical (SIMPLE)",
 			style = "points",
 			pt    = 7,
-			color = next_color(),
+			colour = next_colour(),
 		})
 		:add(ana_u, ana_y, {
 			title = "Analytical (linear)",
 			style = "lines",
 			lw    = 2,
-			color = next_color(),
+			colour = next_colour(),
 		})
 end
 

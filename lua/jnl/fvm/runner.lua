@@ -130,21 +130,21 @@ function Runner:has_system(name)
 end
 
 function Runner:field_names()
-	local names = {}
+	local ns = {}
 	for name in pairs(self.field_map) do
-		names[#names + 1] = name
+		ns[#ns + 1] = name
 	end
-	table.sort(names)
-	return names
+	table.sort(ns)
+	return ns
 end
 
 function Runner:system_names()
-	local names = {}
+	local ns = {}
 	for name in pairs(self.sys_map) do
-		names[#names + 1] = name
+		ns[#ns + 1] = name
 	end
-	table.sort(names)
-	return names
+	table.sort(ns)
+	return ns
 end
 
 function Runner:try_field(name)
@@ -215,6 +215,9 @@ local bc_patch_dispatch = {
 	neumann_const = function(r, inst)
 		FVM.bc_neumann_const(r:_sys(inst.field), r.mesh, inst.patch, inst.value)
 	end,
+	robin_const = function(r, inst)
+		FVM.bc_robin_const(r:_sys(inst.field), r.mesh, inst.patch, inst.h, inst.phi_ref)
+	end,
 }
 
 dispatch.apply_bc_patch = function(r, inst)
@@ -232,6 +235,13 @@ dispatch.apply_bc_face_scalar = function(r, inst)
 			r:_field(names.is_face(inst.face_field)),
 			r:_field(inst.face_field),
 			inst.patch, inst.value)
+	elseif inst.kind == "robin_face_const" then
+		FVM.bc_robin_face_const(
+			r:_sys(inst.src_field), -- sys for the cell field, not the face field
+			r.mesh,
+			r:_field(inst.src_field),
+			r:_field(inst.face_field),
+			inst.patch, inst.h, inst.phi_ref)
 	else
 		error("apply_bc_face_scalar: unknown kind '" .. tostring(inst.kind) .. "'")
 	end

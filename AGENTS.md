@@ -1332,7 +1332,9 @@ JNL API Reference
 
    BCs are plain tables { patch, kind, value } passed as lists under each field name in
    the bcs table given to Case.new(). patch is a string patch name or true to match all
-   patches. Uncovered patches default to neumann_const 0.0 with a warning.
+   patches. Uncovered patches default to neumann_const 0.0 with a warning. Robin BCs
+   carry { h, phi_ref } instead of value; face-normal BCs for Robin are automatically
+   translated to Dirichlet zero for Rhie-Chow.
 
    dirichlet
       sig: jnl.fvm.bc.dirichlet(patch:string, value:number) -> BC
@@ -1343,6 +1345,12 @@ JNL API Reference
    neumann_all
       sig: jnl.fvm.bc.neumann_all(value:number?) -> BC
       doc: Neumann 0 on all patches; shorthand wildcard
+   robin
+      sig: jnl.fvm.bc.robin(patch:string, h:number, phi_ref:number) -> BC
+      doc: Robin (mixed) BC: -γ ∂φ/∂n = h(φ - phi_ref); apply after Laplacian
+   robin_all
+      sig: jnl.fvm.bc.robin_all(h:number, phi_ref:number) -> BC
+      doc: Robin BC on all patches
    symmetry
       sig: jnl.fvm.bc.symmetry(patch:string) -> BC
       doc: Zero normal gradient; alias for neumann(patch, 0.0)
@@ -1350,7 +1358,7 @@ JNL API Reference
       sig: jnl.fvm.bc.validate(field:string, i:int, bc:BC) -> nil
       doc: Error if bc is malformed; called automatically by Case
    type BC [table] — Boundary condition descriptor table
-      constructor: M.dirichlet / M.neumann / M.symmetry etc.
+      constructor: M.dirichlet / M.neumann / M.robin etc.
    KNOWN_BC_KINDS — Set of valid bc.kind strings
       dirichlet_const = "true"  Fixed cell-field value
       dirichlet_face_const = "true"
@@ -1362,6 +1370,8 @@ JNL API Reference
         Fixed normal gradient on face field
       neumann_face_normal = "true"
         Neumann from velocity vector projected onto face normal
+      robin_const = "true"      Mixed BC: h(phi - phi_ref); requires .h and .phi_ref;
+                                apply after Laplacian
 
 ## jnl.fvm.canned
    Canned registries and algorithms for common laminar incompressible CFD problems.
@@ -1675,6 +1685,14 @@ JNL API Reference
    bc_neumann_face_normal
       sig: jnl.fvm.operators.bc_neumann_face_normal()
       doc: Neumann face-normal BC
+   bc_robin_const
+      sig: jnl.fvm.operators.bc_robin_const()
+      doc: Robin BC on named patch: h·A added to diagonal, h·phi_ref·A to RHS; apply
+           after Laplacian
+   bc_robin_face_const
+      sig: jnl.fvm.operators.bc_robin_face_const()
+      doc: Robin face value on named patch: phi_face = (γδ·phi_P + h·phi_ref)/(γδ
+           + h); γδ from sys.upper
    ddt_const
       sig: jnl.fvm.operators.ddt_const()
       doc: Implicit time derivative, constant density

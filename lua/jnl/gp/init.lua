@@ -44,15 +44,15 @@ end
 function M.series(xs, ys, opts)
 	opts = opts or {}
 	return {
-		xs    = xs,
-		ys    = ys,
-		title = opts.title,
-		style = opts.style or "linespoints",
-		color = opts.color,
-		lw    = opts.lw,
-		pt    = opts.pt,
-		ps    = opts.ps,
-		dt    = opts.dt, -- dashtype  e.g. 2
+		xs     = xs,
+		ys     = ys,
+		title  = opts.title,
+		style  = opts.style or "linespoints",
+		colour = opts.colour,
+		lw     = opts.lw,
+		pt     = opts.pt,
+		ps     = opts.ps,
+		dt     = opts.dt, -- dashtype  e.g. 2
 	}
 end
 
@@ -64,7 +64,7 @@ local function series_cmd(s)
 	else
 		table.insert(t, "notitle")
 	end
-	if s.color then table.insert(t, string.format("lc rgb %q", s.color)) end
+	if s.colour then table.insert(t, string.format("lc rgb %q", s.colour)) end
 	if s.lw then table.insert(t, "lw " .. s.lw) end
 	if s.pt then table.insert(t, "pt " .. s.pt) end
 	if s.ps then table.insert(t, "ps " .. s.ps) end
@@ -165,7 +165,7 @@ function Figure:hline(y, opts)
 		{
 			style = "lines",
 			lw = opts.lw or 1,
-			color = opts.color or "#888888",
+			colour = opts.colour or "#888888",
 			dt = opts.dt or 2,
 			title = opts.title
 		})
@@ -178,7 +178,7 @@ function Figure:vline(x, opts)
 		{
 			style = "lines",
 			lw = opts.lw or 1,
-			color = opts.color or "#888888",
+			colour = opts.colour or "#888888",
 			dt = opts.dt or 2,
 			title = opts.title
 		})
@@ -366,7 +366,7 @@ M._api = {
 	series    = {
 		args = "xs, ys, opts?",
 		ret  = "Series",
-		doc  = "Build a series struct explicitly; opts: { title, style, color, lw, pt, ps, dt }",
+		doc  = "Build a series struct explicitly; opts: { title, style, colour, lw, pt, ps, dt }",
 	},
 	sample    = {
 		args = "fn, x0, x1, n?",
@@ -448,8 +448,8 @@ M._types = {
 			show      = { args = "", ret = "nil", doc = "Open a persistent interactive gnuplot window" },
 			save      = { args = "path:string, opts?", ret = "nil", doc = "Save to file; terminal inferred from extension; opts: { size, font, terminal }" },
 			write_csv = { args = "path:string", ret = "Figure", doc = "Dump all series to CSV; chainable" },
-			hline     = { args = "y:number, opts?", ret = "Figure", doc = "Add a horizontal reference line; opts: { lw, color, dt, title }" },
-			vline     = { args = "x:number, opts?", ret = "Figure", doc = "Add a vertical reference line; opts: { lw, color, dt, title }" },
+			hline     = { args = "y:number, opts?", ret = "Figure", doc = "Add a horizontal reference line; opts: { lw, colour, dt, title }" },
+			vline     = { args = "x:number, opts?", ret = "Figure", doc = "Add a vertical reference line; opts: { lw, colour, dt, title }" },
 		},
 	},
 	Series = {

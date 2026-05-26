@@ -589,6 +589,17 @@ static int l_bc_neumann_const(lua_State *L)
 	return 0;
 }
 
+static int l_bc_robin_const(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *mesh = check_mesh(L, 2);
+	const char *patch = luaL_checkstring(L, 3);
+	f64 h = luaL_checknumber(L, 4);
+	f64 phi_ref = luaL_checknumber(L, 5);
+	jnl_bc_robin_const(s->sys, mesh, patch, h, phi_ref);
+	return 0;
+}
+
 static int l_bc_dirichlet_face_const(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
@@ -596,6 +607,20 @@ static int l_bc_dirichlet_face_const(lua_State *L)
 	const char *patch = luaL_checkstring(L, 3);
 	f64 val = luaL_checknumber(L, 4);
 	jnl_bc_dirichlet_face_const(m, face_f->data, patch, val);
+	return 0;
+}
+
+static int l_bc_robin_face_const(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	struct jnl_mesh *mesh = check_mesh(L, 2);
+	lua_vec *field = check_vec(L, 3);
+	lua_vec *face_f = check_vec(L, 4);
+	const char *patch = luaL_checkstring(L, 5);
+	f64 h = luaL_checknumber(L, 6);
+	f64 phi_ref = luaL_checknumber(L, 7);
+	jnl_bc_robin_face_const(s->sys, mesh, field->data, face_f->data, patch, h,
+	                        phi_ref);
 	return 0;
 }
 
@@ -804,8 +829,10 @@ static const luaL_Reg fvm_funcs[] = {
     // bcs
     {"bc_dirichlet_const", l_bc_dirichlet_const},
     {"bc_neumann_const", l_bc_neumann_const},
+    {"bc_robin_const", l_bc_robin_const},
     {"bc_dirichlet_face_const", l_bc_dirichlet_face_const},
     {"bc_neumann_face_const", l_bc_neumann_face_const},
+    {"bc_robin_face_const", l_bc_robin_face_const},
     {"bc_dirichlet_face_normal", l_bc_dirichlet_face_normal},
     {"bc_neumann_face_normal", l_bc_neumann_face_normal},
     // interp

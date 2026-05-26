@@ -43,6 +43,22 @@ local function format_value(v)
 	return tostring(v)
 end
 
+-- add after the existing format_value helper
+
+local function format_overrides(design_defaults, overrides)
+	if not overrides then return nil end
+
+	local parts = {}
+	for k, v in pairs(overrides) do
+		if k ~= "quiet" and design_defaults[k] ~= v then
+			parts[#parts + 1] = string.format("%s=%s", tostring(k), format_value(v))
+		end
+	end
+
+	table.sort(parts)
+	return #parts > 0 and table.concat(parts, "  ") or nil
+end
+
 local function merge(a, b)
 	local out = shallow_copy(a)
 
@@ -356,8 +372,18 @@ function Study:run(arg)
 	end
 
 	local x = self:design_opts(arg)
+	local opts = self:opts(arg)
 
 	self:check_bounds(x)
+
+	if not opts.quiet then
+		local diff = format_overrides(self.design_table, arg)
+		if diff then
+			io.write("evaluating  " .. diff .. "\n")
+		else
+			io.write("evaluating defaults\n")
+		end
+	end
 
 	for _, hook in ipairs(self.before_run_hooks) do
 		hook(x, self:opts(arg))
@@ -622,8 +648,9 @@ M._types = {
 			},
 			run = {
 				args = "design_overrides:table?",
-				ret = "table",
-				doc = "Evaluate the study and store the result as last_result",
+				ret  = "table",
+				doc  =
+				"Evaluate the study, print non-default design variables unless opts.quiet is true, and store result as last_result",
 			},
 			result_or_run = {
 				args = "",
