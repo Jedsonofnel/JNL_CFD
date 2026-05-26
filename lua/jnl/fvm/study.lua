@@ -108,6 +108,22 @@ function FvmStudy:build_case(arg)
 	return Case.new(reg, alg, mesh, bcs)
 end
 
+function FvmStudy:build_case_with(design_overrides, option_overrides)
+	local x = self:design_opts(design_overrides)
+	local o = self:opts(option_overrides)
+
+	if self.case_fn then
+		return self.case_fn(x, o)
+	end
+
+	local mesh = self.mesh_fn(x, o)
+	local reg = self.registry_fn(x, o)
+	local alg = self.algorithm_fn(x, o)
+	local bcs = self.bcs_fn and self.bcs_fn(x, o) or {}
+
+	return Case.new(reg, alg, mesh, bcs)
+end
+
 function FvmStudy:show_mesh(arg)
 	local mesh = self:build_mesh(arg)
 	ui.display_mesh(mesh)
@@ -310,6 +326,11 @@ M._types = {
 				args = "design_overrides:table?",
 				ret = "Case",
 				doc = "Build and compile an FVM case without running it",
+			},
+			{
+				args = "design_overrides:table, option_overrides:table ",
+				ret = "Case",
+				doc = "Build and compile an FVM case with option overrides",
 			},
 			show_mesh = {
 				args = "design_overrides:table?",

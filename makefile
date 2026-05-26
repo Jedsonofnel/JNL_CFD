@@ -29,8 +29,8 @@ else
 endif
 
 # vendor/fennel
-FENNEL_SRC := vendor/fennel/bootstrap/fennel.lua
-FENNEL_DST := $(LUADIR)/fennel.lua
+FENNEL_VENDOR_DIR := vendor/fennel
+FENNEL_DST        := $(LUADIR)/fennel.lua
 
 # compiler vars
 CC = gcc
@@ -184,8 +184,13 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(TRIANGLE_LIBS)
 # Fennel
 #
 
-$(FENNEL_DST): $(FENNEL_SRC)
-	$(Q)cp $< $@
+$(FENNEL_DST): $(wildcard $(FENNEL_VENDOR_DIR)/src/fennel/*.fnl) | $(LUADIR)
+	@printf "  FENNEL %s\n" $@
+	$(Q)$(MAKE) -C $(FENNEL_VENDOR_DIR) fennel.lua LUA=lua5.5
+	$(Q)cp $(FENNEL_VENDOR_DIR)/fennel.lua $@
+
+$(LUADIR):
+	mkdir -p $@
 
 #
 # dirs
@@ -203,4 +208,4 @@ $(OUTDIR):
 -include $(DEPS)
 
 clean:
-	rm -rf build bin $(OUTDIR)
+	rm -rf build bin $(OUTDIR) $(FENNEL_DST)

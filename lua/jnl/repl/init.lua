@@ -229,40 +229,24 @@ function REPL:_fennel_view_opts()
 end
 
 function REPL:_view_value(value, opts)
-	local ok, view = pcall(require, "fennel.view")
-	if not ok then
+	local fennel = self._fennel
+	if not fennel then
+		local ok, f = pcall(require, "fennel")
+		if ok then fennel = f end
+	end
+
+	local view = fennel and fennel.view
+	if not view then
 		return tostring(value)
 	end
 
 	opts = opts or self:_fennel_view_opts()
-
-	if type(view) == "function" then
-		return view(value, opts)
-	end
-
-	if type(view) == "table" and type(view.view) == "function" then
-		return view.view(value, opts)
-	end
-
-	local mt = type(view) == "table" and getmetatable(view)
-	if mt and type(mt.__call) == "function" then
-		local ok_call, rendered = pcall(view, value, opts)
-		if ok_call then
-			return rendered
-		end
-	end
-
-	return tostring(value)
+	local ok_call, rendered = pcall(view, value, opts)
+	return ok_call and rendered or tostring(value)
 end
 
 function REPL:_print_fennel_values(values)
-	local rendered = {}
-
-	for i, value in ipairs(values) do
-		rendered[i] = self:_view_value(value)
-	end
-
-	io.write(table.concat(rendered, "\t"))
+	io.write(table.concat(values, "\t"))
 	io.write("\n")
 end
 
@@ -308,7 +292,6 @@ end
 function REPL:pp(value, opts)
 	io.write(self:_view_value(value, opts))
 	io.write("\n")
-	return value
 end
 
 function REPL:_register_builtins()
