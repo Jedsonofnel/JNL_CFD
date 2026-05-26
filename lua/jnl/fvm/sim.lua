@@ -7,6 +7,100 @@ local Sim = {}
 Sim.__index = Sim
 
 --
+-- Diagnostics
+--
+
+--
+-- Diagnostics
+--
+
+local function make_diag(runner)
+	local function try_field(name)
+		if runner.try_field then return runner:try_field(name) end
+		return runner.field_map[name]
+	end
+
+	local function try_sys(name)
+		if runner.try_sys then return runner:try_sys(name) end
+		return runner.sys_map[name]
+	end
+
+	return {
+		has_field = function(name)
+			return try_field(name) ~= nil
+		end,
+
+		has_system = function(name)
+			return try_sys(name) ~= nil
+		end,
+
+		field_names = function()
+			if runner.field_names then return runner:field_names() end
+
+			local names = {}
+			for name in pairs(runner.field_map) do
+				names[#names + 1] = name
+			end
+			table.sort(names)
+			return names
+		end,
+
+		system_names = function()
+			if runner.system_names then return runner:system_names() end
+
+			local names = {}
+			for name in pairs(runner.sys_map) do
+				names[#names + 1] = name
+			end
+			table.sort(names)
+			return names
+		end,
+
+		field = function(name)
+			return try_field(name)
+		end,
+
+		residual = function(name)
+			return runner:last_residual(name)
+		end,
+
+		is_nan = function(name)
+			local f = try_field(name)
+			if not f then return nil end
+
+			local n = f:norm_linf()
+			return n ~= n
+		end,
+
+		max = function(name)
+			local f = try_field(name)
+			if not f then return nil end
+
+			return f:norm_linf()
+		end,
+
+		iter = function()
+			return runner:iteration()
+		end,
+
+		sys_diag = function(name)
+			local sys = try_sys(name)
+			if not sys then return nil end
+
+			local field = try_field(name)
+			if not field then return nil end
+
+			return {
+				diagonal_dominance     = sys:diagonal_dominance(),
+				all_diagonals_positive = sys:all_diagonals_positive(),
+				max_asymmetry          = sys:max_asymmetry(),
+				residual_norm          = sys:residual_norm(field),
+			}
+		end,
+	}
+end
+
+--
 -- Constructor
 --
 
@@ -40,29 +134,10 @@ function Sim.new(runner, alg, opts)
 	local sim = CoreSim.new(runner, alg, { sage = opts.sage })
 	sage_getter = function() return sim._sage end
 
-	-- diagnostic object
-	local diag = {
-		field = function(name) return runner:_field(name) end,
-		residual = function(name) return runner:last_residual(name) end,
-		is_nan = function(name)
-			local f = runner:_field(name)
-			return f:norm_linf() ~= f:norm_linf()
-		end,
-		max = function(name) return runner:_field(name):norm_linf() end,
-		iter = function() return runner:iteration() end,
-		sys_diag = function(name)
-			local sys = runner:_sys(name)
-			if not sys then return nil end
-			return {
-				diagonal_dominance     = sys:diagonal_dominance(),
-				all_diagonals_positive = sys:all_diagonals_positive(),
-				max_asymmetry          = sys:max_asymmetry(),
-				residual_norm          = sys:residual_norm(runner:_field(name)),
-			}
-		end,
-	}
-
-	return setmetatable({ _core = sim, diag = diag }, Sim)
+	return setmetatable({
+		_core = sim,
+		diag = make_diag(runner),
+	}, Sim)
 end
 
 --
@@ -129,17 +204,68 @@ Sim._api = {
 
 Sim._types = {
 	Diag = {
-		doc         = "Diagnostic accessor passed to post-mortem rule functions as f.diagnostics",
-		constructor = "available as sim.diag after Sim.new()",
+		doc         = "Non-throwing diagnostic accessor used by post-mortem rules",
+		constructor = "jnl.fvm.sim.make_diag(runner); also available as sim.diag",
 		kind        = "table",
 		methods     = {
-			field    = { args = "name:string", ret = "vec", doc = "Raw cell field vec for the named field" },
-			residual = { args = "name:string", ret = "number", doc = "Last linear solver residual for the named field" },
-			is_nan   = { args = "name:string", ret = "bool", doc = "True if field contains any NaN values" },
-			max      = { args = "name:string", ret = "number", doc = "L-infinity norm of field (max absolute value)" },
-			iter     = { args = "", ret = "int", doc = "Current outer iteration count" },
-			sys_diag = { args = "name:string", ret = "table?", doc = "Matrix diagnostics: { diagonal_dominance, all_diagonals_positive, max_asymmetry, residual_norm } or nil if no system" },
+			has_field = {
+				args = "name:string",
+				ret  = "bool",
+				doc  = "True if a field handle exists for name",
+			},
+			has_system = {
+				args = "name:string",
+				ret  = "bool",
+				doc  = "True if a linear system exists for name",
+			},
+			field_names = {
+				args = "",
+				ret  = "string[]",
+				doc  = "Allocated field names, including intermediates",
+			},
+			system_names = {
+				args = "",
+				ret  = "string[]",
+				doc  = "Names with allocated linear systems",
+			},
+			field = {
+				args = "name:string",
+				ret  = "vec?",
+				doc  = "Raw cell field vector, or nil if absent",
+			},
+			residual = {
+				args = "name:string",
+				ret  = "number?",
+				doc  = "Last linear solver residual for name, or nil if none has been recorded",
+			},
+			is_nan = {
+				args = "name:string",
+				ret  = "bool?",
+				doc  = "True if the field has NaN norm; nil if absent",
+			},
+			max = {
+				args = "name:string",
+				ret  = "number?",
+				doc  = "L-infinity norm of the field, or nil if absent",
+			},
+			iter = {
+				args = "",
+				ret  = "int",
+				doc  = "Current outer iteration count",
+			},
+			sys_diag = {
+				args = "name:string",
+				ret  = "table?",
+				doc  = "Matrix diagnostics for system-backed fields, or nil if no system exists",
+			},
 		},
+	},
+	SysDiag = {
+		doc         =
+		"Table { diagonal_dominance, all_diagonals_positive, max_asymmetry, residual_norm } returned by Diag:sys_diag(name)",
+		constructor = "diag:sys_diag(name)",
+		kind        = "table",
+		methods     = {},
 	},
 }
 

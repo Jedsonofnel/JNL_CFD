@@ -4,6 +4,7 @@
 local base = require("jnl.repl.study")
 local Case = require("jnl.fvm.case")
 local ui = require("jnl.ui")
+local E = require("jnl.core.expr")
 
 local M = {}
 local FvmStudy = {}
@@ -195,19 +196,24 @@ function FvmStudy:default_evaluate(x, opts)
 	return setmetatable(res, {
 		__tostring = function(r)
 			local parts = {}
-			for _, name in ipairs(r.fields()) do
+			local names = r.sim.diag.system_names and r.sim.diag.system_names() or {}
+
+			for _, name in ipairs(names) do
 				local resid = r.sim.diag.residual(name)
 				if resid then
-					parts[#parts + 1] = string.format("%s=%.3e", name, resid)
+					parts[#parts + 1] = string.format("%s=%.3e", E.pretty_sym(name), resid)
 				end
 			end
+
 			table.sort(parts)
+
 			local res_str = #parts > 0 and table.concat(parts, "  ") or "no residuals"
+
 			return string.format(
 				"<result: %s | iters=%d | %s>",
 				tostring(r.mesh),
 				r.sim.diag.iter(),
-				res_str
+				E.pretty_sym(res_str)
 			)
 		end
 	})

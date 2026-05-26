@@ -94,6 +94,28 @@ function FvmAlg:__tostring()
 end
 
 --
+-- Config mutation
+--
+
+function FvmAlg:set_linalg(opts)
+	self._alg:set_linalg(opts)
+	return self
+end
+
+function FvmAlg:linalg_tol(tol)
+	return self:set_linalg({ tol = tol })
+end
+
+function FvmAlg:linalg_max_iters(max_iters)
+	return self:set_linalg({ max_iters = max_iters })
+end
+
+function FvmAlg:max_iters(max_iters)
+	self._alg.max_iters = max_iters
+	return self
+end
+
+--
 -- Monitoring
 --
 
@@ -239,6 +261,31 @@ M._api = {
 		args = "",
 		ret  = "nil",
 		doc  = "Pretty-print the wrapped core algorithm step list",
+	},
+
+	--
+	-- Config mutation
+	--
+
+	set_linalg = {
+		args = "opts:table",
+		ret  = "FvmAlg",
+		doc  = "Set default linear-solver controls for solve steps; opts: { tol, max_iters }",
+	},
+	linalg_tol = {
+		args = "tol:number",
+		ret  = "FvmAlg",
+		doc  = "Set default linear solver tolerance for solve steps",
+	},
+	linalg_max_iters = {
+		args = "max_iters:int",
+		ret  = "FvmAlg",
+		doc  = "Set default maximum linear iterations for solve steps",
+	},
+	max_iters = {
+		args = "max_iters:int",
+		ret  = "FvmAlg",
+		doc  = "Set maximum outer loop iterations",
 	},
 
 	--

@@ -186,6 +186,61 @@ function A:__tostring()
 	)
 end
 
+--
+-- Config
+--
+
+--
+-- Config mutators
+--
+
+function A:set_config(opts)
+	opts = opts or {}
+
+	if opts.max_iters ~= nil then
+		self.max_iters = opts.max_iters
+	end
+
+	if opts.linalg_tol ~= nil then
+		self.linalg_tol = opts.linalg_tol
+	end
+
+	if opts.linalg_max_iters ~= nil then
+		self.linalg_max_iters = opts.linalg_max_iters
+	end
+
+	return self
+end
+
+function A:set_linalg(opts)
+	opts = opts or {}
+
+	if opts.tol ~= nil then
+		self.linalg_tol = opts.tol
+	end
+
+	if opts.max_iters ~= nil then
+		self.linalg_max_iters = opts.max_iters
+	end
+
+	return self
+end
+
+function A:set_max_iters(max_iters)
+	self.max_iters = max_iters
+	return self
+end
+
+function A:set_linalg_tol(tol)
+	self.linalg_tol = tol
+	return self
+end
+
+function A:set_linalg_max_iters(max_iters)
+	self.linalg_max_iters = max_iters
+	return self
+end
+
 --[[
 
 DEPENDENCY GRAPH
@@ -793,16 +848,41 @@ A._doc_subsection =
 	"jnl.fvm.algorithm, which wraps this and delegates to expand()."
 
 A._api = {
-	new         = { args = "", ret = "Algorithm", doc = "Create a new algorithm" },
-	loop        = { args = "cb, config?", ret = "nil", doc = "Define a looping step sequence; config: { max_iters, linalg_tol, linalg_max_iters }" },
-	linear      = { args = "cb, config?", ret = "nil", doc = "Define a one-shot step sequence; config: { linalg_tol, linalg_max_iters }" },
-	expand      = { args = "reg, inserted?, fresh?", ret = "Algorithm", doc = "Classify registry symbols, emit pre/main/post steps, return expanded algorithm" },
-	monitor     = { args = "field, config?", ret = "nil", doc = "Push a monitor step outside the builder; config: { norm='normL2' }" },
-	add_ruleset = { args = "ruleset", ret = "nil", doc = "Append a ruleset table { rules, init? } for sage integration" },
-	add_rule    = { args = "rule", ret = "nil", doc = "Append a single rule { name, match, fire }" },
-	add_rules   = { args = "...rules", ret = "nil", doc = "Append multiple rules in one call" },
-	print       = { args = "", ret = "nil", doc = "Pretty-print the step list" },
-	__tostring  = {
+	new                  = { args = "", ret = "Algorithm", doc = "Create a new algorithm" },
+	loop                 = { args = "cb, config?", ret = "nil", doc = "Define a looping step sequence; config: { max_iters, linalg_tol, linalg_max_iters }" },
+	linear               = { args = "cb, config?", ret = "nil", doc = "Define a one-shot step sequence; config: { linalg_tol, linalg_max_iters }" },
+	expand               = { args = "reg, inserted?, fresh?", ret = "Algorithm", doc = "Classify registry symbols, emit pre/main/post steps, return expanded algorithm" },
+	monitor              = { args = "field, config?", ret = "nil", doc = "Push a monitor step outside the builder; config: { norm='normL2' }" },
+	add_ruleset          = { args = "ruleset", ret = "nil", doc = "Append a ruleset table { rules, init? } for sage integration" },
+	add_rule             = { args = "rule", ret = "nil", doc = "Append a single rule { name, match, fire }" },
+	add_rules            = { args = "...rules", ret = "nil", doc = "Append multiple rules in one call" },
+	set_config           = {
+		args = "opts:table",
+		ret  = "Algorithm",
+		doc  = "Update loop configuration in place; opts: { max_iters, linalg_tol, linalg_max_iters }",
+	},
+	set_linalg           = {
+		args = "opts:table",
+		ret  = "Algorithm",
+		doc  = "Update default linear-solver controls in place; opts: { tol, max_iters }",
+	},
+	set_max_iters        = {
+		args = "max_iters:int",
+		ret  = "Algorithm",
+		doc  = "Set maximum loop iterations and return self",
+	},
+	set_linalg_tol       = {
+		args = "tol:number",
+		ret  = "Algorithm",
+		doc  = "Set default linear solver tolerance and return self",
+	},
+	set_linalg_max_iters = {
+		args = "max_iters:int",
+		ret  = "Algorithm",
+		doc  = "Set default maximum linear solver iterations and return self",
+	},
+	print                = { args = "", ret = "nil", doc = "Pretty-print the step list" },
+	__tostring           = {
 		args = "self",
 		ret = "string",
 		doc = "Return a compact one-line algorithm summary for REPL display",

@@ -121,14 +121,48 @@ end
 -- Lookup helpers
 --
 
+function Runner:has_field(name)
+	return self.field_map[name] ~= nil
+end
+
+function Runner:has_system(name)
+	return self.sys_map[name] ~= nil
+end
+
+function Runner:field_names()
+	local names = {}
+	for name in pairs(self.field_map) do
+		names[#names + 1] = name
+	end
+	table.sort(names)
+	return names
+end
+
+function Runner:system_names()
+	local names = {}
+	for name in pairs(self.sys_map) do
+		names[#names + 1] = name
+	end
+	table.sort(names)
+	return names
+end
+
+function Runner:try_field(name)
+	return self.field_map[name]
+end
+
+function Runner:try_sys(name)
+	return self.sys_map[name]
+end
+
 function Runner:_field(name)
-	local h = self.field_map[name]
+	local h = self:try_field(name)
 	assert(h, "runner: no field handle for '" .. tostring(name) .. "'")
 	return h
 end
 
 function Runner:_sys(name)
-	local s = self.sys_map[name]
+	local s = self:try_sys(name)
 	assert(s, "runner: no sys for field '" .. tostring(name) .. "'")
 	return s
 end

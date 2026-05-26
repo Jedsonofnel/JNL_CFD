@@ -381,6 +381,10 @@ function Study:result_or_run()
 	return self:run()
 end
 
+function Study:last_results()
+	return self.last_result
+end
+
 function Study:install(repl)
 	repl = repl or repl_mod.new()
 
@@ -407,6 +411,10 @@ function Study:install(repl)
 
 		repl:register("evaluate", run, self.evaluate_meta.doc or "Evaluate the study")
 		repl:register("run", run, "Alias for evaluate")
+
+		repl:register("last-results", function()
+			return self:last_results()
+		end, "Return the last study result, or nil if nothing has run yet")
 	end
 
 	for _, item in ipairs(self.outputs) do
@@ -621,6 +629,11 @@ M._types = {
 				args = "",
 				ret = "table",
 				doc = "Return last_result, or evaluate the default design if absent",
+			},
+			last_results = {
+				args = "",
+				ret = "table?",
+				doc = "Return the last evaluated result, or nil if the study has not run",
 			},
 			install = {
 				args = "repl:Repl?",

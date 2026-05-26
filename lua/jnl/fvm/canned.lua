@@ -83,6 +83,8 @@ function M.reg_laminar_ns(props)
 	local rho     = props.rho or 1.0
 	local mu      = props.mu or 1e-3
 	local alpha_p = props.alpha_p or 0.3
+	local alpha_u = props.alpha_u or 0.7
+	local scheme  = props.scheme or "uds"
 	local pp      = E.prime_name("p")
 
 	local reg     = R.new()
@@ -92,20 +94,22 @@ function M.reg_laminar_ns(props)
 
 	reg:field("Ux", {
 		eq = FVM.eq(
-			Op.div(FVMe.mwi("U", "p"), "Ux"),
+			Op.div(FVMe.mwi("U", "p"), "Ux", { scheme = scheme }),
 			Op.lap("mu", "Ux"),
 			Op.su(E.neg(FVMe.grad("p", "x"))),
-			{ relax = 0.7, solver = "bicgstab" }
+			{ relax = alpha_u, solver = "bicgstab" }
 		)
 	})
+
 	reg:field("Uy", {
 		eq = FVM.eq(
-			Op.div(FVMe.mwi("U", "p"), "Uy"),
+			Op.div(FVMe.mwi("U", "p"), "Uy", { scheme = scheme }),
 			Op.lap("mu", "Uy"),
 			Op.su(E.neg(FVMe.grad("p", "y"))),
-			{ relax = 0.7, solver = "bicgstab" }
+			{ relax = alpha_u, solver = "bicgstab" }
 		)
 	})
+
 	reg:vector("U", { "Ux", "Uy" })
 
 	ns_pressure_correction(reg, pp)
@@ -180,6 +184,7 @@ function M.alg_simple(opts)
 		a:correct("p")
 	end, {
 		max_iters        = opts.max_iters or 1000,
+		linalg_tol       = opts.linalg_tol,
 		linalg_max_iters = opts.linalg_max_iters or 20,
 	})
 
@@ -204,6 +209,7 @@ function M.alg_simpler(opts)
 		a:correct("p")
 	end, {
 		max_iters        = opts.max_iters or 1000,
+		linalg_tol       = opts.linalg_tol,
 		linalg_max_iters = opts.linalg_max_iters or 20,
 	})
 
@@ -230,6 +236,7 @@ function M.alg_piso(opts)
 		end, { max_iters = n_corr })
 	end, {
 		max_iters        = opts.max_iters or 1000,
+		linalg_tol       = opts.linalg_tol,
 		linalg_max_iters = opts.linalg_max_iters or 20,
 	})
 

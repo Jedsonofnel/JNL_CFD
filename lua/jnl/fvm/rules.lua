@@ -379,6 +379,7 @@ local ADVICE = {
 	["neg_diagonal:"]      = "Check operator sign conventions and BC types",
 	["not_diag_dominant:"] = "Reduce convection or increase diffusion; check CFL",
 	["asymmetry:"]         = "Reduce TVD correction strength or switch to UDS temporarily",
+	["residual_blowup:"]   = "Reduce relaxation",
 }
 
 local function prefix_advice(sage, f)
@@ -396,7 +397,8 @@ local function prefix_advice(sage, f)
 end
 
 function M.general_post_mortem(opts)
-	opts                = opts or {}
+	opts = opts or {}
+
 
 	local blowup_tol    = opts.blowup_threshold or 1e10
 	local stall_window  = opts.stall_window or 5
@@ -405,7 +407,11 @@ function M.general_post_mortem(opts)
 	local growth_factor = opts.growth_factor or 10
 	local asym_tol      = opts.asymmetry_tol or 1e-6
 
-	local rules         = {
+
+	local residual_blowup_tol = opts.residual_blowup_threshold or 1e8
+
+
+	local rules = {
 
 		-- NaN in any monitored field
 		M.pm_rule("nan", function(sage, f, _, diag)
@@ -513,6 +519,17 @@ function M.general_post_mortem(opts)
 							name, s.max_asymmetry))
 				end
 				::continue::
+			end
+		end),
+
+		M.pm_rule("residual_blowup", function(sage, f, _, diag)
+			for _, name in ipairs(fields_with(sage, "residual")) do
+				local h = latest(sage, name, "residual")
+				if h[1] and h[1].value > residual_blowup_tol then
+					diag("residual_blowup:" .. name,
+						string.format("%s residual = %.2e at iter %d",
+							name, h[1].value, f.iter))
+				end
 			end
 		end),
 
