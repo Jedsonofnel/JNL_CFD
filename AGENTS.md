@@ -1064,6 +1064,28 @@ JNL API Reference
          sig: FvmStudy:show_mesh(design_overrides:table?) -> Mesh
          doc: Build and display the mesh in the UI
 
+## jnl.fvm.vtk
+   Write FVM field data to VTK legacy ASCII unstructured grid files.
+
+   write
+      sig: jnl.fvm.vtk.write(path:string, mesh:Mesh, scalars:table?, vectors:table?) ->
+           nil
+      doc: One-shot write; scalars is {name=vec}, vectors is {name={x,y}}.
+   writer
+      sig: jnl.fvm.vtk.writer(path:string, mesh:Mesh) -> Writer
+      doc: Create a VTK writer; add fields then call :write().
+   type Writer — Chainable VTK writer wrapping vtk_internal.
+      constructor: vtk.writer(path, mesh)
+      Writer:scalar
+         sig: Writer:scalar(self, name:string, vec:vec) -> Writer
+         doc: Add a scalar field.
+      Writer:vector
+         sig: Writer:vector(self, name:string, x:vec|table, y:vec?) -> Writer
+         doc: Add a vector field; x may be a {x,y} table.
+      Writer:write
+         sig: Writer:write(self) -> nil
+         doc: Flush all fields to disk.
+
 ## jnl.geo2d.domain
    Build named 2D PSLG domains from shapes, holes, lines, and regions
 

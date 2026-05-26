@@ -43,6 +43,7 @@ local MODULES = {
 	"jnl.fvm.case",
 	"jnl.fvm.bc",
 	"jnl.fvm.study",
+	"jnl.fvm.vtk",
 	-- core
 	"jnl.core.algorithm",
 	"jnl.core.registry",
