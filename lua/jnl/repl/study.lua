@@ -23,6 +23,10 @@ M._doc_subsection = {
 	"you like for the outer loop. All three are registered as REPL callables.",
 }
 
+--
+-- Helpers
+--
+
 local function shallow_copy(t)
 	local out = {}
 
@@ -92,9 +96,94 @@ local function union_keys(primary, secondary)
 	return keys
 end
 
-
 local function normalise_name(name)
 	return tostring(name):gsub("_", "-")
+end
+
+local function display_name(name)
+	return tostring(name)
+		:gsub("_", "-")
+		:gsub("-", " ")
+end
+
+local function field_name(name)
+	return tostring(name):gsub("-", "_")
+end
+
+local function split_path(path)
+	local parts = {}
+
+	for part in tostring(path):gmatch("[^.]+") do
+		parts[#parts + 1] = field_name(part)
+	end
+
+	return parts
+end
+
+local function result_getter(path)
+	local parts = split_path(path)
+
+	return function(result)
+		local value = result
+
+		for _, part in ipairs(parts) do
+			if value == nil then
+				return nil
+			end
+
+			value = value[part]
+		end
+
+		return value
+	end
+end
+
+
+
+local function auto_doc(kind, name)
+	local label = display_name(name)
+
+	if kind == "output" then
+		return "Return " .. label .. " from the last result"
+	end
+
+	if kind == "plot" then
+		return "Plot " .. label .. " from the last result"
+	end
+
+	if kind == "write" then
+		return "Write " .. label .. " to path"
+	end
+
+	if kind == "figure" then
+		return "Plot or write " .. label .. " as .csv, .png, .svg, .pdf, or .eps"
+	end
+
+	if kind == "table" then
+		return "Return or write " .. label .. " as a CSV-style table"
+	end
+
+	if kind == "sweep" then
+		return "Run " .. label .. " sweep"
+	end
+
+	if kind == "uq" then
+		return "Run " .. label .. " uncertainty study"
+	end
+
+	if kind == "optimise" then
+		return "Run " .. label .. " optimisation"
+	end
+
+	if kind == "expose" then
+		return "Run " .. label
+	end
+
+	return label
+end
+
+local function doc_for(kind, name, explicit)
+	return explicit or auto_doc(kind, name)
 end
 
 local function call_with_optional_arg(fn, arg)
@@ -104,6 +193,10 @@ local function call_with_optional_arg(fn, arg)
 
 	return fn(arg)
 end
+
+--
+-- STUDY Constructor
+--
 
 function M.new(title)
 	return setmetatable({
@@ -195,9 +288,9 @@ function Study:expose(name, value, doc, opts)
 	opts = opts or {}
 
 	self.exposed[#self.exposed + 1] = {
-		name = normalise_name(name),
-		value = value,
-		doc = doc,
+		name   = normalise_name(name),
+		value  = value,
+		doc    = doc_for("expose", name, doc),
 		hidden = opts.hidden,
 	}
 
@@ -220,11 +313,21 @@ function Study:after_run(fn)
 	return self
 end
 
-function Study:output(name, fn, doc)
+function Study:output(name, fn_or_path, doc)
+	local fn
+
+	if type(fn_or_path) == "function" then
+		fn = fn_or_path
+	elseif fn_or_path ~= nil then
+		fn = result_getter(fn_or_path)
+	else
+		fn = result_getter(name)
+	end
+
 	self.outputs[#self.outputs + 1] = {
 		name = normalise_name(name),
-		fn = fn,
-		doc = doc,
+		fn   = fn,
+		doc  = doc_for("output", name, doc),
 	}
 
 	return self
@@ -236,7 +339,7 @@ function Study:plot(name, fn, opts)
 	self.plots[#self.plots + 1] = {
 		name = normalise_name(name),
 		fn = fn,
-		doc = opts.doc,
+		doc = doc_for("plot", name, opts.doc),
 	}
 
 	return self
@@ -248,11 +351,116 @@ function Study:write(name, fn, opts)
 	self.writers[#self.writers + 1] = {
 		name = normalise_name(name),
 		fn = fn,
-		doc = opts.doc,
+		doc = doc_for("write", name, opts.doc),
 	}
 
 	return self
 end
+
+function Study:figure(name, figure_fn, opts)
+	opts            = opts or {}
+
+	local plot_doc  = opts.plot_doc or opts.doc or auto_doc("plot", name)
+	local write_doc = opts.write_doc or opts.doc or auto_doc("figure", name)
+
+	self:plot(name, function(result)
+		return figure_fn(result):show()
+	end, { doc = plot_doc })
+
+	self:write(name, function(result, path)
+		return figure_fn(result):write(path, opts.write)
+	end, { doc = write_doc })
+
+	return self
+end
+
+--
+-- Tables
+--
+
+local function csv_escape(value)
+	if value == nil then
+		return ""
+	end
+
+	local s = tostring(value)
+
+	if s:find('[,"\n]') then
+		s = '"' .. s:gsub('"', '""') .. '"'
+	end
+
+	return s
+end
+
+local function csv_cell(value)
+	if type(value) == "number" then
+		return string.format("%.10g", value)
+	end
+
+	return csv_escape(value)
+end
+
+local function normalise_table_data(data)
+	if data.columns and data.rows then
+		return data.columns, data.rows
+	end
+
+	error("table data must be { columns = {...}, rows = {...} }")
+end
+
+local function row_cell(row, column, i)
+	if row[column] ~= nil then
+		return row[column]
+	end
+
+	return row[i]
+end
+
+local function write_csv(path, data)
+	local columns, rows = normalise_table_data(data)
+	local lines = { table.concat(columns, ",") }
+
+	for _, row in ipairs(rows) do
+		local cells = {}
+
+		for i, column in ipairs(columns) do
+			cells[i] = csv_cell(row_cell(row, column, i))
+		end
+
+		lines[#lines + 1] = table.concat(cells, ",")
+	end
+
+	local f, err = io.open(path, "w")
+	if not f then
+		error("write-csv: " .. err)
+	end
+
+	f:write(table.concat(lines, "\n") .. "\n")
+	f:close()
+
+	print(string.format("wrote %s (%d rows)", path, #rows))
+end
+
+function Study:table(name, table_fn, opts)
+	opts             = opts or {}
+
+	local output_doc = opts.output_doc or opts.doc or auto_doc("table", name)
+	local write_doc  = opts.write_doc or opts.doc or auto_doc("table", name)
+
+	self:output(name, function(result)
+		return table_fn(result)
+	end, output_doc)
+
+	self:write(name, function(result, path)
+		return write_csv(path, table_fn(result))
+	end, { doc = write_doc })
+
+	return self
+end
+
+--
+-- Pretty printing usage
+--
 
 local function print_options(p, defaults, docs)
 	local keys = union_keys(docs, defaults)
@@ -495,7 +703,7 @@ function Study:sweep(name, fn, opts)
 	self.optimisers[#self.optimisers + 1] = {
 		name = normalise_name(name),
 		fn   = function() return fn(self) end,
-		doc  = opts.doc,
+		doc  = doc_for("sweep", name, opts.doc),
 	}
 	return self
 end
@@ -505,7 +713,7 @@ function Study:uq(name, fn, opts)
 	self.optimisers[#self.optimisers + 1] = {
 		name = normalise_name(name),
 		fn   = function() return fn(self) end,
-		doc  = opts.doc,
+		doc  = doc_for("uq", name, opts.doc),
 	}
 	return self
 end
@@ -515,7 +723,7 @@ function Study:optimise(name, fn, opts)
 	self.optimisers[#self.optimisers + 1] = {
 		name  = normalise_name(name),
 		fn    = function() return fn(self) end,
-		doc   = opts.doc,
+		doc   = doc_for("optimise", name, opts.doc),
 		entry = opts.entry,
 	}
 	return self
@@ -605,34 +813,49 @@ M._types = {
 				doc = "Register a hook called after evaluate",
 			},
 			output = {
-				args = "name:string, fn:function, doc:string?",
+				args = "name:string, fn_or_path:function|string?, doc:string?",
 				ret = "Study",
-				doc = "Register an output helper over the last result",
+				doc =
+				"Register an output helper over the last result; fn_or_path defaults to a result key derived from name and may be a dotted result path",
 			},
 			plot = {
-				args = "name:string, fn:function, opts:table?",
+				args = "name:string, fn:function(result), opts:table?",
 				ret = "Study",
-				doc = "Register a plot helper over the last result",
+				doc = "Register a plot helper over the last result; opts: { doc }",
 			},
 			write = {
 				args = "name:string, fn:function(result, path), opts:table?",
 				ret  = "Study",
-				doc  = "Register a writer; REPL call is (write-name path result?)",
+				doc  = "Register a writer; REPL call is (write-name path result?); opts: { doc }",
+			},
+			figure = {
+				args = "name:string, figure_fn:function(result)->Figure, opts:table?",
+				ret = "Study",
+				doc =
+				"Register matching plot and writer helpers from one figure factory; opts: { doc, plot_doc, write_doc, write }",
+			},
+			table = {
+				args = "name:string, table_fn:function(result)->table, opts:table?",
+				ret = "Study",
+				doc =
+				"Register matching output and CSV writer helpers from one table factory; table_fn returns { columns, rows }; opts: { doc, output_doc, write_doc }",
 			},
 			sweep = {
 				args = "name:string, fn:function(study), opts:table?",
 				ret  = "Study",
-				doc  = "Register a parameter sweep; fn receives the study and calls run(overrides) in a loop",
+				doc  =
+				"Register a parameter sweep; fn receives the study and calls run(overrides) in a loop; opts: { doc }",
 			},
 			uq = {
 				args = "name:string, fn:function(study), opts:table?",
 				ret  = "Study",
-				doc  = "Register a UQ study; fn receives the study and calls run(overrides) per sample",
+				doc  = "Register a UQ study; fn receives the study and calls run(overrides) per sample; opts: { doc }",
 			},
 			optimise = {
 				args = "name:string, fn:function(study), opts:table?",
 				ret  = "Study",
-				doc  = "Register an optimisation; fn receives the study and calls run(overrides) as its inner loop",
+				doc  =
+				"Register an optimisation; fn receives the study and calls run(overrides) as its inner loop; opts: { doc, entry }",
 			},
 			usage_string = {
 				args = "",

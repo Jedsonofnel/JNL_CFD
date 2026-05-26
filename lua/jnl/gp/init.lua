@@ -76,6 +76,21 @@ end
 -- Output helper
 --
 
+local image_extensions = {
+	png = true,
+	svg = true,
+	pdf = true,
+	eps = true,
+}
+
+local function path_extension(path)
+	return (path:match("%.([A-Za-z0-9]+)$") or ""):lower()
+end
+
+local function is_image_extension(ext)
+	return image_extensions[ext] == true
+end
+
 ---Write one or more series to a csv
 --- - M.write_csv(path, series_list)
 --- - M.write_csv(path, xs, ys, header?)
@@ -234,7 +249,7 @@ function Figure:series()
 end
 
 -- fig:save(path, opts?)
---   auto-detects terminal from extension: .png .svg .pdf .eps
+--   image output only; auto-detects terminal from extension: .png .svg .pdf .eps
 --   opts.size = {w, h}  (pixels for raster, pts for vector)
 --   opts.terminal = "pngcairo size 1200,800 font 'Arial,12'"  (full override)
 function Figure:save(path, opts)
@@ -255,7 +270,7 @@ function Figure:save(path, opts)
 	if opts.terminal then
 		term = opts.terminal
 	else
-		local ext = (path:match("%.(%a+)$") or "png"):lower()
+		local ext = path_extension(path)
 		term      = map[ext] or ("pngcairo" .. sz)
 	end
 
@@ -264,6 +279,27 @@ function Figure:save(path, opts)
 	self:_emit(pipe)
 	pipe:close()
 	io.write(string.format("[jnl.gp] saved → %s\n", path))
+	return self
+end
+
+-- fig:write(path, opts?)
+--   dispatches by extension: .csv dumps series; .png .svg .pdf .eps save figures
+function Figure:write(path, opts)
+	local ext = path_extension(path)
+
+	if ext == "csv" then
+		return self:write_csv(path)
+	end
+
+	if is_image_extension(ext) then
+		return self:save(path, opts)
+	end
+
+	error(string.format(
+		"[jnl.gp] unsupported output extension %q for %s; expected .csv, .png, .svg, .pdf, or .eps",
+		ext ~= "" and ("." .. ext) or "(none)",
+		path
+	))
 end
 
 ---Dumps all series to a csv
@@ -352,9 +388,10 @@ M._doc = "Gnuplot driver via popen; supports interactive display, file output, a
 
 M._doc_subsection =
 	"Build a Figure with M.figure(opts), chain :add(xs, ys, opts) calls, then call " ..
-	":show() for an interactive window or :save(path) for file output. Extension on " ..
-	"the save path selects the terminal automatically (.png .svg .pdf .eps). " ..
-	"M.sample(fn, x0, x1, n) generates xs/ys from a Lua function for quick plotting."
+	":show() for an interactive window or :write(path) for file output. Extension on " ..
+	"the write path selects CSV or image output automatically (.csv .png .svg .pdf .eps). " ..
+	":save(path) remains available for image-only output. M.sample(fn, x0, x1, n) " ..
+	"generates xs/ys from a Lua function for quick plotting."
 
 M._api = {
 	figure    = {
@@ -446,7 +483,8 @@ M._types = {
 		methods     = {
 			add       = { args = "xs, ys, opts? | series:Series", ret = "Figure", doc = "Append a data series; accepts raw arrays or a Series struct; chainable" },
 			show      = { args = "", ret = "nil", doc = "Open a persistent interactive gnuplot window" },
-			save      = { args = "path:string, opts?", ret = "nil", doc = "Save to file; terminal inferred from extension; opts: { size, font, terminal }" },
+			write     = { args = "path:string, opts?", ret = "Figure", doc = "Write figure data or image by extension; .csv dumps series, .png/.svg/.pdf/.eps save image output; image opts: { size, font, terminal }" },
+			save      = { args = "path:string, opts?", ret = "Figure", doc = "Save image output; terminal inferred from extension; opts: { size, font, terminal }" },
 			write_csv = { args = "path:string", ret = "Figure", doc = "Dump all series to CSV; chainable" },
 			hline     = { args = "y:number, opts?", ret = "Figure", doc = "Add a horizontal reference line; opts: { lw, colour, dt, title }" },
 			vline     = { args = "x:number, opts?", ret = "Figure", doc = "Add a vertical reference line; opts: { lw, colour, dt, title }" },

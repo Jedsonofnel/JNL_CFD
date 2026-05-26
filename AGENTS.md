@@ -68,7 +68,8 @@ Never add extra ruler lines, long ASCII dividers, or decorative boxes.
 # Writing general JNLCFD scripts
 - Use the same clean, shallow coding style as library code.
 - Register useful values and functions with the REPL as the script runs.
-- Add short documentation strings when registering REPL values.
+- Rely on Study's generated documentation for obvious registrations; add explicit doc strings only when the generated wording would be unclear or misleading.
+- Prefer one-line Study registrations such as study:output("metrics"), study:figure("profile", profile_figure), and study:table("validation", validation_table).
 - Prefer named functions over large anonymous blocks.
 - Always provide at least one no-argument function that a new user can call immediately.
 - Tell the user which no-argument function to call after the script loads.
@@ -131,9 +132,19 @@ This applies to comments, doc strings, variable names, and any user-facing outpu
 - Use study:defaults for run configuration such as mesh resolution, solver tolerances, scheme names, and output paths.
 - Use study:design for actual design variables such as geometry dimensions, shape parameters, or operating-point variables to sweep or optimise.
 - Study builders should accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides.
-- Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format.
+- Prefer concise Study hooks for extra behaviours: study:output for result values, study:figure for plot/write pairs, study:table for CSV-style tables, and study:expose only for custom helpers.
+- Do not write separate study:plot and study:write registrations when study:figure can express the same thing.
 - If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically.
 - Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise.
+
+
+# Concise Study registration style
+- Prefer the shortest Study registration that preserves clarity.
+- Use generated docs by default; pass doc, plot_doc, write_doc, or output_doc only when needed.
+- Prefer study:output("metrics") or study:output("fluxes", "metrics.flux") over anonymous functions for simple result access.
+- Prefer study:figure("profile", profile_figure) over separate plot/write registrations.
+- Prefer study:table("validation", validation_table) over hand-written CSV writers.
+- Do not replace ordinary physics, mesh, boundary-condition, or post-processing code with large declarative tables just to make registration shorter.
 
 
 # CFD evaluate and results
@@ -143,8 +154,8 @@ This applies to comments, doc strings, variable names, and any user-facing outpu
 - Custom evaluate functions that need extra post-processing should call study:default_evaluate(design, opts) first, then append study-specific fields to the result table.
 - Return result tables with predictable keys: x for design variables, opts for options, case, sim, mesh, metrics, fields, profiles, plots, and files.
 - res.opts in result tables is the merged design+defaults table; always read runtime values from res.opts, never from study:opts() inside plot or write functions.
-- plot and output helpers receive a result table. write helpers receive (result, path). Keep these signatures consistent.
-- write helpers always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller.
+- Figure helpers should usually be local functions taking result and returning a Figure. Table helpers should take result and return { columns, rows }. Custom output and write helpers should keep their existing simple signatures.
+- REPL write calls always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller.
 
 
 # CFD post-processing and output
@@ -152,14 +163,13 @@ This applies to comments, doc strings, variable names, and any user-facing outpu
 - Use jnl.gp.mesh.line_profile to extract field profiles along axis-aligned slices rather than iterating cells manually.
 - Use gp.sym for greek letters in axis labels and titles, gp.colour for named colours, and gp.cycler() for consistent colour cycling across multi-series plots.
 - Expose useful intermediate helpers such as show-geometry, show-mesh, inspect-registry, inspect-deps, inspect-algorithm, inspect-instructions, inspect-resources, and inspect-warnings.
+Figure and table registration rules:
 
-Plot and write pairing rules:
-
-- Every named plot should have a corresponding study:write entry that saves it as an image file. Figure:save infers the terminal from the file extension (.png, .svg, .pdf).
-- The figure-building logic should live in a local function (e.g. local function profile_figure(result)) shared by both the plot and write registrations. Never duplicate the series construction.
-- study:write for images takes a path argument: (write-profile "out/profile.png"). The write function calls figure:save(path).
-- CSV exports are a separate concern and should be named with an explicit -csv suffix: (write-profile-csv "out/profile.csv"). Do not conflate image writes and data exports.
-- A typical set for one plot is: local figure_fn, study:plot("name", ...), study:write("name", ...), study:write("name-csv", ...) — three registrations from one local function.
+- Put figure-building logic in a local function such as profile_figure(result), then register it with study:figure("profile", profile_figure).
+- Use Figure:write(path) for both image and plotted-data output; the extension selects .csv, .png, .svg, .pdf, or .eps.
+- Use study:table("name", table_fn) for richer tabular data that is not exactly the plotted series.
+- Do not create separate -png and -csv study writers for the same figure unless the CSV contains different data from the plotted series.
+- Keep custom study:write registrations for non-figure outputs such as VTK, mesh files, or project-specific exports.
 
 
 # CFD parametric studies
@@ -918,59 +928,77 @@ JNL API Reference
 ## jnl.core.algorithm
    Core algorithmic step list dependency expansion
 
-   Define steps inside loop() or linear() using the Builder DSL. Symbols not explicitly
-   listed are classified as pre/main/post by expand() and emitted just-in-time. For FVM
-   cases with convergence and progress monitoring use jnl.fvm.algorithm, which wraps
-   this and delegates to expand().
+   Build a high-level solve sequence with loop() or linear(); the compiler expands
+   dependencies and emits required pre, main, and post work automatically.
+
+   Fields that are not coupled into an active solve, such as derived quantities,
+   gradients, face fields, or passive post-processing dependencies, do not need to be
+   manually inserted into the algorithm. If they are registered and depended on,
+   expansion classifies them and emits them in the appropriate phase.
+
+   Linear-solver controls are phase-specific: pre_linalg and post_linalg default to
+   larger one-shot budgets, while main_linalg defaults to a smaller repeated-solve
+   budget.
+
+   Use field_linalg(field, opts) for per-field overrides; field-specific controls take
+   precedence over phase defaults.
 
    __tostring
       sig: jnl.core.algorithm.__tostring(self) -> string
       doc: Return a compact one-line algorithm summary for REPL display
    add_rule
-      sig: jnl.core.algorithm.add_rule(rule) -> nil
-      doc: Append a single rule { name, match, fire }
+      sig: jnl.core.algorithm.add_rule(rule:table) -> Algorithm
+      doc: Append a single rule { name, match, fire } for Sage integration
    add_rules
-      sig: jnl.core.algorithm.add_rules(...rules) -> nil
-      doc: Append multiple rules in one call
+      sig: jnl.core.algorithm.add_rules(...rules) -> Algorithm
+      doc: Append multiple Sage rules as a single ruleset
    add_ruleset
-      sig: jnl.core.algorithm.add_ruleset(ruleset) -> nil
-      doc: Append a ruleset table { rules, init? } for sage integration
+      sig: jnl.core.algorithm.add_ruleset(ruleset:table) -> Algorithm
+      doc: Append a ruleset table { rules, init? } for Sage integration
    expand
-      sig: jnl.core.algorithm.expand(reg, inserted?, fresh?) -> Algorithm
-      doc: Classify registry symbols, emit pre/main/post steps, return expanded
-           algorithm
+      sig: jnl.core.algorithm.expand(reg:Registry, inserted:table?, fresh:table?) ->
+           Algorithm
+      doc: Expand registry dependencies into pre/main/post work for coupled and
+           uncoupled symbols
+   field_linalg
+      sig: jnl.core.algorithm.field_linalg(field:string, opts:table) -> Algorithm
+      doc: Update field-specific linear-solver controls; opts: { tol:number?,
+           max_iters:number? }. Field controls override the phase default when solving
+           that field
    linear
-      sig: jnl.core.algorithm.linear(cb, config?) -> nil
-      doc: Define a one-shot step sequence; config: { linalg_tol, linalg_max_iters }
+      sig: jnl.core.algorithm.linear(cb:function, config:table?) -> Algorithm
+      doc: Define a one-shot step sequence. Linear-solver controls are configured
+           separately with pre_linalg/main_linalg/post_linalg/field_linalg
    loop
-      sig: jnl.core.algorithm.loop(cb, config?) -> nil
-      doc: Define a looping step sequence; config: { max_iters, linalg_tol,
-           linalg_max_iters }
+      sig: jnl.core.algorithm.loop(cb:function, config:table?) -> Algorithm
+      doc: Define an iterative main-loop step sequence; config: { max_iters = 1000 }.
+           Linear-solver controls are configured separately with
+           pre_linalg/main_linalg/post_linalg/field_linalg
+   main_linalg
+      sig: jnl.core.algorithm.main_linalg(opts:table) -> Algorithm
+      doc: Update default linear-solver controls for solves emitted in the main phase;
+           opts: { tol:number?, max_iters:number? }. Defaults are { tol = 1e-6,
+           max_iters = 20 }
    monitor
-      sig: jnl.core.algorithm.monitor(field, config?) -> nil
-      doc: Push a monitor step outside the builder; config: { norm='normL2' }
+      sig: jnl.core.algorithm.monitor(field:string, config:table?) -> nil
+      doc: Push a monitor step outside the builder; config: { norm = 'normL2' }
    new
       sig: jnl.core.algorithm.new() -> Algorithm
-      doc: Create a new algorithm
+      doc: Create a new algorithm with empty pre/main/post step lists and default
+           phase-specific linalg controls
+   post_linalg
+      sig: jnl.core.algorithm.post_linalg(opts:table) -> Algorithm
+      doc: Update default linear-solver controls for solves emitted in the post phase;
+           opts: { tol:number?, max_iters:number? }. Defaults are { tol = 1e-6,
+           max_iters = 1000 }
+   pre_linalg
+      sig: jnl.core.algorithm.pre_linalg(opts:table) -> Algorithm
+      doc: Update default linear-solver controls for solves emitted in the pre phase;
+           opts: { tol:number?, max_iters:number? }. Defaults are { tol = 1e-6,
+           max_iters = 1000 }
    print
       sig: jnl.core.algorithm.print() -> nil
-      doc: Pretty-print the step list
-   set_config
-      sig: jnl.core.algorithm.set_config(opts:table) -> Algorithm
-      doc: Update loop configuration in place; opts: { max_iters, linalg_tol,
-           linalg_max_iters }
-   set_linalg
-      sig: jnl.core.algorithm.set_linalg(opts:table) -> Algorithm
-      doc: Update default linear-solver controls in place; opts: { tol, max_iters }
-   set_linalg_max_iters
-      sig: jnl.core.algorithm.set_linalg_max_iters(max_iters:int) -> Algorithm
-      doc: Set default maximum linear solver iterations and return self
-   set_linalg_tol
-      sig: jnl.core.algorithm.set_linalg_tol(tol:number) -> Algorithm
-      doc: Set default linear solver tolerance and return self
-   set_max_iters
-      sig: jnl.core.algorithm.set_max_iters(max_iters:int) -> Algorithm
-      doc: Set maximum loop iterations and return self
+      doc: Pretty-print the algorithm step list
    type Builder [table] — Step DSL available inside loop() and linear() callbacks; all
    methods return self
       constructor: passed as argument to loop(cb) or linear(cb)
@@ -1303,22 +1331,25 @@ JNL API Reference
       sig: jnl.fvm.algorithm.expand(reg:Registry, inserted:table?, fresh:table?) ->
            Algorithm
       doc: Seal monitoring rules, then delegate to core algorithm expansion
+   field_linalg
+      sig: jnl.fvm.algorithm.field_linalg(field:string, opts:table) -> FvmAlg
+      doc: Set field-specific linear-solver controls; overrides the active phase default
+           when solving that field
    guard
       sig: jnl.fvm.algorithm.guard(field:string, pred:function) -> FvmAlg
       doc: Add a field predicate to the OR divergence criterion; call before expand
-   linalg_max_iters
-      sig: jnl.fvm.algorithm.linalg_max_iters(max_iters:int) -> FvmAlg
-      doc: Set default maximum linear iterations for solve steps
-   linalg_tol
-      sig: jnl.fvm.algorithm.linalg_tol(tol:number) -> FvmAlg
-      doc: Set default linear solver tolerance for solve steps
    linear
       sig: jnl.fvm.algorithm.linear(cb:function, config:table?) -> FvmAlg
       doc: Define a one-shot step sequence
    loop
       sig: jnl.fvm.algorithm.loop(cb:function, config:table?) -> FvmAlg
-      doc: Define a looping step sequence; config: { max_iters, linalg_tol,
-           linalg_max_iters }
+      doc: Define an iterative main-loop step sequence; config: { max_iters = 1000 }.
+           Linear-solver controls are configured with
+           pre_linalg/main_linalg/post_linalg/field_linalg
+   main_linalg
+      sig: jnl.fvm.algorithm.main_linalg(opts:table) -> FvmAlg
+      doc: Set default linear-solver controls for solves emitted in the main phase;
+           opts: { tol, max_iters }
    max_iters
       sig: jnl.fvm.algorithm.max_iters(max_iters:int) -> FvmAlg
       doc: Set maximum outer loop iterations
@@ -1328,6 +1359,14 @@ JNL API Reference
    new
       sig: jnl.fvm.algorithm.new(opts?) -> FvmAlg
       doc: Create a new FVM algorithm wrapper; opts: { print_every = 25 }
+   post_linalg
+      sig: jnl.fvm.algorithm.post_linalg(opts:table) -> FvmAlg
+      doc: Set default linear-solver controls for solves emitted in the post phase;
+           opts: { tol, max_iters }
+   pre_linalg
+      sig: jnl.fvm.algorithm.pre_linalg(opts:table) -> FvmAlg
+      doc: Set default linear-solver controls for solves emitted in the pre phase; opts:
+           { tol, max_iters }
    print
       sig: jnl.fvm.algorithm.print() -> nil
       doc: Pretty-print the wrapped core algorithm step list
@@ -1337,9 +1376,6 @@ JNL API Reference
    progress_fields
       sig: jnl.fvm.algorithm.progress_fields() -> string[]
       doc: Return 'field:kind' strings for each progress watch column
-   set_linalg
-      sig: jnl.fvm.algorithm.set_linalg(opts:table) -> FvmAlg
-      doc: Set default linear-solver controls for solve steps; opts: { tol, max_iters }
    summary
       sig: jnl.fvm.algorithm.summary() -> string
       doc: Return a human-readable monitoring configuration summary
@@ -1695,138 +1731,160 @@ JNL API Reference
    FVM operator bindings: implicit assembly, explicit evaluation, and interpolation.
 
    bc_dirichlet_const
-      sig: jnl.fvm.operators.bc_dirichlet_const()
+      sig: jnl.fvm.operators.bc_dirichlet_const(sys, mesh, patch:str, val:f64)
       doc: Dirichlet BC on cell field
    bc_dirichlet_face_const
-      sig: jnl.fvm.operators.bc_dirichlet_face_const()
+      sig: jnl.fvm.operators.bc_dirichlet_face_const(mesh, face_f:vec, patch:str,
+           val:f64)
       doc: Dirichlet BC on face field
    bc_dirichlet_face_normal
-      sig: jnl.fvm.operators.bc_dirichlet_face_normal()
+      sig: jnl.fvm.operators.bc_dirichlet_face_normal(mesh, un:vec, patch:str, ux:f64,
+           uy:f64)
       doc: Dirichlet face-normal BC from velocity vector
    bc_neumann_const
-      sig: jnl.fvm.operators.bc_neumann_const()
+      sig: jnl.fvm.operators.bc_neumann_const(sys, mesh, patch:str, flux:f64)
       doc: Neumann BC on cell field
    bc_neumann_face_const
-      sig: jnl.fvm.operators.bc_neumann_face_const()
+      sig: jnl.fvm.operators.bc_neumann_face_const(mesh, field:vec, face_f:vec,
+           patch:str, flux:f64)
       doc: Neumann BC on face field
    bc_neumann_face_normal
-      sig: jnl.fvm.operators.bc_neumann_face_normal()
-      doc: Neumann face-normal BC
+      sig: jnl.fvm.operators.bc_neumann_face_normal(mesh, ux_f:vec, uy_f:vec, un:vec,
+           patch:str, ux:f64, uy:f64)
+      doc: Neumann face-normal BC from velocity vector
    bc_robin_const
-      sig: jnl.fvm.operators.bc_robin_const()
-      doc: Robin BC on named patch: h·A added to diagonal, h·phi_ref·A to RHS; apply
-           after Laplacian
+      sig: jnl.fvm.operators.bc_robin_const(sys, mesh, patch:str, h:f64, phi_ref:f64)
+      doc: Robin BC on named patch: h * A added to diagonal and h * phi_ref * A to RHS;
+           apply after Laplacian
    bc_robin_face_const
-      sig: jnl.fvm.operators.bc_robin_face_const()
-      doc: Robin face value on named patch: phi_face = (γδ·phi_P + h·phi_ref)/(γδ
-           + h); γδ from sys.upper
+      sig: jnl.fvm.operators.bc_robin_face_const(sys, mesh, field:vec, face_field:vec,
+           patch:str, h:f64, phi_ref:f64)
+      doc: Robin face value on named patch: phi_face = (gamma_delta * phi_P + h *
+           phi_ref) / (gamma_delta + h); gamma_delta is read from sys.upper
    ddt_const
-      sig: jnl.fvm.operators.ddt_const()
+      sig: jnl.fvm.operators.ddt_const(sys, mesh, rho:f64, dt:f64, phi_old:vec)
       doc: Implicit time derivative, constant density
    ddt_field
-      sig: jnl.fvm.operators.ddt_field()
+      sig: jnl.fvm.operators.ddt_field(sys, mesh, rho:vec, dt:f64, phi_old:vec)
       doc: Implicit time derivative, field density
    div_cds_const
-      sig: jnl.fvm.operators.div_cds_const()
+      sig: jnl.fvm.operators.div_cds_const(sys, mesh, rho:f64, un:vec)
       doc: CDS convection, constant density
    div_cds_field
-      sig: jnl.fvm.operators.div_cds_field()
+      sig: jnl.fvm.operators.div_cds_field(sys, mesh, rho:vec, un:vec)
       doc: CDS convection, field density
    div_tvd_minmod
-      sig: jnl.fvm.operators.div_tvd_minmod()
+      sig: jnl.fvm.operators.div_tvd_minmod(sys, mesh, phi:vec, gx:vec, gy:vec, un:vec)
       doc: TVD minmod limiter correction
    div_tvd_superbee
-      sig: jnl.fvm.operators.div_tvd_superbee()
+      sig: jnl.fvm.operators.div_tvd_superbee(sys, mesh, phi:vec, gx:vec, gy:vec,
+           un:vec)
       doc: TVD Superbee limiter correction
    div_tvd_van_leer
-      sig: jnl.fvm.operators.div_tvd_van_leer()
+      sig: jnl.fvm.operators.div_tvd_van_leer(sys, mesh, phi:vec, gx:vec, gy:vec,
+           un:vec)
       doc: TVD van Leer limiter correction
    div_uds_const
-      sig: jnl.fvm.operators.div_uds_const()
+      sig: jnl.fvm.operators.div_uds_const(sys, mesh, rho:f64, un:vec)
       doc: UDS convection, constant density
    div_uds_field
-      sig: jnl.fvm.operators.div_uds_field()
+      sig: jnl.fvm.operators.div_uds_field(sys, mesh, rho:vec, un:vec)
       doc: UDS convection, field density
    divergence_integrated
-      sig: jnl.fvm.operators.divergence_integrated()
-      doc: Face flux sum into cell field: div[c] = Σ(un·A)
+      sig: jnl.fvm.operators.divergence_integrated(mesh, un_face:vec, div:vec)
+      doc: Face flux sum into cell field: div[c] = sum(un * A)
    divergence_volumetric
-      sig: jnl.fvm.operators.divergence_volumetric()
-      doc: Face flux sum divided by cell volume: div[c] = Σ(un·A)/V
+      sig: jnl.fvm.operators.divergence_volumetric(mesh, un_face:vec, div:vec)
+      doc: Face flux sum divided by cell volume: div[c] = sum(un * A) / V
    face_interp_cds
-      sig: jnl.fvm.operators.face_interp_cds()
+      sig: jnl.fvm.operators.face_interp_cds(mesh, field:vec, face_field:vec)
       doc: CDS face interpolation of a cell field
    face_normal_component
-      sig: jnl.fvm.operators.face_normal_component()
+      sig: jnl.fvm.operators.face_normal_component(mesh, ux_face:vec, uy_face:vec,
+           un_face:vec)
       doc: Project face velocity components onto face normal
    grad_green_gauss
-      sig: jnl.fvm.operators.grad_green_gauss()
+      sig: jnl.fvm.operators.grad_green_gauss(mesh, face_field:vec, gx:vec, gy:vec)
       doc: Green-Gauss gradient reconstruction from face field
    laplacian_const
-      sig: jnl.fvm.operators.laplacian_const()
+      sig: jnl.fvm.operators.laplacian_const(sys, mesh, gamma:f64)
       doc: Laplacian with constant diffusivity
    laplacian_field
-      sig: jnl.fvm.operators.laplacian_field()
+      sig: jnl.fvm.operators.laplacian_field(sys, mesh, gamma:vec)
       doc: Laplacian with linear-interpolated face diffusivity
    laplacian_field_harmonic
-      sig: jnl.fvm.operators.laplacian_field_harmonic()
+      sig: jnl.fvm.operators.laplacian_field_harmonic(sys, mesh, gamma:vec)
       doc: Laplacian with harmonic-mean face diffusivity
    laplacian_nonorth_const
-      sig: jnl.fvm.operators.laplacian_nonorth_const()
-      doc: Non-orthogonality correction, constant gamma
+      sig: jnl.fvm.operators.laplacian_nonorth_const(sys, mesh, gamma:f64, gx:vec,
+           gy:vec)
+      doc: Non-orthogonality correction, constant diffusivity
    laplacian_nonorth_field
-      sig: jnl.fvm.operators.laplacian_nonorth_field()
-      doc: Non-orthogonality correction, field gamma
+      sig: jnl.fvm.operators.laplacian_nonorth_field(sys, mesh, gamma:vec, gx:vec,
+           gy:vec)
+      doc: Non-orthogonality correction, field diffusivity
    patch_gradient_flux
-      sig: jnl.fvm.operators.patch_gradient_flux()
-      doc: Non-orthogonal corrected heat flux integral over a named patch: ∫ γ (∇T
-           · n̂) dA
+      sig: jnl.fvm.operators.patch_gradient_flux(mesh, T:vec, face_T:vec, gx:vec,
+           gy:vec, gamma:f64, patch:str) -> f64
+      doc: Return the non-orthogonal corrected diffusive flux integral over a named
+           patch: integral gamma * grad(T) dot n dA
    rhie_chow
-      sig: jnl.fvm.operators.rhie_chow()
+      sig: jnl.fvm.operators.rhie_chow(mesh, Ux:vec, Uy:vec, p:vec, gx:vec, gy:vec,
+           ap_x:vec, ap_y:vec, un:vec)
       doc: Rhie-Chow momentum-weighted face flux
    sp_integrated
-      sig: jnl.fvm.operators.sp_integrated()
-      doc: Linearised source: f[c] added to diagonal (no volume weight)
+      sig: jnl.fvm.operators.sp_integrated(sys, mesh, f:vec)
+      doc: Linearised source: f[c] added to diagonal without volume weighting
    sp_integrated_const
-      sig: jnl.fvm.operators.sp_integrated_const()
-      doc: Linearised source: coeff added to diagonal (no volume weight)
+      sig: jnl.fvm.operators.sp_integrated_const(sys, mesh, coeff:f64)
+      doc: Linearised source: coeff added to diagonal without volume weighting
    sp_integrated_scaled
-      sig: jnl.fvm.operators.sp_integrated_scaled()
-      doc: Linearised source: s * f[c] added to diagonal (no volume weight)
+      sig: jnl.fvm.operators.sp_integrated_scaled(sys, mesh, s:f64, f:vec)
+      doc: Linearised source: s * f[c] added to diagonal without volume weighting
    sp_volumetric_const
-      sig: jnl.fvm.operators.sp_volumetric_const()
+      sig: jnl.fvm.operators.sp_volumetric_const(sys, mesh, coeff:f64)
       doc: Linearised source: coeff * V added to diagonal
    sp_volumetric_field
-      sig: jnl.fvm.operators.sp_volumetric_field()
+      sig: jnl.fvm.operators.sp_volumetric_field(sys, mesh, f:vec)
       doc: Linearised source: f[c] * V[c] added to diagonal
    sp_volumetric_field_scaled
-      sig: jnl.fvm.operators.sp_volumetric_field_scaled()
+      sig: jnl.fvm.operators.sp_volumetric_field_scaled(sys, mesh, s:f64, f:vec)
       doc: Linearised source: s * f[c] * V[c] added to diagonal
    su_integrated
-      sig: jnl.fvm.operators.su_integrated()
-      doc: Explicit source: f[c] added to RHS (no volume weight)
+      sig: jnl.fvm.operators.su_integrated(sys, mesh, f:vec)
+      doc: Explicit source: f[c] added to RHS without volume weighting
    su_integrated_const
-      sig: jnl.fvm.operators.su_integrated_const()
-      doc: Explicit source: coeff added to RHS (no volume weight)
+      sig: jnl.fvm.operators.su_integrated_const(sys, mesh, coeff:f64)
+      doc: Explicit source: coeff added to RHS without volume weighting
    su_integrated_scaled
-      sig: jnl.fvm.operators.su_integrated_scaled()
-      doc: Explicit source: s * f[c] added to RHS (no volume weight)
+      sig: jnl.fvm.operators.su_integrated_scaled(sys, mesh, s:f64, f:vec)
+      doc: Explicit source: s * f[c] added to RHS without volume weighting
    su_volumetric_const
-      sig: jnl.fvm.operators.su_volumetric_const()
+      sig: jnl.fvm.operators.su_volumetric_const(sys, mesh, coeff:f64)
       doc: Explicit source: coeff * V added to RHS
    su_volumetric_field
-      sig: jnl.fvm.operators.su_volumetric_field()
+      sig: jnl.fvm.operators.su_volumetric_field(sys, mesh, f:vec)
       doc: Explicit source: f[c] * V[c] added to RHS
    su_volumetric_field_scaled
-      sig: jnl.fvm.operators.su_volumetric_field_scaled()
+      sig: jnl.fvm.operators.su_volumetric_field_scaled(sys, mesh, s:f64, f:vec)
       doc: Explicit source: s * f[c] * V[c] added to RHS
    vorticity_2d
-      sig: jnl.fvm.operators.vorticity_2d()
+      sig: jnl.fvm.operators.vorticity_2d(mesh, grad_vy_x:vec, grad_ux_y:vec, omega:vec)
       doc: 2D vorticity: omega = dVy/dx - dUx/dy
 
 
 ## jnl.fvm.rules
    Rule helpers and rulesets for FVM convergence monitoring via Sage.
+
+   Use this module to build convergence, divergence, progress, and post-mortem rules for
+   FVM algorithms.
+
+   Field predicates such as residual_below, field_change_below, and field_norm_below
+   return functions of shape pred(field, sage, iter, depth). Pass them directly to
+   alg:converge or alg:guard; do not write predicates expecting a raw residual value.
+
+   Use residual_below for solved fields, field_change_below when residuals are noisy,
+   and field_norm_below for monitored derived fields such as divU.
 
    The d argument passed to pm_rule callbacks is sim.diag — the same Diag object
    documented in jnl.fvm.sim. Use d.field(name), d.max(name), and d.sys_diag(name) to
@@ -1904,16 +1962,16 @@ JNL API Reference
 ## jnl.fvm.study
    FVM-specific study helper with automatic case builders and inspectors
 
-   Use jnl.fvm.study when a script can expose mesh, registry, algorithm, and
-   boundary-condition builders.
+   Study builders register mesh, registry, algorithm, and BC construction separately so
+   cases remain inspectable in the REPL.
 
-   Builders receive design variables first and run options second: fn(design, opts). Use
-   design for sweep/optimisation variables, and defaults/options for ordinary run
-   configuration.
+   The registry declares physics and derived quantities; the algorithm declares
+   high-level solves and stopping rules. Do not manually schedule gradients, face
+   fields, or other uncoupled post-processing intermediates.
 
-   The helper registers standard REPL inspectors such as inspect-registry, inspect-deps,
-   inspect-instructions, and run, while still allowing custom evaluate, output, plot,
-   write, and optimisation functions.
+   For convergence, pass predicates from jnl.fvm.rules to alg:converge and alg:guard.
+   These predicates read Sage history such as residual, field_norm, and field_change
+   facts.
 
    new
       sig: jnl.fvm.study.new(title:string?) -> FvmStudy
@@ -2110,8 +2168,9 @@ JNL API Reference
    Gnuplot driver via popen; supports interactive display, file output, and CSV export.
 
    Build a Figure with M.figure(opts), chain :add(xs, ys, opts) calls, then call :show()
-   for an interactive window or :save(path) for file output. Extension on the save path
-   selects the terminal automatically (.png .svg .pdf .eps). M.sample(fn, x0, x1, n)
+   for an interactive window or :write(path) for file output. Extension on the write
+   path selects CSV or image output automatically (.csv .png .svg .pdf .eps).
+   :save(path) remains available for image-only output. M.sample(fn, x0, x1, n)
    generates xs/ys from a Lua function for quick plotting.
 
    cycler
@@ -2141,8 +2200,8 @@ JNL API Reference
          sig: Figure:hline(y:number, opts?) -> Figure
          doc: Add a horizontal reference line; opts: { lw, colour, dt, title }
       Figure:save
-         sig: Figure:save(path:string, opts?) -> nil
-         doc: Save to file; terminal inferred from extension; opts: { size, font,
+         sig: Figure:save(path:string, opts?) -> Figure
+         doc: Save image output; terminal inferred from extension; opts: { size, font,
               terminal }
       Figure:show
          sig: Figure:show() -> nil
@@ -2150,6 +2209,11 @@ JNL API Reference
       Figure:vline
          sig: Figure:vline(x:number, opts?) -> Figure
          doc: Add a vertical reference line; opts: { lw, colour, dt, title }
+      Figure:write
+         sig: Figure:write(path:string, opts?) -> Figure
+         doc: Write figure data or image by extension; .csv dumps series,
+              .png/.svg/.pdf/.eps save image output; image opts: { size, font, terminal
+              }
       Figure:write_csv
          sig: Figure:write_csv(path:string) -> Figure
          doc: Dump all series to CSV; chainable
@@ -2683,6 +2747,11 @@ JNL API Reference
       Study:expose
          sig: Study:expose(name:string, value:any, doc:string?) -> Study
          doc: Expose a helper or value as a registered REPL global
+      Study:figure
+         sig: Study:figure(name:string, figure_fn:function(result)->Figure, opts:table?)
+              -> Study
+         doc: Register matching plot and writer helpers from one figure factory; opts: {
+              doc, plot_doc, write_doc, write }
       Study:install
          sig: Study:install(repl:Repl?) -> Repl
          doc: Install usage and registered helpers into a REPL
@@ -2692,7 +2761,7 @@ JNL API Reference
       Study:optimise
          sig: Study:optimise(name:string, fn:function(study), opts:table?) -> Study
          doc: Register an optimisation; fn receives the study and calls run(overrides)
-              as its inner loop
+              as its inner loop; opts: { doc, entry }
       Study:option
          sig: Study:option(name:string, doc:string) -> Study
          doc: Document one user-facing option
@@ -2703,11 +2772,13 @@ JNL API Reference
          sig: Study:opts(overrides:table?) -> table
          doc: Return defaults merged with overrides
       Study:output
-         sig: Study:output(name:string, fn:function, doc:string?) -> Study
-         doc: Register an output helper over the last result
+         sig: Study:output(name:string, fn_or_path:function|string?, doc:string?) ->
+              Study
+         doc: Register an output helper over the last result; fn_or_path defaults to a
+              result key derived from name and may be a dotted result path
       Study:plot
-         sig: Study:plot(name:string, fn:function, opts:table?) -> Study
-         doc: Register a plot helper over the last result
+         sig: Study:plot(name:string, fn:function(result), opts:table?) -> Study
+         doc: Register a plot helper over the last result; opts: { doc }
       Study:print_usage
          sig: Study:print_usage() -> nil
          doc: Print generated usage text for the study
@@ -2724,17 +2795,22 @@ JNL API Reference
       Study:sweep
          sig: Study:sweep(name:string, fn:function(study), opts:table?) -> Study
          doc: Register a parameter sweep; fn receives the study and calls run(overrides)
-              in a loop
+              in a loop; opts: { doc }
+      Study:table
+         sig: Study:table(name:string, table_fn:function(result)->table, opts:table?) ->
+              Study
+         doc: Register matching output and CSV writer helpers from one table factory;
+              table_fn returns { columns, rows }; opts: { doc, output_doc, write_doc }
       Study:uq
          sig: Study:uq(name:string, fn:function(study), opts:table?) -> Study
          doc: Register a UQ study; fn receives the study and calls run(overrides) per
-              sample
+              sample; opts: { doc }
       Study:usage_string
          sig: Study:usage_string() -> string
          doc: Return generated usage text for the study
       Study:write
          sig: Study:write(name:string, fn:function(result, path), opts:table?) -> Study
-         doc: Register a writer; REPL call is (write-name path result?)
+         doc: Register a writer; REPL call is (write-name path result?); opts: { doc }
 
 
 ## jnl.sage

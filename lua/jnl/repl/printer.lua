@@ -61,7 +61,7 @@ end
 function Printer.new(opts)
 	opts = opts or {}
 	local self = setmetatable({
-		width = opts.width or 72,
+		width = opts.width or 80,
 		_buf  = {},
 	}, Printer)
 	self.out = opts.out or default_out(self)

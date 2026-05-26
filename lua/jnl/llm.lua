@@ -109,7 +109,10 @@ local SECTIONS = {
 		lines = {
 			bullet("Use the same clean, shallow coding style as library code."),
 			bullet("Register useful values and functions with the REPL as the script runs."),
-			bullet("Add short documentation strings when registering REPL values."),
+			bullet(
+				"Rely on Study's generated documentation for obvious registrations; add explicit doc strings only when the generated wording would be unclear or misleading."),
+			bullet(
+				"Prefer one-line Study registrations such as study:output(\"metrics\"), study:figure(\"profile\", profile_figure), and study:table(\"validation\", validation_table)."),
 			bullet("Prefer named functions over large anonymous blocks."),
 			bullet("Always provide at least one no-argument function that a new user can call immediately."),
 			bullet("Tell the user which no-argument function to call after the script loads."),
@@ -207,11 +210,27 @@ local SECTIONS = {
 			bullet(
 				"Study builders should accept fn(design, opts), where design comes from study:design and opts comes from study:defaults merged with run overrides."),
 			bullet(
-				"Use study:output, study:plot, study:write, study:optimise, or study:expose for extra behaviours rather than expanding the core case format."),
+				"Prefer concise Study hooks for extra behaviours: study:output for result values, study:figure for plot/write pairs, study:table for CSV-style tables, and study:expose only for custom helpers."),
+			bullet(
+				"Do not write separate study:plot and study:write registrations when study:figure can express the same thing."),
 			bullet(
 				"If using jnl.fvm.study, register mesh, registry, algorithm, and bcs builders so standard inspectors can be injected automatically."),
 			bullet(
 				"Use Fennel-friendly registered names in the REPL, such as show-mesh, inspect-registry, plot-profile, write-results, and optimise."),
+		},
+	},
+
+	{
+		title = "Concise Study registration style",
+		lines = {
+			bullet("Prefer the shortest Study registration that preserves clarity."),
+			bullet("Use generated docs by default; pass doc, plot_doc, write_doc, or output_doc only when needed."),
+			bullet(
+				"Prefer study:output(\"metrics\") or study:output(\"fluxes\", \"metrics.flux\") over anonymous functions for simple result access."),
+			bullet("Prefer study:figure(\"profile\", profile_figure) over separate plot/write registrations."),
+			bullet("Prefer study:table(\"validation\", validation_table) over hand-written CSV writers."),
+			bullet(
+				"Do not replace ordinary physics, mesh, boundary-condition, or post-processing code with large declarative tables just to make registration shorter."),
 		},
 	},
 
@@ -231,9 +250,9 @@ local SECTIONS = {
 			bullet(
 				"res.opts in result tables is the merged design+defaults table; always read runtime values from res.opts, never from study:opts() inside plot or write functions."),
 			bullet(
-				"plot and output helpers receive a result table. write helpers receive (result, path). Keep these signatures consistent."),
+				"Figure helpers should usually be local functions taking result and returning a Figure. Table helpers should take result and return { columns, rows }. Custom output and write helpers should keep their existing simple signatures."),
 			bullet(
-				"write helpers always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller."),
+				"REPL write calls always take path as the first required argument, then an optional result. Never write to the filesystem without an explicit path from the caller."),
 		},
 	},
 
@@ -248,19 +267,18 @@ local SECTIONS = {
 				"Use gp.sym for greek letters in axis labels and titles, gp.colour for named colours, and gp.cycler() for consistent colour cycling across multi-series plots."),
 			bullet(
 				"Expose useful intermediate helpers such as show-geometry, show-mesh, inspect-registry, inspect-deps, inspect-algorithm, inspect-instructions, inspect-resources, and inspect-warnings."),
+			"Figure and table registration rules:",
 			"",
-			"Plot and write pairing rules:",
-			"",
 			bullet(
-				"Every named plot should have a corresponding study:write entry that saves it as an image file. Figure:save infers the terminal from the file extension (.png, .svg, .pdf)."),
+				"Put figure-building logic in a local function such as profile_figure(result), then register it with study:figure(\"profile\", profile_figure)."),
 			bullet(
-				"The figure-building logic should live in a local function (e.g. local function profile_figure(result)) shared by both the plot and write registrations. Never duplicate the series construction."),
+				"Use Figure:write(path) for both image and plotted-data output; the extension selects .csv, .png, .svg, .pdf, or .eps."),
 			bullet(
-				"study:write for images takes a path argument: (write-profile \"out/profile.png\"). The write function calls figure:save(path)."),
+				"Use study:table(\"name\", table_fn) for richer tabular data that is not exactly the plotted series."),
 			bullet(
-				"CSV exports are a separate concern and should be named with an explicit -csv suffix: (write-profile-csv \"out/profile.csv\"). Do not conflate image writes and data exports."),
+				"Do not create separate -png and -csv study writers for the same figure unless the CSV contains different data from the plotted series."),
 			bullet(
-				"A typical set for one plot is: local figure_fn, study:plot(\"name\", ...), study:write(\"name\", ...), study:write(\"name-csv\", ...) — three registrations from one local function."),
+				"Keep custom study:write registrations for non-figure outputs such as VTK, mesh files, or project-specific exports."),
 		},
 	},
 
@@ -302,7 +320,6 @@ local EXAMPLES = {
 
 local function render(opts)
 	local Printer = require("jnl.repl.printer")
-	local fmt     = Printer.fmt
 	local p       = Printer.new({ width = opts.width or 88 })
 
 	for _, s in ipairs(SECTIONS) do
@@ -318,7 +335,6 @@ end
 
 local function render_examples()
 	local Printer = require("jnl.repl.printer")
-	local fmt     = Printer.fmt
 	local p       = Printer.new({ width = 88 })
 
 	p:header("Examples", 1)

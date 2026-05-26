@@ -6,7 +6,6 @@ local canned   = require("jnl.fvm.canned")
 local fvm      = require("jnl.fvm")
 local mesh2d   = require("jnl.mesh2d")
 local BC       = require("jnl.fvm.bc")
-local Rules    = require("jnl.fvm.rules")
 local gp       = require("jnl.gp")
 local gpm      = require("jnl.gp.mesh")
 local vtk      = require("jnl.fvm.vtk")
@@ -484,45 +483,19 @@ end
 -- Outputs
 --
 
-study:output("temperature-profiles", function(result)
-	return result.profiles.temperature
-end, "Return T(y) profiles at configured x stations")
-
-study:output("patch-temperatures", function(result)
-	return result.profiles.patch_T
-end, "Return outlet and top patch temperature samples and means")
-
-study:output("fluxes", function(result)
-	return result.metrics.flux
-end, "Return wall, outlet, and top patch_gradient_flux values")
-
-study:output("validation", function(result)
-	return result.validation
-end, "Return simple Re_x, Pr, Nu_x, and delta99 reference values")
-
-study:output("metrics", function(result)
-	return result.metrics
-end, "Return headline scalar metrics")
+study:output("temperature-profiles", "profiles.temperature")
+study:output("patch-temperatures", "profiles.patch-T")
+study:output("fluxes", "metrics.flux")
+study:output("validation")
+study:output("metrics")
 
 --
--- Plots
+-- Outputs
 --
 
-study:plot("temperature-profiles", function(result)
-	temperature_profile_figure(result):show()
-end, { doc = "Plot T(y) at several x stations" })
-
-study:plot("log-temperature-profiles", function(result)
-	log_temperature_profile_figure(result):show()
-end, { doc = "Plot log-scaled temperature excess profiles at several x stations" })
-
-study:plot("validation", function(result)
-	validation_figure(result):show()
-end, { doc = "Plot simple flat-plate reference scales" })
-
---
--- Writes
---
+study:figure("temperature-profiles", temperature_profile_figure)
+study:figure("log-temperature-profiles", log_temperature_profile_figure)
+study:figure("validation", validation_figure)
 
 study:write("vtk", function(result, path)
 	local fields = result.fields()
@@ -541,71 +514,6 @@ study:write("vtk", function(result, path)
 
 	print("Saved to " .. path)
 end, { doc = "Write Ux, Uy, p, T, and U vector to VTK" })
-
-study:write("temperature-profiles-png", function(result, path)
-	temperature_profile_figure(result):save(path)
-	print("Saved to " .. path)
-end, { doc = "Save linear temperature profile plot" })
-
-study:write("log-temperature-profiles-png", function(result, path)
-	log_temperature_profile_figure(result):save(path)
-	print("Saved to " .. path)
-end, { doc = "Save log temperature excess profile plot" })
-
-study:write("validation-png", function(result, path)
-	validation_figure(result):save(path)
-	print("Saved to " .. path)
-end, { doc = "Save simple validation reference plot" })
-
-study:write("temperature-profiles-csv", function(result, path)
-	local rows = { "x,y,T,theta,Re_x" }
-
-	for _, prof in ipairs(result.profiles.temperature) do
-		for i, y in ipairs(prof.y) do
-			rows[#rows + 1] = string.format(
-				"%.8g,%.8g,%.8g,%.8g,%.8g",
-				prof.x,
-				y,
-				prof.T[i],
-				prof.theta[i],
-				prof.Re_x
-			)
-		end
-	end
-
-	local f, err = io.open(path, "w")
-	if not f then error("temperature-profiles-csv: " .. err) end
-
-	f:write(table.concat(rows, "\n") .. "\n")
-	f:close()
-
-	print(string.format("wrote %s (%d rows)", path, #rows - 1))
-end, { doc = "Save temperature profiles as CSV" })
-
-study:write("validation-csv", function(result, path)
-	local rows = { "x,Re_x,Pr,Nu_x_cwt,delta99,T_mean,T_max" }
-
-	for _, row in ipairs(result.validation) do
-		rows[#rows + 1] = string.format(
-			"%.8g,%.8g,%.8g,%.8g,%.8g,%.8g,%.8g",
-			row.x,
-			row.Re_x,
-			row.Pr,
-			row.Nu_x_cwt,
-			row.delta99,
-			row.T_mean or 0.0,
-			row.T_max or 0.0
-		)
-	end
-
-	local f, err = io.open(path, "w")
-	if not f then error("validation-csv: " .. err) end
-
-	f:write(table.concat(rows, "\n") .. "\n")
-	f:close()
-
-	print(string.format("wrote %s (%d rows)", path, #rows - 1))
-end, { doc = "Save validation reference table as CSV" })
 
 --
 -- Velocity sweep
@@ -633,9 +541,7 @@ local function run_velocity_sweep(s)
 	return rows
 end
 
-study:sweep("velocity", run_velocity_sweep, {
-	doc = "Sweep inlet velocity and return outlet/top mean temperatures and patch fluxes",
-})
+study:sweep("velocity", run_velocity_sweep)
 
 study:expose("plot-velocity-sweep", function()
 	local rows = run_velocity_sweep(study)
@@ -664,6 +570,7 @@ study:expose("show-summary", function()
 end, "Run the default case and print headline metrics")
 
 print("Loaded flat-plate heat-transfer study.")
-print("Try (run-demo), (show-summary), (plot-log-temperature-profiles), or (plot-velocity-sweep).")
+print(
+	"Try (run-demo), (show-summary), (plot-log-temperature-profiles), or (write-log-temperature-profiles \"flat_plate.png\").")
 
 return study:repl()
