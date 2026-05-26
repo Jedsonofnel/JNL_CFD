@@ -603,6 +603,298 @@ end)
 return study:repl()
 
 ```
+FVM poisueille validation (poiseuille.lua)
+------------------------------------------
+```lua
+-- lua/showcase/poiseuille.lua - Interactive Poiseuille flow validation
+-- <jed@nelson.ac> // 2026-05-26
+
+local FvmStudy = require("jnl.fvm.study")
+local canned   = require("jnl.fvm.canned")
+local mesh2d   = require("jnl.mesh2d")
+local BC       = require("jnl.fvm.bc")
+local gp       = require("jnl.gp")
+local gpm      = require("jnl.gp.mesh")
+local vtk      = require("jnl.fvm.vtk")
+local P        = mesh2d.smesh.PATCH
+
+local study    = FvmStudy.new("Poiseuille Flow")
+
+study:about("Developing plane Poiseuille flow: uniform inlet, no-slip walls, fixed-pressure outlet.")
+
+--
+-- Design and defaults
+--
+
+study:design({
+	U_mean = 1.0,
+	mu     = 1e-2,
+	rho    = 1.0,
+	H      = 1.0,
+	L      = 10.0,
+	p_out  = 0.0,
+})
+
+study:defaults({
+	Nx          = 120,
+	Ny          = 40,
+	tol         = 1e-6,
+	divu_tol    = 1e-8,
+	max_iters   = 4000,
+	print_every = 100,
+})
+
+--
+-- Builders
+--
+
+study:mesh(function(design, opts)
+	return mesh2d.new_smesh(design.L, design.H, opts.Nx, opts.Ny)
+end)
+
+study:algorithm(function(_, opts)
+	return canned.alg_simple({
+		tol         = opts.tol,
+		divu_tol    = opts.divu_tol,
+		max_iters   = opts.max_iters,
+		print_every = opts.print_every,
+	})
+end)
+
+study:registry(function(design, _)
+	local reg = canned.reg_laminar_ns({
+		rho     = design.rho,
+		mu      = design.mu,
+		alpha_p = 0.3,
+	})
+
+	reg:set_initial("Ux", design.U_mean)
+	reg:set_initial("Uy", 0.0)
+	reg:set_initial("p", design.p_out)
+
+	return reg
+end)
+
+study:bcs(function(design, _)
+	return {
+		Ux = {
+			BC.dirichlet(P.LEFT, design.U_mean),
+			BC.neumann(P.RIGHT, 0.0),
+			BC.dirichlet(P.TOP, 0.0),
+			BC.dirichlet(P.BOTTOM, 0.0),
+		},
+		Uy = {
+			BC.dirichlet(P.LEFT, 0.0),
+			BC.neumann(P.RIGHT, 0.0),
+			BC.dirichlet(P.TOP, 0.0),
+			BC.dirichlet(P.BOTTOM, 0.0),
+		},
+		p = {
+			BC.neumann(P.LEFT, 0.0),
+			BC.dirichlet(P.RIGHT, design.p_out),
+			BC.neumann(P.TOP, 0.0),
+			BC.neumann(P.BOTTOM, 0.0),
+		}
+	}
+end)
+
+--
+-- Validation helpers
+--
+
+local function reynolds(design)
+	return design.rho * design.U_mean * design.H / design.mu
+end
+
+local function analytical_u(design, y)
+	local eta = y / design.H
+	return 6.0 * design.U_mean * eta * (1.0 - eta)
+end
+
+local function analytical_profile(design)
+	local n, ys, us = 200, {}, {}
+
+	for k = 1, n do
+		local y = (k - 0.5) / n * design.H
+		ys[k] = y
+		us[k] = analytical_u(design, y)
+	end
+
+	return ys, us
+end
+
+local function x_tol(design, opts)
+	return design.L / opts.Nx * 0.6
+end
+
+local function extract_profiles(result)
+	local d                  = result.x
+	local o                  = result.opts
+	local fields             = result.fields()
+
+	local inlet_y, inlet_u   = gpm.line_profile(
+		result.mesh,
+		fields.Ux,
+		"x",
+		0.0,
+		{ tol = x_tol(d, o) }
+	)
+
+	local outlet_y, outlet_u = gpm.line_profile(
+		result.mesh,
+		fields.Ux,
+		"x",
+		d.L,
+		{ tol = x_tol(d, o) }
+	)
+
+	return {
+		inlet  = { y = inlet_y, u = inlet_u },
+		outlet = { y = outlet_y, u = outlet_u },
+	}
+end
+
+local function profile_figure(result)
+	local d            = result.x
+	local ana_y, ana_u = analytical_profile(d)
+	local next_color   = gp.cycler()
+
+	return gp.figure({
+			title  = string.format(
+				"Poiseuille flow   Re=%.1f   %s=%.4g",
+				result.Re,
+				gp.sym.mu,
+				d.mu
+			),
+			xlabel = "U_x",
+			ylabel = "y",
+			key    = "top right",
+		})
+		:add(result.profiles.inlet.u, result.profiles.inlet.y, {
+			title = "Inlet numerical",
+			style = "points",
+			pt    = 7,
+			color = next_color(),
+		})
+		:add(result.profiles.outlet.u, result.profiles.outlet.y, {
+			title = "Outlet numerical",
+			style = "points",
+			pt    = 5,
+			color = next_color(),
+		})
+		:add(ana_u, ana_y, {
+			title = "Analytical developed",
+			style = "lines",
+			lw    = 2,
+			color = next_color(),
+		})
+end
+
+--
+-- Evaluate
+--
+
+study:evaluate(function(design, opts)
+	local result    = study:default_evaluate(design, opts)
+
+	result.profiles = extract_profiles(result)
+	result.Re       = reynolds(design)
+
+	return result
+end)
+
+--
+-- Outputs
+--
+
+study:output("profiles", function(result)
+	return result.profiles
+end, "Return inlet and outlet Ux profiles")
+
+study:output("reynolds", function(result)
+	return result.Re
+end, "Return channel Reynolds number based on mean inlet velocity")
+
+--
+-- Plots
+--
+
+study:plot("profile", function(result)
+	profile_figure(result):show()
+end, { doc = "Plot inlet, outlet, and analytical Ux profiles" })
+
+--
+-- Writes
+--
+
+study:write("vtk", function(result, path)
+	local fields = result.fields()
+
+	vtk.write(path, result.mesh,
+		{
+			Ux = fields.Ux,
+			Uy = fields.Uy,
+			p  = fields.p,
+		},
+		{
+			U = { fields.Ux, fields.Uy },
+		}
+	)
+
+	print("Saved to " .. path)
+end, { doc = "Write Ux, Uy, p, and U vector to VTK" })
+
+study:write("profile-png", function(result, path)
+	profile_figure(result):save(path)
+end, { doc = "Save inlet/outlet/analytical profile comparison plot" })
+
+study:write("profile-csv", function(result, path)
+	local rows = { "section,y,Ux_numerical,Ux_analytical" }
+
+	for i, y in ipairs(result.profiles.inlet.y) do
+		rows[#rows + 1] = string.format(
+			"inlet,%.8g,%.8g,%.8g",
+			y,
+			result.profiles.inlet.u[i],
+			analytical_u(result.x, y)
+		)
+	end
+
+	for i, y in ipairs(result.profiles.outlet.y) do
+		rows[#rows + 1] = string.format(
+			"outlet,%.8g,%.8g,%.8g",
+			y,
+			result.profiles.outlet.u[i],
+			analytical_u(result.x, y)
+		)
+	end
+
+	local f, err = io.open(path, "w")
+	if not f then
+		error("profile-csv: " .. err)
+	end
+
+	f:write(table.concat(rows, "\n") .. "\n")
+	f:close()
+
+	print(string.format("wrote %s (%d rows)", path, #rows - 1))
+end, { doc = "Save inlet/outlet/analytical profile data as CSV" })
+
+--
+-- Entry points
+--
+
+study:expose("run-demo", function()
+	local result = study:run()
+	profile_figure(result):show()
+	return result
+end, "Run the default Poiseuille case and plot the profile comparison")
+
+print("Loaded Poiseuille study. Try (run-demo), (run), (plot-profile), or (write-profile-png \"poiseuille.png\").")
+
+return study:repl()
+
+```
 Complete API reference
 ======================
 
@@ -616,6 +908,9 @@ JNL API Reference
    cases with convergence and progress monitoring use jnl.fvm.algorithm, which wraps
    this and delegates to expand().
 
+   __tostring
+      sig: jnl.core.algorithm.__tostring(self) -> string
+      doc: Return a compact one-line algorithm summary for REPL display
    add_rule
       sig: jnl.core.algorithm.add_rule(rule) -> nil
       doc: Append a single rule { name, match, fire }
@@ -788,6 +1083,9 @@ JNL API Reference
    set_relax, set_solver, and set_initial rather than re-registering. Call validate()
    before handing the registry to an algorithm to catch missing deps early.
 
+   __tostring
+      sig: jnl.core.registry.__tostring(self) -> string
+      doc: Return a compact one-line registry summary for REPL display
    add_term
       sig: jnl.core.registry.add_term(field, term) -> nil
       doc: Append a term to an existing field equation and merge its deps
@@ -817,7 +1115,7 @@ JNL API Reference
       doc: Register a derived expression; re-evaluated when deps change
    field
       sig: jnl.core.registry.field(name, spec?) -> nil
-      doc: Register a field; spec: { eq, bcs, initial, region, clip }
+      doc: Register a field; spec: { eq, bcs, bcs_from, initial, region, clip }
    intermediate
       sig: jnl.core.registry.intermediate(name, itype, deps, opts?) -> nil
       doc: Register a compiler-managed synthetic; opts: { accessor=false }
@@ -947,54 +1245,59 @@ JNL API Reference
    columns exist; a stopping ruleset is appended if any converge or guard entries exist.
    Call print_summary() before a long run to verify the configuration.
 
+   __tostring
+      sig: jnl.fvm.algorithm.__tostring(self) -> string
+      doc: Return a compact one-line FVM algorithm summary for REPL display
    add_rule
-      sig: jnl.fvm.algorithm.add_rule()
-      doc: 
+      sig: jnl.fvm.algorithm.add_rule(rule:table) -> FvmAlg
+      doc: Append a single rule to the wrapped core algorithm
    add_ruleset
-      sig: jnl.fvm.algorithm.add_ruleset()
-      doc: 
+      sig: jnl.fvm.algorithm.add_ruleset(ruleset:table) -> FvmAlg
+      doc: Append a ruleset to the wrapped core algorithm
    converge
-      sig: jnl.fvm.algorithm.converge()
-      doc: 
+      sig: jnl.fvm.algorithm.converge(field:string, pred:function) -> FvmAlg
+      doc: Add a field predicate to the AND convergence criterion; call before expand
    convergence_fields
-      sig: jnl.fvm.algorithm.convergence_fields()
-      doc: 
+      sig: jnl.fvm.algorithm.convergence_fields() -> string[]
+      doc: Return sorted fields with convergence predicates
    divergence_fields
-      sig: jnl.fvm.algorithm.divergence_fields()
-      doc: 
+      sig: jnl.fvm.algorithm.divergence_fields() -> string[]
+      doc: Return sorted fields with divergence guard predicates
    expand
-      sig: jnl.fvm.algorithm.expand()
-      doc: 
+      sig: jnl.fvm.algorithm.expand(reg:Registry, inserted:table?, fresh:table?) ->
+           Algorithm
+      doc: Seal monitoring rules, then delegate to core algorithm expansion
    guard
-      sig: jnl.fvm.algorithm.guard()
-      doc: 
+      sig: jnl.fvm.algorithm.guard(field:string, pred:function) -> FvmAlg
+      doc: Add a field predicate to the OR divergence criterion; call before expand
    linear
-      sig: jnl.fvm.algorithm.linear()
-      doc: 
+      sig: jnl.fvm.algorithm.linear(cb:function, config:table?) -> FvmAlg
+      doc: Define a one-shot step sequence
    loop
-      sig: jnl.fvm.algorithm.loop()
-      doc: 
+      sig: jnl.fvm.algorithm.loop(cb:function, config:table?) -> FvmAlg
+      doc: Define a looping step sequence; config: { max_iters, linalg_tol,
+           linalg_max_iters }
    monitor
-      sig: jnl.fvm.algorithm.monitor()
-      doc: 
+      sig: jnl.fvm.algorithm.monitor(field:string, norm:string?) -> FvmAlg
+      doc: Push a monitor step directly; norm defaults to 'normL2'
    new
-      sig: jnl.fvm.algorithm.new()
-      doc: 
+      sig: jnl.fvm.algorithm.new(opts?) -> FvmAlg
+      doc: Create a new FVM algorithm wrapper; opts: { print_every = 25 }
    print
-      sig: jnl.fvm.algorithm.print()
-      doc: 
+      sig: jnl.fvm.algorithm.print() -> nil
+      doc: Pretty-print the wrapped core algorithm step list
    print_summary
-      sig: jnl.fvm.algorithm.print_summary()
-      doc: 
+      sig: jnl.fvm.algorithm.print_summary() -> nil
+      doc: Print the monitoring configuration summary
    progress_fields
-      sig: jnl.fvm.algorithm.progress_fields()
-      doc: 
+      sig: jnl.fvm.algorithm.progress_fields() -> string[]
+      doc: Return 'field:kind' strings for each progress watch column
    summary
-      sig: jnl.fvm.algorithm.summary()
-      doc: 
+      sig: jnl.fvm.algorithm.summary() -> string
+      doc: Return a human-readable monitoring configuration summary
    watch
-      sig: jnl.fvm.algorithm.watch()
-      doc: 
+      sig: jnl.fvm.algorithm.watch(field:string, kind:string?) -> FvmAlg
+      doc: Append a progress column; kind defaults to 'residual'
 
 ## jnl.fvm.bc
    Boundary condition constructors for FVM field equations.
@@ -1075,6 +1378,9 @@ JNL API Reference
    field(name) or fields() to read allocated field vectors for post-processing; use
    system(name) or systems() for allocated linear systems.
 
+   __tostring
+      sig: jnl.fvm.case.__tostring(self) -> string
+      doc: Return a compact one-line case summary for REPL display
    allocate
       sig: jnl.fvm.case.allocate() -> nil
       doc: Allocate ctx, fields, and systems from scratch; errors if already allocated
@@ -1143,6 +1449,63 @@ JNL API Reference
       sig: jnl.fvm.case.systems() -> table
       doc: Return the allocated system map { [field_name] = FvSystem }; errors if the
            case is not allocated
+
+## jnl.fvm.compile
+   (no description)
+
+   compile
+      sig: jnl.fvm.compile.compile(reg:Registry, alg:Algorithm|FvmAlg) -> table
+      doc: Compile a registry and algorithm into expanded state, instructions, and
+           resource manifest
+   emit
+      sig: jnl.fvm.compile.emit(reg:Registry, expanded_alg:Algorithm) ->
+           pre:Instruction[], main:Instruction[], post:Instruction[]
+      doc: Emit executable instruction lists from an expanded registry and algorithm
+   expand
+      sig: jnl.fvm.compile.expand(reg:Registry) -> nil
+      doc: Expand synthetic FVM intermediates into the registry in place
+   instruction_listing
+      sig: jnl.fvm.compile.instruction_listing(pre:Instruction[], main:Instruction[],
+           post:Instruction[]) -> string
+      doc: Return the full pre, main, and post instruction listing
+   manifest
+      sig: jnl.fvm.compile.manifest(reg:Registry) -> table
+      doc: Return resource counts for fields, face fields, systems, and scratch storage
+   resource_listing
+      sig: jnl.fvm.compile.resource_listing(manifest:table) -> string
+      doc: Return a formatted resource summary
+   type InstructionList [table] — Compiled pre, main, and post FVM instruction lists
+      constructor: compile.InstructionList.new(pre, main, post)
+      InstructionList:__tostring
+         sig: InstructionList:__tostring(self) -> string
+         doc: Return a compact one-line instruction-list summary for REPL display
+      InstructionList:listing
+         sig: InstructionList:listing(self) -> string
+         doc: Return the full pre, main, and post instruction listing
+      InstructionList:n_main
+         sig: InstructionList:n_main(self) -> integer
+         doc: Return the number of main-loop instructions
+      InstructionList:n_post
+         sig: InstructionList:n_post(self) -> integer
+         doc: Return the number of post-loop instructions
+      InstructionList:n_pre
+         sig: InstructionList:n_pre(self) -> integer
+         doc: Return the number of pre-loop instructions
+      InstructionList:n_solves
+         sig: InstructionList:n_solves(self) -> integer
+         doc: Return the number of solve instructions, including nested inner loops
+      InstructionList:n_total
+         sig: InstructionList:n_total(self) -> integer
+         doc: Return the total number of top-level instructions
+      InstructionList:op_counts
+         sig: InstructionList:op_counts(self) -> table
+         doc: Return a map from instruction opcode to occurrence count
+      InstructionList:print
+         sig: InstructionList:print(self) -> nil
+         doc: Print the full pre, main, and post instruction listing
+      InstructionList:summary
+         sig: InstructionList:summary(self) -> string
+         doc: Return a compact one-line instruction-list summary
 
 ## jnl.fvm.eq
    FVM differential operator constructors and equation assembler.

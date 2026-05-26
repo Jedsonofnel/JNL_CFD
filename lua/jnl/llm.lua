@@ -235,6 +235,10 @@ local EXAMPLES = {
 		title = "FVM couette validation (couette.lua)",
 		source = require("jnl.llm.examples.couette"),
 	},
+	{
+		title = "FVM poisueille validation (poiseuille.lua)",
+		source = require("jnl.llm.examples.poiseuille"),
+	},
 }
 
 function M.examples_string()
