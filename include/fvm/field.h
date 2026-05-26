@@ -17,6 +17,15 @@ void jnl_rhie_chow(const struct jnl_mesh *mesh, const f64 *ux, const f64 *uy,
                    const f64 *ap_x, const f64 *ap_y, f64 *un_face);
 
 //
+// Patch face gradient flux
+//
+
+f64 jnl_patch_gradient_flux(const struct jnl_mesh *mesh, const f64 *cell_field,
+                            const f64 *face_field, const f64 *grad_x,
+                            const f64 *grad_y, f64 gamma,
+                            const char *patch_name);
+
+//
 // Grad
 //
 

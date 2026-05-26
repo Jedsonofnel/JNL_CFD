@@ -1,4 +1,6 @@
+#include <math.h>
 #include <lauxlib.h>
+#include <lua.h>
 #include <string.h>
 
 #include "lua_bindings.h"
@@ -708,6 +710,10 @@ static int l_divergence_volumetric(lua_State *L)
 	return 0;
 }
 
+//
+// Post processing
+//
+
 static int l_vorticity_2d(lua_State *L)
 {
 	struct jnl_mesh *m = check_mesh(L, 1);
@@ -716,6 +722,26 @@ static int l_vorticity_2d(lua_State *L)
 	lua_vec *omega = check_vec(L, 4);
 	jnl_vorticity_2d(m, grad_vy_x->data, grad_ux_y->data, omega->data);
 	return 0;
+}
+
+static int l_patch_gradient_flux(lua_State *L)
+{
+	struct jnl_mesh *m = check_mesh(L, 1);
+	lua_vec *T = check_vec(L, 2);
+	lua_vec *face_T = check_vec(L, 3);
+	lua_vec *grad_x = check_vec(L, 4);
+	lua_vec *grad_y = check_vec(L, 5);
+	f64 gamma = luaL_checknumber(L, 6);
+	const char *name = luaL_checkstring(L, 7);
+
+	f64 flux = jnl_patch_gradient_flux(m, T->data, face_T->data, grad_x->data,
+	                                   grad_y->data, gamma, name);
+
+	if (isnan(flux))
+		return luaL_error(L, "patch_gradient_flux: unknown patch '%s'", name);
+
+	lua_pushnumber(L, flux);
+	return 1;
 }
 
 //
@@ -791,8 +817,9 @@ static const luaL_Reg fvm_funcs[] = {
     // Divergence
     {"divergence_integrated", l_divergence_integrated},
     {"divergence_volumetric", l_divergence_volumetric},
-    // Vorticity
+    // Post processing
     {"vorticity_2d", l_vorticity_2d},
+    {"patch_gradient_flux", l_patch_gradient_flux},
     {NULL, NULL}};
 
 int luaopen_fvm_internal(lua_State *L)

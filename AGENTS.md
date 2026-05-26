@@ -940,6 +940,22 @@ JNL API Reference
    print
       sig: jnl.core.algorithm.print() -> nil
       doc: Pretty-print the step list
+   set_config
+      sig: jnl.core.algorithm.set_config(opts:table) -> Algorithm
+      doc: Update loop configuration in place; opts: { max_iters, linalg_tol,
+           linalg_max_iters }
+   set_linalg
+      sig: jnl.core.algorithm.set_linalg(opts:table) -> Algorithm
+      doc: Update default linear-solver controls in place; opts: { tol, max_iters }
+   set_linalg_max_iters
+      sig: jnl.core.algorithm.set_linalg_max_iters(max_iters:int) -> Algorithm
+      doc: Set default maximum linear solver iterations and return self
+   set_linalg_tol
+      sig: jnl.core.algorithm.set_linalg_tol(tol:number) -> Algorithm
+      doc: Set default linear solver tolerance and return self
+   set_max_iters
+      sig: jnl.core.algorithm.set_max_iters(max_iters:int) -> Algorithm
+      doc: Set maximum loop iterations and return self
    type Builder [table] — Step DSL available inside loop() and linear() callbacks; all
    methods return self
       constructor: passed as argument to loop(cb) or linear(cb)
@@ -1270,6 +1286,12 @@ JNL API Reference
    guard
       sig: jnl.fvm.algorithm.guard(field:string, pred:function) -> FvmAlg
       doc: Add a field predicate to the OR divergence criterion; call before expand
+   linalg_max_iters
+      sig: jnl.fvm.algorithm.linalg_max_iters(max_iters:int) -> FvmAlg
+      doc: Set default maximum linear iterations for solve steps
+   linalg_tol
+      sig: jnl.fvm.algorithm.linalg_tol(tol:number) -> FvmAlg
+      doc: Set default linear solver tolerance for solve steps
    linear
       sig: jnl.fvm.algorithm.linear(cb:function, config:table?) -> FvmAlg
       doc: Define a one-shot step sequence
@@ -1277,6 +1299,9 @@ JNL API Reference
       sig: jnl.fvm.algorithm.loop(cb:function, config:table?) -> FvmAlg
       doc: Define a looping step sequence; config: { max_iters, linalg_tol,
            linalg_max_iters }
+   max_iters
+      sig: jnl.fvm.algorithm.max_iters(max_iters:int) -> FvmAlg
+      doc: Set maximum outer loop iterations
    monitor
       sig: jnl.fvm.algorithm.monitor(field:string, norm:string?) -> FvmAlg
       doc: Push a monitor step directly; norm defaults to 'normL2'
@@ -1292,6 +1317,9 @@ JNL API Reference
    progress_fields
       sig: jnl.fvm.algorithm.progress_fields() -> string[]
       doc: Return 'field:kind' strings for each progress watch column
+   set_linalg
+      sig: jnl.fvm.algorithm.set_linalg(opts:table) -> FvmAlg
+      doc: Set default linear-solver controls for solve steps; opts: { tol, max_iters }
    summary
       sig: jnl.fvm.algorithm.summary() -> string
       doc: Return a human-readable monitoring configuration summary
@@ -1704,6 +1732,10 @@ JNL API Reference
    laplacian_nonorth_field
       sig: jnl.fvm.operators.laplacian_nonorth_field()
       doc: Non-orthogonality correction, field gamma
+   patch_gradient_flux
+      sig: jnl.fvm.operators.patch_gradient_flux()
+      doc: Non-orthogonal corrected heat flux integral over a named patch: ∫ γ (∇T
+           · n̂) dA
    rhie_chow
       sig: jnl.fvm.operators.rhie_chow()
       doc: Rhie-Chow momentum-weighted face flux
@@ -2524,6 +2556,9 @@ JNL API Reference
       Study:install
          sig: Study:install(repl:Repl?) -> Repl
          doc: Install usage and registered helpers into a REPL
+      Study:last_results
+         sig: Study:last_results() -> table?
+         doc: Return the last evaluated result, or nil if the study has not run
       Study:optimise
          sig: Study:optimise(name:string, fn:function(study), opts:table?) -> Study
          doc: Register an optimisation; fn receives the study and calls run(overrides)

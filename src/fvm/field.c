@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "fvm/field.h"
 #include "jnl/common.h"
 #include "mesh2d.h"
@@ -234,7 +236,7 @@ void jnl_divergence_volumetric(const struct jnl_mesh *mesh, const f64 *un_face,
 }
 
 //
-// Vorticity
+// Post processing
 //
 
 void jnl_vorticity_2d(const struct jnl_mesh *mesh, const f64 *grad_vy_x,
@@ -243,4 +245,38 @@ void jnl_vorticity_2d(const struct jnl_mesh *mesh, const f64 *grad_vy_x,
 	for (i32 c = 0; c < mesh->topo.n_cells; c++) {
 		omega[c] = grad_vy_x[c] - grad_ux_y[c];
 	}
+}
+
+f64 jnl_patch_gradient_flux(const struct jnl_mesh *mesh, const f64 *cell_field,
+                            const f64 *face_field, const f64 *grad_x,
+                            const f64 *grad_y, f64 gamma,
+                            const char *patch_name)
+{
+	const struct jnl_mesh_interp *interp = &mesh->interp;
+	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_mesh_topo *topo = &mesh->topo;
+
+	for (i32 i = 0; i < mesh->patches.n_patches; i++) {
+		const struct jnl_patch *p = &mesh->patches.data[i];
+		if (strncmp(p->name, patch_name, JNL_MESH2D_NAME_CAP) != 0)
+			continue;
+
+		f64 integral = 0.0;
+		i32 end = p->start_face + p->n_faces;
+		for (i32 f = p->start_face; f < end; f++) {
+			i32 owner = topo->owner[f];
+
+			// non-orthogonal decomposition:
+			// direct: delta_coeff * (T_face - T_owner)  — along d vector
+			// cross:  grad_T · corr                     — tangential correction
+			f64 gn =
+			    interp->delta_coeff[f] * (face_field[f] - cell_field[owner]) +
+			    grad_x[owner] * interp->corr_x[f] +
+			    grad_y[owner] * interp->corr_y[f];
+
+			integral += gamma * gn * geom->face_area[f];
+		}
+		return integral;
+	}
+	return 0.0 / 0.0;
 }

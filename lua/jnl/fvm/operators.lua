@@ -86,12 +86,11 @@ M.face_interp_cds       = b.face_interp_cds
 M.face_normal_component = b.face_normal_component
 M.rhie_chow             = b.rhie_chow
 
-
 --
 -- Gradient reconstruction
 --
 
-M.grad_green_gauss = b.grad_green_gauss
+M.grad_green_gauss      = b.grad_green_gauss
 
 
 --
@@ -104,10 +103,11 @@ M.divergence_volumetric = b.divergence_volumetric
 
 
 --
--- Vorticity
+-- Post processing
 --
 
 M.vorticity_2d = b.vorticity_2d
+M.patch_gradient_flux   = b.patch_gradient_flux
 
 
 --
@@ -163,6 +163,7 @@ M._api = {
 	divergence_volumetric      = { sig = "divergence_volumetric(mesh, un_face, div:vec)", doc = "Face flux sum divided by cell volume: div[c] = Σ(un·A)/V" },
 
 	vorticity_2d               = { sig = "vorticity_2d(mesh, grad_vy_x, grad_ux_y, omega:vec)", doc = "2D vorticity: omega = dVy/dx - dUx/dy" },
+	patch_gradient_flux        = { sig = "patch_gradient_flux(mesh, T, face_T, gx, gy:vec, gamma:f64, patch:str)", doc = "Non-orthogonal corrected heat flux integral over a named patch: ∫ γ (∇T · n̂) dA" },
 }
 
 return M
