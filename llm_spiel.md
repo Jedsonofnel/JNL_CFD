@@ -1998,6 +1998,10 @@ JNL API Reference
          sig: FvmStudy:build_case_with(design_overrides:table, option_overrides:table )
               -> Case
          doc: Build and compile an FVM case with option overrides
+      FvmStudy:build_geometry
+         sig: FvmStudy:build_geometry(design_overrides:table?) -> PSLG, table
+         doc: Build the PSLG geometry and associated boundary/region registry for a
+              design
       FvmStudy:build_mesh
          sig: FvmStudy:build_mesh(design_overrides:table?) -> Mesh
          doc: Build the mesh for a design
@@ -2010,6 +2014,9 @@ JNL API Reference
       FvmStudy:default_evaluate
          sig: FvmStudy:default_evaluate(design:table, opts:table) -> table
          doc: Build, run, and return a standard result table
+      FvmStudy:geometry
+         sig: FvmStudy:geometry(fn:function, opts:table?) -> FvmStudy
+         doc: Register a geometry builder fn(design, opts) -> PSLG, geometry_registry
       FvmStudy:inspect_algorithm
          sig: FvmStudy:inspect_algorithm(design_overrides:table?) -> Case
          doc: Build the case, print the expanded algorithm used for compilation, and
@@ -2038,6 +2045,9 @@ JNL API Reference
       FvmStudy:registry
          sig: FvmStudy:registry(fn:function, opts:table?) -> FvmStudy
          doc: Register a registry builder fn(design, opts) -> Registry
+      FvmStudy:show_geometry
+         sig: FvmStudy:show_geometry(design_overrides:table?) -> PSLG, table
+         doc: Build and display the PSLG geometry in the UI
       FvmStudy:show_mesh
          sig: FvmStudy:show_mesh(design_overrides:table?) -> Mesh
          doc: Build and display the mesh in the UI
@@ -2723,24 +2733,72 @@ JNL API Reference
       Study:after_run
          sig: Study:after_run(fn:function) -> Study
          doc: Register a hook called after evaluate
+      Study:apply_derived
+         sig: Study:apply_derived(design:table, opts:table) -> table
+         doc: Compute registered derived inputs and insert them into the design table
       Study:before_run
          sig: Study:before_run(fn:function) -> Study
          doc: Register a hook called before evaluate
       Study:bounds
          sig: Study:bounds(bounds:table) -> Study
          doc: Set design variable bounds as { name={lo,hi} }
+      Study:cache
+         sig: Study:cache() -> table
+         doc: Return chronological scalar cache records. Each record has status:
+              pending, done, diverged, or error; default queries only use done records.
+      Study:cache_diag
+         sig: Study:cache_diag(name:string|table, value:any?) -> table
+         doc: Store scalar diagnostic fields in the current cache record
+      Study:cache_key
+         sig: Study:cache_key(design_overrides:table?) -> string, table, table
+         doc: Return the canonical scalar cache key plus derived design and options
+      Study:cache_lookup
+         sig: Study:cache_lookup(design_overrides:table?) -> table?
+         doc: Return scalar cache record for the same design/options, or nil if absent
+      Study:cache_lookup_done
+         sig: Study:cache_lookup_done(design_overrides:table?) -> table?
+         doc: Return completed scalar cache record for the same design/options, or nil
+              if absent or incomplete
+      Study:cache_metric
+         sig: Study:cache_metric(name:string, value:any) -> table
+         doc: Store one scalar metric in the current cache record
+      Study:cache_metrics
+         sig: Study:cache_metrics(metrics:table) -> table
+         doc: Store scalar metrics in the current cache record
+      Study:cache_record
+         sig: Study:cache_record() -> table?
+         doc: Return the current scalar cache record
+      Study:cache_update
+         sig: Study:cache_update(fields:table) -> table
+         doc: Merge scalar fields into the current cache record
       Study:check_bounds
          sig: Study:check_bounds(design:table) -> nil
          doc: Error if design variables fall outside registered bounds
+      Study:clear_cache
+         sig: Study:clear_cache() -> Study
+         doc: Clear scalar run cache records
+      Study:compute_metrics
+         sig: Study:compute_metrics(result:table, design:table, opts:table) -> table
+         doc: Compute registered metrics for a result
       Study:defaults
          sig: Study:defaults(defaults:table) -> Study
          doc: Set default run options
+      Study:derived
+         sig: Study:derived(name:string, fn:function(design, opts)->any, opts:table?) ->
+              Study
+         doc: Register a derived input computed before evaluation and added to the
+              design table; opts: { doc, hidden|quiet }
       Study:design
          sig: Study:design(design:table) -> Study
          doc: Set default design variables
       Study:design_opts
          sig: Study:design_opts(overrides:table?) -> table
          doc: Return default design variables merged with overrides
+      Study:ensure_record
+         sig: Study:ensure_record(design_overrides:table?) -> table
+         doc: Ensure a completed scalar cache record exists for inputs. If a status ==
+              'done' record exists, skip evaluation and return it. If absent or previous
+              record is pending/diverged/error, evaluate normally.
       Study:evaluate
          sig: Study:evaluate(fn:function, meta:table?) -> Study
          doc: Register the main evaluation function
@@ -2752,16 +2810,41 @@ JNL API Reference
               -> Study
          doc: Register matching plot and writer helpers from one figure factory; opts: {
               doc, plot_doc, write_doc, write }
+      Study:figure_sweep
+         sig: Study:figure_sweep(name:string, figure_fn:function(arg)->Figure,
+              opts:table?) -> Study
+         doc: Register matching plot and writer helpers for a cache/query figure. Unlike
+              figure(), the REPL argument is passed directly to figure_fn and
+              result_or_run() is not called. Use this for sweep, UQ, optimisation, or
+              cache-backed figures. opts: { doc, plot_doc, write_doc, write }
+      Study:input_record
+         sig: Study:input_record(design_overrides:table?) -> table, table
+         doc: Return design and options after applying defaults, overrides, and derived
+              inputs
       Study:install
          sig: Study:install(repl:Repl?) -> Repl
          doc: Install usage and registered helpers into a REPL
       Study:last_results
          sig: Study:last_results() -> table?
          doc: Return the last evaluated result, or nil if the study has not run
+      Study:metric
+         sig: Study:metric(name:string, fn:function(result, design, opts)->any,
+              opts:table?) -> Study
+         doc: Register a metric computed after evaluation and stored in result.metrics;
+              opts: { doc }
+      Study:metric_columns
+         sig: Study:metric_columns(columns:table) -> Study
+         doc: Set preferred column order for the automatic metrics table
+      Study:metrics_table
+         sig: Study:metrics_table(result:table) -> table
+         doc: Return { columns, rows } containing scalar design inputs and metrics for
+              one result
       Study:optimise
-         sig: Study:optimise(name:string, fn:function(study), opts:table?) -> Study
-         doc: Register an optimisation; fn receives the study and calls run(overrides)
-              as its inner loop; opts: { doc, entry }
+         sig: Study:optimise(name:string, fn:function(study, arg), opts:table?) -> Study
+         doc: Register an optimisation helper. fn receives the study and an optional
+              REPL argument; optimisation bodies typically pass a closure to a generic
+              optimiser and call record_for(base, candidate) or
+              ensure_record(overrides). opts: { doc, entry }
       Study:option
          sig: Study:option(name:string, doc:string) -> Study
          doc: Document one user-facing option
@@ -2782,6 +2865,21 @@ JNL API Reference
       Study:print_usage
          sig: Study:print_usage() -> nil
          doc: Print generated usage text for the study
+      Study:query_records
+         sig: Study:query_records(query:table?) -> table
+         doc: Return scalar cache records matching defaults plus query.where. By default
+              only records with status == 'done' are returned; pass complete=false to
+              include pending, diverged, or error records. query.vary names fields
+              allowed to differ. Query keys: { x?, y?, where?, vary?, sort?, tol?,
+              complete? }
+      Study:query_xy
+         sig: Study:query_xy(query:table) -> xs:table, ys:table, records:table
+         doc: Return x/y arrays from matching scalar cache records. query requires { x,
+              y }; optional keys: { where, vary, sort, tol, complete }
+      Study:record_for
+         sig: Study:record_for(base:table?, overrides:table?) -> table
+         doc: Return ensure_record(with_base(base, overrides)); convenience helper for
+              sweeps, UQ, and optimisation closures
       Study:repl
          sig: Study:repl(repl:Repl?) -> nil
          doc: Install the study into a REPL and start it
@@ -2790,24 +2888,35 @@ JNL API Reference
          doc: Return last_result, or evaluate the default design if absent
       Study:run
          sig: Study:run(design_overrides:table?) -> table
-         doc: Evaluate the study, print non-default design variables unless opts.quiet
-              is true, and store result as last_result
+         doc: Evaluate the study and update the scalar cache record; prints non-default
+              design variables and visible derived inputs unless opts.quiet is true;
+              stores result as last_result. Use ensure_record to skip completed cached
+              cases.
+      Study:start_record
+         sig: Study:start_record(design:table, opts:table) -> table
+         doc: Start or select the scalar cache record for a run
       Study:sweep
-         sig: Study:sweep(name:string, fn:function(study), opts:table?) -> Study
-         doc: Register a parameter sweep; fn receives the study and calls run(overrides)
-              in a loop; opts: { doc }
+         sig: Study:sweep(name:string, fn:function(study, arg), opts:table?) -> Study
+         doc: Register a parameter sweep. fn receives the study and an optional argument
+              from the REPL call; sweep bodies usually call ensure_record(overrides) in
+              a loop. opts: { doc }
       Study:table
          sig: Study:table(name:string, table_fn:function(result)->table, opts:table?) ->
               Study
          doc: Register matching output and CSV writer helpers from one table factory;
               table_fn returns { columns, rows }; opts: { doc, output_doc, write_doc }
       Study:uq
-         sig: Study:uq(name:string, fn:function(study), opts:table?) -> Study
-         doc: Register a UQ study; fn receives the study and calls run(overrides) per
-              sample; opts: { doc }
+         sig: Study:uq(name:string, fn:function(study, arg), opts:table?) -> Study
+         doc: Register a UQ helper. fn receives the study and an optional REPL argument;
+              UQ bodies typically pass a closure to a generic UQ algorithm and call
+              record_for(base, sample) or ensure_record(overrides). opts: { doc }
       Study:usage_string
          sig: Study:usage_string() -> string
          doc: Return generated usage text for the study
+      Study:with_base
+         sig: Study:with_base(base:table?, overrides:table?) -> table
+         doc: Return base merged with overrides; useful inside sweeps that receive
+              REPL-level base overrides
       Study:write
          sig: Study:write(name:string, fn:function(result, path), opts:table?) -> Study
          doc: Register a writer; REPL call is (write-name path result?); opts: { doc }

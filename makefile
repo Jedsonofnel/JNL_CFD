@@ -198,11 +198,11 @@ $(LUADIR):
 
 LLM_SRCS := $(shell find $(LUADIR) -name '*.lua')
 
-AGENTS.md: $(LLM_SRCS) | $(BINDIR)/cli
+llm_spiel.md: $(LLM_SRCS) | $(BINDIR)/cli
 	@printf "  LLM   %s\n" $@
 	$(Q)$(BINDIR)/cli --llm > $@
 
-llm: AGENTS.md
+llm: llm_spiel.md
 
 #
 # dirs
