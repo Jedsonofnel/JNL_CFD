@@ -103,6 +103,22 @@ local function collect_output(records, name)
 	return xs
 end
 
+local function collect_xy(records, x_name, y_name)
+	local xs, ys = {}, {}
+
+	for _, record in ipairs(records or {}) do
+		local x = record.x and record.x[x_name]
+		local y = record.y and record.y[y_name]
+
+		if type(x) == "number" and type(y) == "number" then
+			xs[#xs + 1] = x
+			ys[#ys + 1] = y
+		end
+	end
+
+	return xs, ys
+end
+
 local function record_passes(record, spec_name)
 	if spec_name then
 		return record.spec and record.spec[spec_name] == true
@@ -659,6 +675,54 @@ function UQResult:print_summary()
 end
 
 --
+-- Figures
+--
+
+function UQResult:histogram(name, opts)
+	opts = opts or {}
+
+	local gp = require("jnl.gp")
+
+	return gp.figure({
+			title  = opts.title or (name .. " uncertainty"),
+			xlabel = opts.xlabel or name,
+			ylabel = opts.ylabel or "Count",
+			key    = opts.key ~= nil and opts.key or false,
+		})
+		:add(gp.histogram(self:values(name), {
+			bins   = opts.bins or 12,
+			lo     = opts.lo,
+			hi     = opts.hi,
+			title  = opts.series_title,
+			colour = opts.colour,
+			width  = opts.width,
+			fill   = opts.fill,
+		}))
+end
+
+function UQResult:scatter(input_name, output_name, opts)
+	opts = opts or {}
+
+	local gp = require("jnl.gp")
+	local xs, ys = collect_xy(self.records, input_name, output_name)
+
+	return gp.figure({
+			title  = opts.title or (output_name .. " vs " .. input_name),
+			xlabel = opts.xlabel or input_name,
+			ylabel = opts.ylabel or output_name,
+			key    = opts.key ~= nil and opts.key or false,
+			logx   = opts.logx,
+			logy   = opts.logy,
+		})
+		:add(gp.scatter(xs, ys, {
+			title  = opts.series_title,
+			colour = opts.colour,
+			pt     = opts.pt,
+			ps     = opts.ps,
+		}))
+end
+
+--
 -- Convenience
 --
 
@@ -870,6 +934,20 @@ M._types = {
 				args = "",
 				ret  = "table",
 				doc  = "Print and return a compact result summary.",
+			},
+			histogram = {
+				args = "name:string, opts:table?",
+				ret  = "Figure",
+				doc  =
+					"Return a histogram figure for one numeric output. " ..
+					"opts: { title, xlabel, ylabel, bins, lo, hi, key, series_title, colour, width, fill }",
+			},
+			scatter = {
+				args = "input_name:string, output_name:string, opts:table?",
+				ret  = "Figure",
+				doc  =
+					"Return a scatter figure of one numeric output against one numeric input. " ..
+					"opts: { title, xlabel, ylabel, key, logx, logy, series_title, colour, pt, ps }",
 			},
 		},
 	},

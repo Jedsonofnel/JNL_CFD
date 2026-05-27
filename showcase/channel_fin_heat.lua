@@ -436,6 +436,21 @@ end
 
 study:optimise("channel-fin-pareto", channel_fin_pareto)
 
+study:figure_workflow("pareto-front", function(base)
+	base = base or {}
+
+	local res = channel_fin_pareto(study, base)
+
+	return res:figure("delta_p", "heat_removed", {
+		title  = "Channel fin Pareto front",
+		xlabel = "Pressure drop",
+		ylabel = "Heat removed",
+		key    = "top left",
+	})
+end, {
+	doc = "Run channel-fin Pareto search and plot heat removed against pressure drop",
+})
+
 --
 -- Uncertainty study
 --
@@ -475,6 +490,21 @@ study:uq("channel-fin-uq", function(s, base)
 	return channel_fin_uq(s, base)
 end, {
 	doc = "Run Monte Carlo uncertainty propagation over fin height, spacing, and heat-transfer coefficient",
+})
+
+study:figure_workflow("uq-heat", function(base)
+	base = base or {}
+
+	local res = channel_fin_uq(study, base)
+
+	return res:histogram("heat_removed", {
+		title  = "Uncertainty: heat removed",
+		xlabel = "Heat removed",
+		ylabel = "Count",
+		bins   = base.bins or 10,
+	})
+end, {
+	doc = "Run channel-fin UQ and plot a heat-removed histogram",
 })
 
 --

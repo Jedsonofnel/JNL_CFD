@@ -733,6 +733,80 @@ function M.values_from(records, name)
 	return xs
 end
 
+local function collect_record_xy(records, x_name, y_name)
+	local xs, ys = {}, {}
+
+	for _, record in ipairs(records or {}) do
+		local x = record.y and record.y[x_name]
+		local y = record.y and record.y[y_name]
+
+		if type(x) == "number" and type(y) == "number" then
+			xs[#xs + 1] = x
+			ys[#ys + 1] = y
+		end
+	end
+
+	return xs, ys
+end
+
+--
+-- Figure plotting helpers
+--
+
+function ParetoResult:figure(x_name, y_name, opts)
+	opts = opts or {}
+
+	local gp = require("jnl.gp")
+
+	local all_x, all_y = collect_record_xy(self.records, x_name, y_name)
+	local front_x, front_y = collect_record_xy(self.front, x_name, y_name)
+
+	return gp.figure({
+			title  = opts.title or "Pareto front",
+			xlabel = opts.xlabel or x_name,
+			ylabel = opts.ylabel or y_name,
+			key    = opts.key or "top left",
+			logx   = opts.logx,
+			logy   = opts.logy,
+		})
+		:add(gp.scatter(all_x, all_y, {
+			title  = opts.candidates_title or "candidates",
+			colour = opts.candidates_colour or gp.colour.grey,
+			pt     = opts.candidates_pt or 7,
+			ps     = opts.candidates_ps or 0.7,
+		}))
+		:add(front_x, front_y, {
+			title  = opts.front_title or "front",
+			style  = opts.front_style or "linespoints",
+			lw     = opts.front_lw or 2,
+			pt     = opts.front_pt or 7,
+			ps     = opts.front_ps or 1.0,
+			colour = opts.front_colour or gp.colour.blue,
+		})
+end
+
+function ParetoResult:scatter(x_name, y_name, opts)
+	opts = opts or {}
+
+	local gp = require("jnl.gp")
+	local xs, ys = collect_record_xy(self.records, x_name, y_name)
+
+	return gp.figure({
+			title  = opts.title or (y_name .. " vs " .. x_name),
+			xlabel = opts.xlabel or x_name,
+			ylabel = opts.ylabel or y_name,
+			key    = opts.key ~= nil and opts.key or false,
+			logx   = opts.logx,
+			logy   = opts.logy,
+		})
+		:add(gp.scatter(xs, ys, {
+			title  = opts.series_title,
+			colour = opts.colour,
+			pt     = opts.pt,
+			ps     = opts.ps,
+		}))
+end
+
 --
 -- API
 --
@@ -899,6 +973,22 @@ M._types = {
 				args = "",
 				ret = "table",
 				doc = "Print and return a compact result summary.",
+			},
+			figure = {
+				args = "x_name:string, y_name:string, opts:table?",
+				ret = "Figure",
+				doc =
+					"Return a Pareto front figure using numeric model outputs. " ..
+					"Plots all candidates and overlays the non-dominated front. " ..
+					"opts: { title, xlabel, ylabel, key, logx, logy, candidates_title, candidates_colour, " ..
+					"candidates_pt, candidates_ps, front_title, front_colour, front_style, front_lw, front_pt, front_ps }",
+			},
+			scatter = {
+				args = "x_name:string, y_name:string, opts:table?",
+				ret = "Figure",
+				doc =
+					"Return a scatter figure for two numeric model outputs over all candidate records. " ..
+					"opts: { title, xlabel, ylabel, key, logx, logy, series_title, colour, pt, ps }",
 			},
 		},
 	},
