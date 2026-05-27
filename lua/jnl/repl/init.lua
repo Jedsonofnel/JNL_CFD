@@ -289,7 +289,7 @@ function REPL:_fennel_repl_options()
 end
 
 function REPL:run()
-	io.write("JNLCFD | type ,help for help, ,quit or ctrl-D to exit\n")
+	io.write("JNLCFD >> type ,help for help, ,quit or ctrl-D to exit\n")
 
 	self._quit = false
 	self:_capture_globals_at_start()

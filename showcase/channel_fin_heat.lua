@@ -7,7 +7,6 @@ local fvm      = require("jnl.fvm")
 local geo      = require("jnl.geo2d")
 local tri      = require("jnl.mesh2d.tri")
 local BC       = require("jnl.fvm.bc")
-local gp       = require("jnl.gp")
 local gpm      = require("jnl.gp.mesh")
 local vtk      = require("jnl.fvm.vtk")
 
@@ -76,6 +75,8 @@ study:defaults({
 	alpha_T_relax      = 0.9,
 	temperature_scheme = "uds",
 })
+
+study:derived("Re", function(d, o) return o.rho * d.U_mean * d.H / o.mu end)
 
 --
 -- Geometry and mesh
@@ -162,8 +163,8 @@ study:geometry(function(d)
 	return dom:build()
 end)
 
-study:mesh(function(_, o)
-	local pslg, registry = study:build_geometry()
+study:mesh(function(d, o)
+	local pslg, registry = study:build_geometry(d)
 
 	local mesh, status = tri.spec()
 		:from_registry(registry)
@@ -183,16 +184,12 @@ end)
 -- Physics
 --
 
-local function reynolds_h(d)
-	return d.rho * d.U_mean * d.H / d.mu
+local function prandtl(o)
+	return o.mu * o.cp / o.k
 end
 
-local function prandtl(d)
-	return d.mu * d.cp / d.k
-end
-
-local function thermal_diffusivity(d)
-	return d.k / (d.rho * d.cp)
+local function thermal_diffusivity(o)
+	return o.k / (o.rho * o.cp)
 end
 
 local function insert_temperature_postproc_symbols(reg)
@@ -203,8 +200,8 @@ end
 
 study:registry(function(d, o)
 	local reg = canned.reg_laminar_ns({
-		rho     = d.rho,
-		mu      = d.mu,
+		rho     = o.rho,
+		mu      = o.mu,
 		alpha_p = o.alpha_p,
 		alpha_U = o.alpha_U,
 	})
@@ -213,7 +210,7 @@ study:registry(function(d, o)
 	reg:set_initial("Uy", 0.0)
 	reg:set_initial("p", 0)
 
-	reg:constant("alpha_T", thermal_diffusivity(d))
+	reg:constant("alpha_T", thermal_diffusivity(o))
 
 
 	reg:field("T", {
@@ -248,7 +245,7 @@ end)
 -- Boundary conditions
 --
 
-study:bcs(function(d, _)
+study:bcs(function(d, o)
 	return {
 		Ux = {
 			BC.dirichlet("inlet", d.U_mean),
@@ -266,7 +263,7 @@ study:bcs(function(d, _)
 		},
 		p = {
 			BC.neumann("inlet", 0.0),
-			BC.dirichlet("outlet", d.p_out),
+			BC.dirichlet("outlet", o.p_out),
 			BC.neumann("wall", 0.0),
 			BC.neumann("fin", 0.0),
 			BC.neumann("top", 0.0),
@@ -333,7 +330,7 @@ local function patch_gradient_flux(result, patch)
 		fields.face_T,
 		fields.grad_T_x,
 		fields.grad_T_y,
-		result.x.k,
+		result.opts.k,
 		patch
 	)
 end
@@ -352,8 +349,7 @@ local function scalar_metrics(result)
 	local heat            = heat_metrics(result)
 
 	return {
-		Re_H           = reynolds_h(result.x),
-		Pr             = prandtl(result.x),
+		Pr             = prandtl(result.opts),
 
 		p_in_mean      = p_in,
 		p_out_mean     = p_out,
@@ -370,8 +366,8 @@ local function metrics_table(result)
 	return {
 		columns = {
 			"fin_height",
-			"fin_width",
-			"Re_H",
+			"fin_spacing",
+			"Re",
 			"Pr",
 			"delta_p",
 			"fin_flux",
@@ -381,8 +377,8 @@ local function metrics_table(result)
 		rows = {
 			{
 				fin_height     = result.x.fin_height,
-				fin_width      = result.x.fin_width,
-				Re_H           = result.metrics.Re_H,
+				fin_spacing    = result.x.fin_spacing,
+				Re             = result.metrics.Re,
 				Pr             = result.metrics.Pr,
 				delta_p        = result.metrics.delta_p,
 				fin_flux       = result.metrics.fin_flux,
@@ -394,69 +390,11 @@ local function metrics_table(result)
 end
 
 --
--- Profiles and figures
---
-
-local function extract_temperature_profiles(result)
-	local d      = result.x
-	local o      = result.opts
-	local fields = result.fields()
-	local out    = {}
-
-	for _, x in ipairs(o.profile_xs) do
-		local y, T = gpm.line_profile(
-			result.mesh,
-			fields.T,
-			"x",
-			x,
-			{ tol = line_tol(d, o) }
-		)
-
-		out[#out + 1] = {
-			x = x,
-			y = y,
-			T = T,
-		}
-	end
-
-	return out
-end
-
-local function temperature_figure(result)
-	local next_colour = gp.cycler()
-
-	local fig = gp.figure({
-		title  = string.format(
-			"Channel fin temperature   h=%.3g   w=%.3g",
-			result.x.fin_height,
-			result.x.fin_width
-		),
-		xlabel = "T",
-		ylabel = "y",
-		key    = "top right",
-	})
-
-	for _, prof in ipairs(result.profiles.temperature) do
-		fig:add(prof.T, prof.y, {
-			title  = string.format("x=%.3g", prof.x),
-			style  = "linespoints",
-			colour = next_colour(),
-		})
-	end
-
-	return fig
-end
-
---
 -- Evaluate
 --
 
 study:evaluate(function(d, o)
 	local result = study:default_evaluate(d, o)
-
-	result.profiles = {
-		temperature = extract_temperature_profiles(result),
-	}
 
 	result.metrics = scalar_metrics(result)
 
@@ -471,7 +409,6 @@ end, {
 
 study:output("metrics")
 study:table("metrics-table", metrics_table)
-study:figure("temperature", temperature_figure)
 
 study:write("vtk", function(result, path)
 	local fields = result.fields()
@@ -494,26 +431,6 @@ end, { doc = "Write Ux, Uy, p, T, and U vector to VTK" })
 --
 -- Entry points
 --
-
-study:expose("run-safe", function()
-	return study:run({
-		U_mean  = 0.05,
-		mu      = 1e-2,
-		k       = 1e-2,
-		h_fin   = 1.0,
-		alpha_p = 0.05,
-	})
-end)
-
-study:expose("run-moderate", function()
-	return study:run({
-		U_mean  = 0.1,
-		mu      = 2e-3,
-		k       = 2e-3,
-		h_fin   = 1.0,
-		alpha_p = 0.03,
-	})
-end)
 
 study:expose("show-summary", function()
 	local result = study:run()

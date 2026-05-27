@@ -48,8 +48,6 @@ local function format_value(v)
 	return tostring(v)
 end
 
--- add after the existing format_value helper
-
 local function format_overrides(design_defaults, overrides)
 	if not overrides then return nil end
 
@@ -61,6 +59,26 @@ local function format_overrides(design_defaults, overrides)
 	end
 
 	table.sort(parts)
+	return #parts > 0 and table.concat(parts, "  ") or nil
+end
+
+local function format_derived(study, x)
+	local parts = {}
+
+	for _, item in ipairs(study.derived_inputs or {}) do
+		if not item.hidden then
+			local value = x[item.name]
+
+			if value ~= nil then
+				parts[#parts + 1] = string.format(
+					"%s=%s",
+					item.label,
+					format_value(value)
+				)
+			end
+		end
+	end
+
 	return #parts > 0 and table.concat(parts, "  ") or nil
 end
 
@@ -120,6 +138,13 @@ local function split_path(path)
 	return parts
 end
 
+local function as_callable(name, fn)
+	if type(fn) ~= "function" then
+		error(name .. " must be a function")
+	end
+	return fn
+end
+
 local function result_getter(path)
 	local parts = split_path(path)
 
@@ -137,8 +162,6 @@ local function result_getter(path)
 		return value
 	end
 end
-
-
 
 local function auto_doc(kind, name)
 	local label = display_name(name)
@@ -220,6 +243,9 @@ function M.new(title)
 
 		before_run_hooks = {},
 		after_run_hooks = {},
+
+		derived_inputs = {},
+		metrics = {},
 
 		last_result = nil,
 	}, Study)
@@ -312,6 +338,59 @@ function Study:after_run(fn)
 	self.after_run_hooks[#self.after_run_hooks + 1] = fn
 	return self
 end
+
+--
+-- Auto input/results decoration
+--
+
+function Study:derived(name, fn, opts)
+	opts = opts or {}
+
+	self.derived_inputs[#self.derived_inputs + 1] = {
+		name = field_name(name),
+		label = tostring(name),
+		fn = as_callable("derived " .. tostring(name), fn),
+		doc = opts.doc,
+		hidden = opts.hidden or opts.quiet or false,
+	}
+
+	return self
+end
+
+function Study:apply_derived(x, opts)
+	for _, item in ipairs(self.derived_inputs) do
+		x[item.name] = item.fn(x, opts)
+	end
+
+	return x
+end
+
+function Study:metric(name, fn, opts)
+	opts = opts or {}
+
+	self.metrics[#self.metrics + 1] = {
+		name  = field_name(name),
+		label = tostring(name),
+		fn    = as_callable("metric " .. tostring(name), fn),
+		doc   = opts.doc,
+	}
+
+	return self
+end
+
+function Study:compute_metrics(result, x, opts)
+	local out = {}
+
+	for _, item in ipairs(self.metrics) do
+		out[item.name] = item.fn(result, x, opts)
+	end
+
+	return out
+end
+
+--
+-- Outputs and plots
+--
 
 function Study:output(name, fn_or_path, doc)
 	local fn
@@ -583,23 +662,33 @@ function Study:run(arg)
 	local x = self:design_opts(arg)
 	local opts = self:opts(arg)
 
+	self:apply_derived(x, opts)
 	self:check_bounds(x)
 
 	if not opts.quiet then
 		local diff = format_overrides(self.design_table, arg)
+		local derived = format_derived(self, x)
+
 		local text = diff and ("evaluating  " .. diff) or "evaluating defaults"
+
+		if derived then
+			text = text .. " | " .. derived
+		end
+
 		io.write(fmt.header(text, 2))
 	end
 
 	for _, hook in ipairs(self.before_run_hooks) do
-		hook(x, self:opts(arg))
+		hook(x, opts)
 	end
 
-	local out = self.evaluate_fn(x, self:opts(arg))
+	local out = self.evaluate_fn(x, opts)
+	out.metrics = self:compute_metrics(out, x, opts)
+
 	self.last_result = out
 
 	for _, hook in ipairs(self.after_run_hooks) do
-		hook(out, x, self:opts(arg))
+		hook(out, x, opts)
 	end
 
 	return out
@@ -811,6 +900,27 @@ M._types = {
 				args = "fn:function",
 				ret = "Study",
 				doc = "Register a hook called after evaluate",
+			},
+			derived = {
+				args = "name:string, fn:function(design, opts)->any, opts:table?",
+				ret = "Study",
+				doc =
+				"Register a derived input computed before evaluation and added to the design table; opts: { doc, hidden|quiet }",
+			},
+			apply_derived = {
+				args = "design:table, opts:table",
+				ret = "table",
+				doc = "Compute registered derived inputs and insert them into the design table",
+			},
+			metric = {
+				args = "name:string, fn:function(result, design, opts)->any, opts:table?",
+				ret = "Study",
+				doc = "Register a metric computed after evaluation and stored in result.metrics; opts: { doc }",
+			},
+			compute_metrics = {
+				args = "result:table, design:table, opts:table",
+				ret = "table",
+				doc = "Compute registered metrics for a result",
 			},
 			output = {
 				args = "name:string, fn_or_path:function|string?, doc:string?",
