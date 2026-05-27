@@ -589,7 +589,7 @@ static enum jnl_mesh_err tri_build_switches(const struct jnl_tri_opts *opts,
 
 	if (opts->quality_mode == JNL_TRIANGLE_QUALITY_MIN_ANGLE) {
 		if (opts->min_angle_deg > 0.0) {
-			if (tri_append_switch(buf, buf_len, &pos, "q%.17g",
+			if (tri_append_switch(buf, buf_len, &pos, "q%.17f",
 			                      opts->min_angle_deg) != JNL_MESH_OK)
 				return JNL_MESH_ERR_INVALID_INPUT;
 		} else {
@@ -599,7 +599,7 @@ static enum jnl_mesh_err tri_build_switches(const struct jnl_tri_opts *opts,
 	}
 
 	if (opts->use_global_max_area) {
-		if (tri_append_switch(buf, buf_len, &pos, "a%.17g",
+		if (tri_append_switch(buf, buf_len, &pos, "a%.17f",
 		                      opts->global_max_area) != JNL_MESH_OK)
 			return JNL_MESH_ERR_INVALID_INPUT;
 	} else if (opts->use_region_areas) {
