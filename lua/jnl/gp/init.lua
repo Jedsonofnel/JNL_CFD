@@ -4,6 +4,17 @@
 local M = {}
 
 --
+-- Defaults
+--
+
+local DEFAULT_FONT = "Arial,18"
+local DEFAULT_RASTER_SIZE = { 1000, 625 } -- pixels
+local DEFAULT_VECTOR_SIZE = { 16, 10 }    -- cm
+
+local DEFAULT_LIVE_TERMINAL = "qt"        -- or "wxt" but "qt" might be more stable
+local DEFAULT_LIVE_PERSIST = true
+
+--
 -- Pipe management
 --
 
@@ -71,11 +82,24 @@ end
 -- Inline data
 --
 
+local function is_finite_number(x)
+	return type(x) == "number" and x == x and x ~= math.huge and x ~= -math.huge
+end
+
 local function write_xy(pipe, xs, ys)
 	assert(#xs == #ys, "xs and ys must be the same length")
 
 	for i = 1, #xs do
-		pipe:write(string.format("%.10g %.10g\n", xs[i], ys[i]))
+		local x = xs[i]
+		local y = ys[i]
+
+		if is_finite_number(x) and is_finite_number(y) then
+			pipe:write(string.format("%.10g %.10g\n", x, y))
+		else
+			-- Gnuplot treats '?' as missing data.
+			-- This avoids feeding it nan/inf from unstable CFD runs.
+			pipe:write("? ?\n")
+		end
 	end
 
 	pipe:write("e\n")
@@ -379,19 +403,23 @@ function M.figure(opts)
 	return setmetatable({
 		_series = {},
 		_opts = {
-			font    = opts.font or "Arial,11",
-			size    = opts.size or { 1600, 900 },
-			grid    = opts.grid ~= nil and opts.grid or true,
-			title   = opts.title,
-			xlabel  = opts.xlabel,
-			ylabel  = opts.ylabel,
-			xrange  = opts.xrange,
-			yrange  = opts.yrange,
-			key     = opts.key,
-			logx    = opts.logx,
-			logy    = opts.logy,
-			xformat = opts.xformat,
-			yformat = opts.yformat,
+			font          = opts.font or DEFAULT_FONT,
+			raster_size   = opts.raster_size or opts.size or DEFAULT_RASTER_SIZE,
+			vector_size   = opts.vector_size or DEFAULT_VECTOR_SIZE,
+
+			live_terminal = opts.live_terminal,
+
+			grid          = opts.grid ~= nil and opts.grid or true,
+			title         = opts.title,
+			xlabel        = opts.xlabel,
+			ylabel        = opts.ylabel,
+			xrange        = opts.xrange,
+			yrange        = opts.yrange,
+			key           = opts.key,
+			logx          = opts.logx,
+			logy          = opts.logy,
+			xformat       = opts.xformat,
+			yformat       = opts.yformat,
 		},
 	}, Figure)
 end
@@ -520,13 +548,53 @@ end
 -- Figure output
 --
 
-function Figure:show()
-	local pipe = gp_open()
-	local font = self._opts.font and string.format(" font %q", self._opts.font) or ""
+function Figure:show(opts)
+	opts = opts or {}
 
-	pipe:write("set terminal wxt persist" .. font .. "\n")
-	self:_emit(pipe)
+	local pipe = gp_open()
+
+	local font = opts.font or self._opts.font or DEFAULT_FONT
+
+	local raster_size =
+		opts.raster_size or
+		opts.size or
+		self._opts.raster_size or
+		self._opts.size or
+		DEFAULT_RASTER_SIZE
+
+	local live_terminal =
+		opts.terminal or
+		self._opts.live_terminal or
+		DEFAULT_LIVE_TERMINAL
+
+	local persist =
+		opts.persist
+	if persist == nil then
+		persist = DEFAULT_LIVE_PERSIST
+	end
+
+	local persist_str = persist and " persist" or ""
+
+	local term = string.format(
+		"%s%s size %d,%d font %q",
+		live_terminal,
+		persist_str,
+		raster_size[1],
+		raster_size[2],
+		font
+	)
+
+	gp_send(pipe, "set terminal %s", term)
+
+	local ok, err = pcall(function()
+		self:_emit(pipe)
+	end)
+
 	pipe:close()
+
+	if not ok then
+		error(err, 2)
+	end
 
 	return self
 end
@@ -535,31 +603,75 @@ function Figure:save(path, opts)
 	opts = opts or {}
 
 	local pipe = gp_open()
-	local font = opts.font or self._opts.font or "Arial,11"
-	local size = opts.size or self._opts.size or { 1600, 900 }
-	local sz = string.format(" size %d,%d", size[1], size[2])
+	local font = opts.font or self._opts.font or DEFAULT_FONT
+	local ext = path_extension(path)
 
-	local map = {
-		png = string.format("pngcairo%s font %q", sz, font),
-		svg = string.format("svg%s font %q", sz, font),
-		pdf = string.format("pdfcairo%s font %q", sz, font),
-		eps = string.format("epscairo%s font %q", sz, font),
-	}
+	local raster_size =
+		opts.raster_size or
+		opts.size or
+		self._opts.raster_size or
+		self._opts.size or
+		DEFAULT_RASTER_SIZE
+
+	local vector_size =
+		opts.vector_size or
+		self._opts.vector_size or
+		DEFAULT_VECTOR_SIZE
 
 	local term
 
 	if opts.terminal then
 		term = opts.terminal
+	elseif ext == "png" then
+		term = string.format(
+			"pngcairo size %d,%d font %q",
+			raster_size[1],
+			raster_size[2],
+			font
+		)
+	elseif ext == "svg" then
+		term = string.format(
+			"svg size %d,%d font %q",
+			raster_size[1],
+			raster_size[2],
+			font
+		)
+	elseif ext == "pdf" then
+		term = string.format(
+			"pdfcairo size %gcm,%gcm font %q",
+			vector_size[1],
+			vector_size[2],
+			font
+		)
+	elseif ext == "eps" then
+		term = string.format(
+			"epscairo size %gcm,%gcm font %q",
+			vector_size[1],
+			vector_size[2],
+			font
+		)
 	else
-		local ext = path_extension(path)
-		term = map[ext] or ("pngcairo" .. sz)
+		term = string.format(
+			"pngcairo size %d,%d font %q",
+			raster_size[1],
+			raster_size[2],
+			font
+		)
 	end
 
 	gp_send(pipe, "set terminal %s", term)
 	gp_send(pipe, "set output %q", path)
 
-	self:_emit(pipe)
+	local ok, err = pcall(function()
+		self:_emit(pipe)
+		gp_send(pipe, "unset output")
+	end)
+
 	pipe:close()
+
+	if not ok then
+		error(err, 2)
+	end
 
 	io.write(string.format("[jnl.gp] saved -> %s\n", path))
 	return self
@@ -717,7 +829,7 @@ M._api = {
 		ret = "Figure",
 		doc =
 			"Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key, " ..
-			"logx, logy, font, size, xformat, yformat }",
+			"logx, logy, font, raster_size, vector_size, size, xformat, yformat }",
 	},
 	series = {
 		args = "xs, ys, opts?",
@@ -827,21 +939,21 @@ M._types = {
 				doc = "Append a histogram series; chainable",
 			},
 			show = {
-				args = "",
+				args = "opts?",
 				ret = "Figure",
-				doc = "Open a persistent interactive gnuplot window",
+				doc = "Open a persistent interactive gnuplot window; opts: { raster_size, size, font }",
 			},
 			write = {
 				args = "path:string, opts?",
 				ret = "Figure",
 				doc =
-					"Write figure data or image by extension; .csv dumps series, " ..
-					".png/.svg/.pdf/.eps save image output; image opts: { size, font, terminal }",
+				".png/.svg/.pdf/.eps save image output; image opts: { raster_size, vector_size, size, font, terminal }",
 			},
 			save = {
 				args = "path:string, opts?",
 				ret = "Figure",
-				doc = "Save image output; terminal inferred from extension; opts: { size, font, terminal }",
+				doc =
+				"Save image output; terminal inferred from extension; opts: { raster_size, vector_size, size, font, terminal }",
 			},
 			write_csv = {
 				args = "path:string",
