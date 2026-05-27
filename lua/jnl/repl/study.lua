@@ -1382,10 +1382,10 @@ function Study:record_model(base, spec)
 
 	assert(type(spec.outputs) == "table", "record_model requires spec.outputs")
 
-	return function(sample, i)
+	return function(sample, i, n)
 		local overrides = shallow_copy(sample or {})
 
-		local heading = format_model_heading(spec.heading, sample, i, spec.n)
+		local heading = format_model_heading(spec.heading, sample, i, n or spec.n)
 		if heading then
 			overrides.heading = heading
 		end

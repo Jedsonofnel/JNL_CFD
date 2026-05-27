@@ -59,9 +59,9 @@ study:defaults({
 	res                = 0.04,
 	min_angle          = 28.0,
 
-	tol                = 1e-7,
-	divu_tol           = 1e-8,
-	n_consec           = 3,
+	tol                = 1e-4,
+	divu_tol           = 1e-5,
+	n_consec           = 1,
 	max_iters          = 2500,
 	print_every        = 100,
 
@@ -199,6 +199,8 @@ local function thermal_diffusivity(o)
 	return o.k / (o.rho * o.cp)
 end
 
+-- for temperature patch flux gradient - bit ugly and temporary until I can fold
+-- into registry/algorithm
 local function insert_temperature_postproc_symbols(reg)
 	reg:expression("face_T", E.face("T"))
 	reg:expression("grad_T_x", E.grad("T", "x"))
@@ -409,8 +411,30 @@ study:figure_workflow("height-heat", function(base)
 end)
 
 --
--- Uncertainty study
+-- Optimisation study
 --
+
+local pareto = require("jnl.explore.pareto")
+
+local function channel_fin_pareto(s, base)
+	base = base or {}
+
+	return pareto.pareto("channel fin tradeoff")
+		:input("fin_height", pareto.linspace(0.05, 0.45, 5))
+		:input("fin_spacing", pareto.linspace(0.05, 0.40, 4))
+		:model(s:record_model(base, {
+			outputs = { "heat_removed", "delta_p", "objective_hint" },
+			heading = "Pareto candidate",
+		}))
+		:maximise("heat_removed")
+		:minimise("delta_p")
+		:spec("valid solve", function(y)
+			return y.valid
+		end)
+		:run()
+end
+
+study:optimise("channel-fin-pareto", channel_fin_pareto)
 
 --
 -- Uncertainty study
