@@ -1332,7 +1332,7 @@ function Study:run(arg)
 		out.metrics = self:compute_metrics(out, x, opts)
 		self:cache_metrics(out.metrics)
 
-		if not opts.quiet and should_print_metrics(opts) then
+		if not opts.quiet and should_print_metrics(opts) and #out.metrics > 0 then
 			self:print_metrics(out, opts.metrics_heading or "Metrics")
 		end
 	else
