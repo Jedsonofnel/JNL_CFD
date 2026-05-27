@@ -2,7 +2,7 @@
 *.wasm
 bin/
 build/
-out/
+/out/
 
 # vendored fennel
 lua/fennel.lua

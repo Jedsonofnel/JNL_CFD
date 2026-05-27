@@ -59,8 +59,8 @@ study:defaults({
 	res                = 0.04,
 	min_angle          = 28.0,
 
-	tol                = 1e-4,
-	divu_tol           = 1e-5,
+	tol                = 1e-5,
+	divu_tol           = 1e-6,
 	n_consec           = 1,
 	max_iters          = 2500,
 	print_every        = 100,
@@ -419,18 +419,23 @@ local pareto = require("jnl.explore.pareto")
 local function channel_fin_pareto(s, base)
 	base = base or {}
 
-	return pareto.pareto("channel fin tradeoff")
-		:input("fin_height", pareto.linspace(0.05, 0.45, 5))
-		:input("fin_spacing", pareto.linspace(0.05, 0.40, 4))
+	return pareto.pareto("channel fin heat-pressure tradeoff")
+		:input("fin_height", pareto.linspace(
+			base.h_min or 0.08,
+			base.h_max or 0.42,
+			base.n_height or 7
+		))
+		:input("fin_spacing", pareto.linspace(
+			base.s_min or 0.08,
+			base.s_max or 0.34,
+			base.n_spacing or 7
+		))
 		:model(s:record_model(base, {
 			outputs = { "heat_removed", "delta_p", "objective_hint" },
 			heading = "Pareto candidate",
 		}))
 		:maximise("heat_removed")
 		:minimise("delta_p")
-		:spec("valid solve", function(y)
-			return y.valid
-		end)
 		:run()
 end
 

@@ -1061,23 +1061,54 @@ function Study:figure_workflow(name, figure_fn, opts)
 	local plot_doc = opts.plot_doc or opts.doc or auto_doc("plot", name)
 	local write_doc = opts.write_doc or opts.doc or auto_doc("figure", name)
 
+	local state = {
+		arg = nil,
+		figure = nil,
+	}
+
+	local function resolve_arg(arg)
+		if arg ~= nil then
+			state.arg = arg
+			return arg
+		end
+
+		return state.arg or {}
+	end
+
+	local function build(arg)
+		local resolved = resolve_arg(arg)
+		local figure = figure_fn(resolved)
+
+		state.figure = figure
+
+		return figure
+	end
+
 	self.plots[#self.plots + 1] = {
 		name = normalise_name(name),
-		fn   = function(arg)
-			return figure_fn(arg or {}):show()
+		fn = function(arg)
+			return build(arg):show()
 		end,
-		doc  = plot_doc,
-		raw  = true,
+		doc = plot_doc,
+		raw = true,
 	}
 
 	self.writers[#self.writers + 1] = {
 		name = normalise_name(name),
-		fn   = function(arg, path)
-			return figure_fn(arg or {}):write(path, opts.write)
+		fn = function(arg, path)
+			return build(arg):write(path, opts.write)
 		end,
-		doc  = write_doc,
-		raw  = true,
+		doc = write_doc,
+		raw = true,
 	}
+
+	self:expose("last-" .. name, function()
+		return state.figure
+	end, "Return the last " .. display_name(name) .. " figure", { hidden = true })
+
+	self:expose("last-" .. name .. "-arg", function()
+		return state.arg
+	end, "Return the last " .. display_name(name) .. " workflow argument", { hidden = true })
 
 	return self
 end
@@ -1783,6 +1814,7 @@ M._types = {
 				doc =
 					"Register matching plot and writer helpers for a workflow figure. " ..
 					"Unlike figure(), the REPL argument is passed directly to figure_fn and result_or_run() is not called. " ..
+					"Plot calls remember their argument; write calls without an argument reuse the last workflow argument. " ..
 					"Use this for sweep, UQ, optimisation, or cache-backed figures. opts: { doc, plot_doc, write_doc, write }",
 			},
 			table = {
