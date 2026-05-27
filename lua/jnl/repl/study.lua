@@ -378,6 +378,47 @@ local function record_value(record, name)
 	return record[key]
 end
 
+local function format_model_heading(heading, sample, i, n)
+	if type(heading) == "function" then
+		return heading(sample, i, n)
+	end
+
+	if type(heading) ~= "string" then
+		return nil
+	end
+
+	if i and n then
+		return string.format("%s %d of %d", heading, i, n)
+	end
+
+	if i then
+		return string.format("%s %d", heading, i)
+	end
+
+	return heading
+end
+
+local function model_failure(record)
+	return {
+		status = record.status,
+		valid  = false,
+		reason = record.diag and record.diag.reason,
+	}
+end
+
+local function model_output(record, outputs)
+	local out = {
+		status = "done",
+		valid  = true,
+	}
+
+	for _, name in ipairs(outputs or {}) do
+		out[field_name(name)] = record_value(record, name)
+	end
+
+	return out
+end
+
 --
 -- Doc helpers
 --
@@ -1336,6 +1377,33 @@ function Study:record_for(base, overrides)
 	return self:ensure_record(self:with_base(base, overrides))
 end
 
+function Study:record_model(base, spec)
+	spec = spec or {}
+
+	assert(type(spec.outputs) == "table", "record_model requires spec.outputs")
+
+	return function(sample, i)
+		local overrides = shallow_copy(sample or {})
+
+		local heading = format_model_heading(spec.heading, sample, i, spec.n)
+		if heading then
+			overrides.heading = heading
+		end
+
+		local record = self:record_for(base, overrides)
+
+		if record.status ~= "done" then
+			return model_failure(record)
+		end
+
+		return model_output(record, spec.outputs)
+	end
+end
+
+--
+-- Installing onto repl
+--
+
 function Study:install(repl)
 	repl = repl or repl_mod.new()
 
@@ -1783,6 +1851,14 @@ M._types = {
 				ret = "table",
 				doc =
 				"Return ensure_record(with_base(base, overrides)); convenience helper for sweeps, UQ, and optimisation closures",
+			},
+			record_model = {
+				args = "base:table?, spec:table",
+				ret = "function(sample:table?, i:number?) -> table",
+				doc =
+					"Return a model closure for UQ or optimisation. The closure calls " ..
+					"record_for(base, sample), adding an optional generated heading, and returns " ..
+					"selected scalar record values. spec: { outputs:table, n:number?, heading:string|function? }",
 			},
 			result_or_run = {
 				args = "",

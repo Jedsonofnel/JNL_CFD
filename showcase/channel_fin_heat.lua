@@ -11,6 +11,8 @@ local gpm      = require("jnl.gp.mesh")
 local vtk      = require("jnl.fvm.vtk")
 local gp       = require("jnl.gp")
 
+local stat     = require("jnl.explore.stat")
+
 local E        = fvm.Expr
 local Op       = fvm.Op
 
@@ -33,7 +35,7 @@ study:about(
 --
 
 study:design({
-	U_mean      = 0.5, -- Re proxy
+	U_mean      = 0.2, -- Re proxy (will cause  divergence at Re>500)
 
 	L           = 4.0,
 	H           = 1.0,
@@ -287,17 +289,6 @@ end)
 -- Metrics
 --
 
-local function mean(xs)
-	if not xs or #xs == 0 then return nil end
-
-	local s = 0.0
-	for _, x in ipairs(xs) do
-		s = s + x
-	end
-
-	return s / #xs
-end
-
 local function line_tol(d, o)
 	return d.L * 0.5 * o.res
 end
@@ -323,7 +314,7 @@ local function pressure_drop(result)
 		{ tol = line_tol(d, o) }
 	)
 
-	return mean(p_in) - mean(p_out), mean(p_in), mean(p_out)
+	return stat.mean(p_in) - stat.mean(p_out), stat.mean(p_in), stat.mean(p_out)
 end
 
 local function patch_gradient_flux(result, patch)
@@ -427,35 +418,6 @@ end)
 
 local uq = require("jnl.explore").uq
 
-local function channel_fin_output(s, base, n)
-	return function(x, i)
-		local record = s:ensure_record(s:with_base(base, {
-			fin_height  = x.fin_height,
-			fin_spacing = x.fin_spacing,
-			h_fin       = x.h_fin,
-			heading     = string.format("MC UQ sample %d of %d", i, n),
-		}))
-
-		if record.status ~= "done" then
-			return {
-				status = record.status,
-				valid = false,
-				reason = record.diag and record.diag.reason,
-			}
-		end
-
-		local m = record.metrics
-
-		return {
-			status         = "done",
-			valid          = true,
-			heat_removed   = m.heat_removed,
-			delta_p        = m.delta_p,
-			objective_hint = m.objective_hint,
-		}
-	end
-end
-
 local function channel_fin_uq(s, base)
 	base = base or {}
 
@@ -468,7 +430,11 @@ local function channel_fin_uq(s, base)
 			uq.normal(base.fin_spacing or 0.20, 0.025):clip(0.05, 0.40))
 		:input("h_fin",
 			uq.lognormal(base.h_fin or 10.0, 0.20):clip(2.0, 25.0))
-		:model(channel_fin_output(s, base, n))
+		:model(s:record_model(base, {
+			outputs = { "heat_removed", "delta_p", "objective_hint" },
+			n = n,
+			heading = "MC UQ sample",
+		}))
 		:spec("acceptable heat", function(y)
 			return y.valid and y.heat_removed > 0.08
 		end)
