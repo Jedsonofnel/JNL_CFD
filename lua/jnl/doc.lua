@@ -62,6 +62,10 @@ local MODULES = {
 	"jnl.ui",
 	"jnl.doc",
 	"jnl.llm",
+	-- exploration
+	"jnl.explore",
+	"jnl.explore.uq",
+	"jnl.explore.stat",
 }
 
 local function load_modules()

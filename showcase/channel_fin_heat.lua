@@ -384,14 +384,20 @@ end, {
 
 local function height_sweep(s, base)
 	base = base or {}
-	for h = 0.05, 0.45, 0.05 do
-		s:ensure_record(study:with_base(base, { fin_height = h }))
+
+	local heights = { 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45 }
+
+	for i, h in ipairs(heights) do
+		s:ensure_record(study:with_base(base, {
+			fin_height = h,
+			heading = string.format("height sweep %d of %d", i, #heights),
+		}))
 	end
 end
 
 study:sweep("height-sweep", height_sweep)
 
-study:figure_sweep("height-heat", function(base)
+study:figure_workflow("height-heat", function(base)
 	base = base or {}
 	height_sweep(study, base)
 
@@ -410,6 +416,76 @@ study:figure_sweep("height-heat", function(base)
 		style = "linespoints",
 	})
 end)
+
+--
+-- Uncertainty study
+--
+
+--
+-- Uncertainty study
+--
+
+local uq = require("jnl.explore").uq
+
+local function channel_fin_output(s, base, n)
+	return function(x, i)
+		local record = s:ensure_record(s:with_base(base, {
+			fin_height  = x.fin_height,
+			fin_spacing = x.fin_spacing,
+			h_fin       = x.h_fin,
+			heading     = string.format("MC UQ sample %d of %d", i, n),
+		}))
+
+		if record.status ~= "done" then
+			return {
+				status = record.status,
+				valid = false,
+				reason = record.diag and record.diag.reason,
+			}
+		end
+
+		local m = record.metrics
+
+		return {
+			status         = "done",
+			valid          = true,
+			heat_removed   = m.heat_removed,
+			delta_p        = m.delta_p,
+			objective_hint = m.objective_hint,
+		}
+	end
+end
+
+local function channel_fin_uq(s, base)
+	base = base or {}
+
+	local n = base.n or 10
+
+	return uq.monte_carlo("channel fin manufacturing UQ")
+		:input("fin_height",
+			uq.normal(base.fin_height or 0.25, 0.025):clip(0.05, 0.45))
+		:input("fin_spacing",
+			uq.normal(base.fin_spacing or 0.20, 0.025):clip(0.05, 0.40))
+		:input("h_fin",
+			uq.lognormal(base.h_fin or 10.0, 0.20):clip(2.0, 25.0))
+		:model(channel_fin_output(s, base, n))
+		:spec("acceptable heat", function(y)
+			return y.valid and y.heat_removed > 0.08
+		end)
+		:spec("acceptable pressure drop", function(y)
+			return y.valid and y.delta_p < 0.05
+		end)
+		:spec("acceptable design", function(y)
+			return y.valid and y.heat_removed > 0.08 and y.delta_p < 0.05
+		end)
+		:run(n)
+end
+
+study:uq("channel-fin-uq", function(s, base)
+	return channel_fin_uq(s, base)
+end, {
+	doc = "Run Monte Carlo uncertainty propagation over fin height, spacing, and heat-transfer coefficient",
+})
 
 --
 -- Outputs

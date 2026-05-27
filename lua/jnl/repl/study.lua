@@ -107,6 +107,9 @@ end
 
 local CACHE_IGNORE_KEYS = {
 	quiet = true,
+	heading = true,
+	print_metrics = true,
+	metrics_heading = true,
 }
 
 local function scalar_copy(t)
@@ -170,18 +173,35 @@ end
 --
 
 local function format_value(v)
+	if type(v) == "number" then
+		if v % 1 == 0 then
+			return string.format("%d", v)
+		end
+
+		return string.format("%.3g", v)
+	end
+
 	if type(v) == "string" then
 		return string.format("%q", v)
 	end
+
 	return tostring(v)
 end
+
+local DISPLAY_IGNORE_KEYS = {
+	quiet = true,
+	heading = true,
+	print_metrics = true,
+	metrics_heading = true,
+}
 
 local function format_overrides(design_defaults, overrides)
 	if not overrides then return nil end
 
 	local parts = {}
 	for k, v in pairs(overrides) do
-		if k ~= "quiet" and design_defaults[k] ~= v then
+		if #parts > 4 then break end
+		if not DISPLAY_IGNORE_KEYS[k] and design_defaults[k] ~= v then
 			parts[#parts + 1] = string.format("%s=%s", tostring(k), format_value(v))
 		end
 	end
@@ -210,6 +230,10 @@ local function format_derived(study, x)
 	return #parts > 0 and table.concat(parts, "  ") or nil
 end
 
+local function case_heading(opts, default)
+	return opts and opts.heading or default
+end
+
 local function format_case_message(study, verb, arg, x)
 	local diff = format_overrides(study.design_table, arg)
 	local derived = format_derived(study, x)
@@ -221,6 +245,42 @@ local function format_case_message(study, verb, arg, x)
 	end
 
 	return text
+end
+
+local function format_metric_value(v)
+	if type(v) == "number" then
+		return string.format("%.6g", v)
+	end
+
+	return tostring(v)
+end
+
+-- default: YES
+local function should_print_metrics(opts)
+	if not opts then
+		return true
+	end
+
+	return opts.print_metrics or true
+end
+
+local function metric_print_columns(study, metrics)
+	local columns = study.metric_columns_table
+
+	if columns then
+		return columns
+	end
+
+	local out = {}
+
+	for k, v in pairs(metrics or {}) do
+		if is_scalar(v) then
+			out[#out + 1] = k
+		end
+	end
+
+	table.sort(out)
+	return out
 end
 
 local function normalise_name(name)
@@ -573,6 +633,31 @@ end
 
 function Study:metric_columns(columns)
 	self.metric_columns_table = columns
+	return self
+end
+
+function Study:print_metrics(result, heading)
+	local metrics = result and result.metrics or {}
+
+	if not metrics then
+		return self
+	end
+
+	if heading then
+		io.write(fmt.header(heading, 3))
+	end
+
+	local columns = metric_print_columns(self, metrics)
+
+	for _, name in ipairs(columns) do
+		local key = field_name(name)
+		local value = metrics[key] or metrics[name]
+
+		if value ~= nil and is_scalar(value) then
+			print(string.format("%-18s = %s", tostring(name), format_metric_value(value)))
+		end
+	end
+
 	return self
 end
 
@@ -929,7 +1014,7 @@ function Study:figure(name, figure_fn, opts)
 	return self
 end
 
-function Study:figure_sweep(name, figure_fn, opts)
+function Study:figure_workflow(name, figure_fn, opts)
 	opts = opts or {}
 
 	local plot_doc = opts.plot_doc or opts.doc or auto_doc("plot", name)
@@ -1148,7 +1233,7 @@ function Study:run(arg)
 	local record = self:start_record(x, opts)
 
 	if not opts.quiet then
-		io.write(fmt.header(format_case_message(self, "evaluating", arg, x), 2))
+		io.write(fmt.header(format_case_message(self, case_heading(opts, "Evaluating"), arg, x), 2))
 	end
 
 	for _, hook in ipairs(self.before_run_hooks) do
@@ -1174,6 +1259,10 @@ function Study:run(arg)
 	if result_status == "done" then
 		out.metrics = self:compute_metrics(out, x, opts)
 		self:cache_metrics(out.metrics)
+
+		if not opts.quiet and should_print_metrics(opts) then
+			self:print_metrics(out, opts.metrics_heading or "Metrics")
+		end
 	else
 		record.tags[result_status] = true
 		self:cache_diag({
@@ -1226,7 +1315,7 @@ function Study:ensure_record(arg)
 		self.current_record = existing
 
 		if not opts.quiet then
-			io.write(fmt.header(format_case_message(self, "found cached value", arg, x), 2))
+			io.write(fmt.header(format_case_message(self, case_heading(opts, "found cached value"), arg, x), 2))
 		end
 
 		return existing
@@ -1408,7 +1497,7 @@ function Study:uq(name, fn, opts)
 	opts = opts or {}
 	self.optimisers[#self.optimisers + 1] = {
 		name = normalise_name(name),
-		fn   = function() return fn(self, arg or {}) end,
+		fn   = function(arg) return fn(self, arg or {}) end,
 		doc  = doc_for("uq", name, opts.doc),
 	}
 	return self
@@ -1418,7 +1507,7 @@ function Study:optimise(name, fn, opts)
 	opts = opts or {}
 	self.optimisers[#self.optimisers + 1] = {
 		name  = normalise_name(name),
-		fn    = function() return fn(self, arg or {}) end,
+		fn    = function(arg) return fn(self, arg or {}) end,
 		doc   = doc_for("optimise", name, opts.doc),
 		entry = opts.entry,
 	}
@@ -1539,6 +1628,12 @@ M._types = {
 				ret = "table",
 				doc = "Return { columns, rows } containing scalar design inputs and metrics for one result",
 			},
+			print_metrics = {
+				args = "result:table",
+				ret  = "Study",
+				doc  =
+				"Print scalar result metrics using metric_columns when available; intended for quiet-respecting run summaries.",
+			},
 			-- Caching
 			start_record = {
 				args = "design:table, opts:table",
@@ -1614,11 +1709,11 @@ M._types = {
 				doc =
 				"Register matching plot and writer helpers from one figure factory; opts: { doc, plot_doc, write_doc, write }",
 			},
-			figure_sweep = {
+			figure_workflow = {
 				args = "name:string, figure_fn:function(arg)->Figure, opts:table?",
 				ret = "Study",
 				doc =
-					"Register matching plot and writer helpers for a cache/query figure. " ..
+					"Register matching plot and writer helpers for a workflow figure. " ..
 					"Unlike figure(), the REPL argument is passed directly to figure_fn and result_or_run() is not called. " ..
 					"Use this for sweep, UQ, optimisation, or cache-backed figures. opts: { doc, plot_doc, write_doc, write }",
 			},
@@ -1668,9 +1763,15 @@ M._types = {
 				args = "design_overrides:table?",
 				ret  = "table",
 				doc  =
-					"Evaluate the study and update the scalar cache record; prints non-default design variables " ..
-					"and visible derived inputs unless opts.quiet is true; stores result as last_result. " ..
-					"Use ensure_record to skip completed cached cases.",
+					"Evaluate the study and update the scalar cache record; design_overrides may include " ..
+					"display-only options { quiet, heading, print_metrics }. Stores result as last_result.",
+			},
+			ensure_record = {
+				args = "design_overrides:table?",
+				ret  = "table",
+				doc  =
+					"Ensure a completed scalar cache record exists for inputs. Display-only options such as " ..
+					"{ quiet, heading, print_metrics } affect console output but not cache identity.",
 			},
 			with_base = {
 				args = "base:table?, overrides:table?",
@@ -1692,14 +1793,6 @@ M._types = {
 				args = "design_overrides:table?",
 				ret = "table?",
 				doc = "Return completed scalar cache record for the same design/options, or nil if absent or incomplete",
-			},
-			ensure_record = {
-				args = "design_overrides:table?",
-				ret = "table",
-				doc =
-					"Ensure a completed scalar cache record exists for inputs. " ..
-					"If a status == 'done' record exists, skip evaluation and return it. " ..
-					"If absent or previous record is pending/diverged/error, evaluate normally.",
 			},
 			query_records = {
 				args = "query:table?",
