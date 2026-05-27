@@ -210,6 +210,19 @@ local function format_derived(study, x)
 	return #parts > 0 and table.concat(parts, "  ") or nil
 end
 
+local function format_case_message(study, verb, arg, x)
+	local diff = format_overrides(study.design_table, arg)
+	local derived = format_derived(study, x)
+
+	local text = diff and (verb .. "  " .. diff) or (verb .. " defaults")
+
+	if derived then
+		text = text .. " | " .. derived
+	end
+
+	return text
+end
+
 local function normalise_name(name)
 	return tostring(name):gsub("_", "-")
 end
@@ -237,6 +250,10 @@ local function as_callable(name, fn)
 	return fn
 end
 
+--
+-- Getter helpers
+--
+
 local function result_getter(path)
 	local parts = split_path(path)
 
@@ -253,6 +270,52 @@ local function result_getter(path)
 
 		return value
 	end
+end
+
+local function table_get(path)
+	local parts = split_path(path)
+
+	return function(t)
+		local value = t
+
+		for _, part in ipairs(parts) do
+			if value == nil then
+				return nil
+			end
+
+			value = value[part]
+		end
+
+		return value
+	end
+end
+
+local function record_value(record, name)
+	if not record then return nil end
+
+	if tostring(name):find("%.") then
+		return table_get(name)(record)
+	end
+
+	local key = field_name(name)
+
+	if record.x and record.x[key] ~= nil then
+		return record.x[key]
+	end
+
+	if record.metrics and record.metrics[key] ~= nil then
+		return record.metrics[key]
+	end
+
+	if record.opts and record.opts[key] ~= nil then
+		return record.opts[key]
+	end
+
+	if record.diag and record.diag[key] ~= nil then
+		return record.diag[key]
+	end
+
+	return record[key]
 end
 
 --
@@ -577,6 +640,7 @@ function Study:start_record(x, opts)
 		i       = self.run_counter,
 		time    = os.time(),
 		key     = key,
+		status  = "pending",
 
 		x       = scalar_copy(x),
 		opts    = scalar_copy(opts),
@@ -676,6 +740,129 @@ function Study:clear_cache()
 	return self
 end
 
+local function listify(x)
+	if x == nil then
+		return {}
+	end
+
+	if type(x) == "table" then
+		return x
+	end
+
+	return { x }
+end
+
+local function set_from_list(xs)
+	local out = {}
+
+	for _, x in ipairs(listify(xs)) do
+		out[field_name(x)] = true
+	end
+
+	return out
+end
+
+local function approx_equal(a, b, tol)
+	if type(a) == "number" and type(b) == "number" then
+		tol = tol or 1e-12
+		return math.abs(a - b) <= tol * math.max(1.0, math.abs(a), math.abs(b))
+	end
+
+	return a == b
+end
+
+local function match_scalar_table(actual, expected, ignore, tol)
+	for k, v in pairs(expected or {}) do
+		local key = field_name(k)
+
+		if not ignore[key] then
+			if not approx_equal(actual and actual[key], v, tol) then
+				return false
+			end
+		end
+	end
+
+	return true
+end
+
+function Study:query_records(query)
+	query = query or {}
+
+	local where = shallow_copy(query.where or query)
+
+	-- allow the convenient flat style:
+	-- study:query_xy { x = "fin_height", y = "heat_removed" }
+	where.x = nil
+	where.y = nil
+	where.vary = nil
+	where.where = nil
+	where.sort = nil
+	where.tol = nil
+	where.complete = nil
+
+	local expected_x, expected_opts = self:input_record(where)
+
+	-- default behaviour for xy plots:
+	-- x is allowed to vary; everything else should match defaults + where.
+	local ignore = set_from_list(query.vary or query.x)
+	local tol = query.tol
+
+	local out = {}
+
+	for _, record in ipairs(self.run_cache or {}) do
+		local complete_ok = query.complete == false or record.status == "done"
+
+		if complete_ok
+			and match_scalar_table(record.x, expected_x, ignore, tol)
+			and match_scalar_table(record.opts, expected_opts, ignore, tol)
+		then
+			out[#out + 1] = record
+		end
+	end
+
+	local sort = query.sort or query.x
+
+	if sort then
+		table.sort(out, function(a, b)
+			local av = record_value(a, sort)
+			local bv = record_value(b, sort)
+
+			if av == bv then
+				return (a.i or 0) < (b.i or 0)
+			end
+
+			if av == nil then return false end
+			if bv == nil then return true end
+
+			return av < bv
+		end)
+	end
+
+	return out
+end
+
+function Study:query_xy(query)
+	query = query or {}
+
+	assert(query.x, "query_xy requires query.x")
+	assert(query.y, "query_xy requires query.y")
+
+	local records = self:query_records(query)
+	local xs, ys = {}, {}
+
+	for _, record in ipairs(records) do
+		local x = record_value(record, query.x)
+		local y = record_value(record, query.y)
+
+		if x ~= nil and y ~= nil then
+			xs[#xs + 1] = x
+			ys[#ys + 1] = y
+		end
+	end
+
+	return xs, ys, records
+end
+
 --
 -- Outputs and plots
 --
@@ -725,7 +912,8 @@ function Study:write(name, fn, opts)
 end
 
 function Study:figure(name, figure_fn, opts)
-	opts            = opts or {}
+	opts = opts or {}
+
 
 	local plot_doc  = opts.plot_doc or opts.doc or auto_doc("plot", name)
 	local write_doc = opts.write_doc or opts.doc or auto_doc("figure", name)
@@ -737,6 +925,33 @@ function Study:figure(name, figure_fn, opts)
 	self:write(name, function(result, path)
 		return figure_fn(result):write(path, opts.write)
 	end, { doc = write_doc })
+
+	return self
+end
+
+function Study:figure_sweep(name, figure_fn, opts)
+	opts = opts or {}
+
+	local plot_doc = opts.plot_doc or opts.doc or auto_doc("plot", name)
+	local write_doc = opts.write_doc or opts.doc or auto_doc("figure", name)
+
+	self.plots[#self.plots + 1] = {
+		name = normalise_name(name),
+		fn   = function(arg)
+			return figure_fn(arg or {}):show()
+		end,
+		doc  = plot_doc,
+		raw  = true,
+	}
+
+	self.writers[#self.writers + 1] = {
+		name = normalise_name(name),
+		fn   = function(arg, path)
+			return figure_fn(arg or {}):write(path, opts.write)
+		end,
+		doc  = write_doc,
+		raw  = true,
+	}
 
 	return self
 end
@@ -930,34 +1145,52 @@ function Study:run(arg)
 	local x, opts = self:input_record(arg)
 
 	self:check_bounds(x)
-	self:start_record(x, opts)
+	local record = self:start_record(x, opts)
 
 	if not opts.quiet then
-		local diff = format_overrides(self.design_table, arg)
-		local derived = format_derived(self, x)
-
-		local text = diff and ("evaluating  " .. diff) or "evaluating defaults"
-
-		if derived then
-			text = text .. " | " .. derived
-		end
-
-		io.write(fmt.header(text, 2))
+		io.write(fmt.header(format_case_message(self, "evaluating", arg, x), 2))
 	end
 
 	for _, hook in ipairs(self.before_run_hooks) do
 		hook(x, opts)
 	end
 
-	local out = self.evaluate_fn(x, opts)
+	local ok, out_or_err = pcall(self.evaluate_fn, x, opts)
+	if not ok then
+		record.status = "error"
+		record.tags.error = true
+		self:cache_diag({
+			status = "error",
+			message = tostring(out_or_err),
+		})
+		error(out_or_err)
+	end
 
-	out.metrics = self:compute_metrics(out, x, opts)
-	self:cache_metrics(out.metrics)
+	local out = out_or_err
+
+	local result_status = out.status or "done"
+	record.status = result_status
+
+	if result_status == "done" then
+		out.metrics = self:compute_metrics(out, x, opts)
+		self:cache_metrics(out.metrics)
+	else
+		record.tags[result_status] = true
+		self:cache_diag({
+			status = result_status,
+			reason = out.stop_reason,
+			iter = out.stop_iter,
+		})
+	end
 
 	self.last_result = out
 
 	for _, hook in ipairs(self.after_run_hooks) do
 		hook(out, x, opts)
+	end
+
+	if record.status == "pending" then
+		record.status = "done"
 	end
 
 	return out
@@ -971,8 +1204,47 @@ function Study:result_or_run()
 	return self:run()
 end
 
+function Study:cache_lookup_done(arg)
+	local record = self:cache_lookup(arg)
+
+	if record and record.status == "done" then
+		return record
+	end
+
+	return nil
+end
+
+function Study:ensure_record(arg)
+	arg = arg or {}
+
+	local x, opts = self:input_record(arg)
+	self:check_bounds(x)
+
+	local existing = self:cache_lookup_done(arg)
+
+	if existing then
+		self.current_record = existing
+
+		if not opts.quiet then
+			io.write(fmt.header(format_case_message(self, "found cached value", arg, x), 2))
+		end
+
+		return existing
+	end
+
+	return self:run(arg) and self:cache_record()
+end
+
 function Study:last_results()
 	return self.last_result
+end
+
+function Study:with_base(base, overrides)
+	return merge(base or {}, overrides or {})
+end
+
+function Study:record_for(base, overrides)
+	return self:ensure_record(self:with_base(base, overrides))
 end
 
 function Study:install(repl)
@@ -1043,6 +1315,23 @@ function Study:install(repl)
 		repl:register("cache-lookup", function(arg)
 			return self:cache_lookup(arg)
 		end, "Return scalar cache record for inputs, or nil if absent")
+
+		repl:register("cache-lookup-done", function(arg)
+			return self:cache_lookup_done(arg)
+		end, "Return completed scalar cache record for inputs, or nil if absent/incomplete")
+
+		repl:register("ensure-record", function(arg)
+			return self:ensure_record(arg)
+		end, "Ensure completed scalar cache record exists; run if absent, skip if cached")
+
+		repl:register("query-records", function(query)
+			return self:query_records(query)
+		end, "Return completed cache records matching defaults plus query.where, allowing query.vary")
+
+		repl:register("query-xy", function(query)
+			local xs, ys = self:query_xy(query)
+			return { x = xs, y = ys }
+		end, "Return x/y arrays from matching cache records; query requires x and y")
 	end
 
 	for _, item in ipairs(self.outputs) do
@@ -1053,18 +1342,27 @@ function Study:install(repl)
 	end
 
 	for _, item in ipairs(self.plots) do
-		repl:register("plot-" .. item.name, function(out)
-			out = out or self:result_or_run()
-			return item.fn(out)
+		repl:register("plot-" .. item.name, function(arg)
+			if item.raw then
+				return item.fn(arg)
+			end
+
+			arg = arg or self:result_or_run()
+			return item.fn(arg)
 		end, item.doc)
 	end
 
 	for _, item in ipairs(self.writers) do
-		repl:register("write-" .. item.name, function(path, result)
+		repl:register("write-" .. item.name, function(path, arg)
 			assert(type(path) == "string",
 				"write-" .. item.name .. " requires a path as first argument")
-			result = result or self:result_or_run()
-			return item.fn(result, path)
+
+			if item.raw then
+				return item.fn(arg, path)
+			end
+
+			arg = arg or self:result_or_run()
+			return item.fn(arg, path)
 		end, item.doc)
 	end
 
@@ -1096,11 +1394,13 @@ end
 
 function Study:sweep(name, fn, opts)
 	opts = opts or {}
+
 	self.optimisers[#self.optimisers + 1] = {
 		name = normalise_name(name),
-		fn   = function() return fn(self) end,
+		fn   = function(arg) return fn(self, arg or {}) end,
 		doc  = doc_for("sweep", name, opts.doc),
 	}
+
 	return self
 end
 
@@ -1108,7 +1408,7 @@ function Study:uq(name, fn, opts)
 	opts = opts or {}
 	self.optimisers[#self.optimisers + 1] = {
 		name = normalise_name(name),
-		fn   = function() return fn(self) end,
+		fn   = function() return fn(self, arg or {}) end,
 		doc  = doc_for("uq", name, opts.doc),
 	}
 	return self
@@ -1118,7 +1418,7 @@ function Study:optimise(name, fn, opts)
 	opts = opts or {}
 	self.optimisers[#self.optimisers + 1] = {
 		name  = normalise_name(name),
-		fn    = function() return fn(self) end,
+		fn    = function() return fn(self, arg or {}) end,
 		doc   = doc_for("optimise", name, opts.doc),
 		entry = opts.entry,
 	}
@@ -1283,7 +1583,8 @@ M._types = {
 			cache = {
 				args = "",
 				ret = "table",
-				doc = "Return chronological scalar cache records",
+				doc =
+				"Return chronological scalar cache records. Each record has status: pending, done, diverged, or error; default queries only use done records.",
 			},
 			clear_cache = {
 				args = "",
@@ -1313,6 +1614,14 @@ M._types = {
 				doc =
 				"Register matching plot and writer helpers from one figure factory; opts: { doc, plot_doc, write_doc, write }",
 			},
+			figure_sweep = {
+				args = "name:string, figure_fn:function(arg)->Figure, opts:table?",
+				ret = "Study",
+				doc =
+					"Register matching plot and writer helpers for a cache/query figure. " ..
+					"Unlike figure(), the REPL argument is passed directly to figure_fn and result_or_run() is not called. " ..
+					"Use this for sweep, UQ, optimisation, or cache-backed figures. opts: { doc, plot_doc, write_doc, write }",
+			},
 			table = {
 				args = "name:string, table_fn:function(result)->table, opts:table?",
 				ret = "Study",
@@ -1320,21 +1629,25 @@ M._types = {
 				"Register matching output and CSV writer helpers from one table factory; table_fn returns { columns, rows }; opts: { doc, output_doc, write_doc }",
 			},
 			sweep = {
-				args = "name:string, fn:function(study), opts:table?",
+				args = "name:string, fn:function(study, arg), opts:table?",
 				ret  = "Study",
 				doc  =
-				"Register a parameter sweep; fn receives the study and calls run(overrides) in a loop; opts: { doc }",
+					"Register a parameter sweep. fn receives the study and an optional argument from the REPL call; " ..
+					"sweep bodies usually call ensure_record(overrides) in a loop. opts: { doc }",
 			},
 			uq = {
-				args = "name:string, fn:function(study), opts:table?",
-				ret  = "Study",
-				doc  = "Register a UQ study; fn receives the study and calls run(overrides) per sample; opts: { doc }",
-			},
-			optimise = {
-				args = "name:string, fn:function(study), opts:table?",
+				args = "name:string, fn:function(study, arg), opts:table?",
 				ret  = "Study",
 				doc  =
-				"Register an optimisation; fn receives the study and calls run(overrides) as its inner loop; opts: { doc, entry }",
+					"Register a UQ helper. fn receives the study and an optional REPL argument; " ..
+					"UQ bodies typically pass a closure to a generic UQ algorithm and call record_for(base, sample) or ensure_record(overrides). opts: { doc }",
+			},
+			optimise = {
+				args = "name:string, fn:function(study, arg), opts:table?",
+				ret  = "Study",
+				doc  =
+					"Register an optimisation helper. fn receives the study and an optional REPL argument; " ..
+					"optimisation bodies typically pass a closure to a generic optimiser and call record_for(base, candidate) or ensure_record(overrides). opts: { doc, entry }",
 			},
 			usage_string = {
 				args = "",
@@ -1355,12 +1668,53 @@ M._types = {
 				args = "design_overrides:table?",
 				ret  = "table",
 				doc  =
-				"Evaluate the study, using a cached result for identical design/options when available; prints non-default design variables and visible derived inputs unless opts.quiet is true; stores result as last_result",
+					"Evaluate the study and update the scalar cache record; prints non-default design variables " ..
+					"and visible derived inputs unless opts.quiet is true; stores result as last_result. " ..
+					"Use ensure_record to skip completed cached cases.",
+			},
+			with_base = {
+				args = "base:table?, overrides:table?",
+				ret = "table",
+				doc = "Return base merged with overrides; useful inside sweeps that receive REPL-level base overrides",
+			},
+			record_for = {
+				args = "base:table?, overrides:table?",
+				ret = "table",
+				doc =
+				"Return ensure_record(with_base(base, overrides)); convenience helper for sweeps, UQ, and optimisation closures",
 			},
 			result_or_run = {
 				args = "",
 				ret = "table",
 				doc = "Return last_result, or evaluate the default design if absent",
+			},
+			cache_lookup_done = {
+				args = "design_overrides:table?",
+				ret = "table?",
+				doc = "Return completed scalar cache record for the same design/options, or nil if absent or incomplete",
+			},
+			ensure_record = {
+				args = "design_overrides:table?",
+				ret = "table",
+				doc =
+					"Ensure a completed scalar cache record exists for inputs. " ..
+					"If a status == 'done' record exists, skip evaluation and return it. " ..
+					"If absent or previous record is pending/diverged/error, evaluate normally.",
+			},
+			query_records = {
+				args = "query:table?",
+				ret = "table",
+				doc =
+					"Return scalar cache records matching defaults plus query.where. " ..
+					"By default only records with status == 'done' are returned; pass complete=false to include pending, diverged, or error records. " ..
+					"query.vary names fields allowed to differ. Query keys: { x?, y?, where?, vary?, sort?, tol?, complete? }",
+			},
+			query_xy = {
+				args = "query:table",
+				ret = "xs:table, ys:table, records:table",
+				doc =
+					"Return x/y arrays from matching scalar cache records. " ..
+					"query requires { x, y }; optional keys: { where, vary, sort, tol, complete }",
 			},
 			last_results = {
 				args = "",

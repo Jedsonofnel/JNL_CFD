@@ -9,6 +9,7 @@ local tri      = require("jnl.mesh2d.tri")
 local BC       = require("jnl.fvm.bc")
 local gpm      = require("jnl.gp.mesh")
 local vtk      = require("jnl.fvm.vtk")
+local gp       = require("jnl.gp")
 
 local E        = fvm.Expr
 local Op       = fvm.Op
@@ -376,6 +377,39 @@ study:evaluate(function(d, o)
 end, {
 	doc = "Run one channel-fin simulation and return scalar pressure-drop and heat-flux metrics",
 })
+
+--
+-- Sweeps
+--
+
+local function height_sweep(s, base)
+	base = base or {}
+	for h = 0.05, 0.45, 0.05 do
+		s:ensure_record(study:with_base(base, { fin_height = h }))
+	end
+end
+
+study:sweep("height-sweep", height_sweep)
+
+study:figure_sweep("height-heat", function(base)
+	base = base or {}
+	height_sweep(study, base)
+
+	local xs, ys = study:query_xy({
+		x = "fin_height",
+		y = "heat_removed",
+		where = base,
+	})
+
+	return gp.figure({
+		title = "Heat removed vs fin height",
+		xlabel = "Fin height",
+		ylabel = "Heat removed",
+	}):add(xs, ys, {
+		title = "height sweep",
+		style = "linespoints",
+	})
+end)
 
 --
 -- Outputs

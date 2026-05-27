@@ -38,6 +38,30 @@ local function write_xy(pipe, xs, ys)
 end
 
 --
+-- Validation
+--
+
+local function series_len(s)
+	if not s then return 0 end
+	if not s.xs or not s.ys then return 0 end
+	return math.min(#s.xs, #s.ys)
+end
+
+local function validate_series(s, i)
+	assert(type(s) == "table", string.format("[jnl.gp] series %d is not a table", i))
+	assert(type(s.xs) == "table", string.format("[jnl.gp] series %d has no xs table", i))
+	assert(type(s.ys) == "table", string.format("[jnl.gp] series %d has no ys table", i))
+	assert(#s.xs == #s.ys, string.format(
+		"[jnl.gp] series %d has mismatched xs/ys lengths: %d vs %d",
+		i, #s.xs, #s.ys
+	))
+	assert(#s.xs > 0, string.format(
+		"[jnl.gp] no data passed: series %d has zero points",
+		i
+	))
+end
+
+--
 -- Series builder
 --
 
@@ -162,6 +186,16 @@ function M.figure(opts)
 	}, Figure)
 end
 
+function Figure:validate()
+	assert(#self._series > 0, "[jnl.gp] no data passed: figure has no series")
+
+	for i, s in ipairs(self._series) do
+		validate_series(s, i)
+	end
+
+	return self
+end
+
 -- fig:add(xs, ys, opts)   or   fig:add(series)
 function Figure:add(xs_or_series, ys, opts)
 	if type(xs_or_series) == "table" and xs_or_series.xs then
@@ -222,7 +256,7 @@ function Figure:_emit(pipe)
 		gp_send(pipe, "set key %s", o.key)
 	end
 
-	assert(#self._series > 0, "[jnl.gp] nothing to plot")
+	self:validate()
 
 	local cmds = {}
 	for _, s in ipairs(self._series) do
@@ -304,6 +338,7 @@ end
 
 ---Dumps all series to a csv
 function Figure:write_csv(path)
+	self:validate()
 	M.write_csv(path, self._series)
 	return self
 end

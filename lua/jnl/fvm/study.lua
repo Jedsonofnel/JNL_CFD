@@ -202,12 +202,34 @@ function FvmStudy:default_evaluate(x, opts)
 
 	sim:run()
 
+	local sage = sim:sage()
+	local diverging = sage:last_one({ kind = "diverging" })
+	local converged = sage:last_one({ kind = "converged" })
+
+	local status = "done"
+	local stop_reason = nil
+	local stop_iter = nil
+
+	if diverging then
+		status = "diverged"
+		stop_reason = "diverging"
+		stop_iter = diverging.iter
+	elseif converged then
+		status = "done"
+		stop_reason = "converged"
+		stop_iter = converged.iter
+	end
+
 	local res = {
 		x = x,
 		opts = all_opts,
 		case = case,
 		sim = sim,
 		mesh = case.mesh,
+
+		status = status,
+		stop_reason = stop_reason,
+		stop_iter = stop_iter,
 
 		field = function(name)
 			return case:field(name)
