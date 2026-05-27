@@ -1261,6 +1261,182 @@ JNL API Reference
       doc: Return documented module names
 
 
+## jnl.explore
+   Domain-unaware statistics, uncertainty and exploration helpers.
+
+   (no _api or _types)
+
+
+## jnl.explore.stat
+   Small statistical helpers for plain numeric Lua arrays
+
+   count
+      sig: jnl.explore.stat.count(xs:table) -> number
+      doc: Return the number of numeric values in xs.
+   max
+      sig: jnl.explore.stat.max(xs:table) -> number?
+      doc: Return the maximum numeric value in xs, or nil if empty.
+   mean
+      sig: jnl.explore.stat.mean(xs:table) -> number?
+      doc: Return the arithmetic mean of numeric values in xs, or nil if empty.
+   median
+      sig: jnl.explore.stat.median(xs:table) -> number
+      doc: Return the median of numeric values in xs.
+   min
+      sig: jnl.explore.stat.min(xs:table) -> number?
+      doc: Return the minimum numeric value in xs, or nil if empty.
+   quantile
+      sig: jnl.explore.stat.quantile(xs:table, q:number) -> number
+      doc: Return the linearly interpolated quantile q for numeric values in xs.
+   quartiles
+      sig: jnl.explore.stat.quartiles(xs:table) -> table
+      doc: Return { q1, q2, q3 } for numeric values in xs.
+   std
+      sig: jnl.explore.stat.std(xs:table, sample:boolean?) -> number?
+      doc: Return the standard deviation of numeric values in xs.
+   sum
+      sig: jnl.explore.stat.sum(xs:table) -> number
+      doc: Return the sum of numeric values in xs.
+   summary
+      sig: jnl.explore.stat.summary(xs:table) -> table
+      doc: Return count, mean, standard deviation, min, quartiles, and max.
+   variance
+      sig: jnl.explore.stat.variance(xs:table, sample:boolean?) -> number?
+      doc: Return the variance of numeric values in xs; use sample=true for sample
+           variance.
+
+
+## jnl.explore.uq
+   Function-first uncertainty studies over plain Lua models
+
+   Build a Monte Carlo study by registering input distributions, a model function, and
+   optional design specs.
+   The model receives a sampled input table x and returns an output table y.
+   Specs are ordinary predicates over y, x, and the record.
+
+
+   choice
+      sig: jnl.explore.uq.choice(values:table) -> Distribution
+      doc: Create a discrete distribution that samples uniformly from values.
+   constant
+      sig: jnl.explore.uq.constant(value:any) -> Distribution
+      doc: Create a distribution that always returns value.
+   discrete
+      sig: jnl.explore.uq.discrete(pairs:table) -> Distribution
+      doc: Create a weighted discrete distribution from { value, weight } pairs.
+   lognormal
+      sig: jnl.explore.uq.lognormal(mean:number, rel_sd:number) -> Distribution
+      doc: Create a positive lognormal distribution parameterised by mean and relative
+           standard deviation.
+   monte_carlo
+      sig: jnl.explore.uq.monte_carlo(name:string?) -> MonteCarlo
+      doc: Create a function-first Monte Carlo uncertainty study.
+   normal
+      sig: jnl.explore.uq.normal(mean:number, sd:number) -> Distribution
+      doc: Create a normal distribution with mean and standard deviation sd.
+   run
+      sig: jnl.explore.uq.run(model_fn:function, inputs:table, n:int, opts:table?) ->
+           UQResult
+      doc: Run a compact Monte Carlo study from a model function and input
+           distributions.
+   uniform
+      sig: jnl.explore.uq.uniform(lo:number, hi:number) -> Distribution
+      doc: Create a uniform distribution over [lo, hi].
+   type Distribution [table] — Sampleable uncertain input distribution.
+      constructor: uq.constant / uq.uniform / uq.normal / uq.lognormal / uq.choice / uq.discrete
+      Distribution:__tostring
+         sig: Distribution:__tostring(self) -> string
+         doc: Return a compact REPL summary.
+      Distribution:bounds
+         sig: Distribution:bounds() -> number?, number?
+         doc: Return known lower and upper bounds when available.
+      Distribution:clip
+         sig: Distribution:clip(lo:number?, hi:number?) -> Distribution
+         doc: Clamp sampled numeric values to optional lower and upper bounds.
+      Distribution:mean
+         sig: Distribution:mean() -> number?
+         doc: Return the distribution mean when known.
+      Distribution:sample
+         sig: Distribution:sample(rng:table?) -> any
+         doc: Return one sampled value.
+   type MonteCarlo [table] — Monte Carlo uncertainty study built from input
+   distributions, a model function, and spec predicates.
+      constructor: uq.monte_carlo(name)
+      MonteCarlo:__tostring
+         sig: MonteCarlo:__tostring(self) -> string
+         doc: Return a compact REPL summary.
+      MonteCarlo:evaluate
+         sig: MonteCarlo:evaluate(x:table, i:int?) -> table
+         doc: Evaluate one input table and return a record containing x, y, spec
+              results, and ok.
+      MonteCarlo:input
+         sig: MonteCarlo:input(name:string, dist:Distribution) -> MonteCarlo
+         doc: Register an uncertain input distribution.
+      MonteCarlo:model
+         sig: MonteCarlo:model(fn:function) -> MonteCarlo
+         doc: Register the model function; called as fn(x) and expected to return output
+              table y.
+      MonteCarlo:run
+         sig: MonteCarlo:run(n:int, opts:table?) -> UQResult
+         doc: Run n samples; opts may contain rng and base.
+      MonteCarlo:sample
+         sig: MonteCarlo:sample(rng:table?, base:table?) -> table
+         doc: Return one sampled input table, optionally merged over base.
+      MonteCarlo:spec
+         sig: MonteCarlo:spec(name:string, pred:function) -> MonteCarlo
+         doc: Register a design spec predicate; called as pred(y, x, record).
+   type UQResult [table] — Monte Carlo result containing raw records and statistical
+   summaries.
+      constructor: MonteCarlo:run(n)
+      UQResult:__tostring
+         sig: UQResult:__tostring(self) -> string
+         doc: Return a compact REPL summary of sample count, validity, spec
+              probabilities, and numeric outputs.
+      UQResult:failure_probability
+         sig: UQResult:failure_probability(spec_name:string?) -> number
+         doc: Return failure probability for one spec, or all specs together if omitted.
+      UQResult:invalid_count
+         sig: UQResult:invalid_count() -> number
+         doc: Return the number of records whose model evaluation was invalid, errored,
+              or diverged.
+      UQResult:mean
+         sig: UQResult:mean(name:string) -> number?
+         doc: Return the mean of a numeric output.
+      UQResult:median
+         sig: UQResult:median(name:string) -> number
+         doc: Return the median of a numeric output.
+      UQResult:output_names
+         sig: UQResult:output_names() -> string[]
+         doc: Return sorted numeric output names found in records.
+      UQResult:print_summary
+         sig: UQResult:print_summary() -> table
+         doc: Print and return a compact result summary.
+      UQResult:probability
+         sig: UQResult:probability(spec_name:string?) -> number
+         doc: Return pass probability for one spec, or all specs together if omitted.
+      UQResult:quartiles
+         sig: UQResult:quartiles(name:string) -> table
+         doc: Return quartiles for a numeric output.
+      UQResult:summary
+         sig: UQResult:summary(name:string?) -> table
+         doc: Return a statistical summary for one output, or all outputs and specs if
+              name is omitted.
+      UQResult:table
+         sig: UQResult:table() -> table
+         doc: Return { columns, rows } for tabular output.
+      UQResult:valid_count
+         sig: UQResult:valid_count() -> number
+         doc: Return the number of records whose model evaluation was valid.
+      UQResult:valid_probability
+         sig: UQResult:valid_probability() -> number?
+         doc: Return the fraction of records whose model evaluation was valid, or nil if
+              there are no records.
+      UQResult:values
+         sig: UQResult:values(name:string) -> table
+         doc: Return numeric output values for output name; records without numeric
+              values are skipped.
+
+
 ## jnl.fvm
    FVM facade: equation DSL, compiler, case management, and operator bindings.
 
@@ -2796,9 +2972,9 @@ JNL API Reference
          doc: Return default design variables merged with overrides
       Study:ensure_record
          sig: Study:ensure_record(design_overrides:table?) -> table
-         doc: Ensure a completed scalar cache record exists for inputs. If a status ==
-              'done' record exists, skip evaluation and return it. If absent or previous
-              record is pending/diverged/error, evaluate normally.
+         doc: Ensure a completed scalar cache record exists for inputs. Display-only
+              options such as { quiet, heading, print_metrics } affect console output
+              but not cache identity.
       Study:evaluate
          sig: Study:evaluate(fn:function, meta:table?) -> Study
          doc: Register the main evaluation function
@@ -2810,10 +2986,10 @@ JNL API Reference
               -> Study
          doc: Register matching plot and writer helpers from one figure factory; opts: {
               doc, plot_doc, write_doc, write }
-      Study:figure_sweep
-         sig: Study:figure_sweep(name:string, figure_fn:function(arg)->Figure,
+      Study:figure_workflow
+         sig: Study:figure_workflow(name:string, figure_fn:function(arg)->Figure,
               opts:table?) -> Study
-         doc: Register matching plot and writer helpers for a cache/query figure. Unlike
+         doc: Register matching plot and writer helpers for a workflow figure. Unlike
               figure(), the REPL argument is passed directly to figure_fn and
               result_or_run() is not called. Use this for sweep, UQ, optimisation, or
               cache-backed figures. opts: { doc, plot_doc, write_doc, write }
@@ -2862,6 +3038,10 @@ JNL API Reference
       Study:plot
          sig: Study:plot(name:string, fn:function(result), opts:table?) -> Study
          doc: Register a plot helper over the last result; opts: { doc }
+      Study:print_metrics
+         sig: Study:print_metrics(result:table) -> Study
+         doc: Print scalar result metrics using metric_columns when available; intended
+              for quiet-respecting run summaries.
       Study:print_usage
          sig: Study:print_usage() -> nil
          doc: Print generated usage text for the study
@@ -2888,10 +3068,9 @@ JNL API Reference
          doc: Return last_result, or evaluate the default design if absent
       Study:run
          sig: Study:run(design_overrides:table?) -> table
-         doc: Evaluate the study and update the scalar cache record; prints non-default
-              design variables and visible derived inputs unless opts.quiet is true;
-              stores result as last_result. Use ensure_record to skip completed cached
-              cases.
+         doc: Evaluate the study and update the scalar cache record; design_overrides
+              may include display-only options { quiet, heading, print_metrics }. Stores
+              result as last_result.
       Study:start_record
          sig: Study:start_record(design:table, opts:table) -> table
          doc: Start or select the scalar cache record for a run
