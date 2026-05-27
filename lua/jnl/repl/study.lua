@@ -21,7 +21,6 @@ M._doc_subsection = {
 	"sweep(), optimise(), and uq() each accept fn(study) -> any. Call study:run(overrides) " ..
 	"inside to get uniform result objects; use whatever parametric/optimisation/UQ library " ..
 	"you like for the outer loop. All three are registered as REPL callables.",
-	"run() caches deterministic evaluations by derived design/options; use rerun() to force recomputation, and cache() to inspect chronological run records.",
 }
 
 --
@@ -63,6 +62,27 @@ local function merge_into(dst, src)
 	return dst
 end
 
+local function is_scalar(v)
+	local tv = type(v)
+	return tv == "number" or tv == "string" or tv == "boolean" or tv == "nil"
+end
+
+local function field_name(name)
+	return tostring(name):gsub("-", "_")
+end
+
+local function merge_scalar_into(dst, src)
+	dst = dst or {}
+
+	for k, v in pairs(src or {}) do
+		if is_scalar(v) then
+			dst[field_name(k)] = v
+		end
+	end
+
+	return dst
+end
+
 local function union_keys(primary, secondary)
 	local seen = {}
 	local keys = {}
@@ -88,11 +108,6 @@ end
 local CACHE_IGNORE_KEYS = {
 	quiet = true,
 }
-
-local function is_scalar(v)
-	local tv = type(v)
-	return tv == "number" or tv == "string" or tv == "boolean" or tv == "nil"
-end
 
 local function scalar_copy(t)
 	local out = {}
@@ -203,10 +218,6 @@ local function display_name(name)
 	return tostring(name)
 		:gsub("_", "-")
 		:gsub("-", " ")
-end
-
-local function field_name(name)
-	return tostring(name):gsub("-", "_")
 end
 
 local function split_path(path)
@@ -331,11 +342,13 @@ function M.new(title)
 
 		derived_inputs = {},
 		metrics = {},
+		metric_columns_table = nil,
 
 		-- results cache
 		run_cache = {},
 		run_cache_by_key = {},
 		run_counter = 0,
+		current_record = nil,
 
 		-- warm result
 		last_result = nil,
@@ -456,27 +469,93 @@ function Study:apply_derived(x, opts)
 	return x
 end
 
+local function insert_metric_value(out, name, value)
+	if type(value) == "table" then
+		merge_scalar_into(out, value)
+	elseif is_scalar(value) then
+		out[name] = value
+	end
+end
+
 function Study:metric(name, fn, opts)
 	opts = opts or {}
 
 	self.metrics[#self.metrics + 1] = {
-		name  = field_name(name),
-		label = tostring(name),
-		fn    = as_callable("metric " .. tostring(name), fn),
-		doc   = opts.doc,
+		name   = field_name(name),
+		label  = tostring(name),
+		fn     = as_callable("metric " .. tostring(name), fn),
+		doc    = opts.doc,
+		hidden = opts.hidden or opts.quiet or false,
 	}
 
 	return self
 end
 
 function Study:compute_metrics(result, x, opts)
-	local out = {}
+	local out = result.metrics or {}
+	result.metrics = out
 
 	for _, item in ipairs(self.metrics) do
-		out[item.name] = item.fn(result, x, opts)
+		local ok, value = pcall(item.fn, result, x, opts)
+
+		if not ok then
+			error("metric " .. tostring(item.label) .. " failed: " .. tostring(value))
+		end
+
+		insert_metric_value(out, item.name, value)
 	end
 
 	return out
+end
+
+function Study:metric_columns(columns)
+	self.metric_columns_table = columns
+	return self
+end
+
+--
+-- Metrics tabulation
+--
+
+local function collect_scalar_fields(out, source, prefix)
+	for k, v in pairs(source or {}) do
+		if is_scalar(v) then
+			local name = prefix and (prefix .. "." .. tostring(k)) or tostring(k)
+			out[name] = v
+		end
+	end
+
+	return out
+end
+
+function Study:metrics_table(result)
+	local source = {}
+
+	collect_scalar_fields(source, result.x or result.input or {}, nil)
+	collect_scalar_fields(source, result.metrics or {}, nil)
+
+	local columns = self.metric_columns_table
+
+	if not columns then
+		columns = {}
+
+		for k in pairs(source) do
+			columns[#columns + 1] = k
+		end
+
+		table.sort(columns)
+	end
+
+	local row = {}
+
+	for _, k in ipairs(columns) do
+		row[k] = source[k]
+	end
+
+	return {
+		columns = columns,
+		rows = { row },
+	}
 end
 
 --
@@ -750,39 +829,6 @@ end
 -- Pretty printing usage
 --
 
-local function print_options(p, defaults, docs)
-	local keys = union_keys(docs, defaults)
-	if #keys == 0 then return end
-	p:blank()
-	p:line("Options:")
-	for _, key in ipairs(keys) do
-		local default = defaults[key]
-		local doc     = docs[key] or ""
-		local lhs     = default ~= nil
-			and string.format("  %-16s = %s", tostring(key), format_value(default))
-			or string.format("  %s", tostring(key))
-		p:columns(lhs, doc, { indent = "", left_width = 28, gap = "  " })
-	end
-end
-
-local function print_design(p, design, bounds)
-	local keys = union_keys(design, bounds)
-	if #keys == 0 then return end
-	p:blank()
-	p:line("Design variables:")
-	for _, key in ipairs(keys) do
-		local default = design[key]
-		local range   = bounds[key]
-		local lhs     = default ~= nil
-			and string.format("  %-16s = %s", tostring(key), format_value(default))
-			or string.format("  %s", tostring(key))
-		local rhs     = range
-			and string.format("[%s, %s]", tostring(range[1]), tostring(range[2]))
-			or ""
-		p:columns(lhs, rhs, { indent = "", left_width = 28, gap = "  " })
-	end
-end
-
 function Study:usage_string()
 	local p = printer_mod.new()
 
@@ -807,8 +853,8 @@ function Study:usage_string()
 		local keys = union_keys(self.design_table, self.defaults_table)
 		local parts = {}
 		for _, k in ipairs(keys) do
-			if #parts >= 3 then break end
-			local v = self.design_table[k] ~= nil and self.design_table[k] or self.defaults_table[k]
+			if #parts >= 4 then break end
+			local v = self.design_table[k]
 			if v ~= nil then
 				parts[#parts + 1] = string.format(":%s %s", tostring(k), format_value(v))
 			end
@@ -824,8 +870,8 @@ function Study:usage_string()
 	p:blank()
 	p:line("Common calls:")
 	p:columns("  (instructions)", "Print this guide")
-	p:columns("  (defaults)", "Return the default run options")
 	p:columns("  (default-design)", "Return the default design variables")
+	p:columns("  (defaults)", "Return the default run options")
 
 	if self.evaluate_fn then
 		p:columns("  (evaluate)", self.evaluate_meta.doc or "Evaluate the default design")
@@ -851,8 +897,8 @@ function Study:usage_string()
 		end
 	end
 
-	print_options(p, self.defaults_table, self.options_table)
-	print_design(p, self.design_table, self.bounds_table)
+	p:blank()
+	p:line("Inputs: use (default-design), (bounds), and (defaults) to inspect available variables.")
 
 	p:blank()
 
@@ -948,6 +994,10 @@ function Study:install(repl)
 		return shallow_copy(self.design_table)
 	end, "Return default design variables")
 
+	repl:register("bounds", function()
+		return shallow_copy(self.bounds_table)
+	end, "Return design-variable bounds")
+
 	if self.evaluate_fn then
 		local run = function(arg)
 			return self:run(arg)
@@ -959,6 +1009,24 @@ function Study:install(repl)
 		repl:register("last-results", function()
 			return self:last_results()
 		end, "Return the last study result, or nil if nothing has run yet")
+
+		if #self.metrics > 0 then
+			repl:register("metrics", function(out)
+				out = out or self:result_or_run()
+				return out.metrics
+			end, "Return metrics from the last result")
+
+			repl:register("metrics-table", function(out)
+				out = out or self:result_or_run()
+				return self:metrics_table(out)
+			end, "Return a one-row table of scalar inputs and metrics")
+
+			repl:register("write-metrics-table", function(path, result)
+				assert(type(path) == "string", "write-metrics-table requires a path")
+				result = result or self:result_or_run()
+				return write_csv(path, self:metrics_table(result))
+			end, "Write scalar inputs and metrics to CSV")
+		end
 
 		repl:register("cache", function()
 			return self:cache()
@@ -1160,6 +1228,16 @@ M._types = {
 				args = "result:table, design:table, opts:table",
 				ret = "table",
 				doc = "Compute registered metrics for a result",
+			},
+			metric_columns = {
+				args = "columns:table",
+				ret = "Study",
+				doc = "Set preferred column order for the automatic metrics table",
+			},
+			metrics_table = {
+				args = "result:table",
+				ret = "table",
+				doc = "Return { columns, rows } containing scalar design inputs and metrics for one result",
 			},
 			-- Caching
 			start_record = {

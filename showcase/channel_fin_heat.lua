@@ -32,7 +32,7 @@ study:about(
 --
 
 study:design({
-	U_mean      = 1.0, -- Re proxy
+	U_mean      = 0.5, -- Re proxy
 
 	L           = 4.0,
 	H           = 1.0,
@@ -77,6 +77,10 @@ study:defaults({
 })
 
 study:derived("Re", function(d, o) return o.rho * d.U_mean * d.H / o.mu end)
+
+study:derived("fin_width", function(d)
+	return (d.fin_region - (d.fin_number - 1) * d.fin_spacing) / d.fin_number
+end, { hidden = true })
 
 --
 -- Geometry and mesh
@@ -335,70 +339,40 @@ local function patch_gradient_flux(result, patch)
 	)
 end
 
-local function heat_metrics(result)
-	local fin_flux = patch_gradient_flux(result, "fin")
+study:metric("Pr", function(_, _, o) return prandtl(o) end)
 
-	return {
-		fin_flux     = fin_flux,
-		heat_removed = -fin_flux,
-	}
-end
-
-local function scalar_metrics(result)
+study:metric("pressure", function(result)
 	local dp, p_in, p_out = pressure_drop(result)
-	local heat            = heat_metrics(result)
+	return { p_in_mean = p_in, p_out_mean = p_out, delta_p = dp }
+end)
 
-	return {
-		Pr             = prandtl(result.opts),
+study:metric("heat", function(result)
+	local fin_flux = patch_gradient_flux(result, "fin")
+	return { fin_flux = fin_flux, heat_removed = -fin_flux }
+end)
 
-		p_in_mean      = p_in,
-		p_out_mean     = p_out,
-		delta_p        = dp,
+study:metric("objective_hint", function(result)
+	return result.metrics.heat_removed / math.max(result.metrics.delta_p, 1e-12)
+end)
 
-		fin_flux       = heat.fin_flux,
-		heat_removed   = heat.heat_removed,
-
-		objective_hint = heat.heat_removed / math.max(dp, 1e-12),
-	}
-end
-
-local function metrics_table(result)
-	return {
-		columns = {
-			"fin_height",
-			"fin_spacing",
-			"Re",
-			"Pr",
-			"delta_p",
-			"fin_flux",
-			"heat_removed",
-			"objective_hint",
-		},
-		rows = {
-			{
-				fin_height     = result.x.fin_height,
-				fin_spacing    = result.x.fin_spacing,
-				Re             = result.x.Re,
-				Pr             = result.metrics.Pr,
-				delta_p        = result.metrics.delta_p,
-				fin_flux       = result.metrics.fin_flux,
-				heat_removed   = result.metrics.heat_removed,
-				objective_hint = result.metrics.objective_hint,
-			},
-		},
-	}
-end
+study:metric_columns({
+	"fin_height",
+	"fin_spacing",
+	"fin_width",
+	"Re",
+	"Pr",
+	"delta_p",
+	"fin_flux",
+	"heat_removed",
+	"objective_hint",
+})
 
 --
 -- Evaluate
 --
 
 study:evaluate(function(d, o)
-	local result = study:default_evaluate(d, o)
-
-	result.metrics = scalar_metrics(result)
-
-	return result
+	return study:default_evaluate(d, o)
 end, {
 	doc = "Run one channel-fin simulation and return scalar pressure-drop and heat-flux metrics",
 })
@@ -406,9 +380,6 @@ end, {
 --
 -- Outputs
 --
-
-study:output("metrics")
-study:table("metrics-table", metrics_table)
 
 study:write("vtk", function(result, path)
 	local fields = result.fields()
@@ -435,8 +406,9 @@ end, { doc = "Write Ux, Uy, p, T, and U vector to VTK" })
 study:expose("show-summary", function()
 	local result = study:run()
 	local m = result.metrics
+	local x = result.x
 
-	print(string.format("Re_H          = %.6g", m.Re_H))
+	print(string.format("Re            = %.6g", x.Re))
 	print(string.format("Pr            = %.6g", m.Pr))
 	print(string.format("delta_p       = %.8g", m.delta_p))
 	print(string.format("fin_flux      = %.8g", m.fin_flux))
