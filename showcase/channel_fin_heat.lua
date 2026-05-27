@@ -378,7 +378,7 @@ local function metrics_table(result)
 			{
 				fin_height     = result.x.fin_height,
 				fin_spacing    = result.x.fin_spacing,
-				Re             = result.metrics.Re,
+				Re             = result.x.Re,
 				Pr             = result.metrics.Pr,
 				delta_p        = result.metrics.delta_p,
 				fin_flux       = result.metrics.fin_flux,

@@ -21,10 +21,11 @@ M._doc_subsection = {
 	"sweep(), optimise(), and uq() each accept fn(study) -> any. Call study:run(overrides) " ..
 	"inside to get uniform result objects; use whatever parametric/optimisation/UQ library " ..
 	"you like for the outer loop. All three are registered as REPL callables.",
+	"run() caches deterministic evaluations by derived design/options; use rerun() to force recomputation, and cache() to inspect chronological run records.",
 }
 
 --
--- Helpers
+-- Table Helpers
 --
 
 local function shallow_copy(t)
@@ -40,6 +41,118 @@ local function shallow_copy(t)
 
 	return out
 end
+
+local function merge(a, b)
+	local out = shallow_copy(a)
+
+	if not b then
+		return out
+	end
+
+	for k, v in pairs(b) do
+		out[k] = v
+	end
+
+	return out
+end
+
+local function merge_into(dst, src)
+	for k, v in pairs(src or {}) do
+		dst[k] = v
+	end
+	return dst
+end
+
+local function union_keys(primary, secondary)
+	local seen = {}
+	local keys = {}
+
+	for k in pairs(primary) do
+		seen[k] = true; keys[#keys + 1] = k
+	end
+
+	for k in pairs(secondary) do
+		if not seen[k] then
+			seen[k] = true; keys[#keys + 1] = k
+		end
+	end
+
+	table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+	return keys
+end
+
+--
+-- Cache helpers
+--
+
+local CACHE_IGNORE_KEYS = {
+	quiet = true,
+}
+
+local function is_scalar(v)
+	local tv = type(v)
+	return tv == "number" or tv == "string" or tv == "boolean" or tv == "nil"
+end
+
+local function scalar_copy(t)
+	local out = {}
+
+	for k, v in pairs(t or {}) do
+		if is_scalar(v) then
+			out[k] = v
+		end
+	end
+
+	return out
+end
+
+local function cache_scalar(v)
+	local tv = type(v)
+
+	if tv == "number" then
+		return string.format("%.17g", v)
+	elseif tv == "string" then
+		return string.format("%q", v)
+	elseif tv == "boolean" or tv == "nil" then
+		return tostring(v)
+	end
+
+	error("cannot cache value of type " .. tv)
+end
+
+local function cache_table(t)
+	local keys = {}
+
+	for k in pairs(t or {}) do
+		if not CACHE_IGNORE_KEYS[k] then
+			keys[#keys + 1] = k
+		end
+	end
+
+	table.sort(keys, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+
+	local parts = {}
+
+	for _, k in ipairs(keys) do
+		local v = t[k]
+
+		if is_scalar(v) then
+			parts[#parts + 1] = tostring(k) .. "=" .. cache_scalar(v)
+		end
+	end
+
+	return table.concat(parts, ";")
+end
+
+local function run_cache_key(x, opts)
+	return "x{" .. cache_table(x) .. "}|opts{" .. cache_table(opts) .. "}"
+end
+
+--
+-- Name helpers
+--
 
 local function format_value(v)
 	if type(v) == "string" then
@@ -80,38 +193,6 @@ local function format_derived(study, x)
 	end
 
 	return #parts > 0 and table.concat(parts, "  ") or nil
-end
-
-local function merge(a, b)
-	local out = shallow_copy(a)
-
-	if not b then
-		return out
-	end
-
-	for k, v in pairs(b) do
-		out[k] = v
-	end
-
-	return out
-end
-
-local function union_keys(primary, secondary)
-	local seen = {}
-	local keys = {}
-
-	for k in pairs(primary) do
-		seen[k] = true; keys[#keys + 1] = k
-	end
-
-	for k in pairs(secondary) do
-		if not seen[k] then
-			seen[k] = true; keys[#keys + 1] = k
-		end
-	end
-
-	table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
-	return keys
 end
 
 local function normalise_name(name)
@@ -162,6 +243,10 @@ local function result_getter(path)
 		return value
 	end
 end
+
+--
+-- Doc helpers
+--
 
 local function auto_doc(kind, name)
 	local label = display_name(name)
@@ -247,6 +332,12 @@ function M.new(title)
 		derived_inputs = {},
 		metrics = {},
 
+		-- results cache
+		run_cache = {},
+		run_cache_by_key = {},
+		run_counter = 0,
+
+		-- warm result
 		last_result = nil,
 	}, Study)
 end
@@ -386,6 +477,124 @@ function Study:compute_metrics(result, x, opts)
 	end
 
 	return out
+end
+
+--
+-- Cache record insertion
+--
+
+function Study:start_record(x, opts)
+	local key = run_cache_key(x, opts)
+
+	local existing = self.run_cache_by_key[key]
+	if existing then
+		self.current_record = existing
+		return existing
+	end
+
+	self.run_counter = self.run_counter + 1
+
+	local record = {
+		i       = self.run_counter,
+		time    = os.time(),
+		key     = key,
+
+		x       = scalar_copy(x),
+		opts    = scalar_copy(opts),
+
+		metrics = {},
+		diag    = {},
+		tags    = {},
+	}
+
+	self.run_cache[#self.run_cache + 1] = record
+	self.run_cache_by_key[key] = record
+	self.current_record = record
+
+	return record
+end
+
+function Study:cache_record()
+	return self.current_record
+end
+
+function Study:cache_update(t)
+	if not self.current_record then
+		error("no current cache record")
+	end
+
+	for k, v in pairs(t or {}) do
+		if type(v) == "table" and type(self.current_record[k]) == "table" then
+			merge_into(self.current_record[k], scalar_copy(v))
+		elseif is_scalar(v) then
+			self.current_record[k] = v
+		end
+	end
+
+	return self.current_record
+end
+
+function Study:cache_metric(name, value)
+	if not self.current_record then
+		error("no current cache record")
+	end
+
+	if is_scalar(value) then
+		self.current_record.metrics[field_name(name)] = value
+	end
+
+	return self.current_record
+end
+
+function Study:cache_metrics(t)
+	if not self.current_record then
+		error("no current cache record")
+	end
+
+	merge_into(self.current_record.metrics, scalar_copy(t))
+	return self.current_record
+end
+
+function Study:cache_diag(name, value)
+	if not self.current_record then
+		error("no current cache record")
+	end
+
+	if type(name) == "table" then
+		merge_into(self.current_record.diag, scalar_copy(name))
+	else
+		if is_scalar(value) then
+			self.current_record.diag[field_name(name)] = value
+		end
+	end
+
+	return self.current_record
+end
+
+--
+-- Cache lookup/query
+--
+
+function Study:cache_key(arg)
+	local x, opts = self:input_record(arg)
+	return run_cache_key(x, opts), x, opts
+end
+
+function Study:cache_lookup(arg)
+	local key = self:cache_key(arg)
+	return self.run_cache_by_key[key]
+end
+
+function Study:cache()
+	return self.run_cache
+end
+
+function Study:clear_cache()
+	self.run_cache = {}
+	self.run_cache_by_key = {}
+	self.run_counter = 0
+	self.current_record = nil
+	return self
 end
 
 --
@@ -654,16 +863,28 @@ function Study:print_usage()
 	io.write(self:usage_string())
 end
 
+--
+-- RUN/evaluate
+--
+
+function Study:input_record(arg)
+	local x = self:design_opts(arg)
+	local opts = self:opts(arg)
+
+	self:apply_derived(x, opts)
+
+	return x, opts
+end
+
 function Study:run(arg)
 	if not self.evaluate_fn then
 		error("No evaluate function has been registered")
 	end
 
-	local x = self:design_opts(arg)
-	local opts = self:opts(arg)
+	local x, opts = self:input_record(arg)
 
-	self:apply_derived(x, opts)
 	self:check_bounds(x)
+	self:start_record(x, opts)
 
 	if not opts.quiet then
 		local diff = format_overrides(self.design_table, arg)
@@ -683,7 +904,9 @@ function Study:run(arg)
 	end
 
 	local out = self.evaluate_fn(x, opts)
+
 	out.metrics = self:compute_metrics(out, x, opts)
+	self:cache_metrics(out.metrics)
 
 	self.last_result = out
 
@@ -736,6 +959,22 @@ function Study:install(repl)
 		repl:register("last-results", function()
 			return self:last_results()
 		end, "Return the last study result, or nil if nothing has run yet")
+
+		repl:register("cache", function()
+			return self:cache()
+		end, "Return chronological scalar cache records")
+
+		repl:register("cache-record", function()
+			return self:cache_record()
+		end, "Return the current cache record")
+
+		repl:register("clear-cache", function()
+			return self:clear_cache()
+		end, "Clear scalar run cache records")
+
+		repl:register("cache-lookup", function(arg)
+			return self:cache_lookup(arg)
+		end, "Return scalar cache record for inputs, or nil if absent")
 	end
 
 	for _, item in ipairs(self.outputs) do
@@ -922,6 +1161,58 @@ M._types = {
 				ret = "table",
 				doc = "Compute registered metrics for a result",
 			},
+			-- Caching
+			start_record = {
+				args = "design:table, opts:table",
+				ret = "table",
+				doc = "Start or select the scalar cache record for a run",
+			},
+			cache_record = {
+				args = "",
+				ret = "table?",
+				doc = "Return the current scalar cache record",
+			},
+			cache_update = {
+				args = "fields:table",
+				ret = "table",
+				doc = "Merge scalar fields into the current cache record",
+			},
+			cache_metric = {
+				args = "name:string, value:any",
+				ret = "table",
+				doc = "Store one scalar metric in the current cache record",
+			},
+			cache_metrics = {
+				args = "metrics:table",
+				ret = "table",
+				doc = "Store scalar metrics in the current cache record",
+			},
+			cache_diag = {
+				args = "name:string|table, value:any?",
+				ret = "table",
+				doc = "Store scalar diagnostic fields in the current cache record",
+			},
+			cache_key = {
+				args = "design_overrides:table?",
+				ret = "string, table, table",
+				doc = "Return the canonical scalar cache key plus derived design and options",
+			},
+			cache_lookup = {
+				args = "design_overrides:table?",
+				ret = "table?",
+				doc = "Return scalar cache record for the same design/options, or nil if absent",
+			},
+			cache = {
+				args = "",
+				ret = "table",
+				doc = "Return chronological scalar cache records",
+			},
+			clear_cache = {
+				args = "",
+				ret = "Study",
+				doc = "Clear scalar run cache records",
+			},
+			-- output
 			output = {
 				args = "name:string, fn_or_path:function|string?, doc:string?",
 				ret = "Study",
@@ -977,11 +1268,16 @@ M._types = {
 				ret = "nil",
 				doc = "Print generated usage text for the study",
 			},
+			input_record = {
+				args = "design_overrides:table?",
+				ret = "table, table",
+				doc = "Return design and options after applying defaults, overrides, and derived inputs",
+			},
 			run = {
 				args = "design_overrides:table?",
 				ret  = "table",
 				doc  =
-				"Evaluate the study, print non-default design variables unless opts.quiet is true, and store result as last_result",
+				"Evaluate the study, using a cached result for identical design/options when available; prints non-default design variables and visible derived inputs unless opts.quiet is true; stores result as last_result",
 			},
 			result_or_run = {
 				args = "",
