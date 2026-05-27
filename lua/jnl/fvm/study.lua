@@ -33,6 +33,12 @@ function M.new(title)
 	return setmetatable(self, FvmStudy)
 end
 
+function FvmStudy:geometry(fn, opts)
+	self.geometry_fn = as_callable("geometry", fn)
+	self.geometry_opts = opts or {}
+	return self
+end
+
 function FvmStudy:mesh(fn, opts)
 	self.mesh_fn = as_callable("mesh", fn)
 	self.mesh_opts = opts or {}
@@ -61,6 +67,18 @@ function FvmStudy:case(fn, opts)
 	self.case_fn = as_callable("case", fn)
 	self.case_opts = opts or {}
 	return self
+end
+
+--
+-- Builders
+--
+
+function FvmStudy:build_geometry(arg)
+	if not self.geometry_fn then
+		error("No geometry builder has been registered")
+	end
+
+	return self.geometry_fn(self:design_opts(arg), self:opts(arg))
 end
 
 function FvmStudy:build_mesh(arg)
@@ -99,7 +117,7 @@ function FvmStudy:build_case(arg)
 	local x = self:design_opts(arg)
 
 	if self.case_fn then
-		return self.case_fn(x, self:opts())
+		return self.case_fn(x, self:opts(arg))
 	end
 
 	local mesh = self:build_mesh(x)
@@ -124,6 +142,12 @@ function FvmStudy:build_case_with(design_overrides, option_overrides)
 	local bcs = self.bcs_fn and self.bcs_fn(x, o) or {}
 
 	return Case.new(reg, alg, mesh, bcs)
+end
+
+function FvmStudy:show_geometry(arg)
+	local pslg, geom_registry = self:build_geometry(arg)
+	ui.display_pslg(pslg)
+	return pslg, geom_registry
 end
 
 function FvmStudy:show_mesh(arg)
@@ -227,6 +251,16 @@ function FvmStudy:install(repl)
 
 	self._fvm_installed = true
 
+	if self.geometry_fn then
+		self:expose("build-geometry", function(arg)
+			return self:build_geometry(arg)
+		end, "Build the PSLG geometry for the current design", { hidden = true })
+
+		self:expose("show-geometry", function(arg)
+			return self:show_geometry(arg)
+		end, "Build and display the PSLG geometry", { hidden = true })
+	end
+
 	if self.mesh_fn then
 		self:expose("build-mesh", function(arg)
 			return self:build_mesh(arg)
@@ -308,6 +342,11 @@ M._types = {
 		constructor = "jnl.fvm.study.new(title)",
 		doc = "FVM-specific study object with automatic case builders and inspectors",
 		methods = {
+			geometry = {
+				args = "fn:function, opts:table?",
+				ret = "FvmStudy",
+				doc = "Register a geometry builder fn(design, opts) -> PSLG, geometry_registry",
+			},
 			mesh = {
 				args = "fn:function, opts:table?",
 				ret = "FvmStudy",
@@ -332,6 +371,11 @@ M._types = {
 				args = "fn:function, opts:table?",
 				ret = "FvmStudy",
 				doc = "Register a custom case builder fn(design, opts) -> Case",
+			},
+			build_geometry = {
+				args = "design_overrides:table?",
+				ret = "PSLG, table",
+				doc = "Build the PSLG geometry and associated boundary/region registry for a design",
 			},
 			build_mesh = {
 				args = "design_overrides:table?",
@@ -362,6 +406,11 @@ M._types = {
 				args = "design_overrides:table, option_overrides:table ",
 				ret = "Case",
 				doc = "Build and compile an FVM case with option overrides",
+			},
+			show_geometry = {
+				args = "design_overrides:table?",
+				ret = "PSLG, table",
+				doc = "Build and display the PSLG geometry in the UI",
 			},
 			show_mesh = {
 				args = "design_overrides:table?",

@@ -33,28 +33,24 @@ study:about(
 --
 
 study:design({
-	U_mean     = 1.0,
-	rho        = 1.0,
-	mu         = 1e-3,
-	cp         = 1.0,
-	k          = 1e-3,
+	U_mean      = 1.0, -- Re proxy
 
-	L          = 4.0,
-	H          = 1.0,
+	L           = 4.0,
+	H           = 1.0,
 
-	fin_x      = 2.0,
-	fin_width  = 0.2,
-	fin_height = 0.35,
+	fin_number  = 5,
+	fin_region  = 2.5, -- total width taken by finned region
+	fin_height  = 0.25,
+	fin_spacing = 0.2,
 
-	T_in       = 0.0,
-	T_ref      = 1.0,
-	h_fin      = 10.0,
-	p_out      = 0.0,
+	T_in        = 0.0,
+	T_ref       = 1.0,
+	h_fin       = 10.0,
 })
 
 study:bounds({
-	fin_width  = { 0.05, 0.6 },
-	fin_height = { 0.05, 0.8 },
+	fin_height = { 0.05, 0.45 },
+	fin_spacing = { 0.05, 0.4 },
 })
 
 study:defaults({
@@ -67,44 +63,78 @@ study:defaults({
 	max_iters          = 2500,
 	print_every        = 100,
 
+	-- physical constants unlikely to change
+	rho                = 1.0,
+	mu                 = 1e-3,
+	cp                 = 1.0,
+	k                  = 1e-3,
+	p_out              = 0.0,
+
+	-- solver config
 	alpha_p            = 0.05,
 	alpha_U            = 0.2,
 	alpha_T_relax      = 0.9,
 	temperature_scheme = "uds",
-
-	profile_xs         = { 1.0, 2.0, 3.0, 4.0 },
 })
 
 --
 -- Geometry and mesh
 --
 
-local function fin_edges(d)
-	local x0 = d.fin_x - 0.5 * d.fin_width
-	local x1 = d.fin_x + 0.5 * d.fin_width
-	local y0 = 0.0
-	local y1 = d.fin_height
+local function fin_layout(d)
+	local n = d.fin_number
+	local s = d.fin_spacing
 
-	return x0, x1, y0, y1
+	local total_gap = (n - 1) * s
+	local fin_width = (d.fin_region - total_gap) / n
+
+	-- Centre the whole finned region in the channel
+	local region_x0 = 0.5 * (d.L - d.fin_region)
+
+	local fins = {}
+
+	for i = 1, n do
+		local x0 = region_x0 + (i - 1) * (fin_width + s)
+		local x1 = x0 + fin_width
+
+		fins[i] = {
+			x0 = x0,
+			x1 = x1,
+			y0 = 0.0,
+			y1 = d.fin_height,
+			width = fin_width,
+		}
+	end
+
+	return fins
 end
 
 local function channel_polygon(d)
-	local x0, x1, _, y1 = fin_edges(d)
+	local fins = fin_layout(d)
 
-	return shapes.polygon({
-		{ 0.0, 0.0 },
-		{ x0,  0.0 },
-		{ x0,  y1 },
-		{ x1,  y1 },
-		{ x1,  0.0 },
-		{ d.L, 0.0 },
-		{ d.L, d.H },
-		{ 0.0, d.H },
-	})
+	local pts = {}
+
+	-- Start at bottom-left
+	table.insert(pts, { 0.0, 0.0 })
+
+	-- Walk along the bottom wall, adding fin notches
+	for _, fin in ipairs(fins) do
+		table.insert(pts, { fin.x0, 0.0 })
+		table.insert(pts, { fin.x0, fin.y1 })
+		table.insert(pts, { fin.x1, fin.y1 })
+		table.insert(pts, { fin.x1, 0.0 })
+	end
+
+	-- Finish bottom wall, then outer channel boundary
+	table.insert(pts, { d.L, 0.0 })
+	table.insert(pts, { d.L, d.H })
+	table.insert(pts, { 0.0, d.H })
+
+	return shapes.polygon(pts)
 end
 
-local function build_domain(d)
-	local x0, x1, _, y1 = fin_edges(d)
+study:geometry(function(d)
+	local fins = fin_layout(d)
 
 	local dom = domain.new(channel_polygon(d), { default = "wall" })
 
@@ -112,24 +142,28 @@ local function build_domain(d)
 	dom:name_boundary("outlet", shapes.line(d.L, 0.0, d.L, d.H))
 	dom:name_boundary("top", shapes.line(d.L, d.H, 0.0, d.H))
 
-	dom:name_boundary("fin", shapes.line({
-		{ x0, 0.0 },
-		{ x0, y1 },
-		{ x1, y1 },
-		{ x1, 0.0 },
-	}))
+	for _, fin in ipairs(fins) do
+		dom:name_boundary(
+			"fin",
+			shapes.line({
+				{ fin.x0, 0.0 },
+				{ fin.x0, fin.y1 },
+				{ fin.x1, fin.y1 },
+				{ fin.x1, 0.0 },
+			})
+		)
+	end
 
 	local ok, err = dom:check()
 	if not ok then
 		error("domain check failed: " .. tostring(err))
 	end
 
-	return dom
-end
+	return dom:build()
+end)
 
-study:mesh(function(d, o)
-	local dom = build_domain(d)
-	local pslg, registry = dom:build()
+study:mesh(function(_, o)
+	local pslg, registry = study:build_geometry()
 
 	local mesh, status = tri.spec()
 		:from_registry(registry)
