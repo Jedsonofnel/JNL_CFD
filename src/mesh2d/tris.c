@@ -1110,11 +1110,79 @@ tri_marker_map_find_name(const struct jnl_tri_marker_map *map, i32 marker)
 	return entry ? entry->name : NULL;
 }
 
+static const struct jnl_tri_marker_name *
+tri_marker_map_find_first_name_entry(const struct jnl_tri_marker_map *map,
+                                     const char *name)
+{
+	if (!map || !name)
+		return NULL;
+
+	for (u32 i = 0; i < map->len; i++) {
+		if (strcmp(map->data[i].name, name) == 0) {
+			return &map->data[i];
+		}
+	}
+
+	return NULL;
+}
+
+static i32
+tri_marker_map_canonical_marker_for_name(const struct jnl_tri_marker_map *map,
+                                         i32 marker)
+{
+	const struct jnl_tri_marker_name *entry =
+	    jnl_tri_marker_map_find_entry(map, marker);
+
+	if (!entry)
+		return marker;
+
+	const struct jnl_tri_marker_name *first =
+	    tri_marker_map_find_first_name_entry(map, entry->name);
+
+	return first ? first->marker : marker;
+}
+
 static void tri_default_group_name(char dst[JNL_MESH2D_NAME_CAP],
                                    const char *prefix, i32 marker)
 {
 	snprintf(dst, JNL_MESH2D_NAME_CAP, "%s_%d", prefix, marker);
 	dst[JNL_MESH2D_NAME_CAP - 1] = '\0';
+}
+
+static void
+tri_canonicalize_face_markers_by_name(struct tri_face_rec *faces, i32 n_faces,
+                                      const struct jnl_tri_marker_map *map,
+                                      bool rewrite_encoded_patch_marker)
+{
+	for (i32 i = 0; i < n_faces; i++) {
+		i32 canonical_marker =
+		    tri_marker_map_canonical_marker_for_name(map, faces[i].marker);
+
+		if (canonical_marker == faces[i].marker)
+			continue;
+
+		faces[i].marker = canonical_marker;
+
+		/*
+		 * Patch faces encode their logical patch marker as neighbour = ~marker.
+		 * If we only merge the patch table but leave this value untouched,
+		 * downstream code can still observe the old split markers.  Rewrite it
+		 * here so same-named patches are fully merged, including face markers.
+		 */
+		if (rewrite_encoded_patch_marker && faces[i].neighbour < 0) {
+			faces[i].neighbour = ~canonical_marker;
+		}
+	}
+}
+
+static void
+tri_canonicalize_cell_markers_by_name(struct tri_cell_rec *cells, i32 n_cells,
+                                      const struct jnl_tri_marker_map *map)
+{
+	for (i32 i = 0; i < n_cells; i++) {
+		cells[i].marker =
+		    tri_marker_map_canonical_marker_for_name(map, cells[i].marker);
+	}
 }
 
 static enum jnl_mesh_err tri_rebuild_face_groups_from_sorted_faces(
@@ -1219,6 +1287,10 @@ tri_group_baffle_faces(struct tri_mesh_build *build,
 		if (build->n_baffle_faces == 0)
 			return JNL_MESH_OK;
 
+		tri_canonicalize_face_markers_by_name(build->baffle_faces,
+		                                      build->n_baffle_faces,
+		                                      &spec->tags.baffles, false);
+
 		qsort(build->baffle_faces, build->n_baffle_faces,
 		      sizeof(struct tri_face_rec), tri_face_rec_marker_cmp);
 
@@ -1239,6 +1311,10 @@ tri_group_patch_faces(struct tri_mesh_build *build,
 		if (build->n_patch_faces == 0)
 			return JNL_MESH_OK;
 
+		tri_canonicalize_face_markers_by_name(build->patch_faces,
+		                                      build->n_patch_faces,
+		                                      &spec->tags.patches, true);
+
 		qsort(build->patch_faces, build->n_patch_faces,
 		      sizeof(struct tri_face_rec), tri_face_rec_marker_cmp);
 
@@ -1258,6 +1334,9 @@ tri_group_region_cells(struct tri_mesh_build *build,
 	{
 		if (build->n_cells == 0)
 			return JNL_MESH_ERR_TRIANGLE_FAILED;
+
+		tri_canonicalize_cell_markers_by_name(build->cells, build->n_cells,
+		                                      &spec->tags.regions);
 
 		qsort(build->cells, build->n_cells, sizeof(struct tri_cell_rec),
 		      tri_cell_rec_marker_cmp);

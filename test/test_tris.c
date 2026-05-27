@@ -43,6 +43,7 @@
 #define MARKER_REGION_A 10
 #define MARKER_REGION_B 11
 #define MARKER_BAFFLE 20
+#define MARKER_BAFFLE_ALT 21
 
 /* A very coarse min-angle and large max area so tests run fast. */
 static struct jnl_tri_mesh_spec make_spec_one_region(void)
@@ -1199,6 +1200,187 @@ static void test_mesh_free_is_safe(void)
 	jnl_tri_tags_free(&spec.tags);
 }
 
+static struct jnl_tri_mesh_spec make_spec_same_named_patches(void)
+{
+	struct jnl_tri_mesh_spec spec = jnl_tri_mesh_spec_default();
+	spec.opts = jnl_tri_opts_set_min_angle(spec.opts, 20.0);
+	spec.opts = jnl_tri_opts_set_global_max_area(spec.opts, 0.1);
+
+	/* Deliberately give different markers the same names. */
+	jnl_tri_tags_add_patch(&spec.tags, MARKER_BOTTOM, "wall");
+	jnl_tri_tags_add_patch(&spec.tags, MARKER_TOP, "wall");
+	jnl_tri_tags_add_patch(&spec.tags, MARKER_RIGHT, "side");
+	jnl_tri_tags_add_patch(&spec.tags, MARKER_LEFT, "side");
+	jnl_tri_tags_add_region(&spec.tags, MARKER_REGION_A, "fluid");
+
+	return spec;
+}
+
+static void test_same_named_patches_are_merged(void)
+{
+	struct jnl_pslg g;
+	build_unit_square(&g);
+
+	struct jnl_tri_mesh_spec spec = make_spec_same_named_patches();
+	struct jnl_mesh *mesh = NULL;
+
+	enum jnl_mesh_err err = jnl_mesh2d_from_pslg_tri(&g, &spec, &mesh);
+	TEST_ASSERT(err == JNL_MESH_OK);
+
+	TEST_ASSERT_MSG(mesh->patches.n_patches == 2,
+	                "Expected 2 logical patches after same-name merge, got %d",
+	                mesh->patches.n_patches);
+
+	bool found_wall = false;
+	bool found_side = false;
+
+	for (i32 i = 0; i < mesh->patches.n_patches; i++) {
+		const struct jnl_patch *patch = &mesh->patches.data[i];
+
+		if (strcmp(patch->name, "wall") == 0) {
+			found_wall = true;
+			TEST_ASSERT_MSG(
+			    patch->marker == MARKER_BOTTOM,
+			    "Merged wall patch marker=%d, expected canonical %d",
+			    patch->marker, MARKER_BOTTOM);
+		}
+
+		if (strcmp(patch->name, "side") == 0) {
+			found_side = true;
+			TEST_ASSERT_MSG(
+			    patch->marker == MARKER_RIGHT,
+			    "Merged side patch marker=%d, expected canonical %d",
+			    patch->marker, MARKER_RIGHT);
+		}
+
+		TEST_ASSERT_MSG(patch->marker != MARKER_TOP,
+		                "Old top marker survived as a separate patch");
+		TEST_ASSERT_MSG(patch->marker != MARKER_LEFT,
+		                "Old left marker survived as a separate patch");
+	}
+
+	TEST_ASSERT_MSG(found_wall, "Merged patch named 'wall' not found");
+	TEST_ASSERT_MSG(found_side, "Merged patch named 'side' not found");
+
+	jnl_mesh_free(mesh);
+	jnl_pslg_free(&g);
+	jnl_tri_tags_free(&spec.tags);
+}
+
+static void test_same_named_patch_face_markers_are_canonical(void)
+{
+	struct jnl_pslg g;
+	build_unit_square(&g);
+
+	struct jnl_tri_mesh_spec spec = make_spec_same_named_patches();
+	struct jnl_mesh *mesh = NULL;
+
+	enum jnl_mesh_err err = jnl_mesh2d_from_pslg_tri(&g, &spec, &mesh);
+	TEST_ASSERT(err == JNL_MESH_OK);
+
+	for (i32 p = 0; p < mesh->patches.n_patches; p++) {
+		const struct jnl_patch *patch = &mesh->patches.data[p];
+
+		for (i32 fi = 0; fi < patch->n_faces; fi++) {
+			i32 f = patch->start_face + fi;
+			i32 decoded_marker = ~mesh->topo.neighbour[f];
+
+			TEST_ASSERT_MSG(
+			    decoded_marker == patch->marker,
+			    "Patch face %d decoded marker %d != canonical patch marker %d",
+			    f, decoded_marker, patch->marker);
+
+			TEST_ASSERT_MSG(
+			    decoded_marker != MARKER_TOP,
+			    "Old top marker survived in encoded patch neighbour");
+			TEST_ASSERT_MSG(
+			    decoded_marker != MARKER_LEFT,
+			    "Old left marker survived in encoded patch neighbour");
+		}
+	}
+
+	jnl_mesh_free(mesh);
+	jnl_pslg_free(&g);
+	jnl_tri_tags_free(&spec.tags);
+}
+
+/*
+ * 3x1 rectangle with two internal baffle segments carrying different markers
+ * but the same logical baffle name.
+ */
+static void build_two_same_named_baffles_pslg(struct jnl_pslg *g)
+{
+	jnl_pslg_init(g);
+
+	u32 v0 = jnl_pslg_node_add(g, 0.0, 0.0, 0);
+	u32 v1 = jnl_pslg_node_add(g, 1.0, 0.0, 0);
+	u32 v2 = jnl_pslg_node_add(g, 2.0, 0.0, 0);
+	u32 v3 = jnl_pslg_node_add(g, 3.0, 0.0, 0);
+	u32 v4 = jnl_pslg_node_add(g, 0.0, 1.0, 0);
+	u32 v5 = jnl_pslg_node_add(g, 1.0, 1.0, 0);
+	u32 v6 = jnl_pslg_node_add(g, 2.0, 1.0, 0);
+	u32 v7 = jnl_pslg_node_add(g, 3.0, 1.0, 0);
+
+	jnl_pslg_edge_add(g, v0, v3, MARKER_BOTTOM);
+	jnl_pslg_edge_add(g, v3, v7, MARKER_RIGHT);
+	jnl_pslg_edge_add(g, v7, v4, MARKER_TOP);
+	jnl_pslg_edge_add(g, v4, v0, MARKER_LEFT);
+
+	jnl_pslg_edge_add(g, v1, v5, MARKER_BAFFLE);
+	jnl_pslg_edge_add(g, v2, v6, MARKER_BAFFLE_ALT);
+
+	jnl_pslg_region_add(g, 0.5, 0.5, MARKER_REGION_A, 0.1);
+	jnl_pslg_region_add(g, 1.5, 0.5, MARKER_REGION_A, 0.1);
+	jnl_pslg_region_add(g, 2.5, 0.5, MARKER_REGION_A, 0.1);
+}
+
+static struct jnl_tri_mesh_spec make_spec_same_named_baffles(void)
+{
+	struct jnl_tri_mesh_spec spec = jnl_tri_mesh_spec_default();
+	spec.opts = jnl_tri_opts_set_min_angle(spec.opts, 20.0);
+	spec.opts = jnl_tri_opts_set_global_max_area(spec.opts, 0.1);
+
+	jnl_tri_tags_add_patch(&spec.tags, MARKER_BOTTOM, "bottom");
+	jnl_tri_tags_add_patch(&spec.tags, MARKER_RIGHT, "right");
+	jnl_tri_tags_add_patch(&spec.tags, MARKER_TOP, "top");
+	jnl_tri_tags_add_patch(&spec.tags, MARKER_LEFT, "left");
+	jnl_tri_tags_add_baffle(&spec.tags, MARKER_BAFFLE, "screen");
+	jnl_tri_tags_add_baffle(&spec.tags, MARKER_BAFFLE_ALT, "screen");
+	jnl_tri_tags_add_region(&spec.tags, MARKER_REGION_A, "fluid");
+
+	return spec;
+}
+
+static void test_same_named_baffles_are_merged(void)
+{
+	struct jnl_pslg g;
+	build_two_same_named_baffles_pslg(&g);
+
+	struct jnl_tri_mesh_spec spec = make_spec_same_named_baffles();
+	struct jnl_mesh *mesh = NULL;
+
+	enum jnl_mesh_err err = jnl_mesh2d_from_pslg_tri(&g, &spec, &mesh);
+	TEST_ASSERT(err == JNL_MESH_OK);
+
+	TEST_ASSERT_MSG(mesh->baffles.n_baffles == 1,
+	                "Expected 1 logical baffle after same-name merge, got %d",
+	                mesh->baffles.n_baffles);
+	TEST_ASSERT_MSG(mesh->baffles.n_baffle_faces > 0,
+	                "Expected at least one baffle face");
+	TEST_ASSERT_MSG(mesh->baffles.data[0].n_faces ==
+	                    mesh->baffles.n_baffle_faces,
+	                "Merged baffle does not cover all baffle faces");
+	TEST_ASSERT_MSG(strcmp(mesh->baffles.data[0].name, "screen") == 0,
+	                "Merged baffle name is '%s'", mesh->baffles.data[0].name);
+	TEST_ASSERT_MSG(mesh->baffles.data[0].marker == MARKER_BAFFLE,
+	                "Merged baffle marker=%d, expected canonical %d",
+	                mesh->baffles.data[0].marker, MARKER_BAFFLE);
+
+	jnl_mesh_free(mesh);
+	jnl_pslg_free(&g);
+	jnl_tri_tags_free(&spec.tags);
+}
+
 /* ------------------------------------------------------------------ */
 /* Runner                                                              */
 /* ------------------------------------------------------------------ */
@@ -1270,6 +1452,11 @@ int main(void)
 
 	printf("\n--- Lifecycle ---\n");
 	RUN(test_mesh_free_is_safe);
+
+	printf("\n--- Same-name marker merging ---\n");
+	RUN(test_same_named_patches_are_merged);
+	RUN(test_same_named_patch_face_markers_are_canonical);
+	RUN(test_same_named_baffles_are_merged);
 
 	printf("\n=== All tests passed ===\n");
 	return 0;
