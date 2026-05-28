@@ -1395,6 +1395,10 @@ JNL API Reference
       UQResult:failure_probability
          sig: UQResult:failure_probability(spec_name:string?) -> number
          doc: Return failure probability for one spec, or all specs together if omitted.
+      UQResult:histogram
+         sig: UQResult:histogram(name:string, opts:table?) -> Figure
+         doc: Return a histogram figure for one numeric output. opts: { title, xlabel,
+              ylabel, bins, lo, hi, key, series_title, colour, width, fill }
       UQResult:invalid_count
          sig: UQResult:invalid_count() -> number
          doc: Return the number of records whose model evaluation was invalid, errored,
@@ -1417,6 +1421,12 @@ JNL API Reference
       UQResult:quartiles
          sig: UQResult:quartiles(name:string) -> table
          doc: Return quartiles for a numeric output.
+      UQResult:scatter
+         sig: UQResult:scatter(input_name:string, output_name:string, opts:table?) ->
+              Figure
+         doc: Return a scatter figure of one numeric output against one numeric input.
+              opts: { title, xlabel, ylabel, key, logx, logy, series_title, colour, pt,
+              ps }
       UQResult:summary
          sig: UQResult:summary(name:string?) -> table
          doc: Return a statistical summary for one output, or all outputs and specs if
@@ -2355,9 +2365,8 @@ JNL API Reference
 
    Build a Figure with M.figure(opts), chain :add(xs, ys, opts) calls, then call :show()
    for an interactive window or :write(path) for file output. Extension on the write
-   path selects CSV or image output automatically (.csv .png .svg .pdf .eps).
-   :save(path) remains available for image-only output. M.sample(fn, x0, x1, n)
-   generates xs/ys from a Lua function for quick plotting.
+   path selects CSV or image output automatically (.csv .png .svg .pdf .eps). Use
+   M.scatter(xs, ys, opts) and M.histogram(values, opts) for common plotted series.
 
    cycler
       sig: jnl.gp.cycler() -> fn:()->string
@@ -2365,46 +2374,73 @@ JNL API Reference
    figure
       sig: jnl.gp.figure(opts?) -> Figure
       doc: Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key,
-           logx, logy, font, size, xformat, yformat }
+           logx, logy, font, size, xformat, yformat, csv }. If opts.csv is supplied,
+           Figure:write_csv(path) delegates to opts.csv(path, figure).
+   histogram
+      sig: jnl.gp.histogram(values, opts?) -> Series
+      doc: Build a printable histogram series; opts: { bins, lo, hi, title, colour,
+           width, fill }
    sample
       sig: jnl.gp.sample(fn, x0, x1, n?) -> xs, ys
-      doc: Sample fn over [x0,x1] at n+1 points (default 200); returns two arrays
+      doc: Sample fn over [x0,x1] at n+1 points, default 200; returns two arrays
+   scatter
+      sig: jnl.gp.scatter(xs, ys, opts?) -> Series
+      doc: Build a printable point series; opts are series opts with defaults {
+           style='points', pt=7, ps=0.8 }
    series
       sig: jnl.gp.series(xs, ys, opts?) -> Series
-      doc: Build a series struct explicitly; opts: { title, style, colour, lw, pt, ps,
-           dt }
+      doc: Build a printable series struct; opts: { kind, title, style, colour, lw, pt,
+           ps, dt, width, fill }
    write_csv
-      sig: jnl.gp.write_csv(path, xs_or_series, ys?) -> nil
+      sig: jnl.gp.write_csv(path, xs_or_series, ys?, header?) -> nil
       doc: Write xs/ys or a list of Series structs to a CSV file
    type Figure [table] — Chainable figure builder; holds series list and display
    options
       constructor: M.figure(opts?)
+      Figure:__tostring
+         sig: Figure:__tostring(self) -> string
+         doc: Return a compact REPL summary with title, series count, axis labels, and
+              log-axis flags.
       Figure:add
          sig: Figure:add(xs, ys, opts? | series:Series) -> Figure
          doc: Append a data series; accepts raw arrays or a Series struct; chainable
+      Figure:add_histogram
+         sig: Figure:add_histogram(values, opts?) -> Figure
+         doc: Append a histogram series; chainable
+      Figure:add_scatter
+         sig: Figure:add_scatter(xs, ys, opts?) -> Figure
+         doc: Append a scatter series; chainable
       Figure:hline
          sig: Figure:hline(y:number, opts?) -> Figure
          doc: Add a horizontal reference line; opts: { lw, colour, dt, title }
       Figure:save
          sig: Figure:save(path:string, opts?) -> Figure
-         doc: Save image output; terminal inferred from extension; opts: { size, font,
-              terminal }
+         doc: Save image output; terminal inferred from extension; opts: { raster_size,
+              vector_size, size, font, terminal }
+      Figure:series
+         sig: Figure:series() -> Series[]
+         doc: Return the figure series list
       Figure:show
-         sig: Figure:show() -> nil
-         doc: Open a persistent interactive gnuplot window
+         sig: Figure:show(opts?) -> Figure
+         doc: Open a persistent interactive gnuplot window; opts: { raster_size, size,
+              font }
       Figure:vline
          sig: Figure:vline(x:number, opts?) -> Figure
          doc: Add a vertical reference line; opts: { lw, colour, dt, title }
       Figure:write
          sig: Figure:write(path:string, opts?) -> Figure
-         doc: Write figure data or image by extension; .csv dumps series,
-              .png/.svg/.pdf/.eps save image output; image opts: { size, font, terminal
-              }
+         doc: .png/.svg/.pdf/.eps save image output; image opts: { raster_size,
+              vector_size, size, font, terminal }
       Figure:write_csv
          sig: Figure:write_csv(path:string) -> Figure
          doc: Dump all series to CSV; chainable
-   type Series [table] — Data series descriptor table
-      constructor: M.series(xs, ys, opts?) or fig:add(xs, ys, opts)
+   type Series [table] — Data series descriptor table. Series may represent ordinary
+   xy data, scatter points, or histogram bins.
+      constructor: M.series(xs, ys, opts?), M.scatter(xs, ys, opts?), or M.histogram(values, opts?)
+      Series:__tostring
+         sig: Series:__tostring(self) -> string
+         doc: Return a compact REPL summary with kind, title, point count, style, and
+              numeric ranges.
    colour — Named hex colour strings for explicit series colouring
       black = "\"#111111\""     Near black
       blue = "\"#0077bb\""      Primary blue
@@ -2784,18 +2820,25 @@ JNL API Reference
    Scripts can call repl:usage(text_or_fn) to provide a study-specific ,usage guide
    alongside the general ,help command.
 
+   is_cancelled
+      sig: jnl.repl.is_cancelled() -> boolean
+      doc: Return true if Ctrl-C has requested cancellation of the active REPL
+           evaluation
    llm
       sig: jnl.repl.llm(opts:table?) -> nil
-      doc: Print full JNLCFD coding context for LLMs
+      doc: Print full JNL coding context for LLMs
    llm_string
       sig: jnl.repl.llm_string(opts:table?) -> string
-      doc: Return full JNLCFD coding context for LLMs
+      doc: Return full JNL coding context for LLMs
    new
       sig: jnl.repl.new() -> Repl
       doc: Create a new REPL instance with built-in commands registered
    script_summary
       sig: jnl.repl.script_summary(script_path:string) -> nil
       doc: Print globals that a script introduced
+   special
+      sig: jnl.repl.special(name:string, value:any, label:string?) -> any
+      doc: Store a value in a named REPL special such as *last-run* and return it
    type Repl [table] — Configurable Fennel REPL object
       constructor: jnl.repl.new
       Repl:command
@@ -2813,6 +2856,9 @@ JNL API Reference
       Repl:run
          sig: Repl:run() -> nil
          doc: Start the Fennel REPL loop
+      Repl:special
+         sig: Repl:special(name:string, value:any, label:string?) -> any
+         doc: Store a value in a named REPL special such as *last-run* and return it
       Repl:usage
          sig: Repl:usage(spec:string|table|function) -> nil
          doc: Register study-specific usage text or a usage provider for ,usage
@@ -2987,12 +3033,16 @@ JNL API Reference
          doc: Register matching plot and writer helpers from one figure factory; opts: {
               doc, plot_doc, write_doc, write }
       Study:figure_workflow
-         sig: Study:figure_workflow(name:string, figure_fn:function(arg)->Figure,
+         sig: Study:figure_workflow(name:string, figure_fn:function(arg, ctx)->Figure,
               opts:table?) -> Study
          doc: Register matching plot and writer helpers for a workflow figure. Unlike
               figure(), the REPL argument is passed directly to figure_fn and
-              result_or_run() is not called. Use this for sweep, UQ, optimisation, or
-              cache-backed figures. opts: { doc, plot_doc, write_doc, write }
+              result_or_run() is not called. Plot calls remember their argument; write
+              calls without an argument reuse the last workflow argument. The figure
+              function receives ctx as a second argument; call ctx:keep(key, value) to
+              keep expensive intermediate results as *workflow-key*. Use this for sweep,
+              UQ, optimisation, or cache-backed figures. opts: { doc, plot_doc,
+              write_doc, write }
       Study:input_record
          sig: Study:input_record(design_overrides:table?) -> table, table
          doc: Return design and options after applying defaults, overrides, and derived
@@ -3000,6 +3050,17 @@ JNL API Reference
       Study:install
          sig: Study:install(repl:Repl?) -> Repl
          doc: Install usage and registered helpers into a REPL
+      Study:keep
+         sig: Study:keep(name:string, value:any, label:string?) -> any
+         doc: Keep a workflow value by name. Stores it internally, exposes it as a REPL
+              special such as *name* when a REPL is installed, updates *last-workflow*,
+              and returns value.
+      Study:kept
+         sig: Study:kept(name:string) -> any
+         doc: Return a previously kept workflow value by name.
+      Study:kept_all
+         sig: Study:kept_all() -> table
+         doc: Return the table of kept workflow values.
       Study:last_results
          sig: Study:last_results() -> table?
          doc: Return the last evaluated result, or nil if the study has not run
@@ -3018,9 +3079,8 @@ JNL API Reference
       Study:optimise
          sig: Study:optimise(name:string, fn:function(study, arg), opts:table?) -> Study
          doc: Register an optimisation helper. fn receives the study and an optional
-              REPL argument; optimisation bodies typically pass a closure to a generic
-              optimiser and call record_for(base, candidate) or
-              ensure_record(overrides). opts: { doc, entry }
+              REPL argument; the returned value is kept as *name* and *last-workflow*.
+              opts: { doc, keep, entry }
       Study:option
          sig: Study:option(name:string, doc:string) -> Study
          doc: Document one user-facing option
@@ -3060,6 +3120,13 @@ JNL API Reference
          sig: Study:record_for(base:table?, overrides:table?) -> table
          doc: Return ensure_record(with_base(base, overrides)); convenience helper for
               sweeps, UQ, and optimisation closures
+      Study:record_model
+         sig: Study:record_model(base:table?, spec:table) -> function(sample:table?,
+              i:number?) -> table
+         doc: Return a model closure for UQ or optimisation. The closure calls
+              record_for(base, sample), adding an optional generated heading, and
+              returns selected scalar record values. spec: { outputs:table, n:number?,
+              heading:string|function? }
       Study:repl
          sig: Study:repl(repl:Repl?) -> nil
          doc: Install the study into a REPL and start it
@@ -3077,8 +3144,8 @@ JNL API Reference
       Study:sweep
          sig: Study:sweep(name:string, fn:function(study, arg), opts:table?) -> Study
          doc: Register a parameter sweep. fn receives the study and an optional argument
-              from the REPL call; sweep bodies usually call ensure_record(overrides) in
-              a loop. opts: { doc }
+              from the REPL call; the returned value is kept as *name* and
+              *last-workflow*. opts: { doc, keep }
       Study:table
          sig: Study:table(name:string, table_fn:function(result)->table, opts:table?) ->
               Study
@@ -3087,8 +3154,8 @@ JNL API Reference
       Study:uq
          sig: Study:uq(name:string, fn:function(study, arg), opts:table?) -> Study
          doc: Register a UQ helper. fn receives the study and an optional REPL argument;
-              UQ bodies typically pass a closure to a generic UQ algorithm and call
-              record_for(base, sample) or ensure_record(overrides). opts: { doc }
+              the returned value is kept as *name* and *last-workflow*. opts: { doc,
+              keep }
       Study:usage_string
          sig: Study:usage_string() -> string
          doc: Return generated usage text for the study
