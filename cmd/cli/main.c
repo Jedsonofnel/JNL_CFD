@@ -1,7 +1,9 @@
 #include <stdlib.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 
@@ -10,6 +12,58 @@
 #ifndef LUA_ASSET_PATH
 #define LUA_ASSET_PATH "../lua" // fallback default
 #endif
+
+//
+// Ctrl-C / cancellation state
+//
+
+static volatile sig_atomic_t jnl_sigint_seen = 0;
+static volatile sig_atomic_t jnl_in_readline = 0;
+static volatile sig_atomic_t jnl_readline_jmp_active = 0;
+
+static sigjmp_buf jnl_readline_jmp;
+
+static void jnl_handle_sigint(int signo)
+{
+	(void)signo;
+
+	jnl_sigint_seen = 1;
+
+	if (jnl_in_readline && jnl_readline_jmp_active) {
+		siglongjmp(jnl_readline_jmp, 1);
+	}
+}
+
+static void install_signal_handlers(void)
+{
+	struct sigaction sa;
+
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = jnl_handle_sigint;
+	sigemptyset(&sa.sa_mask);
+
+	/*
+	 * Do not use SA_RESTART: we want blocking terminal input to be
+	 * interrupted by Ctrl-C so readline can return control to Lua.
+	 */
+	sa.sa_flags = 0;
+
+	sigaction(SIGINT, &sa, NULL);
+}
+
+static int l_repl_cancel_seen(lua_State *L)
+{
+	lua_pushboolean(L, jnl_sigint_seen != 0);
+	return 1;
+}
+
+static int l_repl_cancel_clear(lua_State *L)
+{
+	(void)L;
+
+	jnl_sigint_seen = 0;
+	return 0;
+}
 
 //
 // Helpers
@@ -39,19 +93,43 @@ static void usage(const char *prog)
 	    prog);
 }
 
+//
 // readline
+//
+
 static int l_readline(lua_State *L)
 {
 	const char *prompt = luaL_optstring(L, 1, "");
+
+	jnl_sigint_seen = 0;
+	jnl_in_readline = 1;
+	jnl_readline_jmp_active = 1;
+
+	if (sigsetjmp(jnl_readline_jmp, 1) != 0) {
+		jnl_readline_jmp_active = 0;
+		jnl_in_readline = 0;
+		jnl_sigint_seen = 0;
+
+		rl_free_line_state();
+		rl_cleanup_after_signal();
+
+		lua_pushstring(L, "");
+		return 1;
+	}
+
 	char *line = readline(prompt);
+
+	jnl_readline_jmp_active = 0;
+	jnl_in_readline = 0;
 
 	if (!line) {
 		lua_pushnil(L);
 		return 1;
 	}
 
-	if (*line)
+	if (*line) {
 		add_history(line);
+	}
 
 	lua_pushstring(L, line);
 	free(line);
@@ -107,10 +185,24 @@ int main(int argc, char **argv)
 	set_lua_path(L);
 	register_preloaders(L);
 
+	/*
+	 * Let the host program own Ctrl-C. Readline's default signal handling
+	 * can re-raise SIGINT and kill the process before Lua can cooperate.
+	 */
 	rl_instream = stdin;
 	rl_outstream = stdout;
+	rl_catch_signals = 0;
+	rl_catch_sigwinch = 0;
+	install_signal_handlers();
+
 	lua_pushcfunction(L, l_readline);
 	lua_setglobal(L, "readline");
+
+	lua_pushcfunction(L, l_repl_cancel_seen);
+	lua_setglobal(L, "__jnl_repl_cancel_seen");
+
+	lua_pushcfunction(L, l_repl_cancel_clear);
+	lua_setglobal(L, "__jnl_repl_cancel_clear");
 
 	// run user script
 	if (script) {

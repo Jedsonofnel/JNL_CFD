@@ -44,7 +44,7 @@ CFLAGS_COMMON := -Wall -pedantic -MMD -MP \
 				$(CFLAGS_LUA)
 
 CFLAGS_DEBUG := -O0 -g3
-CFLAGS_RELEASE := -O3 -march=native -flto -ffast-math -DNDEBUG
+CFLAGS_RELEASE := -O3 -march=native -flto=auto -ffast-math -DNDEBUG
 
 ifeq ($(BUILD), release)
 	CFLAGS := $(CFLAGS_COMMON) $(CFLAGS_RELEASE)
