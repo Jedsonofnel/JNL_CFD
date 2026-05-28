@@ -527,6 +527,7 @@ local function read_fennel_chunk(repl, state)
 
 		if line == nil then
 			io.write("\n")
+			repl._quit = true
 			CONTROL.state = "stopping"
 			return nil
 		end
@@ -676,7 +677,15 @@ function REPL:special(name, value, label)
 	return value
 end
 
+local function mark_repl_started()
+	local f = rawget(_G, "__jnl_repl_mark_started")
+	if type(f) == "function" then
+		f()
+	end
+end
+
 function REPL:run()
+	mark_repl_started()
 	print_welcome()
 
 	self._quit = false
@@ -686,6 +695,7 @@ function REPL:run()
 	self._fennel = require_fennel()
 	self._fennel.repl(fennel_repl_options(self))
 
+	self.quit = true
 	enter_idle()
 end
 

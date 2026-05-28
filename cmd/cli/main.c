@@ -14,12 +14,14 @@
 #endif
 
 //
-// Ctrl-C / cancellation state
+// Ctrl-C / cancellation / REPL state
 //
 
 static volatile sig_atomic_t jnl_sigint_seen = 0;
 static volatile sig_atomic_t jnl_in_readline = 0;
 static volatile sig_atomic_t jnl_readline_jmp_active = 0;
+
+static int jnl_repl_started = 0;
 
 static sigjmp_buf jnl_readline_jmp;
 
@@ -63,6 +65,19 @@ static int l_repl_cancel_clear(lua_State *L)
 
 	jnl_sigint_seen = 0;
 	return 0;
+}
+
+static int l_repl_mark_started(lua_State *L)
+{
+	(void)L;
+	jnl_repl_started = 1;
+	return 0;
+}
+
+static int l_repl_was_started(lua_State *L)
+{
+	lua_pushboolean(L, jnl_repl_started);
+	return 1;
 }
 
 //
@@ -204,6 +219,12 @@ int main(int argc, char **argv)
 	lua_pushcfunction(L, l_repl_cancel_clear);
 	lua_setglobal(L, "__jnl_repl_cancel_clear");
 
+	lua_pushcfunction(L, l_repl_mark_started);
+	lua_setglobal(L, "__jnl_repl_mark_started");
+
+	lua_pushcfunction(L, l_repl_was_started);
+	lua_setglobal(L, "__jnl_repl_was_started");
+
 	// run user script
 	if (script) {
 		const char *ext = strrchr(script, '.');
@@ -269,7 +290,7 @@ int main(int argc, char **argv)
 	}
 
 	// bare REPL
-	if (want_repl) {
+	if (want_repl && !jnl_repl_started) {
 		const char *boot = "local REPL = require('jnl.repl')\n"
 		                   "local repl = REPL.new()\n"
 		                   "repl:run()\n";
