@@ -478,6 +478,18 @@ local function call_with_optional_arg(fn, arg)
 end
 
 --
+-- Keep helpers
+--
+
+local function special_name(name)
+	return "*" .. normalise_name(name) .. "*"
+end
+
+local function keep_label(name)
+	return normalise_name(name)
+end
+
+--
 -- STUDY Constructor
 --
 
@@ -516,6 +528,10 @@ function M.new(title)
 
 		-- warm result
 		last_result = nil,
+
+		-- kept workflow values
+		_repl = nil,
+		kept_values = {},
 	}, Study)
 end
 
@@ -1058,6 +1074,7 @@ end
 function Study:figure_workflow(name, figure_fn, opts)
 	opts = opts or {}
 
+	local workflow_name = normalise_name(name)
 	local plot_doc = opts.plot_doc or opts.doc or auto_doc("plot", name)
 	local write_doc = opts.write_doc or opts.doc or auto_doc("figure", name)
 
@@ -1075,17 +1092,40 @@ function Study:figure_workflow(name, figure_fn, opts)
 		return state.arg or {}
 	end
 
+	local function context()
+		return {
+			keep = function(_, key, value, label)
+				local kept_name = workflow_name .. "-" .. normalise_name(key)
+				return self:keep(kept_name, value, label or kept_name)
+			end,
+		}
+	end
+
 	local function build(arg)
 		local resolved = resolve_arg(arg)
-		local figure = figure_fn(resolved)
+		local ctx = context()
+		local figure = figure_fn(resolved, ctx)
 
 		state.figure = figure
+
+		self.kept_values[workflow_name .. "-arg"] = state.arg
+		self.kept_values[workflow_name] = figure
+
+		local repl = rawget(self, "_repl")
+
+		if repl and repl.special then
+			repl:special(special_name(workflow_name), figure, workflow_name)
+			repl:special("*last-figure*", figure, "last figure")
+		else
+			_G[special_name(workflow_name)] = figure
+			_G["*last-figure*"] = figure
+		end
 
 		return figure
 	end
 
 	self.plots[#self.plots + 1] = {
-		name = normalise_name(name),
+		name = workflow_name,
 		fn = function(arg)
 			return build(arg):show()
 		end,
@@ -1094,7 +1134,7 @@ function Study:figure_workflow(name, figure_fn, opts)
 	}
 
 	self.writers[#self.writers + 1] = {
-		name = normalise_name(name),
+		name = workflow_name,
 		fn = function(arg, path)
 			return build(arg):write(path, opts.write)
 		end,
@@ -1102,13 +1142,13 @@ function Study:figure_workflow(name, figure_fn, opts)
 		raw = true,
 	}
 
-	self:expose("last-" .. name, function()
+	self:expose("last-" .. workflow_name, function()
 		return state.figure
-	end, "Return the last " .. display_name(name) .. " figure", { hidden = true })
+	end, "Return the last " .. display_name(workflow_name) .. " figure", { hidden = true })
 
-	self:expose("last-" .. name .. "-arg", function()
+	self:expose("last-" .. workflow_name .. "-arg", function()
 		return state.arg
-	end, "Return the last " .. display_name(name) .. " workflow argument", { hidden = true })
+	end, "Return the last " .. display_name(workflow_name) .. " workflow argument", { hidden = true })
 
 	return self
 end
@@ -1381,13 +1421,21 @@ function Study:ensure_record(arg)
 	local x, opts = self:input_record(arg)
 	self:check_bounds(x)
 
-	local existing = self:cache_lookup_done(arg)
+	local existing = self:cache_lookup(arg)
 
 	if existing then
 		self.current_record = existing
 
 		if not opts.quiet then
-			io.write(fmt.header(format_case_message(self, case_heading(opts, "found cached value"), arg, x), 2))
+			io.write(fmt.header(
+				format_case_message(
+					self,
+					case_heading(opts, "found cached value"),
+					arg,
+					x
+				),
+				2
+			))
 		end
 
 		return existing
@@ -1432,11 +1480,48 @@ function Study:record_model(base, spec)
 end
 
 --
+-- Kept workflow values
+--
+
+function Study:keep(name, value, label)
+	name = normalise_name(name)
+
+	self.kept_values[name] = value
+
+	local repl = rawget(self, "_repl")
+
+	if repl and repl.special then
+		repl:special(special_name(name), value, label or keep_label(name))
+	else
+		_G[special_name(name)] = value
+	end
+
+	self.kept_values["last-workflow"] = value
+
+	if repl and repl.special then
+		repl:special("*last-workflow*", value, "last workflow")
+	else
+		_G["*last-workflow*"] = value
+	end
+
+	return value
+end
+
+function Study:kept(name)
+	return self.kept_values[normalise_name(name)]
+end
+
+function Study:kept_all()
+	return self.kept_values
+end
+
+--
 -- Installing onto repl
 --
 
 function Study:install(repl)
 	repl = repl or repl_mod.new()
+	self._repl = repl
 
 	repl:usage(function()
 		return self:usage_string()
@@ -1520,6 +1605,18 @@ function Study:install(repl)
 			local xs, ys = self:query_xy(query)
 			return { x = xs, y = ys }
 		end, "Return x/y arrays from matching cache records; query requires x and y")
+
+		repl:register("kept", function(name)
+			if name == nil then
+				return self:kept_all()
+			end
+
+			return self:kept(name)
+		end, "Return kept workflow values, or one kept value by name")
+
+		repl:register("last-workflow", function()
+			return self:kept("last-workflow")
+		end, "Return the last kept workflow value")
 	end
 
 	for _, item in ipairs(self.outputs) do
@@ -1583,9 +1680,14 @@ end
 function Study:sweep(name, fn, opts)
 	opts = opts or {}
 
+	local kept_name = normalise_name(opts.keep or name)
+
 	self.optimisers[#self.optimisers + 1] = {
 		name = normalise_name(name),
-		fn   = function(arg) return fn(self, arg or {}) end,
+		fn   = function(arg)
+			local result = fn(self, arg or {})
+			return self:keep(kept_name, result, kept_name)
+		end,
 		doc  = doc_for("sweep", name, opts.doc),
 	}
 
@@ -1594,22 +1696,36 @@ end
 
 function Study:uq(name, fn, opts)
 	opts = opts or {}
+
+	local kept_name = normalise_name(opts.keep or name)
+
 	self.optimisers[#self.optimisers + 1] = {
 		name = normalise_name(name),
-		fn   = function(arg) return fn(self, arg or {}) end,
+		fn   = function(arg)
+			local result = fn(self, arg or {})
+			return self:keep(kept_name, result, kept_name)
+		end,
 		doc  = doc_for("uq", name, opts.doc),
 	}
+
 	return self
 end
 
 function Study:optimise(name, fn, opts)
 	opts = opts or {}
+
+	local kept_name = normalise_name(opts.keep or name)
+
 	self.optimisers[#self.optimisers + 1] = {
 		name  = normalise_name(name),
-		fn    = function(arg) return fn(self, arg or {}) end,
+		fn    = function(arg)
+			local result = fn(self, arg or {})
+			return self:keep(kept_name, result, kept_name)
+		end,
 		doc   = doc_for("optimise", name, opts.doc),
 		entry = opts.entry,
 	}
+
 	return self
 end
 
@@ -1785,6 +1901,23 @@ M._types = {
 				ret = "Study",
 				doc = "Clear scalar run cache records",
 			},
+			keep = {
+				args = "name:string, value:any, label:string?",
+				ret = "any",
+				doc =
+					"Keep a workflow value by name. Stores it internally, exposes it as a REPL special " ..
+					"such as *name* when a REPL is installed, updates *last-workflow*, and returns value.",
+			},
+			kept = {
+				args = "name:string",
+				ret = "any",
+				doc = "Return a previously kept workflow value by name.",
+			},
+			kept_all = {
+				args = "",
+				ret = "table",
+				doc = "Return the table of kept workflow values.",
+			},
 			-- output
 			output = {
 				args = "name:string, fn_or_path:function|string?, doc:string?",
@@ -1809,13 +1942,15 @@ M._types = {
 				"Register matching plot and writer helpers from one figure factory; opts: { doc, plot_doc, write_doc, write }",
 			},
 			figure_workflow = {
-				args = "name:string, figure_fn:function(arg)->Figure, opts:table?",
+				args = "name:string, figure_fn:function(arg, ctx)->Figure, opts:table?",
 				ret = "Study",
 				doc =
 					"Register matching plot and writer helpers for a workflow figure. " ..
 					"Unlike figure(), the REPL argument is passed directly to figure_fn and result_or_run() is not called. " ..
 					"Plot calls remember their argument; write calls without an argument reuse the last workflow argument. " ..
-					"Use this for sweep, UQ, optimisation, or cache-backed figures. opts: { doc, plot_doc, write_doc, write }",
+					"The figure function receives ctx as a second argument; call ctx:keep(key, value) to keep expensive " ..
+					"intermediate results as *workflow-key*. Use this for sweep, UQ, optimisation, or cache-backed figures. " ..
+					"opts: { doc, plot_doc, write_doc, write }",
 			},
 			table = {
 				args = "name:string, table_fn:function(result)->table, opts:table?",
@@ -1828,21 +1963,21 @@ M._types = {
 				ret  = "Study",
 				doc  =
 					"Register a parameter sweep. fn receives the study and an optional argument from the REPL call; " ..
-					"sweep bodies usually call ensure_record(overrides) in a loop. opts: { doc }",
+					"the returned value is kept as *name* and *last-workflow*. opts: { doc, keep }",
 			},
 			uq = {
 				args = "name:string, fn:function(study, arg), opts:table?",
 				ret  = "Study",
 				doc  =
 					"Register a UQ helper. fn receives the study and an optional REPL argument; " ..
-					"UQ bodies typically pass a closure to a generic UQ algorithm and call record_for(base, sample) or ensure_record(overrides). opts: { doc }",
+					"the returned value is kept as *name* and *last-workflow*. opts: { doc, keep }",
 			},
 			optimise = {
 				args = "name:string, fn:function(study, arg), opts:table?",
 				ret  = "Study",
 				doc  =
 					"Register an optimisation helper. fn receives the study and an optional REPL argument; " ..
-					"optimisation bodies typically pass a closure to a generic optimiser and call record_for(base, candidate) or ensure_record(overrides). opts: { doc, entry }",
+					"the returned value is kept as *name* and *last-workflow*. opts: { doc, keep, entry }",
 			},
 			usage_string = {
 				args = "",

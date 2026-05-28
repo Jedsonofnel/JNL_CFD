@@ -402,6 +402,7 @@ function M.figure(opts)
 
 	return setmetatable({
 		_series = {},
+		_csv_fn = opts.csv,
 		_opts = {
 			font          = opts.font or DEFAULT_FONT,
 			raster_size   = opts.raster_size or opts.size or DEFAULT_RASTER_SIZE,
@@ -696,6 +697,10 @@ function Figure:write(path, opts)
 end
 
 function Figure:write_csv(path)
+	if self._csv_fn then
+		return self._csv_fn(path, self)
+	end
+
 	self:validate()
 	M.write_csv(path, self._series)
 	return self
@@ -829,7 +834,8 @@ M._api = {
 		ret = "Figure",
 		doc =
 			"Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key, " ..
-			"logx, logy, font, raster_size, vector_size, size, xformat, yformat }",
+			"logx, logy, font, size, xformat, yformat, csv }. If opts.csv is supplied, " ..
+			"Figure:write_csv(path) delegates to opts.csv(path, figure).",
 	},
 	series = {
 		args = "xs, ys, opts?",

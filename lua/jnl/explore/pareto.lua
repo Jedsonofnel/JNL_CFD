@@ -125,7 +125,33 @@ local function dominates(a, b, objectives)
 	return strictly_better
 end
 
+local function record_output(record, name)
+	return record.y and record.y[name]
+end
+
+local function record_input(record, name)
+	return record.x and record.x[name]
+end
+
+local function record_score(record, name)
+	local value = record_output(record, name)
+
+	if type(value) == "number" then
+		return value
+	end
+
+	return nil
+end
+
+local function record_is_usable(record)
+	return record and record.valid ~= false and record.ok ~= false
+end
+
 local function record_passes_specs(record)
+	if record.valid == false or record.ok == false then
+		return false
+	end
+
 	for _, passed in pairs(record.spec or {}) do
 		if passed ~= true then
 			return false
@@ -555,6 +581,67 @@ function Pareto:__tostring()
 end
 
 --
+-- CSV helpers
+--
+
+local function csv_escape(value)
+	if value == nil then
+		return ""
+	end
+
+	local s = tostring(value)
+
+	if s:find('[,"\n]') then
+		s = '"' .. s:gsub('"', '""') .. '"'
+	end
+
+	return s
+end
+
+local function csv_cell(value)
+	if type(value) == "number" then
+		return string.format("%.10g", value)
+	end
+
+	return csv_escape(value)
+end
+
+local function table_cell(row, column, i)
+	if row[column] ~= nil then
+		return row[column]
+	end
+
+	return row[i]
+end
+
+local function write_table_csv(path, data)
+	local f, err = io.open(path, "w")
+	if not f then
+		error("pareto csv: " .. tostring(err))
+	end
+
+	f:write(table.concat(data.columns, ",") .. "\n")
+
+	for _, row in ipairs(data.rows or {}) do
+		local cells = {}
+
+		for i, column in ipairs(data.columns) do
+			cells[i] = csv_cell(table_cell(row, column, i))
+		end
+
+		f:write(table.concat(cells, ",") .. "\n")
+	end
+
+	f:close()
+	print(string.format("[pareto] csv -> %s (%d rows)", path, #(data.rows or {})))
+end
+
+local function flag(value)
+	return value and 1 or 0
+end
+
+
+--
 -- Pareto result
 --
 
@@ -615,7 +702,7 @@ function ParetoResult:table(records)
 	records = records or self.records
 
 	local output_names = self:output_names(records)
-	local columns = { "i", "ok", "dominated" }
+	local columns = { "i", "ok", "valid", "status", "front", "dominated" }
 
 	for _, name in ipairs(self.input_order or {}) do
 		columns[#columns + 1] = name
@@ -634,20 +721,23 @@ function ParetoResult:table(records)
 	for _, record in ipairs(records or {}) do
 		local row = {
 			i = record.i,
-			ok = record.ok,
-			dominated = record.dominated,
+			ok = flag(record.ok),
+			valid = flag(record.valid),
+			status = record.status,
+			front = flag(not record.dominated),
+			dominated = flag(record.dominated),
 		}
 
 		for _, name in ipairs(self.input_order or {}) do
-			row[name] = record.x[name]
+			row[name] = record_input(record, name)
 		end
 
 		for _, name in ipairs(output_names) do
-			row[name] = record.y[name]
+			row[name] = record_output(record, name)
 		end
 
 		for _, name in ipairs(self.spec_order or {}) do
-			row["spec_" .. name] = record.spec[name]
+			row["spec_" .. name] = flag(record.spec and record.spec[name])
 		end
 
 		rows[#rows + 1] = row
@@ -663,20 +753,107 @@ function ParetoResult:front_table()
 	return self:table(self.front)
 end
 
-function ParetoResult:best(name)
+function ParetoResult:write_csv(path, opts)
+	opts = opts or {}
+
+	local records = opts.front and self.front or self.records
+
+	write_table_csv(path, self:table(records))
+
+	return self
+end
+
+--
+-- Query
+--
+
+function ParetoResult:best(name, opts)
+	opts = opts or {}
+
 	local best = nil
 	local best_value = nil
+	local records = opts.front == false and self.records or self.front
 
-	for _, record in ipairs(self.front or {}) do
-		local value = record.y and record.y[name]
+	for _, record in ipairs(records or {}) do
+		local value = record_score(record, name)
 
-		if type(value) == "number" and (best_value == nil or value > best_value) then
+		if record_is_usable(record)
+			and type(value) == "number"
+			and (best_value == nil or value > best_value)
+		then
 			best = record
 			best_value = value
 		end
 	end
 
 	return best
+end
+
+function ParetoResult:best_where(name, pred, opts)
+	opts = opts or {}
+
+	local best = nil
+	local best_value = nil
+	local records = opts.front == false and self.records or self.front
+
+	for _, record in ipairs(records or {}) do
+		local value = record_score(record, name)
+
+		if record_is_usable(record)
+			and type(value) == "number"
+			and pred(record.y or {}, record.x or {}, record)
+			and (best_value == nil or value > best_value)
+		then
+			best = record
+			best_value = value
+		end
+	end
+
+	return best
+end
+
+function ParetoResult:record(i)
+	for _, record in ipairs(self.records or {}) do
+		if record.i == i then
+			return record
+		end
+	end
+
+	return nil
+end
+
+function ParetoResult:front_record(i)
+	for _, record in ipairs(self.front or {}) do
+		if record.i == i then
+			return record
+		end
+	end
+
+	return nil
+end
+
+function ParetoResult:design(i)
+	local record = self:record(i)
+
+	if not record then
+		return nil
+	end
+
+	return record.x
+end
+
+function ParetoResult:front_designs()
+	local rows = {}
+
+	for _, record in ipairs(self.front or {}) do
+		rows[#rows + 1] = {
+			i = record.i,
+			x = record.x,
+			y = record.y,
+		}
+	end
+
+	return rows
 end
 
 function ParetoResult:__tostring()
@@ -751,7 +928,6 @@ end
 
 --
 -- Figure plotting helpers
---
 
 function ParetoResult:figure(x_name, y_name, opts)
 	opts = opts or {}
@@ -768,6 +944,9 @@ function ParetoResult:figure(x_name, y_name, opts)
 			key    = opts.key or "top left",
 			logx   = opts.logx,
 			logy   = opts.logy,
+			csv    = function(path)
+				return self:write_csv(path, { front = opts.csv_front })
+			end,
 		})
 		:add(gp.scatter(all_x, all_y, {
 			title  = opts.candidates_title or "candidates",
@@ -957,17 +1136,50 @@ M._types = {
 			table = {
 				args = "records:table?",
 				ret = "table",
-				doc = "Return { columns, rows } for all records or a supplied record list.",
+				doc =
+					"Return { columns, rows } for all records or a supplied record list. " ..
+					"Rows include i, ok, valid, status, dominated, all input columns, all numeric model outputs, and spec columns.",
+			},
+			best = {
+				args = "name:string, opts:table?",
+				ret = "table?",
+				doc =
+					"Return the usable front record with the largest numeric output value. " ..
+					"Pass opts.front=false to search all records instead of only the front.",
+			},
+			best_where = {
+				args = "name:string, pred:function, opts:table?",
+				ret = "table?",
+				doc =
+					"Return the usable record with the largest numeric output value among records satisfying pred(y, x, record). " ..
+					"Searches the front by default; pass opts.front=false to search all records.",
+			},
+			record = {
+				args = "i:number",
+				ret = "table?",
+				doc = "Return the candidate record with index i from all records.",
+			},
+			front_record = {
+				args = "i:number",
+				ret = "table?",
+				doc =
+				"Return the front record with original candidate index i, or nil if that candidate is not on the front.",
+			},
+			design = {
+				args = "i:number",
+				ret = "table?",
+				doc = "Return the input design table x for candidate index i.",
+			},
+			front_designs = {
+				args = "",
+				ret = "table",
+				doc = "Return compact { i, x, y } entries for all non-dominated front records.",
 			},
 			front_table = {
 				args = "",
 				ret = "table",
-				doc = "Return { columns, rows } for the non-dominated front.",
-			},
-			best = {
-				args = "name:string",
-				ret = "table?",
-				doc = "Return the front record with the largest value of a numeric output.",
+				doc =
+				"Return { columns, rows } for non-dominated front records only, including input columns and numeric model outputs.",
 			},
 			print_summary = {
 				args = "",
@@ -980,7 +1192,8 @@ M._types = {
 				doc =
 					"Return a Pareto front figure using numeric model outputs. " ..
 					"Plots all candidates and overlays the non-dominated front. " ..
-					"opts: { title, xlabel, ylabel, key, logx, logy, candidates_title, candidates_colour, " ..
+					"When written as CSV, writes the Pareto inspection table rather than only plotted XY data. " ..
+					"opts: { title, xlabel, ylabel, key, logx, logy, csv_front, candidates_title, candidates_colour, " ..
 					"candidates_pt, candidates_ps, front_title, front_colour, front_style, front_lw, front_pt, front_ps }",
 			},
 			scatter = {
@@ -989,6 +1202,14 @@ M._types = {
 				doc =
 					"Return a scatter figure for two numeric model outputs over all candidate records. " ..
 					"opts: { title, xlabel, ylabel, key, logx, logy, series_title, colour, pt, ps }",
+			},
+			write_csv = {
+				args = "path:string, opts:table?",
+				ret = "ParetoResult",
+				doc =
+					"Write a Pareto inspection table to CSV. The CSV includes i, ok, valid, status, " ..
+					"front, dominated, all input columns, all numeric model outputs, and spec columns. " ..
+					"Pass opts.front=true to write only front records.",
 			},
 		},
 	},

@@ -416,44 +416,98 @@ end)
 
 local pareto = require("jnl.explore.pareto")
 
-local function channel_fin_pareto(s, base)
+local PARETO_COARSE = {
+	h_min = 0.08,
+	h_max = 0.42,
+	n_height = 7,
+
+	s_min = 0.08,
+	s_max = 0.34,
+	n_spacing = 7,
+}
+
+local PARETO_FINE = {
+	h_min = 0.12,
+	h_max = 0.42,
+	n_height = 9,
+
+	s_min = 0.08,
+	s_max = 0.22,
+	n_spacing = 9,
+}
+
+local function channel_fin_pareto(s, base, spec)
 	base = base or {}
+	spec = spec or PARETO_COARSE
 
 	return pareto.pareto("channel fin heat-pressure tradeoff")
 		:input("fin_height", pareto.linspace(
-			base.h_min or 0.08,
-			base.h_max or 0.42,
-			base.n_height or 7
+			spec.h_min,
+			spec.h_max,
+			spec.n_height
 		))
 		:input("fin_spacing", pareto.linspace(
-			base.s_min or 0.08,
-			base.s_max or 0.34,
-			base.n_spacing or 7
+			spec.s_min,
+			spec.s_max,
+			spec.n_spacing
 		))
 		:model(s:record_model(base, {
 			outputs = { "heat_removed", "delta_p", "objective_hint" },
-			heading = "Pareto candidate",
+			heading = spec.heading or "Pareto candidate",
 		}))
 		:maximise("heat_removed")
 		:minimise("delta_p")
 		:run()
 end
 
-study:optimise("channel-fin-pareto", channel_fin_pareto)
+local function channel_fin_pareto_coarse(s, base)
+	return channel_fin_pareto(s, base or {}, PARETO_COARSE)
+end
 
-study:figure_workflow("pareto-front", function(base)
+local function channel_fin_pareto_fine(s, base)
+	return channel_fin_pareto(s, base or {}, PARETO_FINE)
+end
+
+study:optimise("channel-fin-pareto-coarse", channel_fin_pareto_coarse, {
+	doc = "Run a broad 7x7 Pareto scan over fin height and spacing",
+})
+
+study:optimise("channel-fin-pareto-fine", channel_fin_pareto_fine, {
+	doc = "Run a focused 9x9 Pareto scan over the promising heat-pressure region",
+})
+
+study:figure_workflow("pareto-coarse", function(base, ctx)
 	base = base or {}
 
-	local res = channel_fin_pareto(study, base)
+	local res = channel_fin_pareto_coarse(study, base)
+
+	if ctx then ctx:keep("result", res) end
 
 	return res:figure("delta_p", "heat_removed", {
-		title  = "Channel fin Pareto front",
+		title  = "Channel fin Pareto front: coarse scan",
 		xlabel = "Pressure drop",
 		ylabel = "Heat removed",
 		key    = "top left",
 	})
 end, {
-	doc = "Run channel-fin Pareto search and plot heat removed against pressure drop",
+	doc = "Run the coarse Pareto scan and plot heat removed against pressure drop",
+})
+
+study:figure_workflow("pareto-fine", function(base, ctx)
+	base = base or {}
+
+	local res = channel_fin_pareto_fine(study, base)
+
+	if ctx then ctx:keep("result", res) end
+
+	return res:figure("delta_p", "heat_removed", {
+		title  = "Channel fin Pareto front: fine scan",
+		xlabel = "Pressure drop",
+		ylabel = "Heat removed",
+		key    = "top left",
+	})
+end, {
+	doc = "Run the focused Pareto scan and plot heat removed against pressure drop",
 })
 
 --
@@ -465,7 +519,7 @@ local uq = require("jnl.explore").uq
 local function channel_fin_uq(s, base)
 	base = base or {}
 
-	local n = base.n or 10
+	local n = base.n or 50
 
 	return uq.monte_carlo("channel fin manufacturing UQ")
 		:input("fin_height",
@@ -491,9 +545,7 @@ local function channel_fin_uq(s, base)
 		:run(n)
 end
 
-study:uq("channel-fin-uq", function(s, base)
-	return channel_fin_uq(s, base)
-end, {
+study:uq("channel-fin-uq", channel_fin_uq, {
 	doc = "Run Monte Carlo uncertainty propagation over fin height, spacing, and heat-transfer coefficient",
 })
 
