@@ -375,10 +375,18 @@ end, {
 -- Sweeps
 --
 
-local function height_sweep(s, base)
+local function linspace(lo, hi, n)
+	local t = {}
+	for i = 0, n - 1 do
+		t[i + 1] = lo + (hi - lo) * i / (n - 1)
+	end
+	return t
+end
+
+local function run_height_sweep(s, base)
 	base = base or {}
 
-	local heights = { 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45 }
+	local heights = linspace(0.05, 0.35, 30)
 
 	for i, h in ipairs(heights) do
 		s:ensure_record(study:with_base(base, {
@@ -388,11 +396,14 @@ local function height_sweep(s, base)
 	end
 end
 
-study:sweep("height-sweep", height_sweep)
+study:sweep("height", run_height_sweep, {
+	doc = "Sweep fin height with all other design variables fixed",
+})
 
 study:figure_workflow("height-heat", function(base)
 	base = base or {}
-	height_sweep(study, base)
+
+	run_height_sweep(study, base)
 
 	local xs, ys = study:query_xy({
 		x = "fin_height",
@@ -401,14 +412,39 @@ study:figure_workflow("height-heat", function(base)
 	})
 
 	return gp.figure({
-		title = "Heat removed vs fin height",
+		title  = "Heat removed vs fin height",
 		xlabel = "Fin height",
 		ylabel = "Heat removed",
 	}):add(xs, ys, {
 		title = "height sweep",
 		style = "linespoints",
 	})
-end)
+end, {
+	doc = "Run the height sweep and plot heat removed against fin height",
+})
+
+study:figure_workflow("height-pressure", function(base)
+	base = base or {}
+
+	run_height_sweep(study, base)
+
+	local xs, ys = study:query_xy({
+		x = "fin_height",
+		y = "delta_p",
+		where = base,
+	})
+
+	return gp.figure({
+		title  = "Pressure drop vs fin height",
+		xlabel = "Fin height",
+		ylabel = "Pressure drop",
+	}):add(xs, ys, {
+		title = "height sweep",
+		style = "linespoints",
+	})
+end, {
+	doc = "Run the height sweep and plot pressure drop against fin height",
+})
 
 --
 -- Optimisation study
@@ -416,7 +452,7 @@ end)
 
 local pareto = require("jnl.explore.pareto")
 
-local PARETO_COARSE = {
+local PARETO_SPEC = {
 	h_min = 0.08,
 	h_max = 0.42,
 	n_height = 7,
@@ -426,142 +462,48 @@ local PARETO_COARSE = {
 	n_spacing = 7,
 }
 
-local PARETO_FINE = {
-	h_min = 0.12,
-	h_max = 0.42,
-	n_height = 9,
-
-	s_min = 0.08,
-	s_max = 0.22,
-	n_spacing = 9,
-}
-
-local function channel_fin_pareto(s, base, spec)
+local function channel_fin_pareto(s, base)
 	base = base or {}
-	spec = spec or PARETO_COARSE
 
 	return pareto.pareto("channel fin heat-pressure tradeoff")
 		:input("fin_height", pareto.linspace(
-			spec.h_min,
-			spec.h_max,
-			spec.n_height
+			PARETO_SPEC.h_min,
+			PARETO_SPEC.h_max,
+			PARETO_SPEC.n_height
 		))
 		:input("fin_spacing", pareto.linspace(
-			spec.s_min,
-			spec.s_max,
-			spec.n_spacing
+			PARETO_SPEC.s_min,
+			PARETO_SPEC.s_max,
+			PARETO_SPEC.n_spacing
 		))
 		:model(s:record_model(base, {
-			outputs = { "heat_removed", "delta_p", "objective_hint" },
-			heading = spec.heading or "Pareto candidate",
+			outputs = { "heat_removed", "delta_p" },
+			heading = "Pareto candidate",
 		}))
 		:maximise("heat_removed")
 		:minimise("delta_p")
 		:run()
 end
 
-local function channel_fin_pareto_coarse(s, base)
-	return channel_fin_pareto(s, base or {}, PARETO_COARSE)
-end
-
-local function channel_fin_pareto_fine(s, base)
-	return channel_fin_pareto(s, base or {}, PARETO_FINE)
-end
-
-study:optimise("channel-fin-pareto-coarse", channel_fin_pareto_coarse, {
-	doc = "Run a broad 7x7 Pareto scan over fin height and spacing",
+study:optimise("pareto", channel_fin_pareto, {
+	doc = "Run a 7x7 Pareto scan over fin height and spacing",
 })
 
-study:optimise("channel-fin-pareto-fine", channel_fin_pareto_fine, {
-	doc = "Run a focused 9x9 Pareto scan over the promising heat-pressure region",
-})
+study:figure_workflow("pareto", function(base, ctx)
+	local res = channel_fin_pareto(study, base or {})
 
-study:figure_workflow("pareto-coarse", function(base, ctx)
-	base = base or {}
-
-	local res = channel_fin_pareto_coarse(study, base)
-
-	if ctx then ctx:keep("result", res) end
+	if ctx then
+		ctx:keep("result", res)
+	end
 
 	return res:figure("delta_p", "heat_removed", {
-		title  = "Channel fin Pareto front: coarse scan",
+		title  = "Channel fin heat-pressure trade-off",
 		xlabel = "Pressure drop",
 		ylabel = "Heat removed",
 		key    = "top left",
 	})
 end, {
-	doc = "Run the coarse Pareto scan and plot heat removed against pressure drop",
-})
-
-study:figure_workflow("pareto-fine", function(base, ctx)
-	base = base or {}
-
-	local res = channel_fin_pareto_fine(study, base)
-
-	if ctx then ctx:keep("result", res) end
-
-	return res:figure("delta_p", "heat_removed", {
-		title  = "Channel fin Pareto front: fine scan",
-		xlabel = "Pressure drop",
-		ylabel = "Heat removed",
-		key    = "top left",
-	})
-end, {
-	doc = "Run the focused Pareto scan and plot heat removed against pressure drop",
-})
-
---
--- Uncertainty study
---
-
-local uq = require("jnl.explore").uq
-
-local function channel_fin_uq(s, base)
-	base = base or {}
-
-	local n = base.n or 50
-
-	return uq.monte_carlo("channel fin manufacturing UQ")
-		:input("fin_height",
-			uq.normal(base.fin_height or 0.25, 0.025):clip(0.05, 0.45))
-		:input("fin_spacing",
-			uq.normal(base.fin_spacing or 0.20, 0.025):clip(0.05, 0.40))
-		:input("h_fin",
-			uq.lognormal(base.h_fin or 10.0, 0.20):clip(2.0, 25.0))
-		:model(s:record_model(base, {
-			outputs = { "heat_removed", "delta_p", "objective_hint" },
-			n = n,
-			heading = "MC UQ sample",
-		}))
-		:spec("acceptable heat", function(y)
-			return y.valid and y.heat_removed > 0.08
-		end)
-		:spec("acceptable pressure drop", function(y)
-			return y.valid and y.delta_p < 0.05
-		end)
-		:spec("acceptable design", function(y)
-			return y.valid and y.heat_removed > 0.08 and y.delta_p < 0.05
-		end)
-		:run(n)
-end
-
-study:uq("channel-fin-uq", channel_fin_uq, {
-	doc = "Run Monte Carlo uncertainty propagation over fin height, spacing, and heat-transfer coefficient",
-})
-
-study:figure_workflow("uq-heat", function(base)
-	base = base or {}
-
-	local res = channel_fin_uq(study, base)
-
-	return res:histogram("heat_removed", {
-		title  = "Uncertainty: heat removed",
-		xlabel = "Heat removed",
-		ylabel = "Count",
-		bins   = base.bins or 10,
-	})
-end, {
-	doc = "Run channel-fin UQ and plot a heat-removed histogram",
+	doc = "Run the Pareto scan and plot heat removed against pressure drop",
 })
 
 --
@@ -587,25 +529,7 @@ study:write("vtk", function(result, path)
 end, { doc = "Write Ux, Uy, p, T, and U vector to VTK" })
 
 --
--- Entry points
+-- Entry point
 --
-
-study:expose("show-summary", function()
-	local result = study:run()
-	local m = result.metrics
-	local x = result.x
-
-	print(string.format("Re            = %.6g", x.Re))
-	print(string.format("Pr            = %.6g", m.Pr))
-	print(string.format("delta_p       = %.8g", m.delta_p))
-	print(string.format("fin_flux      = %.8g", m.fin_flux))
-	print(string.format("heat_removed  = %.8g", m.heat_removed))
-	print(string.format("heat/delta_p  = %.8g", m.objective_hint))
-
-	return result
-end, "Run the default case and print pressure-drop and heat-removal metrics")
-
-print("Loaded channel-fin heat-transfer study.")
-print("Try (show-summary), (metrics), (write-metrics-table \"metrics.csv\"), or (write-vtk \"fin.vtk\").")
 
 return study:repl()

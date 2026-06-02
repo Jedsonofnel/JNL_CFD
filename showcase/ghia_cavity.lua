@@ -1,5 +1,5 @@
 -- showcase/ghia_cavity.lua - Lid-driven cavity validation against Ghia data
--- <jed@nelson.ac> // 2026-05-26
+-- <jed@nelson.ac> // 2026-05-29
 
 local FvmStudy = require("jnl.fvm.study")
 local canned   = require("jnl.fvm.canned")
@@ -10,8 +10,7 @@ local gpm      = require("jnl.gp.mesh")
 local vtk      = require("jnl.fvm.vtk")
 local P        = mesh2d.smesh.PATCH
 
-
-local study = FvmStudy.new("Validation: Ghia Lid-Driven Cavity")
+local study    = FvmStudy.new("Validation: Ghia Lid-Driven Cavity")
 
 study:about("Compares SIMPLE laminar Navier-Stokes cavity flow with Ghia et al. centreline velocity data.")
 
@@ -20,34 +19,35 @@ study:about("Compares SIMPLE laminar Navier-Stokes cavity flow with Ghia et al. 
 --
 
 study:design({
-	Re    = 3200,
+	Re    = 1000,
 	U_lid = 1.0,
 	rho   = 1.0,
 	L     = 1.0,
 })
 
 study:defaults({
-	N                = 80,
+	N                = 129,
 	tol              = 1e-6,
-	divu_tol         = 1e-8,
-	max_iters        = 3000,
+	divu_tol         = 1e-7,
+	max_iters        = 4000,
 	print_every      = 100,
 
-	linalg_tol       = 1e-4,
-	linalg_max_iters = 10,
+	linalg_tol       = 1e-5,
+	linalg_max_iters = 50,
 
-	scheme           = "uds",
-	alpha_u          = 0.5,
-	alpha_p          = 0.2,
+	scheme           = "cds",
+	alpha_u          = 0.3,
+	alpha_p          = 0.15,
 })
 
 --
 -- Ghia reference data
 --
 
-local Re_values = { 100, 400, 1000, 3200, 5000, 7500, 10000 }
-local Re_col = { [100] = 2, [400] = 3, [1000] = 4, [3200] = 5, [5000] = 6, [7500] = 7, [10000] = 8 }
+local Re_values    = { 100, 400, 1000, 3200, 5000, 7500, 10000 }
+local Re_col       = { [100] = 2, [400] = 3, [1000] = 4, [3200] = 5, [5000] = 6, [7500] = 7, [10000] = 8 }
 
+-- Ghia et al. (1982) Table 1: u at x=0.5
 local ghia_u_table = {
 	{ 1.0000, 1.00000,  1.00000,  1.00000,  1.00000,  1.00000,  1.00000,  1.00000 },
 	{ 0.9766, 0.84123,  0.75837,  0.65928,  0.53236,  0.48223,  0.47244,  0.47221 },
@@ -68,6 +68,7 @@ local ghia_u_table = {
 	{ 0.0000, 0.00000,  0.00000,  0.00000,  0.00000,  0.00000,  0.00000,  0.00000 },
 }
 
+-- Ghia et al. (1982) Table 2: v at y=0.5
 local ghia_v_table = {
 	{ 1.0000, 0.00000,  0.00000,  0.00000,  0.00000,  0.00000,  0.00000,  0.00000 },
 	{ 0.9688, -0.05906, -0.12146, -0.21388, -0.39017, -0.49774, -0.53858, -0.54302 },
@@ -97,25 +98,34 @@ local function allowed_re_string()
 end
 
 local function require_ghia_re(Re)
-	if Re_col[Re] then
-		return
+	if not Re_col[Re] then
+		error("Ghia validation Re must be one of: " .. allowed_re_string())
 	end
-	error("Ghia validation Re must be one of: " .. allowed_re_string())
 end
 
 local function ghia_profile(table_data, Re)
 	require_ghia_re(Re)
-
-	local col = Re_col[Re]
-	local coord, value = {}, {}
-
+	local col   = Re_col[Re]
+	local coord = {}
+	local value = {}
 	for i, row in ipairs(table_data) do
 		coord[i] = row[1]
 		value[i] = row[col]
 	end
-
 	return coord, value
 end
+
+--
+-- Sweep configuration
+--
+-- CDS is stable for Re<=1000 on 129x129; use UDS beyond that.
+-- Adjust these if experimenting with tighter relaxation.
+--
+
+local SWEEP_RE = { 100, 400, 1000 }
+
+-- Point symbols cycle; these match the Ghia paper style closely
+local SWEEP_PT = { 7, 5, 9, 13, 11 }
 
 --
 -- Builders
@@ -128,13 +138,12 @@ end)
 study:registry(function(design, opts)
 	require_ghia_re(design.Re)
 
-	local mu = design.rho * design.U_lid * design.L / design.Re
+	local mu  = design.rho * design.U_lid * design.L / design.Re
 	local reg = canned.reg_laminar_ns({
 		rho     = design.rho,
 		mu      = mu,
 		alpha_p = opts.alpha_p,
 		scheme  = opts.scheme,
-		alpha_u = opts.alpha_u,
 	})
 
 	reg:set_initial("Ux", 0.0)
@@ -150,9 +159,11 @@ study:algorithm(function(_, opts)
 		divu_tol    = opts.divu_tol,
 		max_iters   = opts.max_iters,
 		print_every = opts.print_every,
+		scheme      = opts.scheme,
+		alpha_u     = opts.alpha_u,
 	})
 
-	alg:set_linalg({
+	alg:main_linalg({
 		tol       = opts.linalg_tol,
 		max_iters = opts.linalg_max_iters,
 	})
@@ -198,53 +209,141 @@ local function extract_profiles(result)
 end
 
 local function u_figure(result)
-	local Re         = result.x.Re
-	local ghia_y, u  = ghia_profile(ghia_u_table, Re)
-	local next_color = gp.cycler()
+	local Re          = result.x.Re
+	local scheme      = result.opts.scheme
+	local ghia_y, u   = ghia_profile(ghia_u_table, Re)
+	local next_colour = gp.cycler()
+	local c           = next_colour()
 
 	return gp.figure({
-			title  = string.format("Lid-driven cavity: u at x=0.5, Re=%d", Re),
+			title  = string.format(
+				"Lid-driven cavity u(%s): x=0.5, Re=%d, N=%d, %s",
+				gp.sym.eta, Re, result.opts.N, scheme:upper()
+			),
 			xlabel = "u",
 			ylabel = "y",
 			key    = "bottom right",
 		})
 		:add(result.profiles.u.value, result.profiles.u.y, {
-			title = "JNL SIMPLE",
-			style = "points",
-			pt    = 7,
-			color = next_color(),
+			title  = "JNLCFD",
+			style  = "lines",
+			lw     = 2,
+			colour = c,
 		})
 		:add(u, ghia_y, {
-			title = "Ghia et al.",
-			style = "points",
-			pt    = 5,
-			color = next_color(),
+			title  = "Ghia et al.",
+			style  = "points",
+			pt     = 6,
+			ps     = 1.4,
+			colour = c,
 		})
 end
 
 local function v_figure(result)
-	local Re         = result.x.Re
-	local ghia_x, v  = ghia_profile(ghia_v_table, Re)
-	local next_color = gp.cycler()
+	local Re          = result.x.Re
+	local scheme      = result.opts.scheme
+	local ghia_x, v   = ghia_profile(ghia_v_table, Re)
+	local next_colour = gp.cycler()
+	local c           = next_colour()
 
 	return gp.figure({
-			title  = string.format("Lid-driven cavity: v at y=0.5, Re=%d", Re),
+			title  = string.format(
+				"Lid-driven cavity v(%s): y=0.5, Re=%d, N=%d, %s",
+				gp.sym.eta, Re, result.opts.N, scheme:upper()
+			),
 			xlabel = "x",
 			ylabel = "v",
 			key    = "bottom left",
 		})
 		:add(result.profiles.v.x, result.profiles.v.value, {
-			title = "JNL SIMPLE",
-			style = "points",
-			pt    = 7,
-			color = next_color(),
+			title  = "JNLCFD",
+			style  = "lines",
+			lw     = 2,
+			colour = c,
 		})
 		:add(ghia_x, v, {
-			title = "Ghia et al.",
-			style = "points",
-			pt    = 5,
-			color = next_color(),
+			title  = "Ghia et al.",
+			style  = "points",
+			pt     = 6,
+			ps     = 1.4,
+			colour = c,
 		})
+end
+
+--
+-- Sweep figures: all Re on one plot, lines=numerical, symbols=Ghia
+--
+
+local function sweep_u_figure(records)
+	local next_colour = gp.cycler()
+
+	local fig = gp.figure({
+		title  = "Lid-driven cavity: u at x=0.5 — Ghia et al. validation",
+		xlabel = "u",
+		ylabel = "y",
+		key    = "bottom right",
+	})
+
+	for i, record in ipairs(records) do
+		local Re             = record.x.Re
+		local c              = next_colour()
+		local pt             = SWEEP_PT[((i - 1) % #SWEEP_PT) + 1]
+		local label          = string.format("Re=%d", Re)
+		local ghia_y, ghia_u = ghia_profile(ghia_u_table, Re)
+
+		fig:add(record.profiles.u.value, record.profiles.u.y, {
+			title  = label .. " JNLCFD",
+			style  = "lines",
+			lw     = 2,
+			colour = c,
+		})
+
+		fig:add(ghia_u, ghia_y, {
+			title  = label .. " Ghia",
+			style  = "points",
+			pt     = pt,
+			ps     = 1.6,
+			colour = c,
+		})
+	end
+
+	return fig
+end
+
+local function sweep_v_figure(records)
+	local next_colour = gp.cycler()
+
+	local fig = gp.figure({
+		title  = "Lid-driven cavity: v at y=0.5 — Ghia et al. validation",
+		xlabel = "x",
+		ylabel = "v",
+		key    = "bottom left",
+	})
+
+	for i, record in ipairs(records) do
+		local Re             = record.x.Re
+		local c              = next_colour()
+		local pt             = SWEEP_PT[((i - 1) % #SWEEP_PT) + 1]
+		local label          = string.format("Re=%d", Re)
+		local ghia_x, ghia_v = ghia_profile(ghia_v_table, Re)
+
+		fig:add(record.profiles.v.x, record.profiles.v.value, {
+			title  = label .. " JNLCFD",
+			style  = "lines",
+			lw     = 2,
+			colour = c,
+		})
+
+		fig:add(ghia_x, ghia_v, {
+			title  = label .. " Ghia",
+			style  = "points",
+			pt     = pt,
+			ps     = 1.6,
+			colour = c,
+		})
+	end
+
+	return fig
 end
 
 --
@@ -254,15 +353,17 @@ end
 study:evaluate(function(design, opts)
 	require_ghia_re(design.Re)
 
-	local result = study:default_evaluate(design, opts)
+	local result    = study:default_evaluate(design, opts)
 	result.profiles = extract_profiles(result)
-	result.mu = design.rho * design.U_lid * design.L / design.Re
+	result.mu       = design.rho * design.U_lid * design.L / design.Re
+
+	study:cache_data("profiles", result.profiles)
 
 	return result
 end)
 
 --
--- Outputs and plots
+-- Outputs
 --
 
 study:output("profiles", function(result)
@@ -279,22 +380,197 @@ study:output("ghia-v", function(result)
 	return { x = x, v = v }
 end, "Return Ghia v profile at y=0.5")
 
-study:plot("u-profile", function(result)
-	u_figure(result):show()
-end, { doc = "Plot u velocity on vertical centreline against Ghia data" })
+--
+-- Single-Re figures
+--
 
-study:plot("v-profile", function(result)
-	v_figure(result):show()
-end, { doc = "Plot v velocity on horizontal centreline against Ghia data" })
+study:figure("u-profile", u_figure, {
+	doc = "Plot u velocity on vertical centreline against Ghia data",
+})
 
-study:plot("validation", function(result)
-	u_figure(result):show()
-	v_figure(result):show()
-	return result
-end, "Run cavity case and plot both Ghia centreline comparisons")
+study:figure("v-profile", v_figure, {
+	doc = "Plot v velocity on horizontal centreline against Ghia data",
+})
 
 --
--- Writes
+-- Sweep
+--
+
+local function run_re_sweep(s, base)
+	base = base or {}
+	local records = {}
+
+	for _, Re in ipairs(SWEEP_RE) do
+		local scheme = Re <= 1000 and "cds" or "uds"
+
+		local cache_record = s:ensure_record(s:with_base(base, {
+			Re      = Re,
+			scheme  = scheme,
+			heading = string.format("Re sweep: Re=%d (%s)", Re, scheme:upper()),
+		}))
+
+		local profiles = cache_record.data and cache_record.data.profiles
+		if not profiles then
+			error(string.format("no cached profiles for Re=%d; was cache_data called in evaluate?", Re))
+		end
+
+		records[#records + 1] = { x = cache_record.x, profiles = profiles }
+	end
+
+	s:keep("sweep-records", records)
+	return records
+end
+
+study:sweep("re-sweep", run_re_sweep, {
+	doc = "Run cavity at Re = " .. table.concat(
+		(function()
+			local t = {}
+			for _, Re in ipairs(SWEEP_RE) do t[#t + 1] = tostring(Re) end
+			return t
+		end)(), ", "
+	),
+})
+
+local function safe_fmt(v)
+	return type(v) == "number" and string.format("%.10g", v) or ""
+end
+
+local function write_sweep_csv(path, records, component)
+	local is_u      = component == "u"
+	local ref_table = is_u and ghia_u_table or ghia_v_table
+	local coord     = is_u and "y" or "x"
+	local val       = is_u and "u" or "v"
+
+	local f, err = io.open(path, "w")
+	if not f then error("write_sweep_csv: " .. err) end
+
+	local headers = {}
+	for _, record in ipairs(records) do
+		local re = record.x.Re
+		headers[#headers + 1] = string.format("%s_re%d_jnl",  coord, re)
+		headers[#headers + 1] = string.format("%s_re%d_jnl",  val,   re)
+		headers[#headers + 1] = string.format("%s_re%d_ghia", coord, re)
+		headers[#headers + 1] = string.format("%s_re%d_ghia", val,   re)
+	end
+	f:write(table.concat(headers, ",") .. "\n")
+
+	local nrows = 0
+	for _, record in ipairs(records) do
+		local prof   = record.profiles[component]
+		local gc, _  = ghia_profile(ref_table, record.x.Re)
+		local n      = math.max(#prof[coord], #gc)
+		if n > nrows then nrows = n end
+	end
+
+	for i = 1, nrows do
+		local row = {}
+		for _, record in ipairs(records) do
+			local prof    = record.profiles[component]
+			local gc, gv  = ghia_profile(ref_table, record.x.Re)
+			row[#row + 1] = safe_fmt(prof[coord][i])
+			row[#row + 1] = safe_fmt(prof.value[i])
+			row[#row + 1] = safe_fmt(gc[i])
+			row[#row + 1] = safe_fmt(gv[i])
+		end
+		f:write(table.concat(row, ",") .. "\n")
+	end
+
+	f:close()
+	print("Saved to " .. path)
+end
+
+study:figure_workflow("u-sweep", function(base, ctx)
+	base = base or {}
+	local records = study:kept("sweep-records") or run_re_sweep(study, base)
+	ctx:keep("records", records)
+	return sweep_u_figure(records)
+end, {
+	doc = "Run Re sweep and plot all u centreline profiles against Ghia data",
+	csv = function(path, base)
+		local records = study:kept("sweep-records") or run_re_sweep(study, base or {})
+		write_sweep_csv(path, records, "u")
+	end,
+})
+
+study:figure_workflow("v-sweep", function(base, ctx)
+	base = base or {}
+	local records = study:kept("sweep-records") or run_re_sweep(study, base)
+	ctx:keep("records", records)
+	return sweep_v_figure(records)
+end, {
+	doc = "Run Re sweep and plot all v centreline profiles against Ghia data",
+	csv = function(path, base)
+		local records = study:kept("sweep-records") or run_re_sweep(study, base or {})
+		write_sweep_csv(path, records, "v")
+	end,
+})
+
+--
+-- CSV export for external gnuplot iteration
+--
+
+study:write("sweep-u-csv", function(_, path)
+	local records = study:kept("re-sweep-records") or run_re_sweep(study, {})
+
+	local f, err = io.open(path, "w")
+	if not f then error("sweep-u-csv: " .. err) end
+
+	f:write("Re,y_numerical,u_numerical,y_ghia,u_ghia\n")
+
+	for _, record in ipairs(records) do
+		local Re = record.x.Re
+		local prof = record.result.profiles.u
+		local ghia_y, ghia_u = ghia_profile(ghia_u_table, Re)
+
+		local n = math.max(#prof.y, #ghia_y)
+		for i = 1, n do
+			f:write(string.format(
+				"%d,%.10g,%.10g,%.10g,%.10g\n",
+				Re,
+				prof.y[i] or "",
+				prof.value[i] or "",
+				ghia_y[i] or "",
+				ghia_u[i] or ""
+			))
+		end
+	end
+
+	f:close()
+	print("Saved to " .. path)
+end, { doc = "Write u sweep profiles to CSV for external gnuplot use" })
+
+study:write("sweep-v-csv", function(_, path)
+	local records = study:kept("re-sweep-records") or run_re_sweep(study, {})
+
+	local f, err = io.open(path, "w")
+	if not f then error("sweep-v-csv: " .. err) end
+
+	f:write("Re,x_numerical,v_numerical,x_ghia,v_ghia\n")
+
+	for _, record in ipairs(records) do
+		local Re = record.x.Re
+		local prof = record.result.profiles.v
+		local ghia_x, ghia_v = ghia_profile(ghia_v_table, Re)
+
+		local n = math.max(#prof.x, #ghia_x)
+		for i = 1, n do
+			f:write(string.format(
+				"%d,%.10g,%.10g,%.10g,%.10g\n",
+				Re,
+				prof.x[i] or "",
+				prof.value[i] or "",
+				ghia_x[i] or "",
+				ghia_v[i] or ""
+			))
+		end
+	end
+
+	f:close()
+	print("Saved to " .. path)
+end, { doc = "Write v sweep profiles to CSV for external gnuplot use" })
+
+--
+-- VTK
 --
 
 study:write("vtk", function(result, path)
@@ -308,16 +584,6 @@ study:write("vtk", function(result, path)
 	print("Saved to " .. path)
 end, { doc = "Write Ux, Uy, p, and U vector to VTK" })
 
-study:write("u-profile-png", function(result, path)
-	u_figure(result):save(path)
-	print("Saved to " .. path)
-end, { doc = "Save u centreline validation plot" })
-
-study:write("v-profile-png", function(result, path)
-	v_figure(result):save(path)
-	print("Saved to " .. path)
-end, { doc = "Save v centreline validation plot" })
-
 --
 -- Entry points
 --
@@ -327,7 +593,19 @@ study:expose("allowed-re", function()
 	return Re_values
 end, "Print allowed Ghia Reynolds numbers")
 
-print("Loaded Ghia cavity validation. Try (plot-validation), or (plot-validation {:Re 1000}).")
-print("Allowed Re values: " .. allowed_re_string())
+study:expose("plot-validation", function(arg)
+	local result = study:run(arg)
+	u_figure(result):show()
+	v_figure(result):show()
+	return result
+end, "Run cavity case and plot both Ghia centreline comparisons")
+
+print("Loaded Ghia cavity validation.")
+print("  (plot-validation)              — single Re (default Re=1000, CDS)")
+print("  (plot-validation {:Re 400})    — single Re override")
+print("  (plot-u-sweep)                 — all sweep Re on one u plot")
+print("  (plot-v-sweep)                 — all sweep Re on one v plot")
+print("  (write-sweep-u-csv \"u.csv\")    — dump profiles for external gnuplot")
+print("Allowed Re: " .. allowed_re_string())
 
 return study:repl()

@@ -856,6 +856,21 @@ function Study:cache_diag(name, value)
 	return self.current_record
 end
 
+function Study:cache_data(name, value)
+	if not self.current_record then
+		error("no current cache record")
+	end
+	self.current_record.data = self.current_record.data or {}
+	self.current_record.data[field_name(name)] = value
+	return self.current_record
+end
+
+function Study:cached_data(name, arg)
+	local record = self:cache_lookup_done(arg)
+	if not record then return nil end
+	return record.data and record.data[field_name(name)]
+end
+
 --
 -- Cache lookup/query
 --
@@ -1136,6 +1151,9 @@ function Study:figure_workflow(name, figure_fn, opts)
 	self.writers[#self.writers + 1] = {
 		name = workflow_name,
 		fn = function(arg, path)
+			if opts.csv and path:match("%.csv$") then
+				return opts.csv(path, resolve_arg(arg))
+			end
 			return build(arg):write(path, opts.write)
 		end,
 		doc = write_doc,
@@ -1593,6 +1611,10 @@ function Study:install(repl)
 			return self:cache_lookup_done(arg)
 		end, "Return completed scalar cache record for inputs, or nil if absent/incomplete")
 
+		repl:register("cached-data", function(name, arg)
+			return self:cached_data(name, arg)
+		end, "Return cached non-scalar data by name for the given design, or nil")
+
 		repl:register("ensure-record", function(arg)
 			return self:ensure_record(arg)
 		end, "Ensure completed scalar cache record exists; run if absent, skip if cached")
@@ -1880,6 +1902,16 @@ M._types = {
 				ret = "table",
 				doc = "Store scalar diagnostic fields in the current cache record",
 			},
+			cache_data = {
+				args = "name:string, value:any",
+				ret  = "table",
+				doc  = "Store arbitrary non-scalar data on the current cache record; not included in scalar queries",
+			},
+			cached_data = {
+				args = "name:string, arg:table?",
+				ret  = "any",
+				doc  = "Return cached non-scalar data by name for a completed record matching arg, or nil if absent",
+			},
 			cache_key = {
 				args = "design_overrides:table?",
 				ret = "string, table, table",
@@ -1943,14 +1975,16 @@ M._types = {
 			},
 			figure_workflow = {
 				args = "name:string, figure_fn:function(arg, ctx)->Figure, opts:table?",
-				ret = "Study",
-				doc =
+				ret  = "Study",
+				doc  =
 					"Register matching plot and writer helpers for a workflow figure. " ..
 					"Unlike figure(), the REPL argument is passed directly to figure_fn and result_or_run() is not called. " ..
 					"Plot calls remember their argument; write calls without an argument reuse the last workflow argument. " ..
 					"The figure function receives ctx as a second argument; call ctx:keep(key, value) to keep expensive " ..
 					"intermediate results as *workflow-key*. Use this for sweep, UQ, optimisation, or cache-backed figures. " ..
-					"opts: { doc, plot_doc, write_doc, write }",
+					"For .csv writes, if opts.csv is supplied it is called as csv(path, arg) instead of Figure:write_csv, " ..
+					"allowing custom column layouts such as per-Re headers. " ..
+					"opts: { doc, plot_doc, write_doc, write, csv }",
 			},
 			table = {
 				args = "name:string, table_fn:function(result)->table, opts:table?",
