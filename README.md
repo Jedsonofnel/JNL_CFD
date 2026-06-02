@@ -392,3 +392,9 @@ inside a study you can use:
 ```
 
 where available, to inspect the simulation setup before or after running it.
+
+## Licence
+
+The original JNLCFD code is MIT licensed. The repository also uses third-party
+components, including Triangle, which has its own non-commercial/research-use
+licence terms. See `LICENSE.md` for details.
