@@ -114,32 +114,32 @@ function FvmStudy:build_bcs(arg)
 end
 
 function FvmStudy:build_case(arg)
-	local x = self:design_opts(arg)
-
-	if self.case_fn then
-		return self.case_fn(x, self:opts(arg))
-	end
-
-	local mesh = self:build_mesh(x)
-	local reg = self:build_registry(x)
-	local alg = self:build_algorithm(x)
-	local bcs = self:build_bcs(x)
-
-	return Case.new(reg, alg, mesh, bcs)
-end
-
-function FvmStudy:build_case_with(design_overrides, option_overrides)
-	local x = self:design_opts(design_overrides)
-	local o = self:opts(option_overrides)
+	local x, o = self:input_record(arg)
 
 	if self.case_fn then
 		return self.case_fn(x, o)
 	end
 
 	local mesh = self.mesh_fn(x, o)
-	local reg = self.registry_fn(x, o)
-	local alg = self.algorithm_fn(x, o)
-	local bcs = self.bcs_fn and self.bcs_fn(x, o) or {}
+	local reg  = self.registry_fn(x, o)
+	local alg  = self.algorithm_fn(x, o)
+	local bcs  = self.bcs_fn and self.bcs_fn(x, o) or {}
+
+	return Case.new(reg, alg, mesh, bcs)
+end
+
+function FvmStudy:build_case_with(x, o)
+	x = x or {}
+	o = o or {}
+
+	if self.case_fn then
+		return self.case_fn(x, o)
+	end
+
+	local mesh = self.mesh_fn(x, o)
+	local reg  = self.registry_fn(x, o)
+	local alg  = self.algorithm_fn(x, o)
+	local bcs  = self.bcs_fn and self.bcs_fn(x, o) or {}
 
 	return Case.new(reg, alg, mesh, bcs)
 end
@@ -193,7 +193,10 @@ function FvmStudy:inspect_warnings(arg)
 end
 
 function FvmStudy:default_evaluate(x, opts)
-	local case = self:build_case(x)
+	x = x or {}
+	opts = opts or {}
+
+	local case = self:build_case_with(x, opts)
 	local sim = case:make_sim()
 
 	local all_opts = {}
