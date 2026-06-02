@@ -2968,6 +2968,10 @@ JNL API Reference
          sig: Study:cache() -> table
          doc: Return chronological scalar cache records. Each record has status:
               pending, done, diverged, or error; default queries only use done records.
+      Study:cache_data
+         sig: Study:cache_data(name:string, value:any) -> table
+         doc: Store arbitrary non-scalar data on the current cache record; not included
+              in scalar queries
       Study:cache_diag
          sig: Study:cache_diag(name:string|table, value:any?) -> table
          doc: Store scalar diagnostic fields in the current cache record
@@ -2993,6 +2997,10 @@ JNL API Reference
       Study:cache_update
          sig: Study:cache_update(fields:table) -> table
          doc: Merge scalar fields into the current cache record
+      Study:cached_data
+         sig: Study:cached_data(name:string, arg:table?) -> any
+         doc: Return cached non-scalar data by name for a completed record matching arg,
+              or nil if absent
       Study:check_bounds
          sig: Study:check_bounds(design:table) -> nil
          doc: Error if design variables fall outside registered bounds
@@ -3041,8 +3049,10 @@ JNL API Reference
               calls without an argument reuse the last workflow argument. The figure
               function receives ctx as a second argument; call ctx:keep(key, value) to
               keep expensive intermediate results as *workflow-key*. Use this for sweep,
-              UQ, optimisation, or cache-backed figures. opts: { doc, plot_doc,
-              write_doc, write }
+              UQ, optimisation, or cache-backed figures. For .csv writes, if opts.csv is
+              supplied it is called as csv(path, arg) instead of Figure:write_csv,
+              allowing custom column layouts such as per-Re headers. opts: { doc,
+              plot_doc, write_doc, write, csv }
       Study:input_record
          sig: Study:input_record(design_overrides:table?) -> table, table
          doc: Return design and options after applying defaults, overrides, and derived
