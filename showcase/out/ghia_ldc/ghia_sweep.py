@@ -80,13 +80,21 @@ def read_sweep(path, xcol, ycol):
     return [{"re": n, **data[n]} for n in sorted(re_numbers)]
 
 
-# ── Plot ──────────────────────────────────────────────────────
+# Plot
 def plot_sweep(
-    csv_path, xcol, ycol, xlabel, ylabel, title, out_stem, legend_loc="best"
+    csv_path,
+    xcol,
+    ycol,
+    xlabel,
+    ylabel,
+    title,
+    out_stem,
+    legend_loc="best",
+    legend_bbox=None,
 ):
     series = read_sweep(csv_path, xcol, ycol)
 
-    fig, ax = plt.subplots(figsize=(11.66, 7.28))  # 16:10, two-column A2
+    fig, ax = plt.subplots(figsize=(11.66, 7.28))
 
     for i, s in enumerate(series):
         colour = PALETTE[i % len(PALETTE)]
@@ -118,14 +126,19 @@ def plot_sweep(
     ax.set_ylabel(ylabel)
     ax.set_title(r"$\bf{" + title + r"}$")
 
-    ax.legend(
-        loc=legend_loc,
-        framealpha=0.9,
-        edgecolor="#cccccc",
-        handletextpad=0.6,
-        borderpad=0.7,
-        labelspacing=0.4,
-    )
+    legend_kwargs = {
+        "loc": legend_loc,
+        "framealpha": 0.9,
+        "edgecolor": "#cccccc",
+        "handletextpad": 0.6,
+        "borderpad": 0.7,
+        "labelspacing": 0.4,
+    }
+
+    if legend_bbox is not None:
+        legend_kwargs["bbox_to_anchor"] = legend_bbox
+
+    ax.legend(**legend_kwargs)
 
     ax.grid(True, color="#dddddd", linewidth=1.0, zorder=0)
     ax.spines["top"].set_visible(False)
@@ -158,7 +171,8 @@ sweeps = [
         ylabel=r"$v \,/\, U_\mathrm{lid}$",
         title=r"Lid\text{-}Driven\ Cavity\ -\ v\ Velocity\ Profile",
         out_stem="ghia_v_sweep",
-        legend_loc="lower right",
+        legend_loc="center left",
+        legend_bbox=(1.02, 0.5),
     ),
 ]
 
