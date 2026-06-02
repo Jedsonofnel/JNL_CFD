@@ -1,5 +1,5 @@
--- lua/couette.lua - Interactive Couette flow study: linear shear between parallel plates
--- <your@email.llm> // 2026-05-26
+-- lua/showcase/couette.lua - Couette flow validation against the analytical profile
+-- <jed@nelson.ac> // 2026-05-26
 
 local FvmStudy = require("jnl.fvm.study")
 local canned   = require("jnl.fvm.canned")
@@ -7,18 +7,16 @@ local mesh2d   = require("jnl.mesh2d")
 local BC       = require("jnl.fvm.bc")
 local gp       = require("jnl.gp")
 local gpm      = require("jnl.gp.mesh")
-local vtk      = require("jnl.fvm.vtk")
 local P        = mesh2d.smesh.PATCH
 
-local study    = FvmStudy.new("Couette Flow")
+local study    = FvmStudy.new("Validation: Couette Flow")
 
-study:about("Steady Couette flow: linear shear between two infinite parallel plates.")
+study:about("Validates steady Couette flow against the analytical linear velocity profile.")
 
 --
 -- Design and defaults
 --
 
--- design: physics/geometry variables suitable for sweeping or optimisation
 study:design({
 	U_wall = 1.0,
 	mu     = 1e-2,
@@ -27,11 +25,10 @@ study:design({
 	L      = 2.0,
 })
 
--- defaults: run configuration
 study:defaults({
-	Nx          = 10,
+	Nx          = 11,
 	Ny          = 40,
-	tol         = 1e-6,
+	tol         = 1e-8,
 	max_iters   = 2000,
 	print_every = 100,
 })
@@ -40,26 +37,29 @@ study:defaults({
 -- Builders
 --
 
-study:mesh(function(design, opts)
-	return mesh2d.new_smesh(design.L, design.H, opts.Nx, opts.Ny)
+study:mesh(function(d, o)
+	return mesh2d.new_smesh(d.L, d.H, o.Nx, o.Ny)
 end)
 
-study:registry(function(design, opts)
-	return canned.reg_stokes({ rho = design.rho, mu = design.mu })
-end)
-
-study:algorithm(function(design, opts)
-	return canned.alg_simple({
-		tol         = opts.tol,
-		max_iters   = opts.max_iters,
-		print_every = opts.print_every,
+study:registry(function(d, _)
+	return canned.reg_stokes({
+		rho = d.rho,
+		mu  = d.mu,
 	})
 end)
 
-study:bcs(function(design, opts)
+study:algorithm(function(_, o)
+	return canned.alg_simple({
+		tol         = o.tol,
+		max_iters   = o.max_iters,
+		print_every = o.print_every,
+	})
+end)
+
+study:bcs(function(d, _)
 	return {
 		Ux = {
-			BC.dirichlet(P.TOP, design.U_wall),
+			BC.dirichlet(P.TOP, d.U_wall),
 			BC.dirichlet(P.BOTTOM, 0.0),
 			BC.symmetry(P.LEFT),
 			BC.symmetry(P.RIGHT),
@@ -70,108 +70,122 @@ study:bcs(function(design, opts)
 			BC.symmetry(P.LEFT),
 			BC.symmetry(P.RIGHT),
 		},
-		p = { BC.neumann_all() },
+		p = {
+			BC.neumann_all(),
+		},
 	}
 end)
 
 --
--- Helpers
+-- Validation helpers
 --
 
-local function reynolds(design)
-	return design.rho * design.U_wall * design.H / design.mu
+local function reynolds(d)
+	return d.rho * d.U_wall * d.H / d.mu
 end
 
--- analytical Couette solution: u(y) = U_wall * y / H
-local function analytical(design)
-	local n, ys, us = 200, {}, {}
-	for k = 1, n do
-		local y = (k - 0.5) / n * design.H
-		ys[k]   = y
-		us[k]   = design.U_wall * y / design.H
+local function analytical_u(d, y)
+	return d.U_wall * y / d.H
+end
+
+local function analytical_profile(d)
+	local n  = 200
+	local ys = {}
+	local us = {}
+
+	for i = 1, n do
+		local y = (i - 0.5) / n * d.H
+
+		ys[i] = y
+		us[i] = analytical_u(d, y)
 	end
+
 	return ys, us
 end
 
-local function profile_figure(result)
-	local d            = result.x
-	local ana_y, ana_u = analytical(d)
-	local next_color   = gp.cycler()
-	return gp.figure({
-			title  = string.format("Couette flow   Re=%.1f   %s=%.4g",
-				result.Re, gp.sym.mu, d.mu),
-			xlabel = "U_x",
-			ylabel = "y",
-			key    = "bottom right",
-		})
-		:add(result.profile.u, result.profile.y, {
-			title = "Numerical (SIMPLE)",
-			style = "points",
-			pt    = 7,
-			color = next_color(),
-		})
-		:add(ana_u, ana_y, {
-			title = "Analytical (linear)",
-			style = "lines",
-			lw    = 2,
-			color = next_color(),
-		})
+local function extract_profile(result)
+	local d      = result.x
+	local o      = result.opts
+	local fields = result.fields()
+
+	local y, u   = gpm.line_profile(
+		result.mesh,
+		fields.Ux,
+		"x",
+		d.L / 2.0,
+		{ tol = d.L / o.Nx * 0.51 }
+	)
+
+	return {
+		y = y,
+		u = u,
+	}
 end
 
 --
 -- Evaluate
 --
 
-study:evaluate(function(design, opts)
-	local result = study:default_evaluate(design, opts)
-	local fields = result.fields()
+study:evaluate(function(d, o)
+	local result   = study:default_evaluate(d, o)
 
+	result.profile = extract_profile(result)
+	result.Re      = reynolds(d)
 
-	-- get profile from mesh
-	local prof_y, prof_u = gpm.line_profile(
-		result.mesh, fields.Ux, 'x', design.L / 2.0,
-		{ tol = design.L / opts.Nx * 0.6 }
-	)
-
-
-	result.profile = { y = prof_y, u = prof_u }
-	result.Re      = reynolds(design)
 	return result
 end)
 
 --
--- Plots
+-- Outputs
 --
 
-study:plot("profile", function(result)
-	profile_figure(result):show()
-end)
+study:output("profile", function(result)
+	return result.profile
+end, "Return the numerical centreline velocity profile")
+
+study:output("reynolds", function(result)
+	return result.Re
+end, "Return the Reynolds number based on wall speed and plate spacing")
 
 --
--- Writes
+-- Figure
 --
 
-study:write("vtk", function(result, path)
-	vtk.write(path, result.mesh,
-		{ Ux = result.fields.Ux, Uy = result.fields.Uy, p = result.fields.p },
-		{ U = { result.fields.Ux, result.fields.Uy } })
-end)
+local function comparison_figure(result)
+	local d            = result.x
+	local ana_y, ana_u = analytical_profile(d)
+	local next_colour  = gp.cycler()
 
-study:write("profile-csv", function(result, path)
-	local rows = { "y,Ux_numerical,Ux_analytical" }
-	for i, y in ipairs(result.profile.y) do
-		local u_ana = result.x.U_wall * y / result.x.H
-		rows[#rows + 1] = string.format("%.8g,%.8g,%.8g", y, result.profile.u[i], u_ana)
-	end
-	local f, err = io.open(path, "w")
-	if not f then error("profile-csv: " .. err) end
-	f:write(table.concat(rows, "\n") .. "\n")
-	f:close()
-	print(string.format("wrote %s (%d rows)", path, #result.profile.y))
-end)
+	return gp.figure({
+			title  = string.format(
+				"Couette flow validation   Re=%.1f   %s=%.4g",
+				result.Re,
+				gp.sym.mu,
+				d.mu
+			),
+			xlabel = "U_x",
+			ylabel = "y",
+			key    = "bottom right",
+		})
+		:add(result.profile.u, result.profile.y, {
+			title  = "Numerical",
+			style  = "points",
+			pt     = 7,
+			ps     = 1.2,
+			colour = next_colour(),
+		})
+		:add(ana_u, ana_y, {
+			title  = "Analytical",
+			style  = "lines",
+			lw     = 2,
+			colour = next_colour(),
+		})
+end
 
-study:write("profile-png", function(result, path)
-	profile_figure(result):save(path)
-end)
+study:figure("comparison", comparison_figure, {
+	doc = "Plot numerical Couette velocity profile against the analytical solution",
+})
+
+print("Loaded Couette validation. Try ,usage for available commands.")
 
 return study:repl()
