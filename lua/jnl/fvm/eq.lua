@@ -151,7 +151,7 @@ function Op.lap(...)
 		lap_gamma_schemes,
 		config.gamma_scheme or "linear",
 		"Op.lap gamma_scheme")
-	local non_ortho = config.non_ortho or false
+	local non_ortho = config.non_ortho or true
 
 	local phi_raw = to_field_name(table.remove(args), "Op.lap phi (last arg)")
 

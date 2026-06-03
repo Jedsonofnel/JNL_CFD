@@ -56,7 +56,7 @@ study:bounds({
 })
 
 study:defaults({
-	res                = 0.04,
+	res                = 0.02,
 	min_angle          = 28.0,
 
 	tol                = 1e-5,
