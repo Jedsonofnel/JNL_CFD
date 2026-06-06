@@ -7,9 +7,25 @@ local V = require("jnl.core.validation")
 -- Node: node of expression graph
 --
 
+---Expression graph node for the Nabla symbolic system.
+---All constructor functions return a Node; arithmetic operators are overloaded.
+---Nodes are immutable once constructed — all operations return new nodes.
+---@class Node
+---@field kind    string   Node kind tag. One of: "symbol"|"constant"|"cvec"|"neg"|
+---                        "add"|"sub"|"mul"|"div"|"scale"|"dot"|"matvec"|"matmul"|
+---                        "pow"|"component"|"outer", or an accessor kind registered
+---                        via nabla.register_accessor().
+---@field rank    integer  Tensor rank: 0 = scalar, 1 = vector, 2 = tensor.
+---@field name    string?  Declared symbol name, if any. Present on "symbol" and
+---                        named "constant"/"cvec" nodes.
+---@field a       Node?    First child (left operand, base of pow, operand of neg/component).
+---                        For "constant" kind, holds the numeric value directly.
+---@field b       Node?    Second child (right operand, exponent of pow, axis index of component).
 local Node = {}
 Node.__index = Node
 
+---Create a named or anonymous scalar constant node.
+---@return Node node rank-0 constant node
 local function new_const(...)
 	local args = { ... }
 
@@ -39,6 +55,9 @@ local function new_const(...)
 	end
 end
 
+---Create a scalar symbol node.
+---@param name string
+---@return Node node rank-0 symbol node.
 local function new_scalar(name)
 	V.identifier(name, "new_scalar name")
 	return setmetatable({
@@ -48,6 +67,10 @@ local function new_scalar(name)
 	}, Node)
 end
 
+
+---Create a vector symbol node.
+---@param name string
+---@return Node node rank-1 symbol node.
 local function new_vector(name)
 	V.identifier(name, "new_vector name")
 	return setmetatable({
@@ -57,6 +80,10 @@ local function new_vector(name)
 	}, Node)
 end
 
+---Create a tensor symbol node.
+---@param name string
+---@param rank? integer  Default 2.
+---@return Node
 local function new_tensor(name, rank)
 	rank = rank or 2
 	V.field_name(name, "new_tensor name")
@@ -67,10 +94,16 @@ local function new_tensor(name, rank)
 	}, Node)
 end
 
+---Return true iff value is a Node.
+---@param value any
+---@return boolean
 local function is_node(value)
 	return getmetatable(value) == Node
 end
 
+---Coerce a number or existing Node to a Node.
+---Raises an error for any other type.
+---@return Node
 local function to_node(value)
 	if is_node(value) then return value end
 
@@ -97,26 +130,32 @@ Node.is_node = is_node
 -- Helper methods
 --
 
+
+---Return true if this is a leaf node (symbol, constant, or cvec).
+---@return boolean
 function Node:is_leaf()
 	return self.kind == "symbol" or self.kind == "constant" or self.kind == "cvec"
 end
 
 function Node:is_zero()
-    return self.kind == "constant" and self.a == 0 and not self.name
+	return self.kind == "constant" and self.a == 0 and not self.name
 end
 
 function Node:is_one()
-    return self.kind == "constant" and self.a == 1 and not self.name
+	return self.kind == "constant" and self.a == 1 and not self.name
 end
 
 function Node:is_minus_one()
-    return self.kind == "constant" and self.a == -1 and not self.name
+	return self.kind == "constant" and self.a == -1 and not self.name
 end
 
 function Node:is_anon_const()
 	return self.kind == "constant" and not self.name
 end
 
+---Return true if this node's tensor rank equals n.
+---@param n integer
+---@return boolean
 function Node:is_rank(n)
 	return self.rank == n
 end
@@ -133,7 +172,6 @@ function Node:is_tensor()
 	return self.rank == 2
 end
 
--- for walking through nodes
 local function flatten(node, kind)
 	if node:is_leaf() then return { node } end
 	if node.kind ~= kind then return { node } end
@@ -145,6 +183,10 @@ local function flatten(node, kind)
 	return terms
 end
 
+---Flatten all child nodes of the given kind into a flat list.
+---Useful for printing and analysis passes.
+---@param kind string
+---@return Node[]
 function Node:flatten(kind)
 	return flatten(self, kind)
 end
@@ -163,12 +205,17 @@ end
 -- forward declaration required
 local negate, exponentiate, add_binary, subtract_binary, multiply_binary, divide_binary
 
+---Negate this node. Equivalent to -node.
+---@return Node
 negate = function(node)
 	node = to_node(node)
 	if node:is_zero() then return node end
 	return setmetatable({ kind = "neg", a = node, rank = node.rank }, Node)
 end
 
+---Raise this rank-0 node to a power.
+---@param pow Node|number
+---@return Node
 exponentiate = function(base, pow)
 	base = to_node(base)
 	pow = to_node(pow)
@@ -288,6 +335,9 @@ end
 -- Variadic wrappers
 --
 
+---Add one or more nodes to this node.
+---@param  ... Node|number
+---@return Node
 local function add(...)
 	local args = { ... }
 	if #args == 0 then return new_const(0) end
@@ -298,6 +348,9 @@ local function add(...)
 	return result
 end
 
+---Subtract one or more nodes from this node.
+---@param  ... Node|number
+---@return Node
 local function subtract(...)
 	local args = { ... }
 	if #args == 0 then return new_const(0) end
@@ -308,6 +361,11 @@ local function subtract(...)
 	return result
 end
 
+---Multiply this node by one or more nodes.
+---Rank rules: scalar×scalar→scalar, scalar×vector→scale (vector),
+---vector×vector→dot (scalar), tensor×vector→matvec (vector).
+---@param  ... Node|number
+---@return Node
 local function multiply(...)
 	local args = { ... }
 	if #args == 0 then return new_const(1) end
@@ -318,6 +376,9 @@ local function multiply(...)
 	return result
 end
 
+---Divide this node by another (both must be rank-0).
+---@param  ... Node|number
+---@return Node
 local function divide(...)
 	local args = { ... }
 	if #args == 0 then return new_const(1) end
@@ -376,10 +437,6 @@ function Node:divide(...)
 	return divide(self, ...)
 end
 
-function Node:div(...)
-	return divide(self, ...)
-end
-
 function Node:__div(...)
 	return divide(self, ...)
 end
@@ -412,10 +469,72 @@ local function component(node, axis)
 	}, Node)
 end
 
+---Return the x component of a rank>=1 node as a rank-(self.rank-1) node.
+---@return Node
 function Node:x() return component(self, "x") end
 
+---Return the y component of a rank>=1 node as a rank-(self.rank-1) node.
+---@return Node
 function Node:y() return component(self, "y") end
 
+---Return the z component of a rank>=1 node as a rank-(self.rank-1) node.
+---@return Node
 function Node:z() return component(self, "z") end
+
+--
+-- Scratch depth
+--
+
+local function scratch_depth(node)
+	if not node or not Node.is_node(node) then return 0 end
+	local k = node.kind
+
+	-- leaves and accessor nodes (unknown kinds): array reference, zero scratch
+	if node:is_leaf() then return 0 end
+
+	-- unary
+	if k == "neg" then return scratch_depth(node.a) end
+
+	-- binary scalar / mixed-rank ops that produce a scalar result
+	if k == "add" or k == "sub" or k == "mul" or k == "div"
+		or k == "scale" or k == "pow" or k == "dot" then
+		local da, db = scratch_depth(node.a), scratch_depth(node.b)
+		if da >= db then
+			return math.max(da, db + 1) + 1
+		else
+			return math.max(db, da + 1) + 1
+		end
+	end
+
+	if k == "component" then return scratch_depth(node.a) end
+
+	if k == "matvec" or k == "matmul" or k == "outer" then
+		return math.max(scratch_depth(node.a), scratch_depth(node.b)) + 1
+	end
+
+	if node._scratch_depth ~= nil then return node._scratch_depth end
+	return 0
+end
+
+---Return the number of scratch buffers needed to evaluate this node,
+---using the Sethi-Ullman register allocation algorithm.
+---@return integer
+function Node:scratch_depth()
+	return scratch_depth(self)
+end
+
+--
+-- Installation helper
+--
+
+---Install cross-module extensions into the Node metatable.
+---Called exactly once by nabla/init.lua after all modules are loaded.
+---Bypasses any __newindex guard via rawset.
+---@param extensions table<string, any>
+function Node.install(extensions)
+	for k, v in pairs(extensions) do
+		rawset(Node, k, v)
+	end
+end
 
 return Node

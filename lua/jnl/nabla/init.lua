@@ -1,47 +1,49 @@
 -- jnl/nabla/init.lua - Nabla library entrypoint
 
-local Node      = require("jnl.nabla.node")
-local ops       = require("jnl.nabla.ops")
-local pretty    = require("jnl.nabla.pretty")
-local simplify  = require("jnl.nabla.simplify")
-local Eq        = require("jnl.nabla.equation")
-local Acc       = require("jnl.nabla.accessor")
-local Mangle    = require("jnl.nabla.mangle")
-local Registry  = require("jnl.nabla.registry")
-local resolve   = require("jnl.nabla.resolve")
+local Node = require("jnl.nabla.node")
+local ops = require("jnl.nabla.ops")
+local pretty = require("jnl.nabla.pretty")
+local simplify = require("jnl.nabla.simplify")
+local resolve = require("jnl.nabla.resolve")
+local Eq = require("jnl.nabla.equation")
+local Acc = require("jnl.nabla.accessor")
+local Mangle = require("jnl.nabla.mangle")
+local Reg = require("jnl.nabla.registry")
+local Alg = require("jnl.nabla.algorithm")
+local Eval = require("jnl.nabla.eval")
 
--- Node tensorial operators
-Node.outer      = ops.outer
-Node.cross      = ops.cross
-Node.dot        = ops.dot
-Node.ddot       = ops.ddot
-Node.symm       = ops.symm
-Node.skew       = ops.skew
-Node.dev        = ops.dev
-Node.trace      = ops.trace
-Node.transpose  = ops.transpose
-Node.T          = ops.transpose
-Node.mag        = ops.mag
-Node.inv        = ops.inv
+Node.install({
+	-- tensorial operators
+	outer      = ops.outer,
+	cross      = ops.cross,
+	dot        = ops.dot,
+	ddot       = ops.ddot,
+	symm       = ops.symm,
+	skew       = ops.skew,
+	dev        = ops.dev,
+	trace      = ops.trace,
+	transpose  = ops.transpose,
+	T          = ops.transpose,
+	mag        = ops.mag,
+	inv        = ops.inv,
 
--- Node differntial operators
-Node.grad       = ops.grad
-Node.div        = ops.div
-Node.laplacian  = ops.laplacian
-Node.lap        = ops.laplacian
-Node.ddt        = ops.ddt
-Node.curl       = ops.curl
+	-- differential operators
+	grad       = ops.grad,
+	div        = ops.div,
+	laplacian  = ops.laplacian,
+	lap        = ops.laplacian,
+	ddt        = ops.ddt,
+	curl       = ops.curl,
 
--- node cross-module methods
-Node.__tostring = pretty
-Node.equals     = function(self, rhs) return Eq.new(self, rhs) end
-Node.__concat   = ops.ddot
-Node.__pow      = ops.pow_dispatch
-
-function Node:simplify(retain_named)
-	local opts = { retain_named = retain_named ~= false } -- nil -> true
-	return simplify(self, opts)
-end
+	-- cross-module
+	__tostring = pretty,
+	__concat   = ops.ddot,
+	__pow      = ops.pow_dispatch,
+	equals     = function(self, rhs) return Eq.new(self, rhs) end,
+	simplify   = function(self, retain_named)
+		return simplify(self, { retain_named = retain_named ~= false })
+	end,
+})
 
 -- install resolve
 resolve.install(Node, Eq)
@@ -74,11 +76,18 @@ local Nabla = setmetatable({
 	trace = ops.trace,
 	transpose = ops.transpose,
 	mag = ops.mag,
-	inv = ops.inv
+	inv = ops.inv,
+
+	-- algorithm
+	Algorithm = Alg,
+	new_algorithm = Alg.new,
+	-- eval
+	Eval = Eval,
 }, {
 	__call = function(_, ...) return ops.grad(...) end
 })
 
+Nabla.Node = Node
 
 -- Accessor relaying
 Nabla.DEP_MATRIX = Acc.DEP_MATRIX
@@ -97,7 +106,7 @@ Nabla.mangle_grad = Mangle.grad
 
 -- Registry
 Nabla.new_registry = function(label)
-	return Registry.new(label)
+	return Reg.new(label)
 end
 
 return Nabla
