@@ -3,7 +3,7 @@
 #include <math.h>
 #include <string.h>
 
-#include "geo2d.h"
+#include "pslg2d.h"
 #include "jnl/common.h"
 #include "jnl/arena.h"
 
@@ -116,7 +116,7 @@ u32 jnl_node_array_add_v(struct jnl_node_array *ns, jnl_vec2d v, i32 marker)
 i32 jnl_node_array_find_nearest(const struct jnl_node_array *ns, f64 x, f64 y)
 {
 	if (ns->len == 0) {
-		return GEO_NOT_FOUND;
+		return PSLG_NOT_FOUND;
 	} else if (ns->len == 1) {
 		return 0; // ie the index of the first
 	}
@@ -152,7 +152,7 @@ u32 jnl_node_array_find_or_add(struct jnl_node_array *ns, f64 x, f64 y,
                                i32 marker, f64 eps)
 {
 	i32 idx = jnl_node_array_find_nearest(ns, x, y);
-	if (idx >= GEO_OK) {
+	if (idx >= PSLG_OK) {
 		jnl_vec2d out;
 		jnl_node_array_get(ns, (u32)idx, &out);
 		f64 dx = out.x - x, dy = out.y - y;
@@ -174,12 +174,12 @@ i32 jnl_node_array_get(const struct jnl_node_array *ns, u32 index,
                        jnl_vec2d *out)
 {
 	if (index >= ns->len) {
-		return GEO_OOB;
+		return PSLG_OOB;
 	}
 
 	*out = ns->coords[index];
 
-	return GEO_OK;
+	return PSLG_OK;
 }
 
 struct jnl_aabb jnl_node_array_bbox(const struct jnl_node_array *ns)

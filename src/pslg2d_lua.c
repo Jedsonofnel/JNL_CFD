@@ -1,5 +1,5 @@
 #include "lua_bindings.h"
-#include "geo2d.h"
+#include "pslg2d.h"
 
 //
 // PSLG API
@@ -53,7 +53,7 @@ static int l_pslg_node_get(lua_State *L)
 	struct jnl_pslg *g = check_pslg(L, 1);
 	u32 idx = (u32)luaL_checkinteger(L, 2);
 	jnl_vec2d v;
-	if (jnl_pslg_node_get(g, idx, &v) != GEO_OK) {
+	if (jnl_pslg_node_get(g, idx, &v) != PSLG_OK) {
 		lua_pushnil(L);
 		return 1;
 	}
@@ -69,7 +69,7 @@ static int l_pslg_node_find_nearest(lua_State *L)
 	f64 x = luaL_checknumber(L, 2);
 	f64 y = luaL_checknumber(L, 3);
 	i32 idx = jnl_pslg_node_find_nearest(g, x, y);
-	if (idx == GEO_NOT_FOUND) {
+	if (idx == PSLG_NOT_FOUND) {
 		lua_pushnil(L);
 		return 1;
 	}
@@ -164,7 +164,7 @@ static const luaL_Reg pslg_methods[] = {
 
 static const luaL_Reg geo2d_funcs[] = {{"pslg_new", l_pslg_new}, {NULL, NULL}};
 
-int luaopen_geo2d_internal(lua_State *L)
+int luaopen_pslg2d_internal(lua_State *L)
 {
 	// Create the metatable and populate it
 	luaL_newmetatable(L, PSLG_MT);

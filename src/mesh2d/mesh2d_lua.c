@@ -418,8 +418,8 @@ static int l_triangulate(lua_State *L)
 	spec.opts = s->opts;
 	spec.tags = s->tags; /* shallow -- tags owns its own heap */
 
-	struct jnl_mesh *mesh = NULL;
-	enum jnl_mesh_err err = jnl_mesh2d_from_pslg_tri(g, &spec, &mesh);
+	pmsh2d *mesh = NULL;
+	enum jnl_mesh_err err = jnl_trimesh2d_from_pslg(g, &spec, &mesh);
 
 	if (err != JNL_MESH_OK) {
 		lua_pushnil(L);
@@ -427,7 +427,7 @@ static int l_triangulate(lua_State *L)
 		return 2;
 	}
 
-	struct jnl_mesh **mp = lua_newuserdata(L, sizeof(*mp));
+	pmsh2d **mp = lua_newuserdata(L, sizeof(*mp));
 	*mp = mesh;
 	luaL_setmetatable(L, MESH_MT);
 	lua_pushstring(L, "ok");

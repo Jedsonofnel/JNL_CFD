@@ -1,7 +1,7 @@
 #ifndef JNL_UI_H
 #define JNL_UI_H
 
-#include "geo2d.h"
+#include "pslg2d.h"
 #include "mesh2d.h"
 
 typedef struct jnl_ui_handle jnl_ui_handle;

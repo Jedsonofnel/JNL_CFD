@@ -79,7 +79,7 @@ int luaopen_expr_internal(lua_State *L);
 int luaopen_scratch_internal(lua_State *L);
 int luaopen_vtk_internal(lua_State *L);
 
-int luaopen_geo2d_internal(lua_State *L);
+int luaopen_pslg2d_internal(lua_State *L);
 int luaopen_mesh2d_internal(lua_State *L);
 int luaopen_ui_internal(lua_State *L);
 int luaopen_fvm_internal(lua_State *L);
@@ -102,7 +102,7 @@ static inline void register_preloaders(lua_State *L)
 	lua_pushcfunction(L, luaopen_vtk_internal);
 	lua_setfield(L, -2, "jnl.vtk_internal");
 
-	lua_pushcfunction(L, luaopen_geo2d_internal);
+	lua_pushcfunction(L, luaopen_pslg2d_internal);
 	lua_setfield(L, -2, "jnl.geo2d_internal");
 
 	lua_pushcfunction(L, luaopen_ui_internal);

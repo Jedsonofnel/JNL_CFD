@@ -11,7 +11,7 @@
 
 #include <raylib.h>
 
-#include "geo2d.h"
+#include "pslg2d.h"
 #include "mesh2d.h"
 #include "jnl/arena.h"
 #include "jnl/common.h"
