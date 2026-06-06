@@ -30,7 +30,7 @@ study:defaults({
 --
 
 study:mesh(function(_, o)
-	return mesh2d.new_smesh(1.0, 0.1, o.nx, 1)
+	return mesh2d.new_cartmesh(1.0, 0.1, o.nx, 1)
 end)
 
 --

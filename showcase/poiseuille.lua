@@ -40,7 +40,7 @@ study:defaults({
 --
 
 study:mesh(function(d, o)
-	return mesh2d.new_smesh(d.L, d.H, o.Nx, o.Ny)
+	return mesh2d.new_cartmesh(d.L, d.H, o.Nx, o.Ny)
 end)
 
 study:registry(function(d, _)

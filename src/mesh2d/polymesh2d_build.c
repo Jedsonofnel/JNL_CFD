@@ -8,20 +8,32 @@
 // Local helpers
 //
 
-static void *xcalloc(size_t n, size_t size)
+static void *xcalloc_i32(i32 n, size_t size)
 {
+	if (n < 0)
+		return NULL;
+
 	if (n == 0 || size == 0)
 		return NULL;
 
-	return calloc(n, size);
-}
-
-static void *xmalloc(size_t size)
-{
-	if (size == 0)
+	if ((size_t)n > SIZE_MAX / size)
 		return NULL;
 
-	return malloc(size);
+	return calloc((size_t)n, size);
+}
+
+static void *xmalloc_array_i32(i32 n, size_t size)
+{
+	if (n < 0)
+		return NULL;
+
+	if (n == 0 || size == 0)
+		return NULL;
+
+	if ((size_t)n > SIZE_MAX / size)
+		return NULL;
+
+	return malloc((size_t)n * size);
 }
 
 static void copy_name(char dst[JNL_PMSH2D_NAME_CAP], const char *src)
@@ -130,7 +142,7 @@ alloc_marker_map(struct jnl_pmsh2d_marker_map *map,
 	if (n == 0)
 		return JNL_MESH_OK;
 
-	map->data = xcalloc((size_t)n, sizeof(*map->data));
+	map->data = xcalloc_i32(n, sizeof(*map->data));
 	if (!map->data)
 		return JNL_MESH_ERR_ALLOC;
 
@@ -387,11 +399,11 @@ enum jnl_mesh_err jnl_pmsh2d_build_canonical_cells(struct jnl_pmsh2d_build *b)
 
 	b->n_real_cells = desc->n_cells;
 
-	b->cell_perm = xcalloc((size_t)b->n_real_cells, sizeof(*b->cell_perm));
+	b->cell_perm = xcalloc_i32(b->n_real_cells, sizeof(*b->cell_perm));
 	b->old_to_new_cell =
-	    xcalloc((size_t)b->n_real_cells, sizeof(*b->old_to_new_cell));
+	    xcalloc_i32(b->n_real_cells, sizeof(*b->old_to_new_cell));
 	b->new_to_old_cell =
-	    xcalloc((size_t)b->n_real_cells, sizeof(*b->new_to_old_cell));
+	    xcalloc_i32(b->n_real_cells, sizeof(*b->new_to_old_cell));
 
 	if (!b->cell_perm || !b->old_to_new_cell || !b->new_to_old_cell)
 		return JNL_MESH_ERR_ALLOC;
@@ -426,14 +438,14 @@ enum jnl_mesh_err jnl_pmsh2d_build_canonical_cells(struct jnl_pmsh2d_build *b)
 		b->n_cell_vertex_entries += cell_nverts_desc(desc, old_c);
 	}
 
-	b->canon_cell_vertex_start = xcalloc((size_t)b->n_real_cells + 1,
-	                                     sizeof(*b->canon_cell_vertex_start));
-	b->canon_cell_vertex_list = xmalloc(sizeof(*b->canon_cell_vertex_list) *
-	                                    (size_t)b->n_cell_vertex_entries);
+	b->canon_cell_vertex_start =
+	    xcalloc_i32(b->n_real_cells + 1, sizeof(*b->canon_cell_vertex_start));
+	b->canon_cell_vertex_list = xmalloc_array_i32(
+	    b->n_cell_vertex_entries, sizeof(*b->canon_cell_vertex_list));
 	b->canon_cell_marker =
-	    xcalloc((size_t)b->n_real_cells, sizeof(*b->canon_cell_marker));
+	    xcalloc_i32(b->n_real_cells, sizeof(*b->canon_cell_marker));
 	b->canon_cell_region =
-	    xcalloc((size_t)b->n_real_cells, sizeof(*b->canon_cell_region));
+	    xcalloc_i32(b->n_real_cells, sizeof(*b->canon_cell_region));
 
 	if (!b->canon_cell_vertex_start || !b->canon_cell_vertex_list ||
 	    !b->canon_cell_marker || !b->canon_cell_region)
@@ -473,7 +485,7 @@ enum jnl_mesh_err jnl_pmsh2d_build_cell_edges(struct jnl_pmsh2d_build *b)
 	if (b->n_cell_edges <= 0)
 		return JNL_MESH_ERR_INVALID_INPUT;
 
-	b->cell_edges = xcalloc((size_t)b->n_cell_edges, sizeof(*b->cell_edges));
+	b->cell_edges = xcalloc_i32(b->n_cell_edges, sizeof(*b->cell_edges));
 	if (!b->cell_edges)
 		return JNL_MESH_ERR_ALLOC;
 
@@ -530,7 +542,7 @@ enum jnl_mesh_err jnl_pmsh2d_build_unique_edges(struct jnl_pmsh2d_build *b)
 		i = j;
 	}
 
-	b->edges = xcalloc((size_t)n_unique, sizeof(*b->edges));
+	b->edges = xcalloc_i32(n_unique, sizeof(*b->edges));
 	if (!b->edges)
 		return JNL_MESH_ERR_ALLOC;
 
@@ -1000,7 +1012,7 @@ jnl_pmsh2d_fill_patches_and_baffles(struct jnl_pmsh2d_build *b)
 	}
 
 	b->baffle_pair_cursor =
-	    xcalloc((size_t)m->baffles.n_baffles, sizeof(*b->baffle_pair_cursor));
+	    xcalloc_i32(m->baffles.n_baffles, sizeof(*b->baffle_pair_cursor));
 	if (m->baffles.n_baffles > 0 && !b->baffle_pair_cursor)
 		return JNL_MESH_ERR_ALLOC;
 
@@ -1092,8 +1104,8 @@ enum jnl_mesh_err jnl_pmsh2d_fill_faces(struct jnl_pmsh2d_build *b)
 enum jnl_mesh_err jnl_pmsh2d_build_cell_face_csr(struct jnl_pmsh2d_build *b)
 {
 	struct jnl_pmsh2d_topo *t = &b->mesh->topo;
-	i32 *counts = xcalloc((size_t)t->n_cells, sizeof(*counts));
-	i32 *cursor = xcalloc((size_t)t->n_cells, sizeof(*cursor));
+	i32 *counts = xcalloc_i32(t->n_cells, sizeof(*counts));
+	i32 *cursor = xcalloc_i32(t->n_cells, sizeof(*cursor));
 
 	if (!counts || !cursor) {
 		free(counts);

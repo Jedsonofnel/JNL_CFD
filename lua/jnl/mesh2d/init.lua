@@ -13,8 +13,8 @@ M._api = {
 	patch_name_list = { args = "mesh:Mesh", ret = "table", doc = "Ordered array of patch name strings" },
 }
 
-function M.new_smesh(width, height, nx, ny)
-	return mesh2d_internal.smesh_gen(width, height, nx, ny)
+function M.new_cartmesh(width, height, nx, ny)
+	return mesh2d_internal.cartmesh_gen(width, height, nx, ny)
 end
 
 M.smesh = require("jnl.mesh2d.smesh")

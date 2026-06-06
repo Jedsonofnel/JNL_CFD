@@ -47,6 +47,21 @@ static int push_mesh_err(lua_State *L, enum jnl_mesh_err err)
 	case JNL_MESH_OK:
 		lua_pushstring(L, "ok");
 		break;
+	case JNL_MESH_ERR_ALLOC:
+		lua_pushstring(L, "alloc");
+		break;
+	case JNL_MESH_ERR_INVALID_INPUT:
+		lua_pushstring(L, "invalid_input");
+		break;
+	case JNL_MESH_ERR_UNSUPPORTED:
+		lua_pushstring(L, "unsupported");
+		break;
+	case JNL_MESH_ERR_INTERNAL:
+		lua_pushstring(L, "internal");
+		break;
+	case JNL_MESH_ERR_IMPORT_FAILED:
+		lua_pushstring(L, "import_failed");
+		break;
 	case JNL_MESH_ERR_UNKNOWN_PATCH:
 		lua_pushstring(L, "unknown_patch");
 		break;
@@ -56,20 +71,35 @@ static int push_mesh_err(lua_State *L, enum jnl_mesh_err err)
 	case JNL_MESH_ERR_UNKNOWN_REGION:
 		lua_pushstring(L, "unknown_region");
 		break;
-	case JNL_MESH_ERR_ALLOC:
-		lua_pushstring(L, "alloc");
-		break;
-	case JNL_MESH_ERR_INVALID_INPUT:
-		lua_pushstring(L, "invalid_input");
-		break;
-	case JNL_MESH_ERR_TRIANGLE_FAILED:
-		lua_pushstring(L, "triangle_failed");
-		break;
-	case JNL_MESH_ERR_INVALID_BAFFLE:
-		lua_pushstring(L, "invalid_baffle");
-		break;
 	case JNL_MESH_ERR_DUPLICATE_MARKER:
 		lua_pushstring(L, "duplicate_marker");
+		break;
+	case JNL_MESH_ERR_UNLABELLED_BOUNDARY:
+		lua_pushstring(L, "unlabelled_boundary");
+		break;
+	case JNL_MESH_ERR_EDGE_NOT_FOUND:
+		lua_pushstring(L, "edge_not_found");
+		break;
+	case JNL_MESH_ERR_DUPLICATE_EDGE_LABEL:
+		lua_pushstring(L, "duplicate_edge_label");
+		break;
+	case JNL_MESH_ERR_NONMANIFOLD_EDGE:
+		lua_pushstring(L, "nonmanifold_edge");
+		break;
+	case JNL_MESH_ERR_INVALID_BOUNDARY_EDGE:
+		lua_pushstring(L, "invalid_boundary_edge");
+		break;
+	case JNL_MESH_ERR_INVALID_BAFFLE_EDGE:
+		lua_pushstring(L, "invalid_baffle_edge");
+		break;
+	case JNL_MESH_ERR_DEGENERATE_CELL:
+		lua_pushstring(L, "degenerate_cell");
+		break;
+	case JNL_MESH_ERR_DEGENERATE_FACE:
+		lua_pushstring(L, "degenerate_face");
+		break;
+	case JNL_MESH_ERR_INVALID_ORIENTATION:
+		lua_pushstring(L, "invalid_orientation");
 		break;
 	default:
 		lua_pushstring(L, "unknown_error");
@@ -438,29 +468,42 @@ static int l_triangulate(lua_State *L)
 // Mesh API
 //
 
-static struct jnl_mesh *check_mesh(lua_State *L, int idx)
+static pmsh2d *check_mesh(lua_State *L, int idx)
 {
-	return *(struct jnl_mesh **)luaL_checkudata(L, idx, MESH_MT);
+	return *(pmsh2d **)luaL_checkudata(L, idx, MESH_MT);
 }
 
-static int l_smesh_gen(lua_State *L)
+static int l_cartmesh_gen(lua_State *L)
 {
-	f64 width = luaL_checknumber(L, 1);
-	f64 height = luaL_checknumber(L, 2);
-	i32 nx = (i32)luaL_checkinteger(L, 3);
-	i32 ny = (i32)luaL_checkinteger(L, 4);
+	struct jnl_cartmesh2d_opts opts = jnl_cartmesh2d_opts_default();
 
-	struct jnl_mesh **mesh = lua_newuserdata(L, sizeof(struct jnl_mesh *));
-	*mesh = jnl_smesh_gen(width, height, nx, ny);
+	opts.width = luaL_checknumber(L, 1);
+	opts.height = luaL_checknumber(L, 2);
+	opts.nx = (u32)luaL_checkinteger(L, 3);
+	opts.ny = (u32)luaL_checkinteger(L, 4);
+
+	pmsh2d *mesh = NULL;
+	enum jnl_mesh_err err = jnl_cartmesh2d_build(&opts, &mesh);
+
+	if (err != JNL_MESH_OK) {
+		lua_pushnil(L);
+		push_mesh_err(L, err);
+		return 2;
+	}
+
+	pmsh2d **mp = lua_newuserdata(L, sizeof(*mp));
+	*mp = mesh;
 	luaL_setmetatable(L, MESH_MT);
-	return 1;
+
+	lua_pushstring(L, "ok");
+	return 2;
 }
 
 static int l_mesh_gc(lua_State *L)
 {
-	struct jnl_mesh **mp = luaL_checkudata(L, 1, MESH_MT);
+	pmsh2d **mp = luaL_checkudata(L, 1, MESH_MT);
 	if (*mp) {
-		jnl_mesh_free(*mp);
+		jnl_polymesh2d_free(*mp);
 		*mp = NULL;
 	}
 	return 0;
@@ -468,30 +511,71 @@ static int l_mesh_gc(lua_State *L)
 
 static int l_mesh_tostring(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
-	lua_pushfstring(L, "jnl.mesh(%d cells, %d faces, %d patches)",
-	                m->topo.n_cells, m->topo.n_faces, m->patches.n_patches);
+	pmsh2d *m = check_mesh(L, 1);
+	lua_pushfstring(
+	    L, "jnl.pmsh2d(%d real cells, %d ghost cells, %d faces, %d patches)",
+	    m->topo.n_real_cells, m->topo.n_ghost_cells, m->topo.n_faces,
+	    m->patches.n_patches);
 	return 1;
 }
 
+//
+// Topo stats accessors
+//
+
 static int l_mesh_n_cells(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
+	lua_pushinteger(L, m->topo.n_real_cells);
+	return 1;
+}
+
+static int l_mesh_n_total_cells(lua_State *L)
+{
+	pmsh2d *m = check_mesh(L, 1);
 	lua_pushinteger(L, m->topo.n_cells);
+	return 1;
+}
+
+static int l_mesh_n_real_cells(lua_State *L)
+{
+	pmsh2d *m = check_mesh(L, 1);
+	lua_pushinteger(L, m->topo.n_real_cells);
+	return 1;
+}
+
+static int l_mesh_n_ghost_cells(lua_State *L)
+{
+	pmsh2d *m = check_mesh(L, 1);
+	lua_pushinteger(L, m->topo.n_ghost_cells);
 	return 1;
 }
 
 static int l_mesh_n_faces(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	lua_pushinteger(L, m->topo.n_faces);
 	return 1;
 }
 
 static int l_mesh_n_internal_faces(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	lua_pushinteger(L, m->topo.n_internal_faces);
+	return 1;
+}
+
+static int l_mesh_n_boundary_faces(lua_State *L)
+{
+	pmsh2d *m = check_mesh(L, 1);
+	lua_pushinteger(L, m->topo.n_boundary_faces);
+	return 1;
+}
+
+static int l_mesh_n_baffle_faces(lua_State *L)
+{
+	pmsh2d *m = check_mesh(L, 1);
+	lua_pushinteger(L, m->topo.n_baffle_faces);
 	return 1;
 }
 
@@ -501,11 +585,15 @@ static int l_mesh_n_patches(lua_State *L)
 	return 1;
 }
 
+//
+// Patches
+//
+
 // Returns patch table: { name, start_face, n_faces, marker }
 static int l_mesh_patches(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
-	struct jnl_patches *p = &m->patches;
+	pmsh2d *m = check_mesh(L, 1);
+	struct jnl_pmsh2d_patches *p = &m->patches;
 
 	lua_createtable(L, p->n_patches, 0);
 	for (int i = 0; i < p->n_patches; i++) {
@@ -525,7 +613,7 @@ static int l_mesh_patches(lua_State *L)
 
 static int l_mesh_patch_by_name(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	const char *name = luaL_checkstring(L, 2);
 	for (int i = 0; i < m->patches.n_patches; i++) {
 		if (strcmp(m->patches.data[i].name, name) == 0) {
@@ -551,10 +639,12 @@ static int l_mesh_patch_by_name(lua_State *L)
 
 static int l_mesh_cell_centre(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 i = (i32)luaL_checkinteger(L, 2) - 1;
-	luaL_argcheck(L, i >= 0 && i < m->topo.n_cells, 2,
-	              "cell index out of range");
+
+	luaL_argcheck(L, i >= 0 && i < m->topo.n_real_cells, 2,
+	              "real cell index out of range");
+
 	lua_pushnumber(L, m->geom.cell_cx[i]);
 	lua_pushnumber(L, m->geom.cell_cy[i]);
 	return 2;
@@ -562,23 +652,25 @@ static int l_mesh_cell_centre(lua_State *L)
 
 static int l_mesh_cell_vol(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 i = (i32)luaL_checkinteger(L, 2) - 1;
-	luaL_argcheck(L, i >= 0 && i < m->topo.n_cells, 2,
+
+	luaL_argcheck(L, i >= 0 && i < m->topo.n_real_cells, 2,
 	              "cell index out of range");
+
 	lua_pushnumber(L, m->geom.cell_vol[i]);
 	return 1;
 }
 
 static int l_mesh_mean_cell_size(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 
-	// sqrt(total_area / n_cells) = RMS cell size
 	f64 total = 0.0;
-	for (i32 i = 0; i < m->topo.n_cells; i++)
+	for (i32 i = 0; i < m->topo.n_real_cells; i++)
 		total += m->geom.cell_vol[i];
-	lua_pushnumber(L, sqrt(total / m->topo.n_cells));
+
+	lua_pushnumber(L, sqrt(total / m->topo.n_real_cells));
 	return 1;
 }
 
@@ -588,7 +680,7 @@ static int l_mesh_mean_cell_size(lua_State *L)
 
 static int l_mesh_face_centre(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 i = (i32)luaL_checkinteger(L, 2) - 1;
 	luaL_argcheck(L, i >= 0 && i < m->topo.n_faces, 2,
 	              "face index out of range");
@@ -599,7 +691,7 @@ static int l_mesh_face_centre(lua_State *L)
 
 static int l_mesh_face_normal(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 i = (i32)luaL_checkinteger(L, 2) - 1;
 	luaL_argcheck(L, i >= 0 && i < m->topo.n_faces, 2,
 	              "face index out of range");
@@ -614,7 +706,7 @@ static int l_mesh_face_normal(lua_State *L)
 
 static int l_mesh_face_owner0(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 f = (i32)luaL_checkinteger(L, 2);
 
 	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
@@ -626,7 +718,7 @@ static int l_mesh_face_owner0(lua_State *L)
 
 static int l_mesh_face_neighbour0(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 f = (i32)luaL_checkinteger(L, 2);
 
 	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
@@ -638,7 +730,7 @@ static int l_mesh_face_neighbour0(lua_State *L)
 
 static int l_mesh_face_centre0(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 f = (i32)luaL_checkinteger(L, 2);
 
 	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
@@ -651,7 +743,7 @@ static int l_mesh_face_centre0(lua_State *L)
 
 static int l_mesh_face_normal0(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 f = (i32)luaL_checkinteger(L, 2);
 
 	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
@@ -664,7 +756,7 @@ static int l_mesh_face_normal0(lua_State *L)
 
 static int l_mesh_face_area0(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
+	pmsh2d *m = check_mesh(L, 1);
 	i32 f = (i32)luaL_checkinteger(L, 2);
 
 	luaL_argcheck(L, f >= 0 && f < m->topo.n_faces, 2,
@@ -680,30 +772,35 @@ static int l_mesh_face_area0(lua_State *L)
 
 static int l_mesh_cell_cx_vec(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
-	push_owned_vec(L, m->geom.cell_cx, m->topo.n_cells, 1);
+	pmsh2d *m = check_mesh(L, 1);
+	push_owned_vec(L, m->geom.cell_cx, m->topo.n_real_cells, 1);
 	return 1;
 }
 
 static int l_mesh_cell_cy_vec(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
-	push_owned_vec(L, m->geom.cell_cy, m->topo.n_cells, 1);
+	pmsh2d *m = check_mesh(L, 1);
+	push_owned_vec(L, m->geom.cell_cx, m->topo.n_real_cells, 1);
 	return 1;
 }
 
 static int l_mesh_cell_vol_vec(lua_State *L)
 {
-	struct jnl_mesh *m = check_mesh(L, 1);
-	push_owned_vec(L, m->geom.cell_vol, m->topo.n_cells, 1);
+	pmsh2d *m = check_mesh(L, 1);
+	push_owned_vec(L, m->geom.cell_cx, m->topo.n_real_cells, 1);
 	return 1;
 }
 
 static const luaL_Reg mesh2d_methods[] = {
     // key diagnostics
     {"n_cells", l_mesh_n_cells},
+    {"n_total_cells", l_mesh_n_total_cells},
+    {"n_real_cells", l_mesh_n_real_cells},
+    {"n_ghost_cells", l_mesh_n_ghost_cells},
     {"n_faces", l_mesh_n_faces},
     {"n_internal_faces", l_mesh_n_internal_faces},
+    {"n_boundary_faces", l_mesh_n_boundary_faces},
+    {"n_baffle_faces", l_mesh_n_baffle_faces},
     {"patches", l_mesh_patches},
     {"n_patches", l_mesh_n_patches},
     {"patch_by_name", l_mesh_patch_by_name},
@@ -743,9 +840,9 @@ static void register_mt(lua_State *L, const char *name, const luaL_Reg *methods)
 }
 
 static const luaL_Reg mesh2d_funcs[] = {
-    {"smesh_gen", l_smesh_gen},     {"opts_default", l_opts_default},
-    {"tags_new", l_tags_new},       {"spec_new", l_spec_new},
-    {"triangulate", l_triangulate}, {NULL, NULL}};
+    {"cartmesh_gen", l_cartmesh_gen}, {"opts_default", l_opts_default},
+    {"tags_new", l_tags_new},         {"spec_new", l_spec_new},
+    {"triangulate", l_triangulate},   {NULL, NULL}};
 
 int luaopen_mesh2d_internal(lua_State *L)
 {

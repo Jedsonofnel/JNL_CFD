@@ -283,10 +283,6 @@ enum jnl_mesh_err {
 	JNL_MESH_ERR_DEGENERATE_CELL,
 	JNL_MESH_ERR_DEGENERATE_FACE,
 	JNL_MESH_ERR_INVALID_ORIENTATION,
-
-	// TO REMOVE
-	JNL_MESH_ERR_TRIANGLE_FAILED,
-	JNL_MESH_ERR_INVALID_BAFFLE,
 };
 
 const char *jnl_mesh_err_str(enum jnl_mesh_err err);
