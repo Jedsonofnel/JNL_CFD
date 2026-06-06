@@ -110,4 +110,18 @@ function G.superscript_int(n)
 	return out
 end
 
+-- ∂expr/∂axis  or  dexpr/daxis
+function G.partial(expr_str, axis_str)
+	if G._unicode then
+		return "∂" .. expr_str .. "/∂" .. axis_str
+	else
+		return "d" .. expr_str .. "/d" .. axis_str
+	end
+end
+
+-- prefix only: ∂ or d
+function G.partial_prefix()
+	return G._unicode and "∂" or "d"
+end
+
 return G

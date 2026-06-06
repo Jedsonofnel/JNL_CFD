@@ -141,7 +141,7 @@ node_pretty = function(node, parent_prec, is_right)
 	elseif k == "laplacian" then
 		return G.lap .. op_arg(node.a)
 	elseif k == "ddt" then
-		return G.ddt .. op_arg(node.a)
+		return G.ddt .. G.lparen .. node_pretty(node.a, 0, false) .. G.rparen
 	elseif k == "curl" then
 		return G.curl .. op_arg(node.a)
 	elseif k == "symm" then
@@ -189,6 +189,15 @@ node_pretty = function(node, parent_prec, is_right)
 		local lhs = node_pretty(node.a, PREC.mul, false)
 		local rhs = node_pretty(node.b, PREC.mul, true)
 		return wrap(lhs .. G.ddot .. rhs, node, parent_prec, is_right)
+
+		-- component specific
+	elseif k == "grad_i" then
+		local base = node_pretty(node.a, 0, false)
+		local axis = Node.AXES[node.b.a]
+		return G.partial(base, axis)
+	elseif k == "div_row" then
+		local inner = G.lparen .. G.div .. op_arg(node.a) .. G.rparen
+		return inner .. G.subscript(Node.AXES[node.b.a])
 	end
 
 	local acc_spec = Acc.get(k)

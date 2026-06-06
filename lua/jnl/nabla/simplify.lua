@@ -4,8 +4,27 @@
 local Node = require("jnl.nabla.node")
 
 --
--- Expression simplification
+-- Helpers
 --
+
+local function make_helpers(opts)
+	local retain = opts and opts.retain_named ~= false -- default: true
+	return {
+		is_zero = function(n)
+			return n.kind == "constant" and n.a == 0
+				and (retain == false or not n.name)
+		end,
+		is_one = function(n)
+			return n.kind == "constant" and n.a == 1
+				and (retain == false or not n.name)
+		end,
+		is_anon = function(n)
+			-- when retain=false, treat named constants as anonymous for folding
+			return n.kind == "constant"
+				and (not n.name or retain == false)
+		end,
+	}
+end
 
 local function factor_name(f)
 	if (f.kind == "symbol" or f.kind == "constant") and f.rank == 0 then
@@ -19,13 +38,17 @@ local function factor_name(f)
 	return nil
 end
 
-local function collect_factors(node)
+--
+-- Simplification
+--
+
+local function collect_factors(node, h)
 	local factors = node:flatten("mul")
 	local product = 1
 	local exps, base_of, order, others = {}, {}, {}, {}
 
 	for _, f in ipairs(factors) do
-		if f:is_anon_const() then
+		if h.is_anon(f) then
 			product = product * f.a
 		else
 			local name = factor_name(f)
@@ -48,14 +71,14 @@ local function collect_factors(node)
 end
 
 -- rebuild a flat factor list into a mul tree
-local function build_mul(product, exps, base_of, order, others)
+local function build_mul(product, exps, base_of, order, others, h)
 	local parts = {}
 	if product ~= 1 then parts[#parts + 1] = Node.const(product) end
 
 	for _, name in ipairs(order) do
 		local e = exps[name]
-		if e and not e:is_zero() then
-			if e:is_one() then
+		if e and not h.is_zero(e) then
+			if h.is_one(e) then
 				parts[#parts + 1] = base_of[name]
 			else
 				parts[#parts + 1] = setmetatable({ kind = "pow", a = base_of[name], b = e, rank = 0 }, Node)
@@ -78,13 +101,13 @@ end
 
 local simplify -- forward declare for mutual recursion with sub-cases
 
-local function simplify_add(a, b)
+local function simplify_add(a, b, h)
 	local terms = Node.flatten(setmetatable({ kind = "add", a = a, b = b }, Node), "add")
 	local sum = 0
 	local non_const = {}
 
 	for _, t in ipairs(terms) do
-		if t:is_anon_const() then
+		if h.is_anon(t) then
 			sum = sum + t.a
 		else
 			non_const[#non_const + 1] = t
@@ -104,13 +127,13 @@ local function simplify_add(a, b)
 	return result
 end
 
-local function simplify_mul(a, b)
+local function simplify_mul(a, b, h)
 	local factors = Node.flatten(setmetatable({ kind = "mul", a = a, b = b }, Node), "mul")
 	local product = 1
 	local exps, base_of, order, others = {}, {}, {}, {}
 
 	for _, f in ipairs(factors) do
-		if f:is_anon_const() then
+		if h.is_anon(f) then
 			product = product * f.a
 			if product == 0 then return Node.const(0) end
 		else
@@ -135,12 +158,12 @@ local function simplify_mul(a, b)
 	for _, name in ipairs(order) do
 		exps[name] = simplify(exps[name])
 	end
-	return build_mul(product, exps, base_of, order, others)
+	return build_mul(product, exps, base_of, order, others, h)
 end
 
-local function simplify_div(a, b)
-	local np, n_exps, n_base, n_order, n_others = collect_factors(a)
-	local dp, d_exps, d_base, d_order, d_others = collect_factors(b)
+local function simplify_div(a, b, h)
+	local np, n_exps, n_base, n_order, n_others = collect_factors(a, h)
+	local dp, d_exps, d_base, d_order, d_others = collect_factors(b, h)
 
 	local scalar = np / dp
 
@@ -160,28 +183,32 @@ local function simplify_div(a, b)
 		end
 	end
 
-	local num = build_mul(scalar, n_exps, n_base, n_order, n_others)
-	local den = build_mul(1, d_rem_exps, d_base, d_rem_order, d_others)
+	local num = build_mul(scalar, n_exps, n_base, n_order, n_others, h)
+	local den = build_mul(1, d_rem_exps, d_base, d_rem_order, d_others, h)
 
-	if den:is_one() then return num end
+	if h.is_one(den) then return num end
 	return setmetatable({ kind = "div", a = num, b = den, rank = num.rank }, Node)
 end
 
-simplify = function(node)
+simplify = function(node, opts)
 	if node:is_leaf() then return node end
 
-	local a = simplify(node.a)
+	local h = make_helpers(opts)
+
+	local a = simplify(node.a, opts)
 	local b = node.b and simplify(node.b)
 	local k = node.kind
 
 	if k == "add" then
-		return simplify_add(a, b)
+		return simplify_add(a, b, h)
 	elseif k == "mul" then
-		return simplify_mul(a, b)
+		return simplify_mul(a, b, h)
 	elseif k == "div" then
-		return simplify_div(a, b)
+		return simplify_div(a, b, h)
 	else
-		local n = { kind = k, a = a, name = node.name, rank = node.rank }
+		local n = {}
+		for key, v in pairs(node) do n[key] = v end
+		n.a = a
 		if b then n.b = b end
 		return setmetatable(n, Node)
 	end

@@ -33,4 +33,9 @@ function M.grad(name, i, j)
 	return "grad_" .. name .. "_" .. i
 end
 
+-- rank-2 symbol component: T -> T_xy
+function M.tensor(name, axis_i, axis_j)
+    return name .. "_" .. axis_i .. axis_j
+end
+
 return M

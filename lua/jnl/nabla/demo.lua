@@ -2,6 +2,7 @@
 
 local nb = require("jnl.nabla")
 local reg = nb.new_registry("Incompressible NS — laminar 2D")
+local Node = require("jnl.nabla.node")
 
 -- constants
 local rho = reg:const("rho", 1.0)
@@ -75,3 +76,31 @@ if e.equation then
 	local r = e.equation:residual()
 	print("U residual: " .. tostring(r))
 end
+
+print()
+print("Resolved scalar equations (ndims=2)")
+print(string.rep("─", 44))
+
+local nb_resolve = require("jnl.nabla.resolve")
+
+reg:each(function(name, entry)
+	if not entry.equation then return end
+
+	local ok, result = pcall(nb_resolve.resolve_equation, entry.equation, 2)
+	if not ok then
+		print(string.format("  %-10s : [%s]", name, result))
+		return
+	end
+
+	if #result == 1 then
+		-- scalar equation: print on one line
+		print(string.format("  %-10s : %s", name, tostring(result[1])))
+	else
+		-- vector equation: one line per component
+		print(string.format("  %s", name))
+		for i, eq in ipairs(result) do
+			print(string.format("    (%s)  %s",
+				Node.AXES[i], tostring(eq)))
+		end
+	end
+end)

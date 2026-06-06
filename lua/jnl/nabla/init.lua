@@ -8,6 +8,7 @@ local Eq        = require("jnl.nabla.equation")
 local Acc       = require("jnl.nabla.accessor")
 local Mangle    = require("jnl.nabla.mangle")
 local Registry  = require("jnl.nabla.registry")
+local resolve   = require("jnl.nabla.resolve")
 
 -- Node tensorial operators
 Node.outer      = ops.outer
@@ -33,13 +34,20 @@ Node.curl       = ops.curl
 
 -- node cross-module methods
 Node.__tostring = pretty
-Node.simplify   = function(self) return simplify(self) end
 Node.equals     = function(self, rhs) return Eq.new(self, rhs) end
 Node.__concat   = ops.ddot
 Node.__pow      = ops.pow_dispatch
 
+function Node:simplify(retain_named)
+	local opts = { retain_named = retain_named ~= false } -- nil -> true
+	return simplify(self, opts)
+end
+
+-- install resolve
+resolve.install(Node, Eq)
+
 -- Library table
-local Nabla     = setmetatable({
+local Nabla = setmetatable({
 	-- constructors
 	const = Node.const,
 	scalar = Node.scalar,
