@@ -2,51 +2,73 @@
 -- <jed@nelson.ac> // 2026-05-11
 
 local glyphs_unicode = {
-	ddt      = "∂/∂t",
-	div      = "∇·",
-	lap      = "∇²",
-	grad     = "∇",
-	su       = "Sᵤ",
-	sp       = "Sₚ",
-	prev     = "⁰",
-	expl     = "~",
-	prime    = "′",
-	eq       = " = ",
-	add      = " + ",
-	sub      = " - ",
-	neg      = "-",
-	mul      = "·",
-	div_op   = "/",
-	pow      = "^",
-	lparen   = "(",
-	rparen   = ")",
-	phi      = "φ", -- general phi corresponding to main variable in a given PDE
-	indent   = "    ",
-	_unicode = true,
+	ddt       = "∂/∂t",
+	div       = "∇·",
+	curl      = "∇×",
+	lap       = "∇²",
+	grad      = "∇",
+	su        = "Sᵤ",
+	sp        = "Sₚ",
+	prev      = "⁰",
+	expl      = "~",
+	prime     = "′",
+	eq        = " = ",
+	add       = " + ",
+	sub       = " - ",
+	neg       = "-",
+	mul       = "·",
+	div_op    = "/",
+	pow       = "^",
+	dot       = "·",
+	otimes    = "⊗",
+	cross     = "×",
+	ddot      = ":",
+	lparen    = "(",
+	rparen    = ")",
+	lbracket  = "[",
+	rbracket  = "]",
+	phi       = "φ", -- general phi corresponding to main variable in a given PDE
+	indent    = "    ",
+	sub_x     = "ₓ",
+	sub_y     = "ᵧ",
+	sub_z     = "ᵤ", -- no perfect option, u is good enough
+	transpose = "ᵀ",
+	_unicode  = true,
 }
 
 local glyphs_ascii = {
-	ddt      = "d/dt",
-	div      = "div",
-	lap      = "lap",
-	grad     = "grad",
-	su       = "Su",
-	sp       = "Sp",
-	prev     = "^0",
-	expl     = "~",
-	prime    = "'",
-	eq       = " = ",
-	add      = " + ",
-	sub      = " - ",
-	neg      = "-",
-	mul      = "*",
-	div_op   = "/",
-	pow      = "^",
-	lparen   = "(",
-	rparen   = ")",
-	phi      = "phi",
-	indent   = "    ",
-	_unicode = false,
+	ddt       = "d/dt",
+	div       = "div",
+	curl      = "curl",
+	lap       = "lap",
+	grad      = "grad",
+	su        = "Su",
+	sp        = "Sp",
+	prev      = "^0",
+	expl      = "~",
+	prime     = "'",
+	eq        = " = ",
+	add       = " + ",
+	sub       = " - ",
+	neg       = "-",
+	mul       = "*",
+	div_op    = "/",
+	pow       = "^",
+	dot       = ".",
+	otimes    = "x",
+	cross     = "x",
+	ddot      = ":",
+	lparen    = "(",
+	rparen    = ")",
+	lbracket  = "[",
+	rbracket  = "]",
+	phi       = "phi",
+	indent    = "    ",
+	sub_x     = "_x",
+	sub_y     = "_y",
+	sub_z     = "_z",
+	transpose = "^T",
+	_unicode  = false,
 }
 
 local function terminal_supports_unicode()
@@ -67,14 +89,23 @@ local G = (function()
 	end
 end)()
 
+-- subscript an axis label — G.subscript("x") → ₓ or _x
+function G.subscript(axis)
+	return G["sub_" .. axis] or ("_" .. axis) -- fallback for unknown axes
+end
+
 -- Unicode superscript digits for pretty powers
-local SUPER = { "⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹" }
+local SUPER = { [0] = "⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹" }
 
 function G.superscript_int(n)
+	if not G._unicode then
+		local s = tostring(math.floor(math.abs(n)))
+		return "^" .. (n < 0 and "-" or "") .. s
+	end
 	local s = tostring(math.floor(math.abs(n)))
 	local out = n < 0 and "⁻" or ""
 	for c in s:gmatch(".") do
-		out = out .. (SUPER[tonumber(c) + 1] or c)
+		out = out .. SUPER[tonumber(c)]
 	end
 	return out
 end
