@@ -197,58 +197,77 @@ end
 -- forward declaration
 local expand_inner
 
+-- context passed to every expand handler
+local function make_ctx(reg, sorted_main, inserted, fresh, explicit_set)
+	return {
+		reg          = reg,
+		sorted_main  = sorted_main,
+		inserted     = inserted,
+		fresh        = fresh,
+		explicit_set = explicit_set,
+	}
+end
+
+local expand_dispatch = {}
+
+expand_dispatch.solve = function(step, ctx, out)
+	emit_deps_for(ctx.reg, step.field, ctx.sorted_main, ctx.inserted, ctx.fresh, out)
+	if ctx.inserted[step.field] then return end
+
+	local entry = ctx.reg:entry(step.field)
+	out[#out + 1] = { op = "solve", field = step.field, tag = step.tag }
+	invalidate_dependents(ctx.reg, step.field, ctx.fresh, ctx.inserted)
+	fresh_mark(ctx.fresh, ctx.inserted, step.field)
+
+	if entry and entry.clip then
+		out[#out + 1] = {
+			op = "clip",
+			field = step.field,
+			lo = entry.clip[1],
+			hi = entry.clip[2],
+			implicit = true
+		}
+	end
+end
+
+expand_dispatch.correct = function(step, _, out)
+	out[#out + 1] = { op = "correct", field = step.field, tag = step.tag }
+end
+
+expand_dispatch.zero = function(step, ctx, out)
+	out[#out + 1] = { op = "zero", field = step.field, tag = step.tag }
+	fresh_clear(ctx.fresh, ctx.inserted, step.field)
+	invalidate_dependents(ctx.reg, step.field, ctx.fresh, ctx.inserted)
+end
+
+expand_dispatch.evaluate = function(step, ctx, out)
+	local entry = ctx.reg:entry(step.field)
+	if not entry or not entry.expr then return end
+
+	emit_deps_for(ctx.reg, step.field, ctx.sorted_main, ctx.inserted, ctx.fresh, out)
+
+	if ctx.fresh[step.field] then return end
+
+	out[#out + 1] = { op = "evaluate", field = step.field, user = step.user }
+	fresh_mark(ctx.fresh, ctx.inserted, step.field)
+end
+
+expand_dispatch.inner = function(step, ctx, out)
+	local inner_exp = expand_inner(step.alg, ctx.reg, ctx.inserted, ctx.fresh, ctx.explicit_set)
+	out[#out + 1] = { op = "inner", alg = inner_exp }
+end
+
 local function expand_steps(reg, steps, sorted_main, inserted, fresh, explicit_set)
+	local ctx = make_ctx(reg, sorted_main, inserted, fresh, explicit_set)
 	local out = {}
-
 	for _, step in ipairs(steps) do
-		if step.op == "solve" then
-			emit_deps_for(reg, step.field, sorted_main, inserted, fresh, out)
-
-			if not inserted[step.field] then
-				local entry = reg:entry(step.field)
-				out[#out + 1] = { op = "solve", field = step.field, tag = step.tag }
-
-				invalidate_dependents(reg, step.field, fresh, inserted)
-				fresh_mark(fresh, inserted, step.field)
-
-				if entry and entry.clip then
-					out[#out + 1] = {
-						op = "clip",
-						field = step.field,
-						lo = entry.clip[1],
-						hi = entry.clip[2],
-						implicit = true,
-					}
-				end
-			end
-		elseif step.op == "correct" then
-			out[#out + 1] = { op = "correct", field = step.field, tag = step.tag }
-		elseif step.op == "zero" then
-			out[#out + 1] = { op = "zero", field = step.field, tag = step.tag }
-			fresh_clear(fresh, inserted, step.field)
-			invalidate_dependents(reg, step.field, fresh, inserted)
-		elseif step.op == "monitor" then
-			local entry = reg:entry(step.field)
-
-			if entry and entry.expr and not fresh[step.field] then
-				out[#out + 1] = { op = "evaluate", field = step.field, implicit = true }
-				fresh_mark(fresh, inserted, step.field)
-			end
-
-			out[#out + 1] = {
-				op = "monitor",
-				field = step.field,
-				kind = step.kind or "residual",
-				tag = step.tag
-			}
-		elseif step.op == "inner" then
-			local inner_exp = expand_inner(step.alg, reg, inserted, fresh, explicit_set)
-			out[#out + 1] = { op = "inner", alg = inner_exp }
+		local fn = expand_dispatch[step.op]
+		if fn then
+			fn(step, ctx, out)
 		else
 			out[#out + 1] = step
 		end
 	end
-
 	return out
 end
 
@@ -288,10 +307,10 @@ function Builder:zero(field)
 	return push(self, { op = "zero", field = field })
 end
 
-function Builder:monitor(field, kind)
+function Builder:monitor(field)
 	field = fname(field)
 	V.identifier(field, "alg:monitor")
-	return push(self, { op = "monitor", field = field, kind = kind or "residual" })
+	return push(self, { op = "evaluate", field = field, user = true })
 end
 
 function Builder:inner(cb, n)
@@ -433,19 +452,6 @@ function Algorithm:expand(reg)
 
 	local main = expand_steps(reg, self.steps, sorted_main, inserted, fresh, explicit_set)
 
-	local watched = {}
-	for _, s in ipairs(main) do
-		if s.op == "monitor" then
-			watched[s.field .. ":" .. (s.kind or "residual")] = true
-		end
-	end
-	for _, w in ipairs(self.watches) do
-		local key = w[1] .. ":" .. w[2]
-		if not watched[key] then
-			main[#main + 1] = { op = "monitor", field = w[1], kind = w[2] }
-		end
-	end
-
 	local post = {}
 	for _, name in ipairs(topo_sort(reg, post_names)) do
 		if inserted[name] then goto continue end
@@ -484,14 +490,13 @@ local function step_str(step, indent)
 	local f   = step.field or ""
 
 	if step.op == "fill" then return string.format("%s  FILL      %-14s %g", indent, f, step.value or 0) end
-	if step.op == "evaluate" then return string.format("%s%s EVALUATE  %s", indent, tag, f) end
+	if step.op == "evaluate" then
+		local etag = step.user and "*" or "~"
+		return string.format("%s%s EVALUATE  %s", indent, etag, f)
+	end
 	if step.op == "solve" then return string.format("%s%s SOLVE     %s%s", indent, tag, f, lbl) end
 	if step.op == "correct" then return string.format("%s%s CORRECT   %s%s", indent, tag, f, lbl) end
 	if step.op == "zero" then return string.format("%s* ZERO      %s%s", indent, f, lbl) end
-	if step.op == "monitor" then
-		return string.format("%s  MONITOR   %-14s [%s]%s", indent, f, step.kind or "residual",
-			lbl)
-	end
 	if step.op == "clip" then
 		local hi = step.hi == math.huge and "∞" or string.format("%g", step.hi)
 		return string.format("%s%s CLIP      %s  [%g, %s]", indent, tag, f, step.lo, hi)
@@ -530,6 +535,17 @@ function Algorithm:listing()
 	end
 
 	lines[#lines + 1] = ".END"
+
+	-- add watches for info
+	if #self.watches > 0 then
+		local parts = {}
+		for _, w in ipairs(self.watches) do
+			parts[#parts + 1] = w[1] .. ":" .. w[2]
+		end
+		lines[#lines + 1] = ""
+		lines[#lines + 1] = "watches: " .. table.concat(parts, "  ")
+	end
+
 	return table.concat(lines, "\n")
 end
 
