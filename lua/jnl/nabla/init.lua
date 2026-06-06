@@ -9,7 +9,6 @@ local Eq = require("jnl.nabla.equation")
 local Acc = require("jnl.nabla.accessor")
 local Mangle = require("jnl.nabla.mangle")
 local Reg = require("jnl.nabla.registry")
-local Alg = require("jnl.nabla.algorithm")
 local Eval = require("jnl.nabla.eval")
 
 Node.install({
@@ -78,9 +77,6 @@ local Nabla = setmetatable({
 	mag = ops.mag,
 	inv = ops.inv,
 
-	-- algorithm
-	Algorithm = Alg,
-	new_algorithm = Alg.new,
 	-- eval
 	Eval = Eval,
 }, {
