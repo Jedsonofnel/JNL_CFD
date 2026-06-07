@@ -4,6 +4,7 @@
 #include "jnl/common.h"
 #include "jnl/arena.h"
 #include "scratch.h"
+#include "mesh2d.h"
 
 #define LINALG_MIN_SCRATCH 9 // for bicgstab + scratch return
 
@@ -12,15 +13,20 @@
 //
 
 struct jnl_ldu_matrix {
-	f64 *diag;  // [n_cells]
-	f64 *lower; // [n_faces]
-	f64 *upper; // [n_faces]
+	f64 *diag;  // [n_real_cells]
+	f64 *lower; // [n_coupled_faces]
+	f64 *upper; // [n_coupled_faces]
 
-	const i32 *owner;     // borrowed from mesh
-	const i32 *neighbour; // ditto
-	i32 n_cells;
-	i32 n_faces;          // all mesh faces
-	i32 n_internal_faces; // owner-neighbour couplings
+	i32 *owner;     // [n_coupled_faces]
+	i32 *neighbour; // [n_coupled_faces]
+
+	i32 *face_to_coupling;     // [n_mesh_faces], -1 if none
+	i8 *face_to_coupling_sign; // [n_mesh_faces], +1/-1/0
+
+	i32 n_cells;          // n_real_cells
+	i32 n_mesh_faces;     // physical mesh faces
+	i32 n_internal_faces; // physical internal faces, first LDU block
+	i32 n_coupled_faces;  // internal + baffle-pair coupling slots
 };
 
 void jnl_ldu_zero(struct jnl_ldu_matrix *m);
@@ -37,18 +43,31 @@ enum jnl_singularity {
 };
 
 //
+// Closure for storing closure cache for non-internal connections
+//
+
+struct jnl_fvsys_closure {
+	f64 *nb;  // [n_closure_faces]
+	f64 *src; // [n_closure_faces]
+
+	i32 n_closure_faces;
+	i32 first_closure_face;
+};
+
+//
 // FV Linear System
 //
 
 struct jnl_fvsys {
 	struct jnl_ldu_matrix matrix;
-	f64 *rhs; // [n_cells]
+	f64 *rhs; // [n_real_cells]
+
+	struct jnl_fvsys_closure closure;
+
 	enum jnl_singularity singularity;
 };
 
-struct jnl_fvsys *jnl_fvsys_new(i32 cells, i32 faces, i32 internal_faces,
-                                const i32 *owner, const i32 *neighbour,
-                                jnl_arena *arena);
+struct jnl_fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena);
 
 void jnl_fvsys_reset(struct jnl_fvsys *sys);
 void jnl_fvsys_reset_singularity(struct jnl_fvsys *sys);
@@ -103,6 +122,12 @@ f64 jnl_fvsys_max_asymmetry(const struct jnl_fvsys *sys);
 //
 
 // Bytes needed for one fvsys
-u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_faces);
+u64 jnl_fvsys_arena_size(const pmsh2d *mesh);
+
+//
+// Baffle helper
+//
+
+void jnl_ldu_add_face_coupling(struct jnl_ldu_matrix *m, i32 face, f64 coeff);
 
 #endif

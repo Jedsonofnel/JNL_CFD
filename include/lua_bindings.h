@@ -6,11 +6,15 @@
 #include <lualib.h>
 
 #include "jnl/common.h"
+#include "mesh2d.h"
 
 #define PSLG_MT "jnl.geo2d.pslg"
 #define MESH_MT "jnl.mesh2d.mesh"
 #define VEC_MT "jnl.vec"
 #define POOL_MT "jnl.scratch_pool"
+
+#define CTX_MT "jnl.fvm.ctx"
+#define FVSYS_MT "jnl.fvm.fvsys"
 
 //
 // Shared vec userdata - f64* slice
@@ -50,6 +54,15 @@ static inline void push_owned_vec(lua_State *L, f64 *data, i32 len,
 }
 
 //
+// Shared mesh userdata
+//
+
+static inline pmsh2d *check_pmsh2d(lua_State *L, int idx)
+{
+	return *(pmsh2d **)luaL_checkudata(L, idx, MESH_MT);
+}
+
+//
 // Shared scratch pool userdata
 //
 
@@ -69,6 +82,38 @@ push_borrowed_pool(lua_State *L, struct jnl_scratch_pool *pool, int parent_idx)
 	lua_setuservalue(L, -2);
 	luaL_setmetatable(L, POOL_MT);
 }
+
+//
+// FVM userdata shared across split files
+//
+
+typedef struct {
+	struct jnl_fvsys *sys;
+	struct jnl_scratch_pool *pool; // real-cell solver pool, borrowed from ctx
+	int ctx_ref;
+} lua_fvsys;
+
+typedef struct {
+	struct jnl_fvm_ctx *ctx;
+} lua_fvm_ctx_ud;
+
+static inline lua_fvsys *check_fvsys(lua_State *L, int idx)
+{
+	return (lua_fvsys *)luaL_checkudata(L, idx, FVSYS_MT);
+}
+
+static inline lua_fvm_ctx_ud *check_fvm_ctx(lua_State *L, int idx)
+{
+	return (lua_fvm_ctx_ud *)luaL_checkudata(L, idx, CTX_MT);
+}
+
+//
+// FVM submodule registration helpers
+//
+
+void jnl_lua_register_fvm_operators(lua_State *L);
+void jnl_lua_register_fvm_bc(lua_State *L);
+void jnl_lua_register_fvm_field(lua_State *L);
 
 //
 // Module openers

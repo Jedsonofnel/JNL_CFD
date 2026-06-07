@@ -7,14 +7,28 @@
 #include "scratch.h"
 
 //
+// Helpers
+//
+
+static i32 count_baffle_pairs(const pmsh2d *mesh)
+{
+	i32 n = 0;
+
+	for (i32 b = 0; b < mesh->baffles.n_baffles; b++)
+		n += mesh->baffles.data[b].n_pairs;
+
+	return n;
+}
+
+//
 // LDU Matrix
 //
 
 void jnl_ldu_zero(struct jnl_ldu_matrix *m)
 {
 	memset(m->diag, 0, m->n_cells * sizeof(f64));
-	memset(m->lower, 0, m->n_faces * sizeof(f64));
-	memset(m->upper, 0, m->n_faces * sizeof(f64));
+	memset(m->lower, 0, m->n_coupled_faces * sizeof(f64));
+	memset(m->upper, 0, m->n_coupled_faces * sizeof(f64));
 }
 
 void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y)
@@ -23,12 +37,16 @@ void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y)
 		y[i] = m->diag[i] * x[i];
 	}
 
-	for (i32 f = 0; f < m->n_internal_faces; f++) {
-		i32 o = m->owner[f];
-		i32 nb = m->neighbour[f];
+	for (i32 k = 0; k < m->n_coupled_faces; k++) {
+		i32 o = m->owner[k];
+		i32 nb = m->neighbour[k];
 
-		y[o] += m->upper[f] * x[nb];
-		y[nb] += m->lower[f] * x[o];
+		// TODO do we need these
+		assert(o >= 0 && o < m->n_cells);
+		assert(nb >= 0 && nb < m->n_cells);
+
+		y[o] += m->upper[k] * x[nb];
+		y[nb] += m->lower[k] * x[o];
 	}
 }
 
@@ -36,24 +54,106 @@ void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y)
 // FV Linear System
 //
 
-struct jnl_fvsys *jnl_fvsys_new(i32 n_cells, i32 n_faces, i32 n_internal_faces,
-                                const i32 *owner, const i32 *neighbour,
-                                jnl_arena *arena)
+struct jnl_fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena)
 {
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+
+	i32 n_real_cells = topo->n_real_cells;
+	i32 n_mesh_faces = topo->n_faces;
+	i32 n_internal_faces = topo->n_internal_faces;
+	i32 n_baffle_pairs = count_baffle_pairs(mesh);
+	i32 n_coupled_faces = n_internal_faces + n_baffle_pairs;
+	i32 n_closure_faces = n_mesh_faces - n_internal_faces;
+
 	struct jnl_fvsys *sys = ARENA_PUSH_STRUCT_Z(arena, struct jnl_fvsys);
 
-	sys->matrix.diag = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells);
-	sys->matrix.lower = ARENA_PUSH_ARRAY_Z(arena, f64, n_faces);
-	sys->matrix.upper = ARENA_PUSH_ARRAY_Z(arena, f64, n_faces);
-
-	sys->matrix.owner = owner;
-	sys->matrix.neighbour = neighbour;
-
-	sys->matrix.n_cells = n_cells;
-	sys->matrix.n_faces = n_faces;
+	sys->matrix.n_cells = n_real_cells;
+	sys->matrix.n_mesh_faces = n_mesh_faces;
 	sys->matrix.n_internal_faces = n_internal_faces;
+	sys->matrix.n_coupled_faces = n_coupled_faces;
 
-	sys->rhs = ARENA_PUSH_ARRAY_Z(arena, f64, n_cells);
+	sys->matrix.diag = ARENA_PUSH_ARRAY_Z(arena, f64, n_real_cells);
+	sys->matrix.lower = ARENA_PUSH_ARRAY_Z(arena, f64, n_coupled_faces);
+	sys->matrix.upper = ARENA_PUSH_ARRAY_Z(arena, f64, n_coupled_faces);
+
+	sys->matrix.owner = ARENA_PUSH_ARRAY_Z(arena, i32, n_coupled_faces);
+	sys->matrix.neighbour = ARENA_PUSH_ARRAY_Z(arena, i32, n_coupled_faces);
+
+	sys->matrix.face_to_coupling = ARENA_PUSH_ARRAY(arena, i32, n_mesh_faces);
+	sys->matrix.face_to_coupling_sign =
+	    ARENA_PUSH_ARRAY_Z(arena, i8, n_mesh_faces);
+
+	for (i32 f = 0; f < n_mesh_faces; f++) {
+		sys->matrix.face_to_coupling[f] = -1;
+		sys->matrix.face_to_coupling_sign[f] = 0;
+	}
+
+	/*
+	 * First block: ordinary internal real-real faces.
+	 * Physical internal face index == LDU coupling index.
+	 */
+	for (i32 f = 0; f < n_internal_faces; f++) {
+		i32 o = topo->owner[f];
+		i32 nb = topo->neighbour[f];
+
+		assert(o >= 0 && o < n_real_cells);
+		assert(nb >= 0 && nb < n_real_cells);
+
+		sys->matrix.owner[f] = o;
+		sys->matrix.neighbour[f] = nb;
+
+		sys->matrix.face_to_coupling[f] = f;
+		sys->matrix.face_to_coupling_sign[f] = +1;
+	}
+
+	/*
+	 * Second block: one optional LDU slot per paired baffle.
+	 * These slots remain zero unless a baffle closure uses them.
+	 */
+	i32 k = n_internal_faces;
+
+	for (i32 b = 0; b < mesh->baffles.n_baffles; b++) {
+		const struct jnl_pmsh2d_baffle *bf = &mesh->baffles.data[b];
+
+		for (i32 p = 0; p < bf->n_pairs; p++) {
+			i32 f0 = bf->face0[p];
+			i32 f1 = bf->face1[p];
+
+			assert(f0 >= topo->n_internal_faces && f0 < topo->n_faces);
+			assert(f1 >= topo->n_internal_faces && f1 < topo->n_faces);
+			assert(topo->face_kind[f0] == JNL_PMSH2D_FACE_BAFFLE);
+			assert(topo->face_kind[f1] == JNL_PMSH2D_FACE_BAFFLE);
+			assert(topo->paired_face[f0] == f1);
+			assert(topo->paired_face[f1] == f0);
+
+			i32 c0 = topo->owner[f0];
+			i32 c1 = topo->owner[f1];
+
+			assert(c0 >= 0 && c0 < n_real_cells);
+			assert(c1 >= 0 && c1 < n_real_cells);
+
+			sys->matrix.owner[k] = c0;
+			sys->matrix.neighbour[k] = c1;
+
+			sys->matrix.face_to_coupling[f0] = k;
+			sys->matrix.face_to_coupling_sign[f0] = +1;
+
+			sys->matrix.face_to_coupling[f1] = k;
+			sys->matrix.face_to_coupling_sign[f1] = -1;
+
+			k++;
+		}
+	}
+
+	assert(k == n_coupled_faces);
+
+	sys->rhs = ARENA_PUSH_ARRAY_Z(arena, f64, n_real_cells);
+
+	sys->closure.first_closure_face = n_internal_faces;
+	sys->closure.n_closure_faces = n_closure_faces;
+	sys->closure.nb = ARENA_PUSH_ARRAY_Z(arena, f64, n_closure_faces);
+	sys->closure.src = ARENA_PUSH_ARRAY_Z(arena, f64, n_closure_faces);
+
 	sys->singularity = JNL_SING_UNCHECKED;
 
 	return sys;
@@ -63,6 +163,8 @@ void jnl_fvsys_reset(struct jnl_fvsys *sys)
 {
 	jnl_ldu_zero(&sys->matrix);
 	memset(sys->rhs, 0, sys->matrix.n_cells * sizeof(f64));
+	memset(sys->closure.nb, 0, sys->closure.n_closure_faces * sizeof(f64));
+	memset(sys->closure.src, 0, sys->closure.n_closure_faces * sizeof(f64));
 	sys->singularity = JNL_SING_UNCHECKED;
 }
 
@@ -86,7 +188,7 @@ void jnl_fvsys_pin_cell(struct jnl_fvsys *sys, i32 cell_idx, f64 value)
 {
 	struct jnl_ldu_matrix *m = &sys->matrix;
 
-	for (i32 k = 0; k < m->n_internal_faces; k++) {
+	for (i32 k = 0; k < m->n_coupled_faces; k++) {
 		if (m->owner[k] == cell_idx || m->neighbour[k] == cell_idx) {
 			m->lower[k] = 0.0;
 			m->upper[k] = 0.0;
@@ -103,7 +205,7 @@ void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
 	struct jnl_ldu_matrix *m = &sys->matrix;
 
 	// O(n_conns * n_pinned) - fine for small pin sets
-	for (i32 k = 0; k < m->n_internal_faces; k++) {
+	for (i32 k = 0; k < m->n_coupled_faces; k++) {
 		for (i32 p = 0; p < n_cells; p++) {
 			if (m->owner[k] == cells[p] || m->neighbour[k] == cells[p]) {
 				m->lower[k] = 0.0;
@@ -133,11 +235,9 @@ static f64 fvsys_max_row_sum_ratio(const struct jnl_fvsys *sys,
 
 	memcpy(row_sums, m->diag, n * sizeof(f64));
 
-	for (i32 f = 0; f < m->n_internal_faces; f++) {
-		if (m->neighbour[f] < 0)
-			continue;
-		row_sums[m->owner[f]] += m->upper[f];
-		row_sums[m->neighbour[f]] += m->lower[f];
+	for (i32 k = 0; k < m->n_coupled_faces; k++) {
+		row_sums[m->owner[k]] += m->upper[k];
+		row_sums[m->neighbour[k]] += m->lower[k];
 	}
 
 	f64 max_sum = 0.0, max_diag = 0.0;
@@ -150,8 +250,10 @@ static f64 fvsys_max_row_sum_ratio(const struct jnl_fvsys *sys,
 			max_diag = d;
 	}
 
-	if (max_diag < 1e-30)
+	if (max_diag < 1e-30) {
+		jnl_scratch_release(pool, row_sums);
 		return 0.0;
+	}
 
 	jnl_scratch_release(pool, row_sums);
 	return max_sum / max_diag;
@@ -409,13 +511,26 @@ struct jnl_solve_result jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 // Arena sizing helpers
 //
 
-u64 jnl_fvsys_arena_size(i32 n_cells, i32 n_faces)
+u64 jnl_fvsys_arena_size(const pmsh2d *mesh)
 {
-	return ARENA_SIZE(struct jnl_fvsys, 1) + //
-	       ARENA_SIZE(f64, n_cells) +        // diag
-	       ARENA_SIZE(f64, n_faces) +        // lower
-	       ARENA_SIZE(f64, n_faces) +        // upper
-	       ARENA_SIZE(f64, n_cells);         // rhs
+	i32 n_real_cells = mesh->topo.n_real_cells;
+	i32 n_mesh_faces = mesh->topo.n_faces;
+	i32 n_internal_faces = mesh->topo.n_internal_faces;
+	i32 n_baffle_pairs = count_baffle_pairs(mesh);
+	i32 n_coupled_faces = n_internal_faces + n_baffle_pairs;
+	i32 n_closure_faces = n_mesh_faces - n_internal_faces;
+
+	return ARENA_SIZE(struct jnl_fvsys, 1) +  //
+	       ARENA_SIZE(f64, n_real_cells) +    // diag
+	       ARENA_SIZE(f64, n_coupled_faces) + // lower
+	       ARENA_SIZE(f64, n_coupled_faces) + // upper
+	       ARENA_SIZE(i32, n_coupled_faces) + // matrix.owner
+	       ARENA_SIZE(i32, n_coupled_faces) + // matrix.neighbour
+	       ARENA_SIZE(i32, n_mesh_faces) +    // face_to_coupling
+	       ARENA_SIZE(i8, n_mesh_faces) +     // face_to_coupling_sign
+	       ARENA_SIZE(f64, n_real_cells) +    // rhs
+	       ARENA_SIZE(f64, n_closure_faces) + // closure.nb
+	       ARENA_SIZE(f64, n_closure_faces);  // closure.src
 }
 
 //
@@ -450,9 +565,7 @@ f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys)
 	f64 off[n];
 	memset(off, 0, n * sizeof(f64));
 
-	for (i32 k = 0; k < m->n_internal_faces; k++) {
-		if (m->neighbour[k] < 0)
-			continue;
+	for (i32 k = 0; k < m->n_coupled_faces; k++) {
 		off[m->owner[k]] += fabs(m->upper[k]);
 		off[m->neighbour[k]] += fabs(m->lower[k]);
 	}
@@ -465,6 +578,7 @@ f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys)
 				min_ratio = ratio;
 		}
 	}
+
 	return min_ratio;
 }
 
@@ -481,12 +595,32 @@ f64 jnl_fvsys_max_asymmetry(const struct jnl_fvsys *sys)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
 	f64 max_asym = 0.0;
-	for (i32 k = 0; k < m->n_internal_faces; k++) {
-		if (m->neighbour[k] < 0)
-			continue;
+
+	for (i32 k = 0; k < m->n_coupled_faces; k++) {
 		f64 asym = fabs(m->lower[k] - m->upper[k]);
 		if (asym > max_asym)
 			max_asym = asym;
 	}
+
 	return max_asym;
+}
+
+//
+// Baffle helper
+//
+
+void jnl_ldu_add_face_coupling(struct jnl_ldu_matrix *m, i32 face, f64 coeff)
+{
+	assert(face >= 0 && face < m->n_mesh_faces);
+
+	i32 k = m->face_to_coupling[face];
+	i8 sign = m->face_to_coupling_sign[face];
+
+	assert(k >= 0 && k < m->n_coupled_faces);
+	assert(sign == +1 || sign == -1);
+
+	if (sign > 0)
+		m->upper[k] += coeff;
+	else
+		m->lower[k] += coeff;
 }

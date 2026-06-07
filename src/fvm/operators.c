@@ -1,40 +1,16 @@
+#include <math.h>
+
 #include "fvm/operators.h"
 #include "jnl/common.h"
-
-//
-// Face index helpers
-//
-
-// helpful if this ever changes
-static inline i32 first_internal_face(const struct jnl_mesh *mesh)
-{
-	(void)mesh;
-	return 0;
-}
-
-static inline i32 first_baffle_face(const struct jnl_mesh *mesh)
-{
-	return mesh->topo.n_internal_faces;
-}
-
-static inline i32 first_patch_face(const struct jnl_mesh *mesh)
-{
-	return mesh->topo.n_internal_faces + mesh->baffles.n_baffle_faces;
-}
-
-static inline i32 end_face(const struct jnl_mesh *mesh)
-{
-	return mesh->topo.n_faces;
-}
 
 //
 // DDT
 //
 
-void jnl_ddt_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 rho,
-                   f64 dt, const f64 *phi_old)
+void jnl_ddt_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 rho, f64 dt,
+                   const f64 *phi_old)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 	for (i32 i = 0; i < n; i++) {
 		f64 coeff = rho * mesh->geom.cell_vol[i] / dt;
 		sys->matrix.diag[i] += coeff;
@@ -42,10 +18,10 @@ void jnl_ddt_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 rho,
 	}
 }
 
-void jnl_ddt_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                   const f64 *rho, f64 dt, const f64 *phi_old)
+void jnl_ddt_field(struct jnl_fvsys *sys, const pmsh2d *mesh, const f64 *rho,
+                   f64 dt, const f64 *phi_old)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 	for (i32 i = 0; i < n; i++) {
 		f64 coeff = rho[i] * mesh->geom.cell_vol[i] / dt;
 		sys->matrix.diag[i] += coeff;
@@ -57,15 +33,14 @@ void jnl_ddt_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 // Laplacian
 //
 
-void jnl_laplacian_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                         f64 gamma)
+void jnl_laplacian_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 gamma)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_interp *interp = &mesh->interp;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
@@ -77,26 +52,30 @@ void jnl_laplacian_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 		mat->diag[nb] += coeff;
 	}
 
-	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+	for (i32 f = topo->n_internal_faces; f < topo->n_faces; f++) {
+		i32 o = topo->owner[f];
+		i32 cf = f - topo->n_internal_faces;
+
 		f64 coeff = gamma * geom->face_area[f] * interp->delta_coeff[f];
-		mat->lower[f] -= coeff;
-		mat->upper[f] -= coeff;
+
+		mat->diag[o] += coeff;
+		sys->closure.nb[cf] += -coeff;
 	}
 }
 
-void jnl_laplacian_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_laplacian_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
                          const f64 *gamma)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_interp *interp = &mesh->interp;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
-		f64 w = interp->weight[f];
+		f64 w = interp->face_lerp[f];
 		f64 gamma_face = (1.0 - w) * gamma[o] + w * gamma[nb];
 		f64 coeff = gamma_face * geom->face_area[f] * interp->delta_coeff[f];
 
@@ -106,14 +85,18 @@ void jnl_laplacian_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 		mat->diag[nb] += coeff;
 	}
 
-	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+	for (i32 f = topo->n_internal_faces; f < topo->n_faces; f++) {
 		i32 o = topo->owner[f];
+		i32 g = topo->neighbour[f];
+		i32 cf = f - topo->n_internal_faces;
 
-		f64 gamma_face = gamma[o];
+		f64 w = interp->face_lerp[f];
+		f64 gamma_face = (1.0 - w) * gamma[o] + w * gamma[g];
+
 		f64 coeff = gamma_face * geom->face_area[f] * interp->delta_coeff[f];
 
-		mat->lower[f] -= coeff;
-		mat->upper[f] -= coeff;
+		mat->diag[o] += coeff;
+		sys->closure.nb[cf] += -coeff;
 	}
 }
 
@@ -123,23 +106,26 @@ void jnl_laplacian_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 
 static inline f64 harmonic_mean(f64 gamma_o, f64 gamma_n, f64 w)
 {
+	if (gamma_o <= 0.0 || gamma_n <= 0.0)
+		return 0.0;
+
 	f64 denom = (1.0 - w) / gamma_o + w / gamma_n;
-	return (denom < 1e-30) ? 0.0 : 1.0 / denom;
+	return fabs(denom) < 1e-30 ? 0.0 : 1.0 / denom;
 }
 
-void jnl_laplacian_field_harmonic(struct jnl_fvsys *sys,
-                                  const struct jnl_mesh *mesh, const f64 *gamma)
+void jnl_laplacian_field_harmonic(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                  const f64 *gamma)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_interp *interp = &mesh->interp;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
-		f64 w = interp->weight[f];
+		f64 w = interp->face_lerp[f];
 		f64 gamma_face = harmonic_mean(gamma[o], gamma[nb], w);
 		f64 coeff = gamma_face * geom->face_area[f] * interp->delta_coeff[f];
 
@@ -149,14 +135,17 @@ void jnl_laplacian_field_harmonic(struct jnl_fvsys *sys,
 		mat->diag[nb] += coeff;
 	}
 
-	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+	for (i32 f = topo->n_internal_faces; f < topo->n_faces; f++) {
 		i32 o = topo->owner[f];
+		i32 g = topo->neighbour[f];
+		i32 cf = f - topo->n_internal_faces;
 
-		f64 gamma_face = gamma[o];
+		f64 w = interp->face_lerp[f];
+		f64 gamma_face = harmonic_mean(gamma[o], gamma[g], w);
 		f64 coeff = gamma_face * geom->face_area[f] * interp->delta_coeff[f];
 
-		mat->lower[f] -= coeff;
-		mat->upper[f] -= coeff;
+		mat->diag[o] += coeff;
+		sys->closure.nb[cf] += -coeff;
 	}
 }
 
@@ -164,52 +153,52 @@ void jnl_laplacian_field_harmonic(struct jnl_fvsys *sys,
 // Laplacian non-orthogonality correction
 //
 
-void jnl_laplacian_nonorth_const(struct jnl_fvsys *sys,
-                                 const struct jnl_mesh *mesh, f64 gamma,
-                                 const f64 *grad_x, const f64 *grad_y)
+void jnl_laplacian_nonorth_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                 f64 gamma, const f64 *grad_x,
+                                 const f64 *grad_y)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_interp *interp = &mesh->interp;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
-		f64 w = interp->weight[f];
+		f64 w = interp->face_lerp[f];
 		f64 grad_x_face = (1.0 - w) * grad_x[o] + w * grad_x[nb];
 		f64 grad_y_face = (1.0 - w) * grad_y[o] + w * grad_y[nb];
 
-		f64 correction =
-		    gamma * geom->face_area[f] *
-		    (interp->corr_x[f] * grad_x_face + interp->corr_y[f] * grad_y_face);
+		f64 correction = gamma * geom->face_area[f] *
+		                 (interp->nonorth_x[f] * grad_x_face +
+		                  interp->nonorth_y[f] * grad_y_face);
 
 		sys->rhs[o] += correction;
 		sys->rhs[nb] -= correction;
 	}
 }
 
-void jnl_laplacian_nonorth_field(struct jnl_fvsys *sys,
-                                 const struct jnl_mesh *mesh, const f64 *gamma,
-                                 const f64 *grad_x, const f64 *grad_y)
+void jnl_laplacian_nonorth_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                 const f64 *gamma, const f64 *grad_x,
+                                 const f64 *grad_y)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_interp *interp = &mesh->interp;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
-		f64 w = interp->weight[f];
+		f64 w = interp->face_lerp[f];
 		f64 gamma_face = (1.0 - w) * gamma[o] + w * gamma[nb];
 
 		f64 grad_x_face = (1.0 - w) * grad_x[o] + w * grad_x[nb];
 		f64 grad_y_face = (1.0 - w) * grad_y[o] + w * grad_y[nb];
 
-		f64 correction =
-		    gamma_face * geom->face_area[f] *
-		    (interp->corr_x[f] * grad_x_face + interp->corr_y[f] * grad_y_face);
+		f64 correction = gamma_face * geom->face_area[f] *
+		                 (interp->nonorth_x[f] * grad_x_face +
+		                  interp->nonorth_y[f] * grad_y_face);
 
 		sys->rhs[o] += correction;
 		sys->rhs[nb] -= correction;
@@ -220,20 +209,20 @@ void jnl_laplacian_nonorth_field(struct jnl_fvsys *sys,
 // Divergence CDS
 //
 
-void jnl_div_cds_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                       f64 rho, const f64 *u_normal)
+void jnl_div_cds_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 rho,
+                       const f64 *u_normal)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_interp *interp = &mesh->interp;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
 		f64 F = rho * u_normal[f] * geom->face_area[f];
-		f64 w = interp->weight[f];
+		f64 w = interp->face_lerp[f];
 
 		mat->upper[f] += F * w;
 		mat->lower[f] -= F * (1.0 - w);
@@ -241,25 +230,31 @@ void jnl_div_cds_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 		mat->diag[nb] -= F * w;
 	}
 
-	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+	for (i32 f = topo->n_internal_faces; f < topo->n_faces; f++) {
+		i32 o = topo->owner[f];
+		i32 cf = f - topo->n_internal_faces;
+
 		f64 F = rho * u_normal[f] * geom->face_area[f];
-		mat->upper[f] += F;
+		f64 w = interp->face_lerp[f];
+
+		mat->diag[o] += F * (1.0 - w);
+		sys->closure.nb[cf] += F * w;
 	}
 }
 
-void jnl_div_cds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_div_cds_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
                        const f64 *rho, const f64 *u_normal)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_interp *interp = &mesh->interp;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
-		f64 w = interp->weight[f];
+		f64 w = interp->face_lerp[f];
 		f64 rho_face = (1.0 - w) * rho[o] + w * rho[nb];
 		f64 F = rho_face * u_normal[f] * geom->face_area[f];
 
@@ -269,13 +264,18 @@ void jnl_div_cds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 		mat->diag[nb] -= F * w;
 	}
 
-	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+	for (i32 f = topo->n_internal_faces; f < topo->n_faces; f++) {
 		i32 o = topo->owner[f];
+		i32 g = topo->neighbour[f];
+		i32 cf = f - topo->n_internal_faces;
 
-		f64 rho_face = rho[o];
-		f64 F = rho_face * u_normal[f] * geom->face_area[f];
+		f64 w = interp->face_lerp[f];
+		f64 rho_f = (1.0 - w) * rho[o] + w * rho[g];
 
-		mat->upper[f] += F;
+		f64 F = rho_f * u_normal[f] * geom->face_area[f];
+
+		mat->diag[o] += F * (1.0 - w);
+		sys->closure.nb[cf] += F * w;
 	}
 }
 
@@ -283,14 +283,14 @@ void jnl_div_cds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 // Divergence UDS
 //
 
-void jnl_div_uds_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                       f64 rho, const f64 *u_normal)
+void jnl_div_uds_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 rho,
+                       const f64 *u_normal)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
@@ -304,25 +304,32 @@ void jnl_div_uds_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 		mat->diag[nb] += Fneg;
 	}
 
-	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+	for (i32 f = topo->n_internal_faces; f < topo->n_faces; f++) {
+		i32 o = topo->owner[f];
+		i32 cf = f - topo->n_internal_faces;
+
 		f64 F = rho * u_normal[f] * geom->face_area[f];
-		mat->upper[f] += F;
+
+		if (F >= 0.0)
+			mat->diag[o] += F;
+		else
+			sys->closure.nb[cf] += F;
 	}
 }
 
-void jnl_div_uds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_div_uds_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
                        const f64 *rho, const f64 *u_normal)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_interp *interp = &mesh->interp;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 	struct jnl_ldu_matrix *mat = &sys->matrix;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
-		f64 w = interp->weight[f];
+		f64 w = interp->face_lerp[f];
 		f64 rho_face = (1.0 - w) * rho[o] + w * rho[nb];
 		f64 F = rho_face * u_normal[f] * geom->face_area[f];
 
@@ -335,13 +342,19 @@ void jnl_div_uds_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 		mat->diag[nb] += Fneg;
 	}
 
-	for (i32 f = first_patch_face(mesh); f < end_face(mesh); f++) {
+	for (i32 f = topo->n_internal_faces; f < topo->n_faces; f++) {
 		i32 o = topo->owner[f];
+		i32 g = topo->neighbour[f];
+		i32 cf = f - topo->n_internal_faces;
 
-		f64 rho_face = rho[o];
+		f64 w = interp->face_lerp[f];
+		f64 rho_face = (1.0 - w) * rho[o] + w * rho[g];
 		f64 F = rho_face * u_normal[f] * geom->face_area[f];
 
-		mat->upper[f] += F;
+		if (F >= 0.0)
+			mat->diag[o] += F;
+		else
+			sys->closure.nb[cf] += F;
 	}
 }
 
@@ -370,15 +383,15 @@ static inline f64 limiter_superbee(f64 r)
 
 typedef f64 (*jnl_limiter_fn)(f64);
 
-static void jnl_div_tvd_correction(struct jnl_fvsys *sys,
-                                   const struct jnl_mesh *mesh, const f64 *phi,
-                                   const f64 *grad_x, const f64 *grad_y,
-                                   const f64 *un_face, jnl_limiter_fn limiter)
+static void jnl_div_tvd_correction(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                   const f64 *phi, const f64 *grad_x,
+                                   const f64 *grad_y, const f64 *un_face,
+                                   jnl_limiter_fn limiter)
 {
-	const struct jnl_mesh_topo *topo = &mesh->topo;
-	const struct jnl_mesh_geom *geom = &mesh->geom;
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 
-	for (i32 f = first_internal_face(mesh); f < first_baffle_face(mesh); f++) {
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 nb = topo->neighbour[f];
 
@@ -406,17 +419,15 @@ static void jnl_div_tvd_correction(struct jnl_fvsys *sys,
 	}
 }
 
-void jnl_div_tvd_correction_minmod(struct jnl_fvsys *sys,
-                                   const struct jnl_mesh *mesh, const f64 *phi,
-                                   const f64 *grad_x, const f64 *grad_y,
-                                   const f64 *un_face)
+void jnl_div_tvd_correction_minmod(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                   const f64 *phi, const f64 *grad_x,
+                                   const f64 *grad_y, const f64 *un_face)
 {
 	jnl_div_tvd_correction(sys, mesh, phi, grad_x, grad_y, un_face,
 	                       limiter_minmod);
 }
 
-void jnl_div_tvd_correction_van_leer(struct jnl_fvsys *sys,
-                                     const struct jnl_mesh *mesh,
+void jnl_div_tvd_correction_van_leer(struct jnl_fvsys *sys, const pmsh2d *mesh,
                                      const f64 *phi, const f64 *grad_x,
                                      const f64 *grad_y, const f64 *un_face)
 {
@@ -424,8 +435,7 @@ void jnl_div_tvd_correction_van_leer(struct jnl_fvsys *sys,
 	                       limiter_van_leer);
 }
 
-void jnl_div_tvd_correction_superbee(struct jnl_fvsys *sys,
-                                     const struct jnl_mesh *mesh,
+void jnl_div_tvd_correction_superbee(struct jnl_fvsys *sys, const pmsh2d *mesh,
                                      const f64 *phi, const f64 *grad_x,
                                      const f64 *grad_y, const f64 *un_face)
 {
@@ -437,79 +447,76 @@ void jnl_div_tvd_correction_superbee(struct jnl_fvsys *sys,
 // Su
 //
 
-void jnl_su_volumetric_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_su_volumetric_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              f64 coeff)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 	const f64 *vol = mesh->geom.cell_vol;
 
 	for (i32 c = 0; c < n; c++)
 		sys->rhs[c] += coeff * vol[c];
 }
 
-void jnl_su_volumetric_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_su_volumetric_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 	const f64 *vol = mesh->geom.cell_vol;
 
 	for (i32 c = 0; c < n; c++)
 		sys->rhs[c] += field[c] * vol[c];
 }
 
-void jnl_su_volumetric_field_scaled(struct jnl_fvsys *sys,
-                                    const struct jnl_mesh *mesh, f64 coeff,
-                                    const f64 *field)
+void jnl_su_volumetric_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                    f64 coeff, const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 	const f64 *vol = mesh->geom.cell_vol;
 
 	for (i32 c = 0; c < n; c++)
 		sys->rhs[c] += coeff * field[c] * vol[c];
 }
 
-void jnl_su_integrated_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_su_integrated_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              f64 coeff)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 
 	for (i32 c = 0; c < n; c++)
 		sys->rhs[c] += coeff;
 }
 
-void jnl_su_integrated(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_su_integrated(struct jnl_fvsys *sys, const pmsh2d *mesh,
                        const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 
 	for (i32 c = 0; c < n; c++)
 		sys->rhs[c] += field[c];
 }
 
-void jnl_su_integrated_scaled(struct jnl_fvsys *sys,
-                              const struct jnl_mesh *mesh, f64 coeff,
-                              const f64 *field)
+void jnl_su_integrated_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                              f64 coeff, const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 
 	for (i32 c = 0; c < n; c++)
 		sys->rhs[c] += coeff * field[c];
 }
 
 // Backwards-compatible/default names: volumetric.
-void jnl_su_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 coeff)
+void jnl_su_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff)
 {
 	jnl_su_volumetric_const(sys, mesh, coeff);
 }
 
-void jnl_su_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                  const f64 *field)
+void jnl_su_field(struct jnl_fvsys *sys, const pmsh2d *mesh, const f64 *field)
 {
 	jnl_su_volumetric_field(sys, mesh, field);
 }
 
-void jnl_su_field_scaled(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                         f64 coeff, const f64 *field)
+void jnl_su_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff,
+                         const f64 *field)
 {
 	jnl_su_volumetric_field_scaled(sys, mesh, coeff, field);
 }
@@ -518,79 +525,76 @@ void jnl_su_field_scaled(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
 // Sp
 //
 
-void jnl_sp_volumetric_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_sp_volumetric_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              f64 coeff)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 	const f64 *vol = mesh->geom.cell_vol;
 
 	for (i32 c = 0; c < n; c++)
 		sys->matrix.diag[c] += coeff * vol[c];
 }
 
-void jnl_sp_volumetric_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_sp_volumetric_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 	const f64 *vol = mesh->geom.cell_vol;
 
 	for (i32 c = 0; c < n; c++)
 		sys->matrix.diag[c] += field[c] * vol[c];
 }
 
-void jnl_sp_volumetric_field_scaled(struct jnl_fvsys *sys,
-                                    const struct jnl_mesh *mesh, f64 coeff,
-                                    const f64 *field)
+void jnl_sp_volumetric_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                    f64 coeff, const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 	const f64 *vol = mesh->geom.cell_vol;
 
 	for (i32 c = 0; c < n; c++)
 		sys->matrix.diag[c] += coeff * field[c] * vol[c];
 }
 
-void jnl_sp_integrated_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_sp_integrated_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              f64 coeff)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 
 	for (i32 c = 0; c < n; c++)
 		sys->matrix.diag[c] += coeff;
 }
 
-void jnl_sp_integrated(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
+void jnl_sp_integrated(struct jnl_fvsys *sys, const pmsh2d *mesh,
                        const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 
 	for (i32 c = 0; c < n; c++)
 		sys->matrix.diag[c] += field[c];
 }
 
-void jnl_sp_integrated_scaled(struct jnl_fvsys *sys,
-                              const struct jnl_mesh *mesh, f64 coeff,
-                              const f64 *field)
+void jnl_sp_integrated_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                              f64 coeff, const f64 *field)
 {
-	i32 n = mesh->topo.n_cells;
+	i32 n = mesh->topo.n_real_cells;
 
 	for (i32 c = 0; c < n; c++)
 		sys->matrix.diag[c] += coeff * field[c];
 }
 
 // Backwards-compatible/default names: volumetric.
-void jnl_sp_const(struct jnl_fvsys *sys, const struct jnl_mesh *mesh, f64 coeff)
+void jnl_sp_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff)
 {
 	jnl_sp_volumetric_const(sys, mesh, coeff);
 }
 
-void jnl_sp_field(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                  const f64 *field)
+void jnl_sp_field(struct jnl_fvsys *sys, const pmsh2d *mesh, const f64 *field)
 {
 	jnl_sp_volumetric_field(sys, mesh, field);
 }
 
-void jnl_sp_field_scaled(struct jnl_fvsys *sys, const struct jnl_mesh *mesh,
-                         f64 coeff, const f64 *field)
+void jnl_sp_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff,
+                         const f64 *field)
 {
 	jnl_sp_volumetric_field_scaled(sys, mesh, coeff, field);
 }
