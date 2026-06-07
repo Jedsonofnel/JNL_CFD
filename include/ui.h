@@ -11,7 +11,7 @@ jnl_ui_handle *jnl_ui_spawn(void);
 int jnl_ui_closed(jnl_ui_handle *);
 
 int jnl_ui_send_pslg(jnl_ui_handle *, struct jnl_pslg *);
-int jnl_ui_send_mesh(jnl_ui_handle *h, struct jnl_mesh *mesh);
+int jnl_ui_send_mesh(jnl_ui_handle *h, const pmsh2d *mesh);
 
 int jnl_ui_focus(jnl_ui_handle *);
 void jnl_ui_close(jnl_ui_handle *);

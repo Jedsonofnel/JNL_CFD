@@ -153,9 +153,9 @@ static int ui_send_pslg(int fd, struct jnl_pslg *pslg)
 	return 0;
 }
 
-static int ui_send_mesh(int fd, struct jnl_mesh *mesh)
+static int ui_send_mesh(int fd, const pmsh2d *mesh)
 {
-	struct jnl_mesh_topo *t = &mesh->topo;
+	const struct jnl_pmsh2d_topo *t = &mesh->topo;
 
 	u32 nv = (u32)t->n_vertices;
 	u32 nf = (u32)t->n_faces;
@@ -179,6 +179,7 @@ static int ui_send_mesh(int fd, struct jnl_mesh *mesh)
 		vxvy[i * 2] = t->vx[i];
 		vxvy[i * 2 + 1] = t->vy[i];
 	}
+
 	i32 *fv = ARENA_PUSH_ARRAY(arena, i32, nf * 2);
 	memcpy(fv, t->face_vertex, fv_len);
 
@@ -714,7 +715,7 @@ int jnl_ui_send_pslg(jnl_ui_handle *h, struct jnl_pslg *pslg)
 	return 0;
 }
 
-int jnl_ui_send_mesh(jnl_ui_handle *h, struct jnl_mesh *mesh)
+int jnl_ui_send_mesh(jnl_ui_handle *h, const pmsh2d *mesh)
 {
 	if (jnl_ui_closed(h)) {
 		return -1;
