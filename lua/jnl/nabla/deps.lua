@@ -1,5 +1,4 @@
 -- jnl/nabla/deps.lua
-local M = {}
 
 local function deps_direct(reg, name)
 	local e = reg:entry(name)
@@ -87,12 +86,12 @@ local function classify(reg, explicit_set)
 	return pre, main, post
 end
 
-M.deps_direct                  = deps_direct
-M.deps_transitive              = deps_transitive
-M.deps_transitive_invalidation = deps_transitive_invalidation
-M.topo_sort                    = topo_sort
-M.is_mutable                   = is_mutable
-M.has_mutable                  = has_mutable
-M.classify                     = classify
-
-return M
+return {
+	deps_direct = deps_direct,
+	deps_transitive = deps_transitive,
+	deps_transitive_invalidation = deps_transitive_invalidation,
+	topo_sort = topo_sort,
+	is_mutable = is_mutable,
+	has_mutable = has_mutable,
+	classify = classify,
+}

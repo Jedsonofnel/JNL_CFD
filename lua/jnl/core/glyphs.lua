@@ -32,6 +32,7 @@ local glyphs_unicode = {
 	sub_x     = "ₓ",
 	sub_y     = "ᵧ",
 	sub_z     = "ᵤ", -- no perfect option, u is good enough
+	inf       = "∞",
 	transpose = "ᵀ",
 	_unicode  = true,
 }
@@ -68,6 +69,7 @@ local glyphs_ascii = {
 	sub_y     = "_y",
 	sub_z     = "_z",
 	transpose = "^T",
+	inf       = "inf",
 	_unicode  = false,
 }
 

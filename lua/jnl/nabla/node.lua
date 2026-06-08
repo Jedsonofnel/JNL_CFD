@@ -3,6 +3,8 @@
 -- deps
 local V = require("jnl.core.validation")
 
+-- TODO: consider adding max/min nodes for clamping - with a ternary helper clamp(lo,hi,node)?
+
 --
 -- Node: node of expression graph
 --
@@ -86,7 +88,7 @@ end
 ---@return Node
 local function new_tensor(name, rank)
 	rank = rank or 2
-	V.field_name(name, "new_tensor name")
+	V.identifier(name, "new_tensor name")
 	return setmetatable({
 		kind = "symbol",
 		name = name,
@@ -188,6 +190,7 @@ end
 ---@param kind string
 ---@return Node[]
 function Node:flatten(kind)
+	kind = kind or self.kind
 	return flatten(self, kind)
 end
 
@@ -480,6 +483,14 @@ function Node:y() return component(self, "y") end
 ---Return the z component of a rank>=1 node as a rank-(self.rank-1) node.
 ---@return Node
 function Node:z() return component(self, "z") end
+
+-- so that U.x works as well as U:x()
+Node.__index = function(self, key)
+	if self.rank >= 1 and (key == "x" or key == "y" or key == "z") then
+		return component(self, key)
+	end
+	return rawget(Node, key)
+end
 
 --
 -- Scratch depth

@@ -15,12 +15,6 @@ Registry.__index = Registry
 
 -- Dependency scanning
 
-local Acc -- loaded lazily to avoid circular dep
-local function get_acc()
-	if not Acc then Acc = require("jnl.nabla.accessor") end
-	return Acc
-end
-
 local function scan_node(node, value_deps, matrix_deps, self_name)
 	if not node or type(node) ~= "table" then return end
 
@@ -29,21 +23,6 @@ local function scan_node(node, value_deps, matrix_deps, self_name)
 			value_deps[node.name] = true
 		end
 		return
-	end
-
-	local acc = get_acc()
-	local dt  = acc.dep_type(node.kind)
-	if dt then
-		if dt == acc.DEP_MATRIX then
-			-- diag(U) etc: assembly dependency, not value
-			if node.a and node.a.name and node.a.name ~= self_name then
-				matrix_deps[node.a.name] = true
-			end
-		elseif dt == acc.DEP_TEMPORAL or dt == acc.DEP_LAGGED then
-			-- prev(U), expl(U): always satisfied, no ordering constraint
-			-- discard entirely — do not recurse
-		end
-		return -- never recurse into accessor args regardless of kind
 	end
 
 	scan_node(node.a, value_deps, matrix_deps, self_name)
