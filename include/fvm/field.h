@@ -7,6 +7,7 @@
 
 // NOTE: _i = integrated
 // NOTE: _v = volumetric, every cell value is multiplied by cell volume
+// NOTE: _c = from cell values
 
 //
 // Face interpolation
@@ -16,6 +17,9 @@ void jnl_face_interp(const pmsh2d *mesh, const f64 *field, f64 *face_field);
 
 void jnl_face_normal(const pmsh2d *mesh, const f64 *ux_face, const f64 *uy_face,
                      f64 *un_face);
+
+void jnl_face_normal_c(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
+                       f64 *un_face, struct jnl_scratch_pool *face_pool);
 
 void jnl_rhie_chow(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
                    const f64 *p, const f64 *grad_px, const f64 *grad_py,
@@ -38,6 +42,12 @@ void jnl_grad_lsq(const pmsh2d *mesh, const f64 *field, f64 *grad_x,
 void jnl_divergence_i(const pmsh2d *mesh, const f64 *un_face, f64 *div);
 
 void jnl_divergence_v(const pmsh2d *mesh, const f64 *un_face, f64 *div);
+
+void jnl_divergence_i_c(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
+                        f64 *div, struct jnl_scratch_pool *face_pool);
+
+void jnl_divergence_v_c(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
+                        f64 *div, struct jnl_scratch_pool *face_pool);
 
 void jnl_face_abssum(const pmsh2d *mesh, const f64 *un_face, f64 *out);
 

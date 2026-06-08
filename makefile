@@ -69,6 +69,8 @@ CMD_OBJS := $(patsubst $(CMDDIR)/%.c, $(OBJDIR)/$(CMDDIR)/%.o, $(CMD_SRCS))
 DEPS     += $(CMD_OBJS:.o=.d)
 
 # test/ vars
+TEST_RUNNER := scripts/test_runner.sh
+
 TEST_SRCS     := $(wildcard $(TESTDIR)/*.c)
 TEST_BINS     := $(patsubst $(TESTDIR)/%.c, $(BINDIR)/test/%, $(TEST_SRCS))
 TEST_OBJS     := $(patsubst $(TESTDIR)/%.c, $(OBJDIR)/test/%.o, $(TEST_SRCS))
@@ -90,7 +92,7 @@ else
 	LOG_CMAKE :=
 endif
 
-.PHONY: all clean test lua-test release debug triangle llm
+.PHONY: all clean test c-test lua-test release debug triangle llm
 
 all: $(FENNEL_DST) $(CMD_BINS)
 
@@ -102,16 +104,20 @@ release:
 
 triangle: $(TRIANGLE_LIBS)
 
-test: $(TEST_BINS)
+test: $(TEST_BINS) $(BINDIR)/cli
 	@failed=0; \
-	for t in $(TEST_BINS); do \
-		printf "running %-40s \n" $$t; \
-		if $$t; then echo "OK"; else echo "FAILED"; failed=1; fi; \
-	done; \
+	printf "\nC TESTS\n"; \
+	$(TEST_RUNNER) $(TEST_BINS) || failed=1; \
+	printf "\nLUA TESTS\n"; \
+	$(BINDIR)/cli lua/test/init.lua || failed=1; \
 	exit $$failed
 
+c-test: $(TEST_BINS)
+	@printf "\nC TESTS\n"
+	@$(TEST_RUNNER) $(TEST_BINS)
+
 lua-test: $(BINDIR)/cli
-	@printf "  LUA-TEST\n"
+	@printf "\nLUA TESTS\n"
 	$(Q)$(BINDIR)/cli lua/test/init.lua
 
 #

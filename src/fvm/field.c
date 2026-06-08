@@ -41,6 +41,21 @@ void jnl_face_normal(const pmsh2d *mesh, const f64 *ux_face, const f64 *uy_face,
 	}
 }
 
+// from cell values rather than face values
+void jnl_face_normal_c(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
+                       f64 *un_face, struct jnl_scratch_pool *face_pool)
+{
+	f64 *ux_face = jnl_scratch_acquire(face_pool);
+	f64 *uy_face = jnl_scratch_acquire(face_pool);
+
+	jnl_face_interp(mesh, ux, ux_face);
+	jnl_face_interp(mesh, uy, uy_face);
+	jnl_face_normal(mesh, ux_face, uy_face, un_face);
+
+	jnl_scratch_release(face_pool, uy_face);
+	jnl_scratch_release(face_pool, ux_face);
+}
+
 void jnl_rhie_chow(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
                    const f64 *p, const f64 *grad_px, const f64 *grad_py,
                    const f64 *ap_x, const f64 *ap_y, f64 *un_face)
@@ -295,6 +310,28 @@ void jnl_divergence_v(const pmsh2d *mesh, const f64 *un_face, f64 *div)
 
 	for (i32 c = topo->n_real_cells; c < topo->n_cells; c++)
 		div[c] = 0.0;
+}
+
+void jnl_divergence_i_c(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
+                        f64 *div, struct jnl_scratch_pool *face_pool)
+{
+	f64 *un_face = jnl_scratch_acquire(face_pool);
+
+	jnl_face_normal_c(mesh, ux, uy, un_face, face_pool);
+	jnl_divergence_i(mesh, un_face, div);
+
+	jnl_scratch_release(face_pool, un_face);
+}
+
+void jnl_divergence_v_c(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
+                        f64 *div, struct jnl_scratch_pool *face_pool)
+{
+	f64 *un_face = jnl_scratch_acquire(face_pool);
+
+	jnl_face_normal_c(mesh, ux, uy, un_face, face_pool);
+	jnl_divergence_v(mesh, un_face, div);
+
+	jnl_scratch_release(face_pool, un_face);
 }
 
 // NOTE: abs-valued sibling of divergence_i — sum |F_f * A_f| per cell
