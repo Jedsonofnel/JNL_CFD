@@ -1,10 +1,12 @@
 -- jnl/nabla/eval.lua
 
-local I    = require("jnl.expr_internal")
-local Node = require("jnl.nabla.node")
-local Acc  = require("jnl.nabla.accessor")
+local opt = require("jnl.core.optional")
+local I = opt.require("jnl.expr_internal")
 
-local M    = {}
+local Node = require("jnl.nabla.node")
+local Acc = require("jnl.nabla.accessor")
+
+local M = {}
 
 -- Forward declaration
 local build

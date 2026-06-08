@@ -110,8 +110,14 @@ resolve_scalar = function(node, ndims)
 
 	-- registered accessors (diag, prev, expl, cell_vol etc.)
 	local acc = Acc.get(k)
-	if acc and acc.resolve then
-		return acc.resolve(node, nil, ndims, resolve_component)
+	if acc then
+		if acc.resolve then
+			return acc.resolve(node, nil, ndims, resolve_component)
+		end
+		-- no resolve fn: treat as opaque scalar leaf (diag, prev, expl etc.)
+		assert(node.rank == 0,
+			string.format("resolve_scalar: accessor '%s' is rank-%d, expected rank-0", k, node.rank))
+		return node
 	end
 
 	if k == "neg" then
@@ -214,8 +220,12 @@ resolve_component = function(node, i, ndims)
 	local k = node.kind
 
 	local acc = Acc.get(k)
-	if acc and acc.resolve then
-		return acc.resolve(node, i, ndims, resolve_component)
+	if acc then
+		if acc.resolve then
+			return acc.resolve(node, i, ndims, resolve_component)
+		end
+		-- opaque rank-1 accessor: mangle to component symbol
+		return Node.scalar(Mangle.accessor(k, node) .. "_" .. Node.AXES[i])
 	end
 
 	-- leaves

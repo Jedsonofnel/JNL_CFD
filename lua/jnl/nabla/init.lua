@@ -4,10 +4,7 @@ local Node = require("jnl.nabla.node")
 local ops = require("jnl.nabla.ops")
 local resolve = require("jnl.nabla.resolve")
 local Eq = require("jnl.nabla.equation")
-local Acc = require("jnl.nabla.accessor")
-local Mangle = require("jnl.nabla.mangle")
 local Reg = require("jnl.nabla.registry")
-local Eval = require("jnl.nabla.eval")
 
 -- install resolve
 resolve.install(Node, Eq)
@@ -41,33 +38,21 @@ local Nabla = setmetatable({
 	transpose = ops.transpose,
 	mag = ops.mag,
 	inv = ops.inv,
-
-	-- eval
-	Eval = Eval,
 }, {
 	__call = function(_, ...) return ops.grad(...) end
 })
 
 Nabla.Node = Node
 
--- Accessor relaying
-Nabla.DEP_MATRIX = Acc.DEP_MATRIX
-Nabla.DEP_TEMPORAL = Acc.DEP_TEMPORAL
-Nabla.DEP_LAGGED = Acc.DEP_LAGGED
-
-Nabla.register_accessor = function(name, spec)
-	Acc.register(name, spec)
-	Nabla[name] = Acc[name]
-end
-
--- Name mangling
-Nabla.mangle_accessor = Mangle.accessor
-Nabla.mangle_field = Mangle.field
-Nabla.mangle_grad = Mangle.grad
-
 -- Registry
 Nabla.new_registry = function(label)
 	return Reg.new(label)
+end
+
+-- Accessors
+function Nabla.register_accessor(name, spec)
+	local acc = require("jnl.nabla.accessor")
+	return acc.register(name, spec)
 end
 
 return Nabla

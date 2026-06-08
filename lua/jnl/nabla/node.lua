@@ -13,16 +13,21 @@ local V = require("jnl.core.validation")
 ---All constructor functions return a Node; arithmetic operators are overloaded.
 ---Nodes are immutable once constructed — all operations return new nodes.
 ---@class Node
----@field kind    string   Node kind tag. One of: "symbol"|"constant"|"cvec"|"neg"|
----                        "add"|"sub"|"mul"|"div"|"scale"|"dot"|"matvec"|"matmul"|
----                        "pow"|"component"|"outer", or an accessor kind registered
----                        via nabla.register_accessor().
+---@field kind    string   Node kind tag.
 ---@field rank    integer  Tensor rank: 0 = scalar, 1 = vector, 2 = tensor.
----@field name    string?  Declared symbol name, if any. Present on "symbol" and
----                        named "constant"/"cvec" nodes.
----@field a       Node?    First child (left operand, base of pow, operand of neg/component).
----                        For "constant" kind, holds the numeric value directly.
----@field b       Node?    Second child (right operand, exponent of pow, axis index of component).
+---@field name    string?  Declared symbol name, if any.
+---@field a       Node?    First child.
+---@field b       Node?    Second child.
+---@field x       Node     x-component (rank >= 1 nodes only; via __index).
+---@field y       Node     y-component (rank >= 1 nodes only; via __index).
+---@field z       Node     z-component (rank >= 1 nodes only; via __index).
+---@operator unm:Node
+---@operator add(Node):Node
+---@operator sub(Node):Node
+---@operator mul(Node):Node
+---@operator div(Node):Node
+---@operator pow(Node):Node
+---@operator concat(Node):Node
 local Node = {}
 Node.__index = Node
 
@@ -402,6 +407,12 @@ function Node:neg()
 	return negate(self)
 end
 
+---Negate this node: returns -self.
+---@return Node
+function Node:negate()
+	return negate(self)
+end
+
 ---Unary minus operator: -node.
 ---@return Node
 function Node:__unm()
@@ -517,21 +528,12 @@ local function component(node, axis)
 	}, Node)
 end
 
----Return the x component of a rank>=1 node as a rank-(self.rank-1) node.
----@return Node
-function Node:x() return component(self, "x") end
-
----Return the y component of a rank>=1 node as a rank-(self.rank-1) node.
----@return Node
-function Node:y() return component(self, "y") end
-
----Return the z component of a rank>=1 node as a rank-(self.rank-1) node.
----@return Node
-function Node:z() return component(self, "z") end
-
--- so that U.x works as well as U:x()
+-- so that U.x works
 Node.__index = function(self, key)
-	if self.rank >= 1 and (key == "x" or key == "y" or key == "z") then
+	if key == "x" or key == "y" or key == "z" then
+		local rank = rawget(self, "rank")
+		assert(rank and rank >= 1,
+			string.format(".%s requires rank >= 1, got rank-%d", key, rank or 0))
 		return component(self, key)
 	end
 	return rawget(Node, key)
@@ -709,10 +711,9 @@ function Node:equals(rhs)
 end
 
 ---Return a simplified form of this expression tree.
----@param retain_named? boolean  Keep named constants in place; default true.
 ---@return Node
-function Node:simplify(retain_named)
-	return require("jnl.nabla.simplify")(self, { retain_named = retain_named ~= false })
+function Node:simplify()
+	return require("jnl.nabla.simplify")(self)
 end
 
 ---Render this node as a human-readable string.

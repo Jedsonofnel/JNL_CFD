@@ -169,13 +169,10 @@ end
 -- current test context for recording pass/fail without passing names everywhere
 local ctx = { block = nil, test = {}, failed = false }
 
-local function pass()
-	io.write(".")
-end
-
 local function fail(msg)
-	ctx.failed = true
 	io.write(string.format("\n  FAIL  %s\n        %s\n", ctx.test.name, msg))
+	ctx.failures = ctx.failures or {}
+	ctx.failures[#ctx.failures + 1] = msg or "assertion failed"
 end
 
 ---Begin a fluent assertion chain on value.
@@ -185,72 +182,56 @@ function M.expect(value)
 	local E = {}
 
 	function E.equals(expected)
-		if value == expected then
-			pass()
-		else
+		if value ~= expected then
 			fail(string.format("expected %s, got %s", fmt(expected), fmt(value)))
 		end
 		return E
 	end
 
 	function E.not_equals(expected)
-		if value ~= expected then
-			pass()
-		else
+		if value == expected then
 			fail(string.format("expected not %s", fmt(expected)))
 		end
 		return E
 	end
 
 	function E.is_nil(msg)
-		if value == nil then
-			pass()
-		else
+		if value ~= nil then
 			fail(msg or string.format("expected nil, got %s", fmt(value)))
 		end
 		return E
 	end
 
 	function E.is_not_nil(msg)
-		if value ~= nil then
-			pass()
-		else
+		if value == nil then
 			fail(msg or "expected non-nil value")
 		end
 		return E
 	end
 
 	function E.is_truthy(msg)
-		if value then
-			pass()
-		else
+		if not value then
 			fail(msg or string.format("expected truthy, got %s", fmt(value)))
 		end
 		return E
 	end
 
 	function E.is_falsy(msg)
-		if not value then
-			pass()
-		else
+		if value then
 			fail(msg or string.format("expected falsy, got %s", fmt(value)))
 		end
 		return E
 	end
 
 	function E.is_less_than(n, msg)
-		if type(value) == "number" and value < n then
-			pass()
-		else
+		if not (type(value) == "number" and value < n) then
 			fail(msg or string.format("expected < %s, got %s", fmt(n), fmt(value)))
 		end
 		return E
 	end
 
 	function E.is_greater_than(n, msg)
-		if type(value) == "number" and value > n then
-			pass()
-		else
+		if not (type(value) == "number" and value > n) then
 			fail(msg or string.format("expected > %s, got %s", fmt(n), fmt(value)))
 		end
 		return E
@@ -263,7 +244,7 @@ function M.expect(value)
 		end
 		for _, v in ipairs(value) do
 			if v == item then
-				pass(); return E
+				return E
 			end
 		end
 		fail(string.format("%s not found in list", fmt(item)))
@@ -281,7 +262,6 @@ function M.expect(value)
 				return E
 			end
 		end
-		pass()
 		return E
 	end
 
@@ -295,8 +275,6 @@ function M.expect(value)
 			fail("expected an error but none was thrown")
 		elseif pattern and not tostring(err):find(pattern, 1, true) then
 			fail(string.format("error %q did not match pattern %q", tostring(err), pattern))
-		else
-			pass()
 		end
 		return E
 	end
@@ -309,8 +287,6 @@ function M.expect(value)
 		local ok, err = pcall(value)
 		if not ok then
 			fail("unexpected error: " .. tostring(err))
-		else
-			pass()
 		end
 		return E
 	end
@@ -322,52 +298,82 @@ end
 -- Execution
 --
 
-local function run_block(block)
-	io.write(string.format("\n%s\n", block.name))
-	local passed  = 0
-	local failed  = 0
-	local skipped = 0
+local function run_test(block, test)
+	ctx.block = block
+	ctx.test = test
+	ctx.failed = false
+	ctx.failures = {}
 
-	for _, test in ipairs(block.tests) do
-		if test.skip then
-			io.write(string.format("  skip  %s%s\n",
-				test.name, test.reason and ("  (" .. test.reason .. ")") or ""))
-			skipped = skipped + 1
-		else
-			ctx.block = block
-			ctx.test = test
-			ctx.failed = false
+	if block.before_each then pcall(block.before_each) end
+	local ok, err = pcall(test.fn)
+	if block.after_each then pcall(block.after_each) end
 
-			if block.before_each then pcall(block.before_each) end
-			local ok, err = pcall(test.fn)
-			if block.after_each then pcall(block.after_each) end
+	if not ok and not ctx.failed then
+		ctx.failed = true
+		ctx.failures[#ctx.failures + 1] = tostring(err)
+	end
 
-			if not ok then
-				ctx.failed = true
-				io.write(string.format("\n  ERROR %s\n        %s\n", test.name, tostring(err)))
-			end
+	return not ctx.failed, ctx.failures
+end
 
-			if ctx.failed then
-				failed = failed + 1
+local function print_failures(all_failures)
+	if #all_failures == 0 then return end
+
+	io.write("\nFailures:\n")
+	for _, f in ipairs(all_failures) do
+		io.write(string.format("\n  %d) %s: %s\n", f.n, f.block, f.test))
+		for _, msg in ipairs(f.msgs) do
+			io.write(string.format("     %s\n", msg))
+		end
+	end
+end
+
+local function print_dots(results)
+	local col = 0
+	for _, r in ipairs(results) do
+		io.write(r.ch)
+		col = col + 1
+		if col % 72 == 0 then io.write("\n") end
+	end
+	io.write("\n")
+end
+
+local function collect_results()
+	local results      = {}
+	local all_failures = {}
+
+	for _, block in ipairs(blocks) do
+		for _, test in ipairs(block.tests) do
+			if test.skip then
+				results[#results + 1] = { ch = "S" }
+				root.skipped = root.skipped + 1
 			else
-				passed = passed + 1
+				local passed, failures = run_test(block, test)
+				if passed then
+					results[#results + 1] = { ch = "." }
+					root.passed = root.passed + 1
+				else
+					results[#results + 1] = { ch = "F" }
+					root.failed = root.failed + 1
+					all_failures[#all_failures + 1] = {
+						n     = #all_failures + 1,
+						block = block.name,
+						test  = test.name,
+						msgs  = failures,
+					}
+				end
 			end
 		end
 	end
 
-	io.write(string.format("  %d passed  %d failed  %d skipped\n",
-		passed, failed, skipped))
-
-	root.passed  = root.passed + passed
-	root.failed  = root.failed + failed
-	root.skipped = root.skipped + skipped
+	return results, all_failures
 end
 
----Execute all collected describe blocks and print a summary.
 function M.run()
-	for _, block in ipairs(blocks) do
-		run_block(block)
-	end
+	local results, all_failures = collect_results()
+
+	print_dots(results)
+	print_failures(all_failures)
 
 	local total = root.passed + root.failed + root.skipped
 	io.write(string.format("\n%d passed  %d failed  %d skipped  (%d total)\n",

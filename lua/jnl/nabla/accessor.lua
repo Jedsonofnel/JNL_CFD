@@ -13,6 +13,8 @@ local function validate_spec(name, spec)
 	V.typeof(spec.pretty, "function", name .. ".pretty")
 end
 
+---@param name string
+---@param spec table
 function M.register(name, spec)
 	validate_spec(name, spec)
 	registry[name] = spec
