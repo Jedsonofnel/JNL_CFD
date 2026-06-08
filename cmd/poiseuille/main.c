@@ -76,25 +76,20 @@ static void fill_velocity_ghosts(const pmsh2d *mesh, f64 *Ux, f64 *Uy,
                                  const struct jnl_bc_set *ux_bcs,
                                  const struct jnl_bc_set *uy_bcs)
 {
-	jnl_bc_set_fill_ghosts(ux_bcs, mesh, Ux);
-	jnl_bc_set_fill_ghosts(uy_bcs, mesh, Uy);
-
-	jnl_baffles_scalar_fill_insulated(mesh, Ux);
-	jnl_baffles_scalar_fill_insulated(mesh, Uy);
+	jnl_bc_set_fill(ux_bcs, mesh, Ux);
+	jnl_bc_set_fill(uy_bcs, mesh, Uy);
 }
 
 static void fill_pressure_ghosts(const pmsh2d *mesh, f64 *p,
                                  const struct jnl_bc_set *p_bcs)
 {
-	jnl_bc_set_fill_ghosts(p_bcs, mesh, p);
-	jnl_baffles_scalar_fill_insulated(mesh, p);
+	jnl_bc_set_fill(p_bcs, mesh, p);
 }
 
 static void close_scalar_bcs(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              const struct jnl_bc_set *bcs)
 {
 	jnl_bc_set_close(bcs, sys, mesh);
-	jnl_baffles_scalar_close_insulated(sys, mesh);
 	jnl_bc_assert_all_closed(sys);
 }
 

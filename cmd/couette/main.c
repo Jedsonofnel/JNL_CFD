@@ -74,22 +74,14 @@ static void fill_velocity_ghosts(const pmsh2d *mesh, f64 *Ux, f64 *Uy,
                                  const struct jnl_bc_set *ux_bcs,
                                  const struct jnl_bc_set *uy_bcs)
 {
-	jnl_bc_set_fill_ghosts(ux_bcs, mesh, Ux);
-	jnl_bc_set_fill_ghosts(uy_bcs, mesh, Uy);
-
-	/*
-	 * No baffles in this case, but harmless if the mesh later has
-	 * disconnected/default baffles.
-	 */
-	jnl_baffles_scalar_fill_insulated(mesh, Ux);
-	jnl_baffles_scalar_fill_insulated(mesh, Uy);
+	jnl_bc_set_fill(ux_bcs, mesh, Ux);
+	jnl_bc_set_fill(uy_bcs, mesh, Uy);
 }
 
 static void fill_pressure_ghosts(const pmsh2d *mesh, f64 *p,
                                  const struct jnl_bc_set *p_bcs)
 {
-	jnl_bc_set_fill_ghosts(p_bcs, mesh, p);
-	jnl_baffles_scalar_fill_insulated(mesh, p);
+	jnl_bc_set_fill(p_bcs, mesh, p);
 }
 
 //
@@ -269,7 +261,6 @@ int main(void)
 		jnl_su_v_f(ux_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&ux_bcs, ux_sys, mesh);
-		jnl_baffles_scalar_close_insulated(ux_sys, mesh);
 		jnl_bc_assert_all_closed(ux_sys);
 
 		jnl_fvsys_under_relax(ux_sys, Ux, ALPHA_U);
@@ -294,7 +285,6 @@ int main(void)
 		jnl_su_v_f(uy_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&uy_bcs, uy_sys, mesh);
-		jnl_baffles_scalar_close_insulated(uy_sys, mesh);
 		jnl_bc_assert_all_closed(uy_sys);
 
 		jnl_fvsys_under_relax(uy_sys, Uy, ALPHA_U);
@@ -341,7 +331,6 @@ int main(void)
 		jnl_su_i_f(pp_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&pp_bcs, pp_sys, mesh);
-		jnl_baffles_scalar_close_insulated(pp_sys, mesh);
 		jnl_bc_assert_all_closed(pp_sys);
 
 		jnl_fvsys_solve_cg_into(pp_sys, pool, pp, 1e-6, 500);

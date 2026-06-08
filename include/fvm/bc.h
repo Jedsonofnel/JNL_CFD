@@ -5,6 +5,12 @@
 #include "mesh2d.h"
 #include "fvm/linalg.h"
 
+// NOTE: _d  = Dirichlet
+// NOTE: _n  = Neumann
+// NOTE: _r  = Robin (a*phi + b*dphi/dn = c)
+// NOTE: _s  = scalar field
+// NOTE: _v  = vector field (ux, uy)
+
 typedef enum {
 	JNL_BC_NEUMANN = 0,
 	JNL_BC_DIRICHLET = 1,
@@ -88,189 +94,127 @@ struct jnl_bc_set {
 	 .c = (c_)}
 
 //
-// Scalar patch ghost filling
+// Scalar patch BCs
 //
 
-void jnl_patch_scalar_fill_dirichlet(const pmsh2d *mesh, f64 *phi,
-                                     const char *patch_name, f64 value);
+void jnl_patch_s_fill_d(const pmsh2d *mesh, f64 *phi, const char *patch,
+                        f64 value);
 
-void jnl_patch_scalar_fill_neumann(const pmsh2d *mesh, f64 *phi,
-                                   const char *patch_name, f64 grad_n);
+void jnl_patch_s_fill_n(const pmsh2d *mesh, f64 *phi, const char *patch,
+                        f64 grad_n);
 
-void jnl_patch_scalar_fill_robin(const pmsh2d *mesh, f64 *phi,
-                                 const char *patch_name, f64 a, f64 b, f64 c);
+void jnl_patch_s_fill_r(const pmsh2d *mesh, f64 *phi, const char *patch, f64 a,
+                        f64 b, f64 c);
 
-void jnl_bc_set_fill_ghosts(const struct jnl_bc_set *bcs, const pmsh2d *mesh,
-                            f64 *phi);
+void jnl_patch_s_close_d(fvsys *sys, const pmsh2d *mesh, const char *patch,
+                         f64 value);
 
-//
-// Scalar patch implicit closure
-//
+void jnl_patch_s_close_n(fvsys *sys, const pmsh2d *mesh, const char *patch,
+                         f64 grad_n);
 
-void jnl_patch_scalar_close_dirichlet(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                                      const char *patch_name, f64 value);
+void jnl_patch_s_close_r(fvsys *sys, const pmsh2d *mesh, const char *patch,
+                         f64 a, f64 b, f64 c);
 
-void jnl_patch_scalar_close_neumann(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                                    const char *patch_name, f64 grad_n);
+// BC set — applies all entries in one call
+void jnl_bc_set_fill(const struct jnl_bc_set *bcs, const pmsh2d *mesh,
+                     f64 *phi);
 
-void jnl_patch_scalar_close_robin(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                                  const char *patch_name, f64 a, f64 b, f64 c);
-
-void jnl_bc_set_close(const struct jnl_bc_set *bcs, struct jnl_fvsys *sys,
+void jnl_bc_set_close(const struct jnl_bc_set *bcs, fvsys *sys,
                       const pmsh2d *mesh);
 
 //
-// Scalar baffle-region ghost filling
+// Vector patch BCs
 //
 
-void jnl_baffle_region_scalar_fill_dirichlet(const pmsh2d *mesh, f64 *phi,
-                                             const char *baffle_name,
-                                             i32 region_marker, f64 value);
+void jnl_patch_v_fill_d(const pmsh2d *mesh, f64 *ux, f64 *uy, const char *patch,
+                        f64 ux_val, f64 uy_val);
 
-void jnl_baffle_region_scalar_fill_neumann(const pmsh2d *mesh, f64 *phi,
-                                           const char *baffle_name,
-                                           i32 region_marker, f64 grad_n);
+void jnl_patch_v_fill_n(const pmsh2d *mesh, f64 *ux, f64 *uy, const char *patch,
+                        f64 ux_gn, f64 uy_gn);
 
-void jnl_baffle_region_scalar_fill_robin(const pmsh2d *mesh, f64 *phi,
-                                         const char *baffle_name,
-                                         i32 region_marker, f64 a, f64 b,
-                                         f64 c);
+void jnl_patch_v_fill_nt(const pmsh2d *mesh, f64 *ux, f64 *uy,
+                         const char *patch, jnl_bc_kind nkind, f64 nval,
+                         jnl_bc_kind tkind, f64 tval);
 
 //
-// Scalar baffle-region implicit closure
+// Scalar baffle-region BCs
 //
 
-void jnl_baffle_region_scalar_close_dirichlet(struct jnl_fvsys *sys,
-                                              const pmsh2d *mesh,
-                                              const char *baffle_name,
-                                              i32 region_marker, f64 value);
+void jnl_bregion_s_fill_d(const pmsh2d *mesh, f64 *phi, const char *baffle,
+                          i32 region, f64 value);
 
-void jnl_baffle_region_scalar_close_neumann(struct jnl_fvsys *sys,
-                                            const pmsh2d *mesh,
-                                            const char *baffle_name,
-                                            i32 region_marker, f64 grad_n);
+void jnl_bregion_s_fill_n(const pmsh2d *mesh, f64 *phi, const char *baffle,
+                          i32 region, f64 grad_n);
 
-void jnl_baffle_region_scalar_close_robin(struct jnl_fvsys *sys,
-                                          const pmsh2d *mesh,
-                                          const char *baffle_name,
-                                          i32 region_marker, f64 a, f64 b,
-                                          f64 c);
+void jnl_bregion_s_fill_r(const pmsh2d *mesh, f64 *phi, const char *baffle,
+                          i32 region, f64 a, f64 b, f64 c);
 
-//
-// Whole scalar baffle helpers
-//
+void jnl_bregion_s_close_d(fvsys *sys, const pmsh2d *mesh, const char *baffle,
+                           i32 region, f64 value);
 
-void jnl_baffle_scalar_fill_insulated(const pmsh2d *mesh, f64 *phi,
-                                      const char *baffle_name);
+void jnl_bregion_s_close_n(fvsys *sys, const pmsh2d *mesh, const char *baffle,
+                           i32 region, f64 grad_n);
 
-void jnl_baffle_scalar_close_insulated(struct jnl_fvsys *sys,
-                                       const pmsh2d *mesh,
-                                       const char *baffle_name);
-
-void jnl_baffles_scalar_fill_insulated(const pmsh2d *mesh, f64 *phi);
-
-void jnl_baffles_scalar_close_insulated(struct jnl_fvsys *sys,
-                                        const pmsh2d *mesh);
-
-void jnl_baffle_scalar_fill_continuous(const pmsh2d *mesh, f64 *phi,
-                                       const char *baffle_name);
-
-void jnl_baffle_scalar_close_continuous(struct jnl_fvsys *sys,
-                                        const pmsh2d *mesh,
-                                        const char *baffle_name);
-
-void jnl_baffle_scalar_close_contact_conductance(struct jnl_fvsys *sys,
-                                                 const pmsh2d *mesh,
-                                                 const char *baffle_name,
-                                                 f64 conductance);
-
-void jnl_baffle_scalar_close_contact_resistance(struct jnl_fvsys *sys,
-                                                const pmsh2d *mesh,
-                                                const char *baffle_name,
-                                                f64 resistance);
+void jnl_bregion_s_close_r(fvsys *sys, const pmsh2d *mesh, const char *baffle,
+                           i32 region, f64 a, f64 b, f64 c);
 
 //
-// Vector2 patch ghost filling
+// Vector baffle-region BCs
 //
 
-void jnl_patch_vector2_fill_dirichlet(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                      const char *patch_name, f64 ux_value,
-                                      f64 uy_value);
+void jnl_bregion_v_fill_d(const pmsh2d *mesh, f64 *ux, f64 *uy,
+                          const char *baffle, i32 region, f64 ux_val,
+                          f64 uy_val);
 
-void jnl_patch_vector2_fill_neumann(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                    const char *patch_name, f64 ux_grad_n,
-                                    f64 uy_grad_n);
+void jnl_bregion_v_fill_n(const pmsh2d *mesh, f64 *ux, f64 *uy,
+                          const char *baffle, i32 region, f64 ux_gn, f64 uy_gn);
 
-void jnl_patch_vector2_fill_zero_gradient(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                          const char *patch_name);
-
-void jnl_patch_vector2_fill_no_slip(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                    const char *patch_name);
-
-void jnl_patch_vector2_fill_moving_wall(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                        const char *patch_name, f64 ux_wall,
-                                        f64 uy_wall);
-
-void jnl_patch_vector2_fill_nt(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                               const char *patch_name, jnl_bc_kind normal_kind,
-                               f64 normal_value, jnl_bc_kind tangential_kind,
-                               f64 tangential_value);
-
-void jnl_patch_vector2_fill_slip(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                 const char *patch_name);
-
-void jnl_patch_vector2_fill_symmetry(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                     const char *patch_name);
+void jnl_bregion_v_fill_nt(const pmsh2d *mesh, f64 *ux, f64 *uy,
+                           const char *baffle, i32 region, jnl_bc_kind nkind,
+                           f64 nval, jnl_bc_kind tkind, f64 tval);
 
 //
-// Vector2 baffle-region ghost filling
+// Whole-baffle scalar helpers
 //
 
-void jnl_baffle_region_vector2_fill_dirichlet(const pmsh2d *mesh, f64 *ux,
-                                              f64 *uy, const char *baffle_name,
-                                              i32 region_marker, f64 ux_value,
-                                              f64 uy_value);
+void jnl_baffle_s_fill_insul(const pmsh2d *mesh, f64 *phi, const char *baffle);
 
-void jnl_baffle_region_vector2_fill_neumann(const pmsh2d *mesh, f64 *ux,
-                                            f64 *uy, const char *baffle_name,
-                                            i32 region_marker, f64 ux_grad_n,
-                                            f64 uy_grad_n);
+void jnl_baffle_s_fill_cont(const pmsh2d *mesh, f64 *phi, const char *baffle);
 
-void jnl_baffle_region_vector2_fill_zero_gradient(const pmsh2d *mesh, f64 *ux,
-                                                  f64 *uy,
-                                                  const char *baffle_name,
-                                                  i32 region_marker);
+void jnl_baffle_s_close_insul(fvsys *sys, const pmsh2d *mesh,
+                              const char *baffle);
 
-void jnl_baffle_region_vector2_fill_no_slip(const pmsh2d *mesh, f64 *ux,
-                                            f64 *uy, const char *baffle_name,
-                                            i32 region_marker);
+void jnl_baffle_s_close_cont(fvsys *sys, const pmsh2d *mesh,
+                             const char *baffle);
 
-void jnl_baffle_region_vector2_fill_moving_wall(const pmsh2d *mesh, f64 *ux,
-                                                f64 *uy,
-                                                const char *baffle_name,
-                                                i32 region_marker, f64 ux_wall,
-                                                f64 uy_wall);
+void jnl_baffle_s_close_cc(fvsys *sys, const pmsh2d *mesh, const char *baffle,
+                           f64 conductance);
 
-void jnl_baffle_region_vector2_fill_nt(
-    const pmsh2d *mesh, f64 *ux, f64 *uy, const char *baffle_name,
-    i32 region_marker, jnl_bc_kind normal_kind, f64 normal_value,
-    jnl_bc_kind tangential_kind, f64 tangential_value);
-
-void jnl_baffle_region_vector2_fill_slip(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                         const char *baffle_name,
-                                         i32 region_marker);
-
-void jnl_baffle_region_vector2_fill_symmetry(const pmsh2d *mesh, f64 *ux,
-                                             f64 *uy, const char *baffle_name,
-                                             i32 region_marker);
-
-void jnl_baffle_vector2_fill_continuous(const pmsh2d *mesh, f64 *ux, f64 *uy,
-                                        const char *baffle_name);
+static inline void jnl_baffle_s_close_cr(fvsys *sys, const pmsh2d *mesh,
+                                         const char *baffle, f64 resistance)
+{
+	jnl_baffle_s_close_cc(sys, mesh, baffle, 1.0 / resistance);
+}
 
 //
-// Debug/safety
+// All-baffles scalar helpers
 //
 
-void jnl_bc_assert_all_closed(const struct jnl_fvsys *sys);
+void jnl_baffles_s_fill_insul(const pmsh2d *mesh, f64 *phi);
+
+void jnl_baffles_s_close_insul(fvsys *sys, const pmsh2d *mesh);
+
+//
+// Whole-baffle vector helpers
+//
+
+void jnl_baffle_v_fill_cont(const pmsh2d *mesh, f64 *ux, f64 *uy,
+                            const char *baffle);
+
+//
+// Debug
+//
+
+void jnl_bc_assert_all_closed(const fvsys *sys);
 
 #endif // JNL_BC_H
