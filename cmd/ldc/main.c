@@ -25,6 +25,7 @@
 #include "cartmesh2d.h"
 
 #include "fvm/linalg.h"
+#include "fvm/solver.h"
 #include "fvm/field.h"
 #include "fvm/bc.h"
 #include "fvm/operators.h"

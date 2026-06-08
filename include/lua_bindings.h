@@ -15,6 +15,8 @@
 
 #define CTX_MT "jnl.fvm.ctx"
 #define FVSYS_MT "jnl.fvm.fvsys"
+#define CG_SOLVE_MT "jnl.fvm.cg_solve"
+#define BICGSTAB_SOLVE_MT "jnl.fvm.bicgstab_solve"
 
 //
 // Shared vec userdata - f64* slice
@@ -90,6 +92,7 @@ push_borrowed_pool(lua_State *L, struct jnl_scratch_pool *pool, int parent_idx)
 typedef struct {
 	struct jnl_fvsys *sys;
 	struct jnl_scratch_pool *pool; // real-cell solver pool, borrowed from ctx
+	struct jnl_fvm_ctx *ctx;
 	int ctx_ref;
 } lua_fvsys;
 
@@ -114,6 +117,7 @@ static inline lua_fvm_ctx_ud *check_fvm_ctx(lua_State *L, int idx)
 void jnl_lua_register_fvm_operators(lua_State *L);
 void jnl_lua_register_fvm_bc(lua_State *L);
 void jnl_lua_register_fvm_field(lua_State *L);
+void jnl_lua_register_fvm_solver(lua_State *L);
 
 //
 // Module openers

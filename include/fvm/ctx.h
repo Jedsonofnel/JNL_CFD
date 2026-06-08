@@ -7,6 +7,8 @@
 #include "fvm/linalg.h"
 #include "scratch.h"
 
+#define JNL_FVM_REAL_CELL_SCRATCH_MIN 9
+
 struct jnl_fvm_ctx {
 	jnl_arena *arena;
 

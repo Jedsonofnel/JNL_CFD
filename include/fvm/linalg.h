@@ -1,12 +1,10 @@
-#ifndef JNL_LINALG_H
-#define JNL_LINALG_H
+#ifndef JNL_FVM_LINALG_H
+#define JNL_FVM_LINALG_H
 
 #include "jnl/common.h"
 #include "jnl/arena.h"
 #include "scratch.h"
 #include "mesh2d.h"
-
-#define LINALG_MIN_SCRATCH 9 // for bicgstab + scratch return
 
 // convenient typedef
 typedef struct jnl_fvsys fvsys;
@@ -36,7 +34,7 @@ void jnl_ldu_zero(struct jnl_ldu_matrix *m);
 void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y);
 
 //
-// Singularity state (cached per system)
+// Singularity state cached per system
 //
 
 enum jnl_singularity {
@@ -46,7 +44,7 @@ enum jnl_singularity {
 };
 
 //
-// Closure for storing closure cache for non-internal connections
+// Closure cache for non-internal connections
 //
 
 struct jnl_fvsys_closure {
@@ -81,31 +79,6 @@ void jnl_fvsys_pin_cell(fvsys *sys, i32 cell_idx, f64 value);
 void jnl_fvsys_pin_cells(fvsys *sys, const i32 *cells, i32 n_cells, f64 value);
 
 //
-// Solvers
-//
-
-struct jnl_solve_result {
-	f64 *x;
-	i32 iters;
-};
-
-i32 jnl_fvsys_solve_cg_into(fvsys *sys, struct jnl_scratch_pool *pool, f64 *x,
-                            f64 tolerance, i32 max_iters);
-
-struct jnl_solve_result jnl_fvsys_solve_cg(fvsys *sys,
-                                           struct jnl_scratch_pool *pool,
-                                           const f64 *x_init, f64 tolerance,
-                                           i32 max_iters);
-
-i32 jnl_fvsys_solve_bicgstab_into(fvsys *sys, struct jnl_scratch_pool *pool,
-                                  f64 *x, f64 tolerance, i32 max_iters);
-
-struct jnl_solve_result jnl_fvsys_solve_bicgstab(fvsys *sys,
-                                                 struct jnl_scratch_pool *pool,
-                                                 const f64 *x_init,
-                                                 f64 tolerance, i32 max_iters);
-
-//
 // Useful diagnostics
 //
 
@@ -114,14 +87,15 @@ f64 jnl_fvsys_residual_norm(const fvsys *sys, struct jnl_scratch_pool *pool,
 
 f64 jnl_fvsys_diagonal_dominance(const fvsys *sys,
                                  struct jnl_scratch_pool *pool);
+
 bool jnl_fvsys_all_diagonals_positive(const fvsys *sys);
+
 f64 jnl_fvsys_max_asymmetry(const fvsys *sys);
 
 //
 // Arena sizing helpers
 //
 
-// Bytes needed for one fvsys
 u64 jnl_fvsys_arena_size(const pmsh2d *mesh);
 
 //
@@ -130,4 +104,10 @@ u64 jnl_fvsys_arena_size(const pmsh2d *mesh);
 
 void jnl_ldu_add_face_coupling(struct jnl_ldu_matrix *m, i32 face, f64 coeff);
 
-#endif
+//
+// Internal-ish helper used by solver.c
+//
+
+void jnl_fvsys_ensure_nonsingular(fvsys *sys, struct jnl_scratch_pool *pool);
+
+#endif // JNL_FVM_LINALG_H

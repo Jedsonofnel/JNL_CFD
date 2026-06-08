@@ -58,64 +58,6 @@ static int l_fvsys_residual_norm(lua_State *L)
 	return 1;
 }
 
-static int l_fvsys_solve_cg(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	lua_vec *x = check_vec(L, 2);
-	f64 tol = luaL_optnumber(L, 3, 1e-6);
-	i32 max_iters = (i32)luaL_optinteger(L, 4, 1000);
-
-	struct jnl_solve_result result =
-	    jnl_fvsys_solve_cg(s->sys, s->pool, x->data, tol, max_iters);
-
-	push_scratch_vec(L, result.x, s->sys->matrix.n_cells);
-	lua_pushinteger(L, result.iters);
-	return 2;
-}
-
-static int l_fvsys_solve_cg_into(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	lua_vec *x = check_vec(L, 2);
-	f64 tol = luaL_optnumber(L, 3, 1e-6);
-	i32 max_iters = (i32)luaL_optinteger(L, 4, 1000);
-
-	i32 iters =
-	    jnl_fvsys_solve_cg_into(s->sys, s->pool, x->data, tol, max_iters);
-
-	lua_pushinteger(L, iters);
-	return 1;
-}
-
-static int l_fvsys_solve_bicgstab(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	lua_vec *x = check_vec(L, 2);
-	f64 tol = luaL_optnumber(L, 3, 1e-6);
-	i32 max_iters = (i32)luaL_optinteger(L, 4, 1000);
-
-	struct jnl_solve_result result =
-	    jnl_fvsys_solve_bicgstab(s->sys, s->pool, x->data, tol, max_iters);
-
-	push_scratch_vec(L, result.x, s->sys->matrix.n_cells);
-	lua_pushinteger(L, result.iters);
-	return 2;
-}
-
-static int l_fvsys_solve_bicgstab_into(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	lua_vec *x = check_vec(L, 2);
-	f64 tol = luaL_optnumber(L, 3, 1e-6);
-	i32 max_iters = (i32)luaL_optinteger(L, 4, 1000);
-
-	i32 iters =
-	    jnl_fvsys_solve_bicgstab_into(s->sys, s->pool, x->data, tol, max_iters);
-
-	lua_pushinteger(L, iters);
-	return 1;
-}
-
 static int l_fvsys_diag_vec(lua_State *L)
 {
 	lua_fvsys *s = check_fvsys(L, 1);
@@ -145,7 +87,9 @@ static int l_fvsys_max_asymmetry(lua_State *L)
 
 static int l_fvsys_gc(lua_State *L)
 {
-	luaL_unref(L, LUA_REGISTRYINDEX, check_fvsys(L, 1)->ctx_ref);
+	lua_fvsys *s = check_fvsys(L, 1);
+	luaL_unref(L, LUA_REGISTRYINDEX, s->ctx_ref);
+	s->ctx_ref = LUA_NOREF;
 	return 0;
 }
 
@@ -155,10 +99,6 @@ static const luaL_Reg fvsys_mt[] = {
     {"under_relax", l_fvsys_under_relax},
     {"pin_cell", l_fvsys_pin_cell},
     {"residual_norm", l_fvsys_residual_norm},
-    {"solve_cg", l_fvsys_solve_cg},
-    {"solve_bicgstab", l_fvsys_solve_bicgstab},
-    {"solve_cg_into", l_fvsys_solve_cg_into},
-    {"solve_bicgstab_into", l_fvsys_solve_bicgstab_into},
     {"diag_vec", l_fvsys_diag_vec},
     {"diagonal_dominance", l_fvsys_diagonal_dominance},
     {"all_diagonals_positive", l_fvsys_all_diagonals_positive},
@@ -201,6 +141,7 @@ static int l_ctx_fvsys(lua_State *L)
 	lua_fvsys *ls = lua_newuserdata(L, sizeof(lua_fvsys));
 	ls->sys = jnl_fvm_ctx_alloc_fvsys(lc->ctx);
 	ls->pool = lc->ctx->real_cell_pool;
+	ls->ctx = lc->ctx;
 
 	lua_pushvalue(L, 1);
 	ls->ctx_ref = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -289,7 +230,8 @@ static int l_ctx_new(lua_State *L)
 	i32 n_systems = (i32)luaL_checkinteger(L, 4);
 
 	i32 n_cell_scratch = (i32)luaL_optinteger(L, 5, 4);
-	i32 n_real_cell_scratch = (i32)luaL_optinteger(L, 6, LINALG_MIN_SCRATCH);
+	i32 n_real_cell_scratch =
+	    (i32)luaL_optinteger(L, 6, JNL_FVM_REAL_CELL_SCRATCH_MIN);
 	i32 n_face_scratch = (i32)luaL_optinteger(L, 7, 4);
 
 	lua_fvm_ctx_ud *lc = lua_newuserdata(L, sizeof(lua_fvm_ctx_ud));
@@ -335,6 +277,7 @@ int luaopen_fvm_internal(lua_State *L)
 	jnl_lua_register_fvm_operators(L);
 	jnl_lua_register_fvm_bc(L);
 	jnl_lua_register_fvm_field(L);
+	jnl_lua_register_fvm_solver(L);
 
 	return 1;
 }
