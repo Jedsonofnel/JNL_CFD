@@ -1,6 +1,6 @@
 -- jnl/demo_nabla.lua
 local nb      = require("jnl.fvm.nabla")
-local Alg     = require("jnl.fvm.new_algorithm")
+local Alg     = require("jnl.fvm.algorithm")
 local rules   = require("jnl.fvm.rules")
 
 local reg     = nb.new_registry("Incompressible NS + k-omega")

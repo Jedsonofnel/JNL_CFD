@@ -2,47 +2,12 @@
 
 local Node = require("jnl.nabla.node")
 local ops = require("jnl.nabla.ops")
-local pretty = require("jnl.nabla.pretty")
-local simplify = require("jnl.nabla.simplify")
 local resolve = require("jnl.nabla.resolve")
 local Eq = require("jnl.nabla.equation")
 local Acc = require("jnl.nabla.accessor")
 local Mangle = require("jnl.nabla.mangle")
 local Reg = require("jnl.nabla.registry")
 local Eval = require("jnl.nabla.eval")
-
-Node.install({
-	-- tensorial operators
-	outer      = ops.outer,
-	cross      = ops.cross,
-	dot        = ops.dot,
-	ddot       = ops.ddot,
-	symm       = ops.symm,
-	skew       = ops.skew,
-	dev        = ops.dev,
-	trace      = ops.trace,
-	transpose  = ops.transpose,
-	T          = ops.transpose,
-	mag        = ops.mag,
-	inv        = ops.inv,
-
-	-- differential operators
-	grad       = ops.grad,
-	div        = ops.div,
-	laplacian  = ops.laplacian,
-	lap        = ops.laplacian,
-	ddt        = ops.ddt,
-	curl       = ops.curl,
-
-	-- cross-module
-	__tostring = pretty,
-	__concat   = ops.ddot,
-	__pow      = ops.pow_dispatch,
-	equals     = function(self, rhs) return Eq.new(self, rhs) end,
-	simplify   = function(self, retain_named)
-		return simplify(self, { retain_named = retain_named ~= false })
-	end,
-})
 
 -- install resolve
 resolve.install(Node, Eq)

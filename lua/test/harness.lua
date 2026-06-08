@@ -1,246 +1,406 @@
--- test/harness.lua - testing utilities
--- <jed@nelson.ac> // 2026-05-24
+-- test/harness.lua
+-- single-file test harness: describe/it/expect + filesystem discovery
+-- requires: POSIX ls or Windows dir (via io.popen)
 
 local M = {}
 
 --
--- Formatting helper
+-- Platform
 --
 
-local function fmt_value(v)
+local is_windows = package.config:sub(1, 1) == "\\"
+local sep = is_windows and "\\" or "/"
+
+local function join(a, b)
+	return a:gsub("[/\\]$", "") .. sep .. b
+end
+
+local function list_dir(path)
+	local cmd = is_windows
+		and string.format('dir /b /a "%s" 2>nul', path)
+		or string.format("ls -1a '%s' 2>/dev/null", path)
+	local h = io.popen(cmd)
+	if not h then return {} end
+	local entries = {}
+	for line in h:lines() do
+		if line ~= "." and line ~= ".." then
+			entries[#entries + 1] = line
+		end
+	end
+	h:close()
+	return entries
+end
+
+local function is_dir(path)
+	local cmd = is_windows
+		and string.format('if exist "%s\\" (echo yes) else (echo no)', path)
+		or string.format("test -d '%s' && echo yes || echo no", path)
+	local h = io.popen(cmd)
+	if not h then return false end
+	local result = h:read("*l")
+	h:close()
+	return result and result:find("yes") ~= nil
+end
+
+local function this_file_dir()
+	local src  = debug.getinfo(1, "S").source
+	local path = src:match("^@(.+)$") or src
+	return path:match("^(.+)[/\\][^/\\]+$") or "."
+end
+
+local function infer_lua_root()
+	local src = (debug.getinfo(1, "S").source or ""):match("^@(.+)$") or ""
+	for entry in package.path:gmatch("[^;]+") do
+		local root = entry:match("^(.-)%?")
+		if root and root ~= "" and src:sub(1, #root) == root then
+			return root:gsub("[/\\]$", "")
+		end
+	end
+	return nil
+end
+
+local function path_to_module(path, lua_root)
+	path = path:gsub("^%.[/\\]", "")
+	if lua_root then
+		local prefix = lua_root:gsub("[/\\]$", "") .. sep
+		if path:sub(1, #prefix) == prefix then
+			path = path:sub(#prefix + 1)
+		end
+	else
+		for entry in package.path:gmatch("[^;]+") do
+			local root = entry:match("^(.-)%?")
+			if root and root ~= "" and path:sub(1, #root) == root then
+				path = path:sub(#root + 1)
+				break
+			end
+		end
+	end
+	return path:gsub("%.lua$", ""):gsub("[/\\]", ".")
+end
+
+local function discover(dir, suffix, out)
+	suffix        = suffix or "_test.lua"
+	out           = out or {}
+	local entries = list_dir(dir)
+	table.sort(entries)
+	for _, entry in ipairs(entries) do
+		local full = join(dir, entry)
+		if is_dir(full) then
+			discover(full, suffix, out)
+		elseif entry:sub(- #suffix) == suffix then
+			out[#out + 1] = full
+		end
+	end
+	return out
+end
+
+--
+-- state
+--
+
+local root = { passed = 0, failed = 0, skipped = 0 }
+
+M.root = root
+
+local blocks = {}   -- ordered list of describe blocks
+local current = nil -- describe block being collected
+
+--
+-- collection
+--
+
+---Group related tests. fn() is called immediately to collect it() calls.
+---@param name string
+---@param fn fun()
+function M.describe(name, fn)
+	local block         = {
+		name        = name,
+		tests       = {},
+		before_each = nil,
+		after_each  = nil,
+	}
+	blocks[#blocks + 1] = block
+	local prev          = current
+	current             = block
+	fn()
+	current = prev
+end
+
+---Define a single test case within a describe block.
+---@param name string
+---@param fn fun()
+function M.it(name, fn)
+	assert(current, "h.it() must be called inside h.describe()")
+	current.tests[#current.tests + 1] = { name = name, fn = fn, skip = false }
+end
+
+---Skip a test with an optional reason.
+---@param name string
+---@param reason? string
+function M.xit(name, reason)
+	assert(current, "h.xit() must be called inside h.describe()")
+	current.tests[#current.tests + 1] = { name = name, skip = true, reason = reason }
+end
+
+---Run fn before each it() in the enclosing describe block.
+---@param fn fun()
+function M.before_each(fn)
+	assert(current, "h.before_each() must be called inside h.describe()")
+	current.before_each = fn
+end
+
+---Run fn after each it() in the enclosing describe block.
+---@param fn fun()
+function M.after_each(fn)
+	assert(current, "h.after_each() must be called inside h.describe()")
+	current.after_each = fn
+end
+
+--
+-- Expect
+--
+
+local function fmt(v)
 	if type(v) == "string" then return string.format("%q", v) end
 	if type(v) == "number" then return string.format("%g", v) end
-	if type(v) == "boolean" then return tostring(v) end
-	if type(v) == "table" then
-		local parts = {}
-		for i, x in ipairs(v) do parts[i] = fmt_value(x) end
-		if #parts > 0 then return "{" .. table.concat(parts, ", ") .. "}" end
-		return tostring(v)
-	end
 	return tostring(v)
 end
 
-M.fmt_value = fmt_value
+-- current test context for recording pass/fail without passing names everywhere
+local ctx = { block = nil, test = {}, failed = false }
 
---
--- Suite - collects results
---
-
-local Suite = {}
-Suite.__index = Suite
-
-function Suite.new(name, root)
-	return setmetatable({
-		name     = name,
-		root     = root, -- optional shared Root; if nil uses self
-		passed   = 0,
-		failed   = 0,
-		skipped  = 0,
-		_results = {},
-	}, Suite)
+local function pass()
+	io.write(".")
 end
 
-local function suite_record(self, status, name, msg)
-	self._results[#self._results + 1] = {
-		status = status, name = name, msg = msg
-	}
-	if status == "pass" then
-		self.passed = self.passed + 1
-		if self.root then self.root.passed = self.root.passed + 1 end
-	elseif status == "fail" then
-		if self._next_diag then
-			self._next_diag()
+local function fail(msg)
+	ctx.failed = true
+	io.write(string.format("\n  FAIL  %s\n        %s\n", ctx.test.name, msg))
+end
+
+---Begin a fluent assertion chain on value.
+---@param value any
+---@return table
+function M.expect(value)
+	local E = {}
+
+	function E.equals(expected)
+		if value == expected then
+			pass()
+		else
+			fail(string.format("expected %s, got %s", fmt(expected), fmt(value)))
 		end
-		self.failed = self.failed + 1
-		if self.root then self.root.failed = self.root.failed + 1 end
-	elseif status == "skip" then
-		self.skipped = self.skipped + 1
-		if self.root then self.root.skipped = self.root.skipped + 1 end
+		return E
 	end
-	self._next_diag = nil
-end
 
--- add a diagnostic function to run on failure
-function Suite:diag(fn)
-	self._next_diag = fn
-end
-
--- directly fail
-function Suite:fail(name, msg)
-	self:check(name, false, msg)
-end
-
--- Low-level: pass a boolean condition directly.
--- msg is shown on failure.
-function Suite:check(name, cond, msg)
-	if cond then
-		io.write(string.format("ok   %s\n", name))
-		suite_record(self, "pass", name, nil)
-	else
-		io.write(string.format("FAIL %s\n", name))
-		if msg then io.write(string.format("     %s\n", msg)) end
-		suite_record(self, "fail", name, msg or "assertion failed")
+	function E.not_equals(expected)
+		if value ~= expected then
+			pass()
+		else
+			fail(string.format("expected not %s", fmt(expected)))
+		end
+		return E
 	end
-end
 
--- Equality check with a diff line on failure.
-function Suite:eq(name, got, expected)
-	if got == expected then
-		io.write(string.format("ok   %s\n", name))
-		suite_record(self, "pass", name, nil)
-	else
-		local msg = string.format("expected %s, got %s",
-			fmt_value(expected), fmt_value(got))
-		io.write(string.format("FAIL %s\n     %s\n", name, msg))
-		suite_record(self, "fail", name, msg)
+	function E.is_nil(msg)
+		if value == nil then
+			pass()
+		else
+			fail(msg or string.format("expected nil, got %s", fmt(value)))
+		end
+		return E
 	end
-end
 
--- Greater-than check.
-function Suite:gt(name, got, threshold, msg)
-	local cond = type(got) == "number" and got > threshold
-	self:check(name, cond,
-		msg or string.format("expected > %s, got %s",
-			fmt_value(threshold), fmt_value(got)))
-end
-
--- Less-than check.
-function Suite:lt(name, got, threshold, msg)
-	local cond = type(got) == "number" and got < threshold
-	self:check(name, cond,
-		msg or string.format("expected < %s, got %s",
-			fmt_value(threshold), fmt_value(got)))
-end
-
--- Check that a value is not nil.
-function Suite:exists(name, got, msg)
-	self:check(name, got ~= nil,
-		msg or string.format("expected non-nil, got nil"))
-end
-
--- Check that a table contains at least the given keys.
-function Suite:has_keys(name, tbl, keys)
-	if type(tbl) ~= "table" then
-		self:check(name, false, "expected a table, got " .. type(tbl))
-		return
+	function E.is_not_nil(msg)
+		if value ~= nil then
+			pass()
+		else
+			fail(msg or "expected non-nil value")
+		end
+		return E
 	end
-	local missing = {}
-	for _, k in ipairs(keys) do
-		if tbl[k] == nil then missing[#missing + 1] = tostring(k) end
+
+	function E.is_truthy(msg)
+		if value then
+			pass()
+		else
+			fail(msg or string.format("expected truthy, got %s", fmt(value)))
+		end
+		return E
 	end
-	self:check(name, #missing == 0,
-		"missing keys: " .. table.concat(missing, ", "))
+
+	function E.is_falsy(msg)
+		if not value then
+			pass()
+		else
+			fail(msg or string.format("expected falsy, got %s", fmt(value)))
+		end
+		return E
+	end
+
+	function E.is_less_than(n, msg)
+		if type(value) == "number" and value < n then
+			pass()
+		else
+			fail(msg or string.format("expected < %s, got %s", fmt(n), fmt(value)))
+		end
+		return E
+	end
+
+	function E.is_greater_than(n, msg)
+		if type(value) == "number" and value > n then
+			pass()
+		else
+			fail(msg or string.format("expected > %s, got %s", fmt(n), fmt(value)))
+		end
+		return E
+	end
+
+	function E.contains(item)
+		if type(value) ~= "table" then
+			fail(string.format("expected table, got %s", type(value)))
+			return E
+		end
+		for _, v in ipairs(value) do
+			if v == item then
+				pass(); return E
+			end
+		end
+		fail(string.format("%s not found in list", fmt(item)))
+		return E
+	end
+
+	function E.not_contains(item)
+		if type(value) ~= "table" then
+			fail(string.format("expected table, got %s", type(value)))
+			return E
+		end
+		for _, v in ipairs(value) do
+			if v == item then
+				fail(string.format("%s found in list but should be absent", fmt(item)))
+				return E
+			end
+		end
+		pass()
+		return E
+	end
+
+	function E.throws(pattern)
+		if type(value) ~= "function" then
+			fail("expect.throws: value must be a function")
+			return E
+		end
+		local ok, err = pcall(value)
+		if ok then
+			fail("expected an error but none was thrown")
+		elseif pattern and not tostring(err):find(pattern, 1, true) then
+			fail(string.format("error %q did not match pattern %q", tostring(err), pattern))
+		else
+			pass()
+		end
+		return E
+	end
+
+	function E.not_throws()
+		if type(value) ~= "function" then
+			fail("expect.not_throws: value must be a function")
+			return E
+		end
+		local ok, err = pcall(value)
+		if not ok then
+			fail("unexpected error: " .. tostring(err))
+		else
+			pass()
+		end
+		return E
+	end
+
+	return E
 end
 
--- Check that a list contains an item (by equality).
-function Suite:contains(name, list, item)
-	if type(list) ~= "table" then
-		self:check(name, false, "expected a table, got " .. type(list))
-		return
-	end
-	for _, v in ipairs(list) do
-		if v == item then
-			self:check(name, true); return
+--
+-- Execution
+--
+
+local function run_block(block)
+	io.write(string.format("\n%s\n", block.name))
+	local passed  = 0
+	local failed  = 0
+	local skipped = 0
+
+	for _, test in ipairs(block.tests) do
+		if test.skip then
+			io.write(string.format("  skip  %s%s\n",
+				test.name, test.reason and ("  (" .. test.reason .. ")") or ""))
+			skipped = skipped + 1
+		else
+			ctx.block = block
+			ctx.test = test
+			ctx.failed = false
+
+			if block.before_each then pcall(block.before_each) end
+			local ok, err = pcall(test.fn)
+			if block.after_each then pcall(block.after_each) end
+
+			if not ok then
+				ctx.failed = true
+				io.write(string.format("\n  ERROR %s\n        %s\n", test.name, tostring(err)))
+			end
+
+			if ctx.failed then
+				failed = failed + 1
+			else
+				passed = passed + 1
+			end
 		end
 	end
-	self:check(name, false,
-		fmt_value(item) .. " not found in list")
+
+	io.write(string.format("  %d passed  %d failed  %d skipped\n",
+		passed, failed, skipped))
+
+	root.passed  = root.passed + passed
+	root.failed  = root.failed + failed
+	root.skipped = root.skipped + skipped
 end
 
--- Check that a list does NOT contain an item.
-function Suite:not_contains(name, list, item)
-	if type(list) ~= "table" then
-		self:check(name, false, "expected a table, got " .. type(list))
+---Execute all collected describe blocks and print a summary.
+function M.run()
+	for _, block in ipairs(blocks) do
+		run_block(block)
+	end
+
+	local total = root.passed + root.failed + root.skipped
+	io.write(string.format("\n%d passed  %d failed  %d skipped  (%d total)\n",
+		root.passed, root.failed, root.skipped, total))
+
+	if root.failed > 0 then os.exit(1) end
+end
+
+---Discover *_test.lua files under base_dir, require each, then run.
+---@param base_dir? string  Root to scan; defaults to directory containing harness.lua.
+---@param lua_root? string  Lua source root for module name derivation.
+function M.run_specs(base_dir, lua_root)
+	base_dir = base_dir or this_file_dir()
+	lua_root = lua_root or infer_lua_root()
+
+	local files = discover(base_dir)
+	if #files == 0 then
+		io.write(string.format("harness: no *_test.lua files found under %s\n", base_dir))
 		return
 	end
-	for _, v in ipairs(list) do
-		if v == item then
-			self:check(name, false,
-				fmt_value(item) .. " found in list but should be absent")
-			return
+
+	io.write(string.format("harness: found %d test file(s) under %s\n", #files, base_dir))
+
+	for _, path in ipairs(files) do
+		local modname = path_to_module(path, lua_root)
+		local ok, err = pcall(require, modname)
+		if not ok then
+			io.write(string.format("\nERROR loading %s:\n  %s\n", modname, tostring(err)))
+			root.failed = root.failed + 1
 		end
 	end
-	self:check(name, true)
-end
 
--- Check that a callable throws an error matching an optional pattern.
-function Suite:throws(name, fn, pattern)
-	local ok, err = pcall(fn)
-	if ok then
-		self:check(name, false, "expected an error but none was thrown")
-		return
-	end
-	if pattern then
-		local matched = tostring(err):find(pattern, 1, true)
-		self:check(name, matched ~= nil,
-			string.format("error %q did not match pattern %q",
-				tostring(err), pattern))
-	else
-		self:check(name, true)
-	end
-end
-
--- Check that a callable does NOT throw.
-function Suite:no_throw(name, fn)
-	local ok, err = pcall(fn)
-	self:check(name, ok,
-		ok and nil or ("unexpected error: " .. tostring(err)))
-end
-
--- Mark a test as skipped with a reason.
-function Suite:skip(name, reason)
-	io.write(string.format("skip %s  (%s)\n", name, reason or "no reason"))
-	suite_record(self, "skip", name, reason)
-end
-
--- Print a summary line for this suite.
--- Returns true if all non-skipped tests passed.
-function Suite:summary()
-	local total = self.passed + self.failed + self.skipped
-	io.write(string.format(
-		"\n[%s]  %d passed  %d failed  %d skipped  (%d total)\n",
-		self.name, self.passed, self.failed, self.skipped, total))
-	return self.failed == 0
-end
-
-M.Suite = Suite
-
---
--- Root accumulator
---
-
-local Root = {}
-Root.__index = Root
-
-function Root.new()
-	return setmetatable({ passed = 0, failed = 0, skipped = 0 }, Root)
-end
-
-function Root:summary()
-	local total = self.passed + self.failed + self.skipped
-	io.write(string.format(
-		"\n%d passed  %d failed  %d skipped  (%d total)\n",
-		self.passed, self.failed, self.skipped, total))
-	return self.failed == 0
-end
-
-function Root:exit()
-	if not self:summary() then os.exit(1) end
-end
-
-M.Root = Root
-
---
--- Convenience constructors
---
-
-function M.suite(name)
-	return Suite.new(name, nil)
-end
-
-function M.root()
-	local r = Root.new()
-	return r, function(name) return Suite.new(name, r) end
+	M.run()
 end
 
 return M

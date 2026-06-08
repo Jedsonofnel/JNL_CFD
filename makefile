@@ -90,7 +90,7 @@ else
 	LOG_CMAKE :=
 endif
 
-.PHONY: all clean test release debug triangle llm
+.PHONY: all clean test lua-test release debug triangle llm
 
 all: $(FENNEL_DST) $(CMD_BINS)
 
@@ -109,6 +109,10 @@ test: $(TEST_BINS)
 		if $$t; then echo "OK"; else echo "FAILED"; failed=1; fi; \
 	done; \
 	exit $$failed
+
+lua-test: $(BINDIR)/cli
+	@printf "  LUA-TEST\n"
+	$(Q)$(BINDIR)/cli lua/test/init.lua
 
 #
 # Triangle CMake build
