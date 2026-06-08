@@ -17,6 +17,7 @@
 #define FVSYS_MT "jnl.fvm.fvsys"
 #define CG_SOLVE_MT "jnl.fvm.cg_solve"
 #define BICGSTAB_SOLVE_MT "jnl.fvm.bicgstab_solve"
+#define JACOBI_SMOOTHER_MT "jnl.fvm.jacobi_smoother"
 
 //
 // Shared vec userdata - f64* slice

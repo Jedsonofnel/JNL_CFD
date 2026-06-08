@@ -1,5 +1,5 @@
 // src/fvm/solver.c
-// Incremental linear solvers for FV systems
+// Incremental linear solvers and smoothers for FV systems
 
 #include <assert.h>
 #include <math.h>
@@ -35,6 +35,28 @@ static struct jnl_solver_step solver_step(f64 residual, f64 residual0, i32 iter,
 	    .breakdown = breakdown,
 	};
 }
+
+static struct jnl_smoother_step smoother_step(f64 change, i32 sweeps,
+                                              i32 breakdown)
+{
+	return (struct jnl_smoother_step){
+	    .change = change,
+	    .sweeps = sweeps,
+	    .breakdown = breakdown,
+	};
+}
+
+static f64 clamp_jacobi_omega(f64 omega)
+{
+	if (omega <= 0.0 || omega > 1.0)
+		return 0.7;
+
+	return omega;
+}
+
+//
+// Krylov solvers
+//
 
 //
 // CG with Jacobi preconditioner
@@ -154,24 +176,6 @@ void jnl_cg_finish_into(struct jnl_cg *s, f64 *x_out)
 	memcpy(x_out, s->x, s->sys->matrix.n_cells * sizeof(f64));
 }
 
-i32 jnl_fvsys_solve_cg_into(fvsys *sys, struct jnl_scratch_pool *pool, f64 *x,
-                            f64 tolerance, i32 max_iters)
-{
-	if (max_iters <= 0)
-		max_iters = default_max_iters(sys);
-
-	struct jnl_cg s = jnl_fvsys_cg_begin(sys, pool, x, tolerance);
-
-	for (i32 i = 0; i < max_iters; i++) {
-		struct jnl_solver_step r = jnl_cg_iter(&s);
-		if (r.done || r.breakdown)
-			break;
-	}
-
-	jnl_cg_finish_into(&s, x);
-	return s.iter;
-}
-
 f64 jnl_cg_finish_change_into(struct jnl_cg *s, const f64 *x_old, f64 *x_out)
 {
 	i32 n = s->sys->matrix.n_cells;
@@ -183,8 +187,6 @@ f64 jnl_cg_finish_change_into(struct jnl_cg *s, const f64 *x_old, f64 *x_out)
 //
 // BiCGSTAB with Jacobi preconditioner
 //
-
-u64 jnl_bicgstab_arena_size(void) { return ARENA_SIZE(struct jnl_bicgstab, 1); }
 
 struct jnl_bicgstab jnl_fvsys_bicgstab_begin(fvsys *sys,
                                              struct jnl_scratch_pool *pool,
@@ -215,10 +217,12 @@ struct jnl_bicgstab jnl_fvsys_bicgstab_begin(fvsys *sys,
 
 	memcpy(s.x, x_init, n * sizeof(f64));
 
+	// r = b - A*x
 	jnl_ldu_matvec(A, s.x, s.r);
 	for (i32 i = 0; i < n; i++)
 		s.r[i] = b[i] - s.r[i];
 
+	// rhat = r, p = r
 	memcpy(s.rhat, s.r, n * sizeof(f64));
 	memcpy(s.p, s.r, n * sizeof(f64));
 
@@ -345,6 +349,119 @@ f64 jnl_bicgstab_finish_change_into(struct jnl_bicgstab *s, const f64 *x_old,
 	f64 change = jnl_vec_norm_l2_rel_diff(s->x, x_old, n);
 	memcpy(x_out, s->x, n * sizeof(f64));
 	return change;
+}
+
+//
+// Stationary smoothers
+//
+
+//
+// Weighted Jacobi smoother
+//
+
+struct jnl_jacobi_smoother
+jnl_fvsys_jacobi_smoother_begin(fvsys *sys, struct jnl_scratch_pool *pool,
+                                const f64 *x_init, f64 omega)
+{
+	struct jnl_jacobi_smoother s;
+	memset(&s, 0, sizeof(s));
+
+	const struct jnl_ldu_matrix *A = &sys->matrix;
+	i32 n = A->n_cells;
+
+	s.sys = sys;
+	s.pool = pool;
+	s.omega = clamp_jacobi_omega(omega);
+
+	jnl_scratch_reset(pool);
+	jnl_fvsys_ensure_nonsingular(sys, pool);
+
+	s.x = jnl_scratch_acquire(pool);
+	s.x_new = jnl_scratch_acquire(pool);
+	s.off = jnl_scratch_acquire(pool);
+
+	memcpy(s.x, x_init, n * sizeof(f64));
+
+	return s;
+}
+
+struct jnl_smoother_step
+jnl_jacobi_smoother_sweep(struct jnl_jacobi_smoother *s)
+{
+	if (s->breakdown)
+		return smoother_step(s->last_change, s->sweeps, s->breakdown);
+
+	const struct jnl_ldu_matrix *A = &s->sys->matrix;
+	const f64 *b = s->sys->rhs;
+	i32 n = A->n_cells;
+
+	memset(s->off, 0, n * sizeof(f64));
+
+	// off = offdiag(A) * x
+	for (i32 k = 0; k < A->n_coupled_faces; k++) {
+		i32 o = A->owner[k];
+		i32 nb = A->neighbour[k];
+
+		s->off[o] += A->upper[k] * s->x[nb];
+		s->off[nb] += A->lower[k] * s->x[o];
+	}
+
+	// x_new = (1 - omega) * x + omega * D^-1 * (b - off)
+	for (i32 i = 0; i < n; i++) {
+		if (fabs(A->diag[i]) < 1e-300) {
+			s->breakdown = 1;
+			return smoother_step(s->last_change, s->sweeps, s->breakdown);
+		}
+
+		f64 xj = (b[i] - s->off[i]) / A->diag[i];
+		s->x_new[i] = (1.0 - s->omega) * s->x[i] + s->omega * xj;
+	}
+
+	s->last_change = jnl_vec_norm_l2_rel_diff(s->x_new, s->x, n);
+
+	f64 *tmp = s->x;
+	s->x = s->x_new;
+	s->x_new = tmp;
+
+	s->sweeps++;
+
+	return smoother_step(s->last_change, s->sweeps, s->breakdown);
+}
+
+void jnl_jacobi_smoother_finish_into(struct jnl_jacobi_smoother *s, f64 *x_out)
+{
+	memcpy(x_out, s->x, s->sys->matrix.n_cells * sizeof(f64));
+}
+
+f64 jnl_jacobi_smoother_finish_change_into(struct jnl_jacobi_smoother *s,
+                                           const f64 *x_old, f64 *x_out)
+{
+	i32 n = s->sys->matrix.n_cells;
+	f64 change = jnl_vec_norm_l2_rel_diff(s->x, x_old, n);
+	memcpy(x_out, s->x, n * sizeof(f64));
+	return change;
+}
+
+//
+// Blocking convenience wrappers - for C code
+//
+
+i32 jnl_fvsys_solve_cg_into(fvsys *sys, struct jnl_scratch_pool *pool, f64 *x,
+                            f64 tolerance, i32 max_iters)
+{
+	if (max_iters <= 0)
+		max_iters = default_max_iters(sys);
+
+	struct jnl_cg s = jnl_fvsys_cg_begin(sys, pool, x, tolerance);
+
+	for (i32 i = 0; i < max_iters; i++) {
+		struct jnl_solver_step r = jnl_cg_iter(&s);
+		if (r.done || r.breakdown)
+			break;
+	}
+
+	jnl_cg_finish_into(&s, x);
+	return s.iter;
 }
 
 i32 jnl_fvsys_solve_bicgstab_into(fvsys *sys, struct jnl_scratch_pool *pool,

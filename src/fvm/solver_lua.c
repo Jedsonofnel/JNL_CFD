@@ -28,6 +28,20 @@ static void push_solver_step(lua_State *L, struct jnl_solver_step r)
 	lua_setfield(L, -2, "breakdown");
 }
 
+static void push_smoother_step(lua_State *L, struct jnl_smoother_step r)
+{
+	lua_createtable(L, 0, 3);
+
+	lua_pushnumber(L, r.change);
+	lua_setfield(L, -2, "change");
+
+	lua_pushinteger(L, r.sweeps);
+	lua_setfield(L, -2, "sweeps");
+
+	lua_pushboolean(L, r.breakdown);
+	lua_setfield(L, -2, "breakdown");
+}
+
 //
 // CG solve userdata
 //
@@ -213,6 +227,103 @@ static const luaL_Reg bicgstab_solve_mt[] = {
     {NULL, NULL}};
 
 //
+// Jacobi smoother userdata
+//
+
+typedef struct {
+	struct jnl_jacobi_smoother smooth;
+	i32 n_cells;
+	int fvsys_ref;
+} lua_jacobi_smoother;
+
+static lua_jacobi_smoother *check_jacobi_smoother(lua_State *L, int idx)
+{
+	return (lua_jacobi_smoother *)luaL_checkudata(L, idx, JACOBI_SMOOTHER_MT);
+}
+
+static int l_fvsys_jacobi_smoother(lua_State *L)
+{
+	lua_fvsys *s = check_fvsys(L, 1);
+	lua_vec *x = check_vec(L, 2);
+	f64 omega = luaL_optnumber(L, 3, 0.7);
+
+	if (x->len != s->sys->matrix.n_cells)
+		return luaL_error(L, "jacobi_smoother: initial vector length mismatch");
+
+	lua_jacobi_smoother *ls = lua_newuserdata(L, sizeof(lua_jacobi_smoother));
+
+	ls->n_cells = s->sys->matrix.n_cells;
+
+	ls->smooth =
+	    jnl_fvsys_jacobi_smoother_begin(s->sys, s->pool, x->data, omega);
+
+	lua_pushvalue(L, 1);
+	ls->fvsys_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+	luaL_setmetatable(L, JACOBI_SMOOTHER_MT);
+	return 1;
+}
+
+static int l_jacobi_smoother_sweep(lua_State *L)
+{
+	lua_jacobi_smoother *s = check_jacobi_smoother(L, 1);
+	push_smoother_step(L, jnl_jacobi_smoother_sweep(&s->smooth));
+	return 1;
+}
+
+static int l_jacobi_smoother_finish_into(lua_State *L)
+{
+	lua_jacobi_smoother *s = check_jacobi_smoother(L, 1);
+	lua_vec *x = check_vec(L, 2);
+
+	if (x->len != s->n_cells)
+		return luaL_error(
+		    L, "jacobi_smoother: finish_into vector length mismatch");
+
+	jnl_jacobi_smoother_finish_into(&s->smooth, x->data);
+	return 0;
+}
+
+static int l_jacobi_smoother_finish_change_into(lua_State *L)
+{
+	lua_jacobi_smoother *s = check_jacobi_smoother(L, 1);
+	lua_vec *x = check_vec(L, 2);
+
+	if (x->len != s->n_cells)
+		return luaL_error(
+		    L, "jacobi_smoother: finish_change_into vector length mismatch");
+
+	f64 change =
+	    jnl_jacobi_smoother_finish_change_into(&s->smooth, x->data, x->data);
+
+	lua_pushnumber(L, change);
+	return 1;
+}
+
+static int l_jacobi_smoother_tostring(lua_State *L)
+{
+	lua_jacobi_smoother *s = check_jacobi_smoother(L, 1);
+	lua_pushfstring(L, "jacobi_smoother(n_cells=%d)", s->n_cells);
+	return 1;
+}
+
+static int l_jacobi_smoother_gc(lua_State *L)
+{
+	lua_jacobi_smoother *s = check_jacobi_smoother(L, 1);
+	luaL_unref(L, LUA_REGISTRYINDEX, s->fvsys_ref);
+	s->fvsys_ref = LUA_NOREF;
+	return 0;
+}
+
+static const luaL_Reg jacobi_smoother_mt[] = {
+    {"sweep", l_jacobi_smoother_sweep},
+    {"finish_into", l_jacobi_smoother_finish_into},
+    {"finish_change_into", l_jacobi_smoother_finish_change_into},
+    {"__tostring", l_jacobi_smoother_tostring},
+    {"__gc", l_jacobi_smoother_gc},
+    {NULL, NULL}};
+
+//
 // Registration
 //
 
@@ -232,6 +343,13 @@ void jnl_lua_register_fvm_solver(lua_State *L)
 	lua_setfield(L, -2, "__index");
 	lua_pop(L, 1);
 
+	// Register Jacobi smoother metatable
+	luaL_newmetatable(L, JACOBI_SMOOTHER_MT);
+	luaL_setfuncs(L, jacobi_smoother_mt, 0);
+	lua_pushvalue(L, -1);
+	lua_setfield(L, -2, "__index");
+	lua_pop(L, 1);
+
 	// Attach solver constructors to fvsys metatable.
 	luaL_getmetatable(L, FVSYS_MT);
 
@@ -240,6 +358,9 @@ void jnl_lua_register_fvm_solver(lua_State *L)
 
 	lua_pushcfunction(L, l_fvsys_bicgstab);
 	lua_setfield(L, -2, "bicgstab");
+
+	lua_pushcfunction(L, l_fvsys_jacobi_smoother);
+	lua_setfield(L, -2, "jacobi_smoother");
 
 	lua_pop(L, 1);
 }
