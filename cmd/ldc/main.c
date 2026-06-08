@@ -359,9 +359,9 @@ int main(void)
 
 		jnl_fvsys_reset(ux_sys);
 
-		jnl_laplacian_const(ux_sys, mesh, MU);
-		jnl_div_uds_const(ux_sys, mesh, RHO, un_mwi);
-		jnl_su_volumetric_field_scaled(ux_sys, mesh, -1.0, grad_px);
+		jnl_laplacian_k(ux_sys, mesh, MU);
+		jnl_div_uds_k(ux_sys, mesh, RHO, un_mwi);
+		jnl_su_volumetric_fs(ux_sys, mesh, -1.0, grad_px);
 
 		close_scalar_bcs(ux_sys, mesh, &ux_bcs);
 
@@ -380,9 +380,9 @@ int main(void)
 
 		jnl_fvsys_reset(uy_sys);
 
-		jnl_laplacian_const(uy_sys, mesh, MU);
-		jnl_div_uds_const(uy_sys, mesh, RHO, un_mwi);
-		jnl_su_volumetric_field_scaled(uy_sys, mesh, -1.0, grad_py);
+		jnl_laplacian_k(uy_sys, mesh, MU);
+		jnl_div_uds_k(uy_sys, mesh, RHO, un_mwi);
+		jnl_su_volumetric_fs(uy_sys, mesh, -1.0, grad_py);
 
 		close_scalar_bcs(uy_sys, mesh, &uy_bcs);
 
@@ -420,8 +420,8 @@ int main(void)
 
 		jnl_fvsys_reset(pp_sys);
 
-		jnl_laplacian_field(pp_sys, mesh, inv_d);
-		jnl_su_integrated_field_scaled(pp_sys, mesh, -RHO, divU);
+		jnl_laplacian_f(pp_sys, mesh, inv_d);
+		jnl_su_integrated_fs(pp_sys, mesh, -RHO, divU);
 
 		close_scalar_bcs(pp_sys, mesh, &pp_bcs);
 

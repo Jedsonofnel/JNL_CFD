@@ -261,12 +261,12 @@ int main(void)
 
 		jnl_fvsys_reset(ux_sys);
 
-		jnl_laplacian_const(ux_sys, mesh, MU);
+		jnl_laplacian_k(ux_sys, mesh, MU);
 
 		for (i32 c = 0; c < n_real; c++)
 			neg_src[c] = -grad_px[c];
 
-		jnl_su_volumetric_field(ux_sys, mesh, neg_src);
+		jnl_su_volumetric_f(ux_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&ux_bcs, ux_sys, mesh);
 		jnl_baffles_scalar_close_insulated(ux_sys, mesh);
@@ -286,12 +286,12 @@ int main(void)
 
 		jnl_fvsys_reset(uy_sys);
 
-		jnl_laplacian_const(uy_sys, mesh, MU);
+		jnl_laplacian_k(uy_sys, mesh, MU);
 
 		for (i32 c = 0; c < n_real; c++)
 			neg_src[c] = -grad_py[c];
 
-		jnl_su_volumetric_field(uy_sys, mesh, neg_src);
+		jnl_su_volumetric_f(uy_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&uy_bcs, uy_sys, mesh);
 		jnl_baffles_scalar_close_insulated(uy_sys, mesh);
@@ -333,12 +333,12 @@ int main(void)
 
 		jnl_fvsys_reset(pp_sys);
 
-		jnl_laplacian_field(pp_sys, mesh, inv_d);
+		jnl_laplacian_f(pp_sys, mesh, inv_d);
 
 		for (i32 c = 0; c < n_real; c++)
 			neg_src[c] = -divU[c];
 
-		jnl_su_integrated_field(pp_sys, mesh, neg_src);
+		jnl_su_integrated_f(pp_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&pp_bcs, pp_sys, mesh);
 		jnl_baffles_scalar_close_insulated(pp_sys, mesh);
