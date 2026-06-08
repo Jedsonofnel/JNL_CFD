@@ -486,8 +486,8 @@ void jnl_su_integrated_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
 		sys->rhs[c] += coeff;
 }
 
-void jnl_su_integrated(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                       const f64 *field)
+void jnl_su_integrated_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                             const f64 *field)
 {
 	i32 n = mesh->topo.n_real_cells;
 
@@ -495,30 +495,13 @@ void jnl_su_integrated(struct jnl_fvsys *sys, const pmsh2d *mesh,
 		sys->rhs[c] += field[c];
 }
 
-void jnl_su_integrated_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                              f64 coeff, const f64 *field)
+void jnl_su_integrated_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                    f64 coeff, const f64 *field)
 {
 	i32 n = mesh->topo.n_real_cells;
 
 	for (i32 c = 0; c < n; c++)
 		sys->rhs[c] += coeff * field[c];
-}
-
-// Backwards-compatible/default names: volumetric.
-void jnl_su_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff)
-{
-	jnl_su_volumetric_const(sys, mesh, coeff);
-}
-
-void jnl_su_field(struct jnl_fvsys *sys, const pmsh2d *mesh, const f64 *field)
-{
-	jnl_su_volumetric_field(sys, mesh, field);
-}
-
-void jnl_su_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff,
-                         const f64 *field)
-{
-	jnl_su_volumetric_field_scaled(sys, mesh, coeff, field);
 }
 
 //
@@ -564,8 +547,8 @@ void jnl_sp_integrated_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
 		sys->matrix.diag[c] += coeff;
 }
 
-void jnl_sp_integrated(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                       const f64 *field)
+void jnl_sp_integrated_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                             const f64 *field)
 {
 	i32 n = mesh->topo.n_real_cells;
 
@@ -573,28 +556,11 @@ void jnl_sp_integrated(struct jnl_fvsys *sys, const pmsh2d *mesh,
 		sys->matrix.diag[c] += field[c];
 }
 
-void jnl_sp_integrated_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                              f64 coeff, const f64 *field)
+void jnl_sp_integrated_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                    f64 coeff, const f64 *field)
 {
 	i32 n = mesh->topo.n_real_cells;
 
 	for (i32 c = 0; c < n; c++)
 		sys->matrix.diag[c] += coeff * field[c];
-}
-
-// Backwards-compatible/default names: volumetric.
-void jnl_sp_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff)
-{
-	jnl_sp_volumetric_const(sys, mesh, coeff);
-}
-
-void jnl_sp_field(struct jnl_fvsys *sys, const pmsh2d *mesh, const f64 *field)
-{
-	jnl_sp_volumetric_field(sys, mesh, field);
-}
-
-void jnl_sp_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff,
-                         const f64 *field)
-{
-	jnl_sp_volumetric_field_scaled(sys, mesh, coeff, field);
 }

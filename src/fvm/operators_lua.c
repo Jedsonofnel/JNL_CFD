@@ -202,14 +202,6 @@ static int l_su_volumetric_field(lua_State *L)
 	return 0;
 }
 
-static int l_su_volumetric_field_scaled(lua_State *L)
-{
-	jnl_su_volumetric_field_scaled(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                               luaL_checknumber(L, 3),
-	                               check_vec(L, 4)->data);
-	return 0;
-}
-
 static int l_su_integrated_const(lua_State *L)
 {
 	jnl_su_integrated_const(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
@@ -217,17 +209,10 @@ static int l_su_integrated_const(lua_State *L)
 	return 0;
 }
 
-static int l_su_integrated(lua_State *L)
+static int l_su_integrated_field(lua_State *L)
 {
-	jnl_su_integrated(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                  check_vec(L, 3)->data);
-	return 0;
-}
-
-static int l_su_integrated_scaled(lua_State *L)
-{
-	jnl_su_integrated_scaled(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                         luaL_checknumber(L, 3), check_vec(L, 4)->data);
+	jnl_su_integrated_field(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	                        check_vec(L, 3)->data);
 	return 0;
 }
 
@@ -249,14 +234,6 @@ static int l_sp_volumetric_field(lua_State *L)
 	return 0;
 }
 
-static int l_sp_volumetric_field_scaled(lua_State *L)
-{
-	jnl_sp_volumetric_field_scaled(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                               luaL_checknumber(L, 3),
-	                               check_vec(L, 4)->data);
-	return 0;
-}
-
 static int l_sp_integrated_const(lua_State *L)
 {
 	jnl_sp_integrated_const(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
@@ -264,17 +241,10 @@ static int l_sp_integrated_const(lua_State *L)
 	return 0;
 }
 
-static int l_sp_integrated(lua_State *L)
+static int l_sp_integrated_field(lua_State *L)
 {
-	jnl_sp_integrated(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                  check_vec(L, 3)->data);
-	return 0;
-}
-
-static int l_sp_integrated_scaled(lua_State *L)
-{
-	jnl_sp_integrated_scaled(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                         luaL_checknumber(L, 3), check_vec(L, 4)->data);
+	jnl_sp_integrated_field(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	                        check_vec(L, 3)->data);
 	return 0;
 }
 
@@ -299,17 +269,13 @@ static const luaL_Reg operator_funcs[] = {
 
     {"su_volumetric_const", l_su_volumetric_const},
     {"su_volumetric_field", l_su_volumetric_field},
-    {"su_volumetric_field_scaled", l_su_volumetric_field_scaled},
     {"su_integrated_const", l_su_integrated_const},
-    {"su_integrated", l_su_integrated},
-    {"su_integrated_scaled", l_su_integrated_scaled},
+    {"su_integrated_field", l_su_integrated_field},
 
     {"sp_volumetric_const", l_sp_volumetric_const},
     {"sp_volumetric_field", l_sp_volumetric_field},
-    {"sp_volumetric_field_scaled", l_sp_volumetric_field_scaled},
     {"sp_integrated_const", l_sp_integrated_const},
-    {"sp_integrated", l_sp_integrated},
-    {"sp_integrated_scaled", l_sp_integrated_scaled},
+    {"sp_integrated_field", l_sp_integrated_field},
 
     {NULL, NULL}};
 

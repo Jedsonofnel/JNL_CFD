@@ -338,7 +338,7 @@ int main(void)
 		for (i32 c = 0; c < n_real; c++)
 			neg_src[c] = -divU[c];
 
-		jnl_su_integrated(pp_sys, mesh, neg_src);
+		jnl_su_integrated_field(pp_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&pp_bcs, pp_sys, mesh);
 		jnl_baffles_scalar_close_insulated(pp_sys, mesh);

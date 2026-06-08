@@ -340,7 +340,7 @@ int main(void)
 		jnl_fvsys_reset(pp_sys);
 
 		jnl_laplacian_field(pp_sys, mesh, inv_d);
-		jnl_su_integrated_scaled(pp_sys, mesh, -RHO, divU);
+		jnl_su_integrated_field_scaled(pp_sys, mesh, -RHO, divU);
 
 		close_scalar_bcs(pp_sys, mesh, &pp_bcs);
 

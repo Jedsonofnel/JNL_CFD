@@ -73,13 +73,6 @@ void jnl_div_tvd_correction_superbee(struct jnl_fvsys *sys, const pmsh2d *mesh,
 // Source term Su: explicit RHS source
 //
 
-void jnl_su_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff);
-
-void jnl_su_field(struct jnl_fvsys *sys, const pmsh2d *mesh, const f64 *field);
-
-void jnl_su_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff,
-                         const f64 *field);
-
 void jnl_su_volumetric_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              f64 coeff);
 
@@ -89,25 +82,18 @@ void jnl_su_volumetric_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
 void jnl_su_volumetric_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
                                     f64 coeff, const f64 *field);
 
-void jnl_su_integrated(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                       const f64 *field);
-
-void jnl_su_integrated_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                              f64 coeff, const f64 *field);
-
 void jnl_su_integrated_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              f64 coeff);
+
+void jnl_su_integrated_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                             const f64 *field);
+
+void jnl_su_integrated_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                     f64 coeff, const f64 *field);
 
 //
 // Source term Sp: implicit diagonal source
 //
-
-void jnl_sp_const(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff);
-
-void jnl_sp_field(struct jnl_fvsys *sys, const pmsh2d *mesh, const f64 *field);
-
-void jnl_sp_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh, f64 coeff,
-                         const f64 *field);
 
 void jnl_sp_volumetric_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              f64 coeff);
@@ -118,13 +104,13 @@ void jnl_sp_volumetric_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
 void jnl_sp_volumetric_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
                                     f64 coeff, const f64 *field);
 
-void jnl_sp_integrated(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                       const f64 *field);
-
-void jnl_sp_integrated_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
-                              f64 coeff, const f64 *field);
-
 void jnl_sp_integrated_const(struct jnl_fvsys *sys, const pmsh2d *mesh,
                              f64 coeff);
+
+void jnl_sp_integrated_field(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                             const f64 *field);
+
+void jnl_sp_integrated_field_scaled(struct jnl_fvsys *sys, const pmsh2d *mesh,
+                                    f64 coeff, const f64 *field);
 
 #endif // JNL_OPERATORS_H
