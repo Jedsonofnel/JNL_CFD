@@ -173,6 +173,7 @@ local function fail(msg)
 	io.write(string.format("\n  FAIL  %s\n        %s\n", ctx.test.name, msg))
 	ctx.failures = ctx.failures or {}
 	ctx.failures[#ctx.failures + 1] = msg or "assertion failed"
+	ctx.failed = true -- add this
 end
 
 ---Begin a fluent assertion chain on value.

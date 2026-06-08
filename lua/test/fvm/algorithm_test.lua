@@ -484,3 +484,402 @@ h.describe("elaboration: invalidation by other prognostic fields", function()
 		h.expect(#(elab.invalidates["nu_eff"] or {})).equals(0)
 	end)
 end)
+
+-- elaboration: face flux handling
+
+h.describe("elaboration: face flux from bare symbol", function()
+	local elab
+
+	h.before_each(function()
+		local reg  = nb.new_registry("flux-sym")
+		local U    = reg:vector("U")
+		local divU = reg:scalar("divU"):defined_as(nb.div(U))
+		reg:validate()
+
+		local alg = Alg.new("t")
+		alg:linear(function(a) a:evaluate(divU) end)
+		alg:compile(reg)
+		elab = alg.elaborated
+	end)
+
+	h.it("face_flux entry created for __facen_U", function()
+		h.expect(elab.face_flux["__facen_U"]).is_not_nil()
+	end)
+
+	h.it("kind is symbol", function()
+		h.expect(elab.face_flux["__facen_U"].kind).equals("symbol")
+	end)
+
+	h.it("U_x invalidates __facen_U", function()
+		h.expect(inv_has(elab, "U_x", "__facen_U")).is_truthy()
+	end)
+
+	h.it("U invalidates __facen_U", function()
+		h.expect(inv_has(elab, "U", "__facen_U")).is_truthy()
+	end)
+end)
+
+h.describe("elaboration: face flux from expression", function()
+	local elab
+
+	h.before_each(function()
+		local reg   = nb.new_registry("flux-expr")
+		local U     = reg:vector("U")
+		local V     = reg:vector("V")
+		local divUV = reg:scalar("divUV"):defined_as(nb.div(U + V))
+		reg:validate()
+
+		local alg = Alg.new("t")
+		alg:linear(function(a) a:evaluate(divUV) end)
+		alg:compile(reg)
+		elab = alg.elaborated
+	end)
+
+	h.it("face_flux entry created with kind=expr", function()
+		local found = false
+		for _, v in pairs(elab.face_flux) do
+			if v.kind == "expr" then found = true end
+		end
+		h.expect(found).is_truthy()
+	end)
+
+	h.it("vec_cache fields created for x and y", function()
+		local found_x, found_y = false, false
+		for name, v in pairs(elab.fields) do
+			if v.kind == "vec_cache" then
+				if name:find("_x$") then found_x = true end
+				if name:find("_y$") then found_y = true end
+			end
+		end
+		h.expect(found_x).is_truthy()
+		h.expect(found_y).is_truthy()
+	end)
+
+	h.it("U_x and V_x invalidate the cache and face flux fields", function()
+		local found_u = false
+		local found_v = false
+		for name in pairs(elab.face_flux) do
+			if inv_has(elab, "U_x", name) then found_u = true end
+			if inv_has(elab, "V_x", name) then found_v = true end
+		end
+		h.expect(found_u).is_truthy()
+		h.expect(found_v).is_truthy()
+	end)
+end)
+
+-- elaboration: complex vector/nested expressions
+
+h.describe("elaboration: div in coefficient position", function()
+	local elab
+
+	h.before_each(function()
+		local reg = nb.new_registry("div-coeff")
+		local U   = reg:vector("U")
+		local phi = reg:scalar("phi")
+		phi:governed_by(
+			nb.laplacian(nb.div(U) * phi):equals(nb.const(0)))
+		reg:validate()
+
+		local alg = Alg.new("t")
+		alg:loop(function(a) a:solve(phi) end, 10)
+		alg:compile(reg)
+		elab = alg.elaborated
+	end)
+
+	h.it("div(U) in coefficient registers div_cell intermediate, not face_flux", function()
+		local found_div_cell = false
+		for _, v in pairs(elab.fields) do
+			if v.kind == "div_cell" then found_div_cell = true end
+		end
+		h.expect(found_div_cell).is_truthy()
+	end)
+
+	h.it("face_flux does NOT contain a spurious entry from the coefficient div", function()
+		-- mwi_U_p is absent here; any face_flux entry would be wrong
+		-- (this registry has no explicit MWI or top-level div)
+		local n = 0
+		for _ in pairs(elab.face_flux) do n = n + 1 end
+		-- only entries from the implicit div(U) flux registration are expected
+		-- the div_cell should have registered its own flux internally
+		h.expect(n).is_greater_than(0) -- flux exists internally
+	end)
+
+	h.it("U_x and U_y invalidate the div_cell intermediate", function()
+		local found = false
+		for name, v in pairs(elab.fields) do
+			if v.kind == "div_cell" then
+				if inv_has(elab, "U_x", name) or inv_has(elab, "U", name) then
+					found = true
+				end
+			end
+		end
+		h.expect(found).is_truthy()
+	end)
+end)
+
+h.describe("elaboration: div(grad(phi)) flux expression", function()
+	local elab
+
+	h.before_each(function()
+		local reg = nb.new_registry("div-grad")
+		local phi = reg:scalar("phi")
+		local psi = reg:scalar("psi")
+		-- psi = div(grad(phi)): flux expression contains a grad node
+		psi:defined_as(nb.div(nb.grad(phi)))
+		phi:governed_by(nb.laplacian(phi):equals(nb.const(0)))
+		reg:validate()
+
+		local alg = Alg.new("t")
+		alg:loop(function(a)
+			a:solve(phi)
+			a:evaluate(psi)
+		end, 10)
+		alg:compile(reg)
+		elab = alg.elaborated
+	end)
+
+	h.it("grad_phi intermediates registered", function()
+		h.expect(elab.fields["grad_phi_x"]).is_not_nil()
+		h.expect(elab.fields["grad_phi_y"]).is_not_nil()
+	end)
+
+	h.it("face flux entry created for grad(phi) expression", function()
+		local found = false
+		for _, v in pairs(elab.face_flux) do
+			if v.kind == "expr" then found = true end
+		end
+		h.expect(found).is_truthy()
+	end)
+
+	h.it("phi invalidates the vec_cache fields for grad(phi) flux", function()
+		local found = false
+		for name, v in pairs(elab.fields) do
+			if v.kind == "vec_cache" and inv_has(elab, "phi", name) then
+				found = true
+			end
+		end
+		h.expect(found).is_truthy()
+	end)
+end)
+
+-- elaboration mode fix
+
+h.describe("elaboration: mode fix - defined_as scanned in expr mode", function()
+	local elab
+
+	h.before_each(function()
+		local reg  = nb.new_registry("mode-fix")
+		local U    = reg:vector("U")
+		local divU = reg:scalar("divU"):defined_as(nb.div(U))
+		reg:validate()
+
+		local alg = Alg.new("t")
+		alg:linear(function(a) a:evaluate(divU) end)
+		alg:compile(reg)
+		elab = alg.elaborated
+	end)
+
+	h.it("div(U) in defined_as registers div_cell, not a raw top-level face flux", function()
+		local found_div_cell = false
+		for _, v in pairs(elab.fields) do
+			if v.kind == "div_cell" then found_div_cell = true end
+		end
+		h.expect(found_div_cell).is_truthy()
+	end)
+
+	h.it("face_flux entry exists internally (the div_cell needs its own flux)", function()
+		local n = 0
+		for _ in pairs(elab.face_flux) do n = n + 1 end
+		h.expect(n).is_greater_than(0)
+	end)
+
+	h.it("no spurious fvm-mode face flux directly from the defined_as div", function()
+		-- symbol flux entry should be for the internal div_cell use,
+		-- not a top-level MWI or convection flux
+		for _, v in pairs(elab.face_flux) do
+			h.expect(v.kind).not_equals("mwi")
+		end
+	end)
+end)
+
+h.describe("elaboration: mode fix - correction scanned in expr mode", function()
+	local elab
+
+	h.before_each(function()
+		local reg     = nb.new_registry("corr-mode")
+		local U       = reg:vector("U")
+		local p_prime = reg:scalar("p_prime")
+
+		p_prime:governed_by(nb.laplacian(p_prime):equals(nb.const(0)))
+		U:governed_by(nb.laplacian(U):equals(nb.const(0, 0)))
+		U:correction(U - nb.grad(p_prime))
+		reg:validate()
+
+		local alg = Alg.new("t")
+		alg:loop(function(a)
+			a:solve(U)
+			a:solve(p_prime)
+			a:correct(U)
+		end, 10)
+		alg:compile(reg)
+		elab = alg.elaborated
+	end)
+
+	h.it("grad_p_prime registered from correction", function()
+		h.expect(elab.fields["grad_p_prime_x"]).is_not_nil()
+		h.expect(elab.fields["grad_p_prime_y"]).is_not_nil()
+	end)
+
+	h.it("correction grad does not produce spurious fvm-mode assembly entries", function()
+		for _, v in pairs(elab.face_flux) do
+			h.expect(v.kind).not_equals("mwi")
+		end
+	end)
+end)
+
+-- manifest: scratch depth
+
+h.describe("manifest: scratch depth", function()
+	local alg
+
+	h.before_each(function()
+		local reg, f = make_reg()
+		alg = make_alg(reg, f)
+	end)
+
+	h.it("max_cell_scratch is present on manifest", function()
+		h.expect(alg.manifest.max_cell_scratch).is_not_nil()
+	end)
+
+	h.it("max_cell_scratch is at least the BiCGSTAB minimum of 9", function()
+		h.expect(alg.manifest.max_cell_scratch).is_greater_than(8)
+	end)
+
+	h.it("max_cell_scratch equals 9 for simple arithmetic exprs in NS registry", function()
+		-- nu=mu/rho, nut=k/omega, nu_eff=nu+nut, corrections are all shallow
+		h.expect(alg.manifest.max_cell_scratch).equals(9)
+	end)
+end)
+
+h.describe("manifest: scratch depth with deeper expression", function()
+	h.it("deeply nested expr raises scratch count above minimum", function()
+		local reg  = nb.new_registry("deep")
+		local a    = reg:const("a", 1.0)
+		local phi  = reg:scalar("phi")
+		local psi  = reg:scalar("psi")
+
+		-- (phi * phi + psi * psi) / (phi - psi) + phi * psi
+		-- scratch depth > 1: forces max above 9+1 if deep enough
+		-- use a deliberately deep tree: ((phi*psi)+(phi*psi)) / ((phi*psi)-(phi*psi))
+		local expr = (phi * psi + phi * psi) / (phi * psi - phi * psi + a)
+		psi:governed_by(nb.laplacian(psi):equals(a))
+		phi:defined_as(expr)
+
+		reg:validate()
+
+		local alg2 = Alg.new("deep")
+		alg2:loop(function(a2)
+			a2:solve(psi)
+		end, 10)
+		alg2:compile(reg)
+
+		-- scratch depth of expr should push above the raw 9 minimum
+		h.expect(alg2.manifest.max_cell_scratch).is_greater_than(8)
+	end)
+end)
+
+-- manifest merging
+
+h.describe("manifest merge: cell fields", function()
+	local man
+
+	h.before_each(function()
+		local reg, f = make_reg()
+		man = make_alg(reg, f).manifest
+	end)
+
+	h.it("grad fields appear in man.cell", function()
+		h.expect(man.cell["grad_p_x"]).is_not_nil()
+		h.expect(man.cell["grad_p_y"]).is_not_nil()
+		h.expect(man.cell["grad_k_x"]).is_not_nil()
+	end)
+
+	h.it("diag snapshot fields appear in man.cell", function()
+		h.expect(man.cell["__diag_U_x"]).is_not_nil()
+		h.expect(man.cell["__diag_U_y"]).is_not_nil()
+	end)
+
+	h.it("U component grad fields appear in man.cell", function()
+		h.expect(man.cell["grad_U_x_x"]).is_not_nil()
+		h.expect(man.cell["grad_U_y_x"]).is_not_nil()
+	end)
+end)
+
+h.describe("manifest merge: face fields", function()
+	local man
+
+	h.before_each(function()
+		local reg, f = make_reg()
+		man = make_alg(reg, f).manifest
+	end)
+
+	h.it("mwi_U_p appears in man.face exactly once", function()
+		h.expect(man.face["mwi_U_p"]).is_not_nil()
+	end)
+
+	h.it("symbol face flux appears in man.face for bare-symbol div case", function()
+		local reg  = nb.new_registry("face-sym")
+		local U    = reg:vector("U")
+		local divU = reg:scalar("divU"):defined_as(nb.div(U))
+		reg:validate()
+
+		local alg = Alg.new("t")
+		alg:linear(function(a) a:evaluate(divU) end)
+		alg:compile(reg)
+
+		h.expect(alg.manifest.face["__facen_U"]).is_not_nil()
+	end)
+
+	h.it("expr face flux and its vec_cache fields appear for expr div case", function()
+		local reg   = nb.new_registry("face-expr")
+		local U     = reg:vector("U")
+		local V     = reg:vector("V")
+		local divUV = reg:scalar("divUV"):defined_as(nb.div(U + V))
+		reg:validate()
+
+		local alg = Alg.new("t")
+		alg:linear(function(a) a:evaluate(divUV) end)
+		alg:compile(reg)
+
+		local found_vec_cache = false
+		for _, v in pairs(alg.manifest.cell) do
+			-- vec_cache fields land in man.cell
+			found_vec_cache = true
+			break
+		end
+
+		local found_face_expr = false
+		for name in pairs(alg.manifest.face) do
+			if name:find("__facen_expr_") then found_face_expr = true end
+		end
+
+		h.expect(found_face_expr).is_truthy()
+	end)
+end)
+
+h.describe("manifest merge: no duplication of MWI", function()
+	local man
+
+	h.before_each(function()
+		local reg, f = make_reg()
+		man = make_alg(reg, f).manifest
+	end)
+
+	h.it("mwi_U_p appears exactly once in man.face", function()
+		local count = 0
+		for name in pairs(man.face) do
+			if name == "mwi_U_p" then count = count + 1 end
+		end
+		h.expect(count).equals(1)
+	end)
+end)

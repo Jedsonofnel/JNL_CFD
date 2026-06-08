@@ -241,6 +241,18 @@ local function mangle_coeff()
 	return "__coeff"
 end
 
+local function mangle_facen_sym(field)
+	return "__facen_" .. field
+end
+
+local function mangle_vec_cache(n, axis)
+	return "__vec_" .. n .. "_" .. axis
+end
+
+local function mangle_facen_expr(n)
+	return "__facen_expr_" .. n
+end
+
 --
 -- Compilation: Freshness helpers
 --
@@ -488,6 +500,8 @@ end
 -- Compilation: manifest
 --
 
+local JNL_FVM_REAL_CELL_SCRATCH_MIN = 9
+
 local function init_manifest(reg)
 	local man = { cell = {}, face = {}, grad = {}, system = {} }
 
@@ -497,6 +511,27 @@ local function init_manifest(reg)
 	end)
 
 	return man
+end
+
+local function scan_max_scratch(reg, man)
+	local max_d = JNL_FVM_REAL_CELL_SCRATCH_MIN
+
+	reg:each(function(_, entry)
+		if entry.kind == "const" then return end
+
+		local function check(node)
+			if not node or not Node.is_node(node) then return end
+			-- +1: jnl_expr_eval leaves one result live after returning
+			local d = node:scratch_depth() + 1
+			if d > max_d then max_d = d end
+		end
+
+		-- equation lhs/rhs become assembly calls, not jnl_expr_eval — skip them
+		if entry.expr then check(entry.expr) end
+		if entry.correction then check(entry.correction) end
+	end)
+
+	man.max_cell_scratch = max_d
 end
 
 local function scan_node_resources(node, man)
@@ -563,6 +598,9 @@ end
 
 -- NOTE: intermediate -> { kind, source fields, ... }
 -- NOTE: invalidates  -> registry field name -> list of intermediate names
+
+-- forward declaration
+local elab_scan
 
 local function elab_add_inv(elab, source, iname)
 	local t = elab.invalidates[source]
@@ -642,6 +680,117 @@ local function elab_add_mwi(elab, reg, mwi_node)
 	elab_add_inv(elab, pname, mname)
 end
 
+local function elab_add_flux_expr(elab, reg, node, counter)
+	local n = counter[1]
+	counter[1] = n + 1
+
+	local cx = mangle_vec_cache(n, "x")
+	local cy = mangle_vec_cache(n, "y")
+	local facen = mangle_facen_expr(n)
+
+	elab.fields[cx] = { kind = "vec_cache", axis = "x", node = node, deps = {} }
+	elab.fields[cy] = { kind = "vec_cache", axis = "y", node = node, deps = {} }
+	elab.face_flux[facen] = { kind = "expr", node = node, vec_x = cx, vec_y = cy, name = facen }
+
+	-- scan sub-expression in expr mode so any nested intermediates
+	-- (grads, div_cells, etc.) get registered with their own entries
+	elab_scan(elab, reg, node, "expr")
+
+	-- wire invalidation edges specifically for cx, cy, facen
+	-- must run after elab_scan so nested intermediate entries exist
+	local function collect_inv(n2)
+		if not n2 or not Node.is_node(n2) then return end
+		if n2.kind == "symbol" and n2.name then
+			local name = n2.name
+			elab_add_inv(elab, name, facen)
+			elab_add_inv(elab, name, cx)
+			elab_add_inv(elab, name, cy)
+			if n2.rank == 1 then
+				for _, ax in ipairs({ "x", "y" }) do
+					local comp = Mangle.field(name, ax)
+					elab_add_inv(elab, comp, facen)
+					elab_add_inv(elab, comp, cx)
+					elab_add_inv(elab, comp, cy)
+				end
+			end
+		end
+
+		-- also invalidate from any nested intermediates this expression depends on
+		if n2.kind == "grad" and n2.a and n2.a.name then
+			for _, ax in ipairs({ "x", "y" }) do
+				local gname = Mangle.grad(n2.a.name, ax)
+				elab_add_inv(elab, gname, facen)
+				elab_add_inv(elab, gname, cx)
+				elab_add_inv(elab, gname, cy)
+			end
+		end
+		collect_inv(n2.a)
+		collect_inv(n2.b)
+	end
+
+	collect_inv(node)
+
+	return facen
+end
+
+local function elab_add_flux_symbol(elab, reg, field_name)
+	local facen_name = mangle_facen_sym(field_name)
+	if elab.face_flux[facen_name] then return facen_name end
+
+	local entry = reg:entry(field_name)
+	if not (entry and entry.rank == 1) then
+		error("elab_add_flux_symbol: '" .. field_name .. "' is not rank-1")
+	end
+
+	local comps = { Mangle.field(field_name, "x"), Mangle.field(field_name, "y") }
+
+	elab.face_flux[facen_name] = {
+		kind  = "symbol",
+		field = field_name,
+		comps = comps,
+		name  = facen_name,
+	}
+
+	for _, comp in ipairs(comps) do
+		elab_add_inv(elab, comp, facen_name)
+		elab_add_inv(elab, field_name, facen_name)
+	end
+
+	return facen_name
+end
+
+local function elab_flux_for(elab, reg, flux_node, counter)
+	if flux_node.kind == "mwi" then
+		elab_add_mwi(elab, reg, flux_node)
+		return Mangle.accessor("mwi", flux_node), "mwi"
+	elseif flux_node.kind == "symbol" then
+		return elab_add_flux_symbol(elab, reg, flux_node.name), "symbol"
+	else
+		return elab_add_flux_expr(elab, reg, flux_node, counter), "expr"
+	end
+end
+
+-- find which child of outer() is the convecting flux
+-- mwi wins unconditionally; otherwise the non-symbol or first rank-1 child
+local function outer_flux_child(a, b)
+	if a.kind == "mwi" then return a, b end
+	if b.kind == "mwi" then return b, a end
+
+	-- neither is mwi: prefer the non-symbol side as the "interesting" flux
+	local a_sym = a.kind == "symbol"
+	local b_sym = b.kind == "symbol"
+
+	if a_sym and not b_sym then return b, a end
+	if b_sym and not a_sym then return a, b end
+
+	-- both symbols or both exprs: assert rank-1 on both and take a by convention,
+	-- but warn — this case is genuinely ambiguous
+	assert(a.rank == 1 and b.rank == 1,
+		string.format("outer: cannot identify flux child: (%s) outer (%s)", tostring(a), tostring(b)))
+
+	return a, b
+end
+
 -- walk a scale chain to find the rank >= 1 symbol leaf (the field being diffused)
 local function field_in_scale(node)
 	if not node then return nil end
@@ -655,7 +804,42 @@ local function field_in_scale(node)
 	return nil
 end
 
-local function elab_scan(elab, reg, node)
+local function elab_add_div_cell(elab, reg, div_node, counter)
+	local n = counter[1]
+	counter[1] = n + 1
+	local dname = "__divcell_" .. n
+
+	-- the divergence still needs a face flux; register that too
+	local inner = div_node.a
+	local flux_name, flux_kind = elab_flux_for(elab, reg, inner, counter)
+
+	elab.fields[dname] = {
+		kind = "div_cell",
+		flux_name = flux_name,
+		flux_kind = flux_kind,
+		deps = { flux_name },
+	}
+
+	-- propagate invalidation from the flux entry's own deps
+	local flux_entry = elab.face_flux[flux_name]
+	if flux_entry then
+		-- symbol entries use comps/field; expr/mwi entries use deps
+		local sources = flux_entry.deps or flux_entry.comps or {}
+		for _, dep in ipairs(sources) do
+			elab_add_inv(elab, dep, dname)
+		end
+		if flux_entry.field then
+			elab_add_inv(elab, flux_entry.field, dname)
+		end
+	end
+
+	return dname
+end
+
+elab_scan = function(elab, reg, node, mode)
+	-- mode: "fvm"  = top-level equation, implicit operators are assembly
+	--       "expr" = inside coefficient/correction/defined_as, operators are explicit
+	mode = mode or "fvm"
 	if not node or type(node) ~= "table" then return end
 	if not Node.is_node(node) then return end
 
@@ -672,7 +856,7 @@ local function elab_scan(elab, reg, node)
 			local e = reg:entry(op.name)
 			elab_add_grad(elab, op.name, e and e.rank or op.rank or 0)
 		end
-		elab_scan(elab, reg, node.a)
+		elab_scan(elab, reg, node.a, mode)
 		return
 	end
 
@@ -682,31 +866,73 @@ local function elab_scan(elab, reg, node)
 			local e = reg:entry(fnode.name)
 			elab_add_grad(elab, fnode.name, e and e.rank or fnode.rank or 0)
 		end
-		elab_scan(elab, reg, node.a)
+		-- coefficient sub-expressions are always explicit, never FVM assembly
+		elab_scan(elab, reg, node.a, "expr")
 		return
 	end
 
-	elab_scan(elab, reg, node.a)
-	elab_scan(elab, reg, node.b)
+	if k == "divergence" then
+		if mode == "expr" then
+			-- div in coefficient position: needs explicit scalar evaluation
+			elab_add_div_cell(elab, reg, node, elab.counter)
+		else
+			local inner = node.a
+			if inner.kind == "outer" then
+				local flux, _ = outer_flux_child(inner.a, inner.b)
+				elab_flux_for(elab, reg, flux, elab.counter)
+			else
+				elab_flux_for(elab, reg, inner, elab.counter)
+			end
+		end
+		-- always recurse in expr mode: sub-nodes of a div are never top-level FVM terms
+		elab_scan(elab, reg, node.a, "expr")
+		return
+	end
+
+	if k == "outer" then
+		if mode == "fvm" then
+			local flux, _ = outer_flux_child(node.a, node.b)
+			elab_flux_for(elab, reg, flux, elab.counter)
+		end
+		-- children of outer are expressions, not top-level FVM terms
+		elab_scan(elab, reg, node.a, "expr")
+		elab_scan(elab, reg, node.b, "expr")
+		return
+	end
+
+	elab_scan(elab, reg, node.a, mode)
+	elab_scan(elab, reg, node.b, mode)
+end
+
+local function manifest_merge_elab(man, elab)
+	for name, entry in pairs(elab.fields) do
+		if entry.kind == "grad" or entry.kind == "diag"
+			or entry.kind == "vec_cache" or entry.kind == "div_cell" then
+			man.cell[name] = { ghost = true }
+		end
+	end
+	for name, entry in pairs(elab.face_flux) do
+		if entry.kind == "symbol" then
+			man.face[name] = { field = entry.field }
+		elseif entry.kind == "expr" then
+			man.face[name] = { vec_x = entry.vec_x, vec_y = entry.vec_y }
+		end
+		-- mwi already in man.face from scan_node_resources
+	end
 end
 
 local function elaborate(reg)
-	local elab = { fields = {}, invalidates = {} }
+	local elab = { fields = {}, invalidates = {}, face_flux = {}, counter = { 1 } }
 
 	reg:each(function(_, entry)
 		if entry.kind == "const" then return end
 
-		local nodes = {}
 		if entry.equation then
-			nodes[#nodes + 1] = entry.equation.lhs
-			nodes[#nodes + 1] = entry.equation.rhs
+			elab_scan(elab, reg, entry.equation.lhs, "fvm")
+			elab_scan(elab, reg, entry.equation.rhs, "fvm")
 		end
-		if entry.expr then nodes[#nodes + 1] = entry.expr end
-		if entry.correction then nodes[#nodes + 1] = entry.correction end
-
-		for _, n in ipairs(nodes) do
-			elab_scan(elab, reg, n)
-		end
+		if entry.expr then elab_scan(elab, reg, entry.expr, "expr") end
+		if entry.correction then elab_scan(elab, reg, entry.correction, "expr") end
 	end)
 
 	return elab
@@ -752,10 +978,12 @@ function Alg:compile(reg)
 	scan_phase_systems(pre, reg, man)
 	scan_phase_systems(main, reg, man)
 	scan_phase_systems(post, reg, man)
+	scan_max_scratch(reg, man)
 	self.manifest = man
 
 	-- pass 1.5: elaboration
 	self.elaborated = elaborate(reg)
+	manifest_merge_elab(self.manifest, self.elaborated)
 
 	-- pass 2: lower abstract → concrete FVM instructions (scaffolded)
 	lower(self, reg)

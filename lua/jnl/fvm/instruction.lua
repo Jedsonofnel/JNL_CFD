@@ -117,36 +117,39 @@ end
 
 ---evaluates correction node expression into delta and does field:axpy(1, delta)
 function Inst.apply_correction(field, node)
-	V.identifier(field, "Inst.apply_correction field")
 	return new("apply_correction", { field = field, node = node })
 end
 
 function Inst.face_interp(field, out)
-	V.identifier(field, "Inst.face_interp field")
-	V.identifier(out, "Inst.face_interp out")
 	return new("face_interp", { field = field, out = out })
 end
 
 function Inst.face_normal(ux_face, uy_face, out)
-	V.identifier(ux_face, "Inst.face_normal ux_face")
-	V.identifier(uy_face, "Inst.face_normal uy_face")
-	V.identifier(out, "Inst.face_normal out")
 	return new("face_normal", { ux_face = ux_face, uy_face = uy_face, out = out })
+end
+
+function Inst.face_normal_c(ux, uy, out)
+	return new("face_normal_c", { ux = ux, uy = uy, out = out })
 end
 
 -- Gradient from a field (green gauss vs lsq is a policy)
 function Inst.grad(field, out_x, out_y)
-	V.identifier(field, "Inst.grad field")
-	V.identifier(out_x, "Inst.grad out_x")
-	V.identifier(out_y, "Inst.grad out_y")
 	return new("grad", { field = field, out_x = out_x, out_y = out_y })
 end
 
--- sum a face-normal scalar field over faces → cell scalar
+-- sum a face-normal scalar field over faces -> cell scalar
 function Inst.divergence(face_normal_field, out)
-	V.identifier(face_normal_field, "Inst.divergence face_normal_field")
-	V.identifier(out, "Inst.divergence out")
 	return new("divergence", { face_normal = face_normal_field, out = out })
+end
+
+-- divergence from cell vector components - calls jnl_divergence_i_c / jnl_divergence_v_c
+function Inst.divergence_c(field, ux, uy, integrated)
+	return new("divergence_c", {
+		field      = field,
+		ux         = ux,
+		uy         = uy,
+		integrated = integrated ~= false,
+	})
 end
 
 -- Rhie-Chow face-normal velocity
@@ -553,8 +556,20 @@ function concrete_fmt.face_normal(f, _)
 	return string.format("FACE_NORMAL   (%s,%s) -> %s", f.ux_face, f.uy_face, f.out)
 end
 
+function concrete_fmt.face_normal_c(f, _)
+	return string.format("FACE_NORMAL_C (%s,%s) -> %s", f.ux, f.uy, f.out)
+end
+
 function concrete_fmt.divergence(f, _)
-	return string.format("DIVERGENCE    %s -> %s", f.face_normal, f.out)
+	local mode = f.integrated and "[i]" or "[v]"
+	return string.format("DIVERGENCE %-4s %s -> %s",
+		mode, f.face_normal, f.out)
+end
+
+function concrete_fmt.divergence_c(f, _)
+	local mode = f.integrated and "[i]" or "[v]"
+	return string.format("DIVERGENCE_C %-4s %s  ux=%s  uy=%s",
+		mode, f.field, f.ux, f.uy)
 end
 
 function concrete_fmt.rhie_chow(f, _)
