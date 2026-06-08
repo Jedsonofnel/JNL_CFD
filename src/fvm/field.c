@@ -7,11 +7,14 @@
 #include "mesh2d.h"
 #include "fvm/linalg.h"
 
+// NOTE: _i = integrated
+// NOTE: _v = volumetric, every cell value is multiplied by cell volume
+
 //
 // Face interpolation
 //
 
-void jnl_face_interp_cds(const pmsh2d *mesh, const f64 *field, f64 *face_field)
+void jnl_face_interp(const pmsh2d *mesh, const f64 *field, f64 *face_field)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
@@ -26,8 +29,8 @@ void jnl_face_interp_cds(const pmsh2d *mesh, const f64 *field, f64 *face_field)
 	}
 }
 
-void jnl_face_normal_component(const pmsh2d *mesh, const f64 *ux_face,
-                               const f64 *uy_face, f64 *un_face)
+void jnl_face_normal(const pmsh2d *mesh, const f64 *ux_face, const f64 *uy_face,
+                     f64 *un_face)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
@@ -37,30 +40,6 @@ void jnl_face_normal_component(const pmsh2d *mesh, const f64 *ux_face,
 		    ux_face[f] * geom->face_nx[f] + uy_face[f] * geom->face_ny[f];
 	}
 }
-
-void jnl_face_normal_component_cds(const pmsh2d *mesh, const f64 *ux,
-                                   const f64 *uy, f64 *un_face)
-{
-	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
-	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
-	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
-
-	for (i32 f = 0; f < topo->n_faces; f++) {
-		i32 o = topo->owner[f];
-		i32 n = topo->neighbour[f];
-
-		f64 w = interp->face_lerp[f];
-
-		f64 ux_f = (1.0 - w) * ux[o] + w * ux[n];
-		f64 uy_f = (1.0 - w) * uy[o] + w * uy[n];
-
-		un_face[f] = ux_f * geom->face_nx[f] + uy_f * geom->face_ny[f];
-	}
-}
-
-//
-// Rhie-Chow / momentum interpolation
-//
 
 void jnl_rhie_chow(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
                    const f64 *p, const f64 *grad_px, const f64 *grad_py,
@@ -121,11 +100,12 @@ void jnl_rhie_chow(const pmsh2d *mesh, const f64 *ux, const f64 *uy,
 }
 
 //
-// Gradient ghost fill
+// Gradients
 //
 
-void jnl_grad_fill_ghosts_from_values(const pmsh2d *mesh, const f64 *field,
-                                      f64 *grad_x, f64 *grad_y)
+// helper for setting ghost cell grads
+static void grad_ghost_fill(const pmsh2d *mesh, const f64 *owner, f64 *grad_x,
+                            f64 *grad_y)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
@@ -146,19 +126,15 @@ void jnl_grad_fill_ghosts_from_values(const pmsh2d *mesh, const f64 *field,
 		 * value and therefore with the applied BC/baffle rule.
 		 */
 		f64 owner_gn = grad_x[o] * nx + grad_y[o] * ny;
-		f64 ghost_gn = interp->delta_coeff[f] * (field[g] - field[o]);
+		f64 ghost_gn = interp->delta_coeff[f] * (owner[g] - owner[o]);
 
 		grad_x[g] = grad_x[o] + (ghost_gn - owner_gn) * nx;
 		grad_y[g] = grad_y[o] + (ghost_gn - owner_gn) * ny;
 	}
 }
 
-//
-// Green-Gauss gradient
-//
-
-void jnl_grad_green_gauss(const pmsh2d *mesh, const f64 *field, f64 *grad_x,
-                          f64 *grad_y)
+// Green-Gauss
+void jnl_grad_gg(const pmsh2d *mesh, const f64 *field, f64 *grad_x, f64 *grad_y)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
@@ -198,12 +174,8 @@ void jnl_grad_green_gauss(const pmsh2d *mesh, const f64 *field, f64 *grad_x,
 		grad_y[c] *= inv_vol;
 	}
 
-	jnl_grad_fill_ghosts_from_values(mesh, field, grad_x, grad_y);
+	grad_ghost_fill(mesh, field, grad_x, grad_y);
 }
-
-//
-// Least-squares gradient
-//
 
 void jnl_grad_lsq(const pmsh2d *mesh, const f64 *field, f64 *grad_x,
                   f64 *grad_y)
@@ -276,15 +248,14 @@ void jnl_grad_lsq(const pmsh2d *mesh, const f64 *field, f64 *grad_x,
 		grad_y[c] = inv_det * (-a01 * b0 + a00 * b1);
 	}
 
-	jnl_grad_fill_ghosts_from_values(mesh, field, grad_x, grad_y);
+	grad_ghost_fill(mesh, field, grad_x, grad_y);
 }
 
 //
 // Divergence
 //
 
-void jnl_divergence2d_integrated_from_un(const pmsh2d *mesh, const f64 *un_face,
-                                         f64 *div)
+void jnl_divergence_i(const pmsh2d *mesh, const f64 *un_face, f64 *div)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
@@ -312,13 +283,12 @@ void jnl_divergence2d_integrated_from_un(const pmsh2d *mesh, const f64 *un_face,
 		div[c] = 0.0;
 }
 
-void jnl_divergence2d_volumetric_from_un(const pmsh2d *mesh, const f64 *un_face,
-                                         f64 *div)
+void jnl_divergence_v(const pmsh2d *mesh, const f64 *un_face, f64 *div)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
 
-	jnl_divergence2d_integrated_from_un(mesh, un_face, div);
+	jnl_divergence_i(mesh, un_face, div);
 
 	for (i32 c = 0; c < topo->n_real_cells; c++)
 		div[c] /= geom->cell_vol[c];
@@ -327,59 +297,38 @@ void jnl_divergence2d_volumetric_from_un(const pmsh2d *mesh, const f64 *un_face,
 		div[c] = 0.0;
 }
 
-void jnl_divergence2d_integrated(const pmsh2d *mesh, const f64 *ux,
-                                 const f64 *uy, f64 *div)
+// NOTE: abs-valued sibling of divergence_i — sum |F_f * A_f| per cell
+// Used for CFL-based pseudo-dt, mass balance diagnostics
+void jnl_face_abssum(const pmsh2d *mesh, const f64 *un_face, f64 *out)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
-	const struct jnl_pmsh2d_interp *interp = &mesh->interp;
 
 	for (i32 c = 0; c < topo->n_cells; c++)
-		div[c] = 0.0;
+		out[c] = 0.0;
 
 	for (i32 f = 0; f < topo->n_faces; f++) {
 		i32 o = topo->owner[f];
 		i32 n = topo->neighbour[f];
 
-		f64 w = interp->face_lerp[f];
+		f64 flux = fabs(un_face[f]) * geom->face_area[f];
 
-		f64 ux_f = (1.0 - w) * ux[o] + w * ux[n];
-		f64 uy_f = (1.0 - w) * uy[o] + w * uy[n];
-
-		f64 un_f = ux_f * geom->face_nx[f] + uy_f * geom->face_ny[f];
-		f64 flux = un_f * geom->face_area[f];
-
-		div[o] += flux;
+		out[o] += flux;
 
 		if (n < topo->n_real_cells)
-			div[n] -= flux;
+			out[n] += flux;
 	}
 
 	for (i32 c = topo->n_real_cells; c < topo->n_cells; c++)
-		div[c] = 0.0;
-}
-
-void jnl_divergence2d_volumetric(const pmsh2d *mesh, const f64 *ux,
-                                 const f64 *uy, f64 *div)
-{
-	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
-	const struct jnl_pmsh2d_geom *geom = &mesh->geom;
-
-	jnl_divergence2d_integrated(mesh, ux, uy, div);
-
-	for (i32 c = 0; c < topo->n_real_cells; c++)
-		div[c] /= geom->cell_vol[c];
-
-	for (i32 c = topo->n_real_cells; c < topo->n_cells; c++)
-		div[c] = 0.0;
+		out[c] = 0.0;
 }
 
 //
 // Vorticity
 //
 
-void jnl_vorticity2d(const pmsh2d *mesh, const f64 *grad_vy_x,
-                     const f64 *grad_ux_y, f64 *omega)
+void jnl_vorticity(const pmsh2d *mesh, const f64 *grad_vy_x,
+                   const f64 *grad_ux_y, f64 *omega)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 
@@ -437,7 +386,7 @@ f64 jnl_patch_gradient_flux(const pmsh2d *mesh, const f64 *cell_field,
 // Ghost field utilities
 //
 
-void jnl_field_fill_ghosts_copy_owner(const pmsh2d *mesh, f64 *field)
+void jnl_ghost_copy(const pmsh2d *mesh, f64 *owner)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 
@@ -445,20 +394,19 @@ void jnl_field_fill_ghosts_copy_owner(const pmsh2d *mesh, f64 *field)
 		i32 o = topo->owner[f];
 		i32 g = topo->neighbour[f];
 
-		field[g] = field[o];
+		owner[g] = owner[o];
 	}
 }
 
-void jnl_field_fill_ghosts_const(const pmsh2d *mesh, f64 *field, f64 value)
+void jnl_ghost_k(const pmsh2d *mesh, f64 *owner, f64 value)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 
 	for (i32 c = topo->n_real_cells; c < topo->n_cells; c++)
-		field[c] = value;
+		owner[c] = value;
 }
 
-void jnl_field_fill_ghosts_from_owner_scaled(const pmsh2d *mesh, f64 *field,
-                                             f64 scale)
+void jnl_ghost_ks(const pmsh2d *mesh, f64 *owner, f64 scale)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 
@@ -466,12 +414,15 @@ void jnl_field_fill_ghosts_from_owner_scaled(const pmsh2d *mesh, f64 *field,
 		i32 o = topo->owner[f];
 		i32 g = topo->neighbour[f];
 
-		field[g] = scale * field[o];
+		owner[g] = scale * owner[o];
 	}
 }
 
-void jnl_field_from_fvsys_diag(const pmsh2d *mesh, const struct jnl_fvsys *sys,
-                               f64 *field)
+//
+// System -> field utilities
+//
+
+void jnl_diag_snapshot(const pmsh2d *mesh, const fvsys *sys, f64 *field)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 
@@ -479,5 +430,51 @@ void jnl_field_from_fvsys_diag(const pmsh2d *mesh, const struct jnl_fvsys *sys,
 
 	memcpy(field, sys->matrix.diag, topo->n_real_cells * sizeof(f64));
 
-	jnl_field_fill_ghosts_copy_owner(mesh, field);
+	jnl_ghost_copy(mesh, field);
+}
+
+// NOTE: sum |a_nb| per cell from internal faces only
+// Used for Patankar algebraic pseudo-dt, diagonal dominance checks
+void jnl_offdiag_abssum(const pmsh2d *mesh, const fvsys *sys, f64 *out)
+{
+	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
+	const struct jnl_ldu_matrix *mat = &sys->matrix;
+
+	for (i32 c = 0; c < topo->n_cells; c++)
+		out[c] = 0.0;
+
+	/*
+	 * For face f connecting owner o and neighbour n:
+	 *   upper[f] = A[o,n] — off-diagonal in owner's row
+	 *   lower[f] = A[n,o] — off-diagonal in neighbour's row
+	 *
+	 * Boundary closure coefficients are excluded: they represent
+	 * BC-modified diagonals rather than true inter-cell coupling.
+	 */
+	for (i32 f = 0; f < topo->n_internal_faces; f++) {
+		i32 o = topo->owner[f];
+		i32 nb = topo->neighbour[f];
+
+		out[o] += fabs(mat->upper[f]);
+		out[nb] += fabs(mat->lower[f]);
+	}
+
+	for (i32 c = topo->n_real_cells; c < topo->n_cells; c++)
+		out[c] = 0.0;
+}
+
+void jnl_diag_dominance(const pmsh2d *mesh, const fvsys *sys, f64 *out)
+{
+	const struct jnl_ldu_matrix *m = &sys->matrix;
+
+	jnl_offdiag_abssum(mesh, sys, out);
+
+	for (i32 c = 0; c < mesh->topo.n_real_cells; c++) {
+		if (out[c] > 1e-14)
+			out[c] = fabs(m->diag[c]) / out[c];
+		else
+			out[c] = INFINITY; // no off-diagonal coupling — trivially dominant
+	}
+
+	jnl_ghost_copy(mesh, out);
 }

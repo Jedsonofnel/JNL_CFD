@@ -5,24 +5,17 @@
 #include "lua_bindings.h"
 #include "fvm/field.h"
 
-static int l_face_interp_cds(lua_State *L)
+static int l_face_interp(lua_State *L)
 {
-	jnl_face_interp_cds(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                    check_vec(L, 3)->data);
+	jnl_face_interp(check_pmsh2d(L, 1), check_vec(L, 2)->data,
+	                check_vec(L, 3)->data);
 	return 0;
 }
 
-static int l_face_normal_component(lua_State *L)
+static int l_face_normal(lua_State *L)
 {
-	jnl_face_normal_component(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                          check_vec(L, 3)->data, check_vec(L, 4)->data);
-	return 0;
-}
-
-static int l_face_normal_component_cds(lua_State *L)
-{
-	jnl_face_normal_component_cds(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                              check_vec(L, 3)->data, check_vec(L, 4)->data);
+	jnl_face_normal(check_pmsh2d(L, 1), check_vec(L, 2)->data,
+	                check_vec(L, 3)->data, check_vec(L, 4)->data);
 	return 0;
 }
 
@@ -35,18 +28,10 @@ static int l_rhie_chow(lua_State *L)
 	return 0;
 }
 
-static int l_grad_fill_ghosts_from_values(lua_State *L)
+static int l_grad_gg(lua_State *L)
 {
-	jnl_grad_fill_ghosts_from_values(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                                 check_vec(L, 3)->data,
-	                                 check_vec(L, 4)->data);
-	return 0;
-}
-
-static int l_grad_green_gauss(lua_State *L)
-{
-	jnl_grad_green_gauss(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                     check_vec(L, 3)->data, check_vec(L, 4)->data);
+	jnl_grad_gg(check_pmsh2d(L, 1), check_vec(L, 2)->data,
+	            check_vec(L, 3)->data, check_vec(L, 4)->data);
 	return 0;
 }
 
@@ -57,38 +42,24 @@ static int l_grad_lsq(lua_State *L)
 	return 0;
 }
 
-static int l_divergence2d_integrated_from_un(lua_State *L)
+static int l_divergence_i(lua_State *L)
 {
-	jnl_divergence2d_integrated_from_un(
-	    check_pmsh2d(L, 1), check_vec(L, 2)->data, check_vec(L, 3)->data);
+	jnl_divergence_i(check_pmsh2d(L, 1), check_vec(L, 2)->data,
+	                 check_vec(L, 3)->data);
 	return 0;
 }
 
-static int l_divergence2d_volumetric_from_un(lua_State *L)
+static int l_divergence_v(lua_State *L)
 {
-	jnl_divergence2d_volumetric_from_un(
-	    check_pmsh2d(L, 1), check_vec(L, 2)->data, check_vec(L, 3)->data);
+	jnl_divergence_v(check_pmsh2d(L, 1), check_vec(L, 2)->data,
+	                 check_vec(L, 3)->data);
 	return 0;
 }
 
-static int l_divergence2d_integrated(lua_State *L)
+static int l_vorticity(lua_State *L)
 {
-	jnl_divergence2d_integrated(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                            check_vec(L, 3)->data, check_vec(L, 4)->data);
-	return 0;
-}
-
-static int l_divergence2d_volumetric(lua_State *L)
-{
-	jnl_divergence2d_volumetric(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                            check_vec(L, 3)->data, check_vec(L, 4)->data);
-	return 0;
-}
-
-static int l_vorticity2d(lua_State *L)
-{
-	jnl_vorticity2d(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                check_vec(L, 3)->data, check_vec(L, 4)->data);
+	jnl_vorticity(check_pmsh2d(L, 1), check_vec(L, 2)->data,
+	              check_vec(L, 3)->data, check_vec(L, 4)->data);
 	return 0;
 }
 
@@ -111,51 +82,43 @@ static int l_patch_gradient_flux(lua_State *L)
 	return 1;
 }
 
-static int l_field_fill_ghosts_copy_owner(lua_State *L)
+static int l_ghost_copy(lua_State *L)
 {
-	jnl_field_fill_ghosts_copy_owner(check_pmsh2d(L, 1), check_vec(L, 2)->data);
+	jnl_ghost_copy(check_pmsh2d(L, 1), check_vec(L, 2)->data);
 	return 0;
 }
 
-static int l_field_fill_ghosts_const(lua_State *L)
+static int l_ghost_k(lua_State *L)
 {
-	jnl_field_fill_ghosts_const(check_pmsh2d(L, 1), check_vec(L, 2)->data,
-	                            luaL_checknumber(L, 3));
+	jnl_ghost_k(check_pmsh2d(L, 1), check_vec(L, 2)->data,
+	            luaL_checknumber(L, 3));
 	return 0;
 }
 
-static int l_field_from_fvsys_diag(lua_State *L)
+static int l_diag_snapshot(lua_State *L)
 {
-	jnl_field_from_fvsys_diag(check_pmsh2d(L, 1), check_fvsys(L, 2)->sys,
-	                          check_vec(L, 3)->data);
+	jnl_diag_snapshot(check_pmsh2d(L, 1), check_fvsys(L, 2)->sys,
+	                  check_vec(L, 3)->data);
 	return 0;
 }
 
 static const luaL_Reg field_funcs[] = {
-    {"face_interp_cds", l_face_interp_cds},
-    {"face_normal_component", l_face_normal_component},
-    {"face_normal_component_cds", l_face_normal_component_cds},
+    {"face_interp", l_face_interp},
+    {"face_normal", l_face_normal},
     {"rhie_chow", l_rhie_chow},
 
-    {"grad_fill_ghosts_from_values", l_grad_fill_ghosts_from_values},
-    {"grad_green_gauss", l_grad_green_gauss},
+    {"grad_gg", l_grad_gg},
     {"grad_lsq", l_grad_lsq},
 
-    {"divergence2d_integrated_from_un", l_divergence2d_integrated_from_un},
-    {"divergence2d_volumetric_from_un", l_divergence2d_volumetric_from_un},
-    {"divergence2d_integrated", l_divergence2d_integrated},
-    {"divergence2d_volumetric", l_divergence2d_volumetric},
+    {"divergence_i", l_divergence_i},
+    {"divergence_v", l_divergence_v},
 
-    // Short aliases
-    {"divergence_integrated", l_divergence2d_integrated_from_un},
-    {"divergence_volumetric", l_divergence2d_volumetric_from_un},
-
-    {"vorticity2d", l_vorticity2d},
+    {"vorticity", l_vorticity},
     {"patch_gradient_flux", l_patch_gradient_flux},
 
-    {"field_fill_ghosts_copy_owner", l_field_fill_ghosts_copy_owner},
-    {"field_fill_ghosts_const", l_field_fill_ghosts_const},
-    {"field_from_fvsys_diag", l_field_from_fvsys_diag},
+    {"ghost_copy", l_ghost_copy},
+    {"ghost_k", l_ghost_k},
+    {"diag_snapshot", l_diag_snapshot},
 
     {NULL, NULL}};
 

@@ -246,7 +246,7 @@ int main(void)
 		//
 
 		fill_pressure_ghosts(mesh, p, &p_bcs);
-		jnl_grad_green_gauss(mesh, p, grad_px, grad_py);
+		jnl_grad_gg(mesh, p, grad_px, grad_py);
 
 		//
 		// 2. Rhie-Chow face flux using full-cell fields.
@@ -266,14 +266,14 @@ int main(void)
 		for (i32 c = 0; c < n_real; c++)
 			neg_src[c] = -grad_px[c];
 
-		jnl_su_volumetric_f(ux_sys, mesh, neg_src);
+		jnl_su_v_f(ux_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&ux_bcs, ux_sys, mesh);
 		jnl_baffles_scalar_close_insulated(ux_sys, mesh);
 		jnl_bc_assert_all_closed(ux_sys);
 
 		jnl_fvsys_under_relax(ux_sys, Ux, ALPHA_U);
-		jnl_field_from_fvsys_diag(mesh, ux_sys, ap_x);
+		jnl_diag_snapshot(mesh, ux_sys, ap_x);
 		jnl_fvsys_solve_bicgstab_into(ux_sys, pool, Ux, 1e-6, 200);
 
 		f64 res_Ux = jnl_fvsys_residual_norm(ux_sys, pool, Ux);
@@ -291,14 +291,14 @@ int main(void)
 		for (i32 c = 0; c < n_real; c++)
 			neg_src[c] = -grad_py[c];
 
-		jnl_su_volumetric_f(uy_sys, mesh, neg_src);
+		jnl_su_v_f(uy_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&uy_bcs, uy_sys, mesh);
 		jnl_baffles_scalar_close_insulated(uy_sys, mesh);
 		jnl_bc_assert_all_closed(uy_sys);
 
 		jnl_fvsys_under_relax(uy_sys, Uy, ALPHA_U);
-		jnl_field_from_fvsys_diag(mesh, uy_sys, ap_y);
+		jnl_diag_snapshot(mesh, uy_sys, ap_y);
 		jnl_fvsys_solve_bicgstab_into(uy_sys, pool, Uy, 1e-6, 200);
 
 		f64 res_Uy = jnl_fvsys_residual_norm(uy_sys, pool, Uy);
@@ -314,7 +314,7 @@ int main(void)
 		/*
 		 * Pressure correction RHS wants integrated mass imbalance.
 		 */
-		jnl_divergence2d_integrated_from_un(mesh, un_mwi, divU);
+		jnl_divergence_i(mesh, un_mwi, divU);
 
 		//
 		// 6. inv_d = vol * 2 / (ap_x + ap_y)
@@ -323,7 +323,7 @@ int main(void)
 		for (i32 c = 0; c < n_real; c++)
 			inv_d[c] = vol[c] * 2.0 / (ap_x[c] + ap_y[c]);
 
-		jnl_field_fill_ghosts_copy_owner(mesh, inv_d);
+		jnl_ghost_copy(mesh, inv_d);
 
 		//
 		// 7. Pressure correction p'.
@@ -338,7 +338,7 @@ int main(void)
 		for (i32 c = 0; c < n_real; c++)
 			neg_src[c] = -divU[c];
 
-		jnl_su_integrated_f(pp_sys, mesh, neg_src);
+		jnl_su_i_f(pp_sys, mesh, neg_src);
 
 		jnl_bc_set_close(&pp_bcs, pp_sys, mesh);
 		jnl_baffles_scalar_close_insulated(pp_sys, mesh);
@@ -354,7 +354,7 @@ int main(void)
 		// 8. Corrections.
 		//
 
-		jnl_grad_green_gauss(mesh, pp, grad_ppx, grad_ppy);
+		jnl_grad_gg(mesh, pp, grad_ppx, grad_ppy);
 
 		for (i32 c = 0; c < n_real; c++) {
 			Ux[c] -= vol[c] * grad_ppx[c] / ap_x[c];

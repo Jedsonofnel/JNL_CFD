@@ -54,7 +54,7 @@ void jnl_ldu_matvec(const struct jnl_ldu_matrix *m, const f64 *x, f64 *y)
 // FV Linear System
 //
 
-struct jnl_fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena)
+fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena)
 {
 	const struct jnl_pmsh2d_topo *topo = &mesh->topo;
 
@@ -65,7 +65,7 @@ struct jnl_fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena)
 	i32 n_coupled_faces = n_internal_faces + n_baffle_pairs;
 	i32 n_closure_faces = n_mesh_faces - n_internal_faces;
 
-	struct jnl_fvsys *sys = ARENA_PUSH_STRUCT_Z(arena, struct jnl_fvsys);
+	fvsys *sys = ARENA_PUSH_STRUCT_Z(arena, fvsys);
 
 	sys->matrix.n_cells = n_real_cells;
 	sys->matrix.n_mesh_faces = n_mesh_faces;
@@ -159,7 +159,7 @@ struct jnl_fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena)
 	return sys;
 }
 
-void jnl_fvsys_reset(struct jnl_fvsys *sys)
+void jnl_fvsys_reset(fvsys *sys)
 {
 	jnl_ldu_zero(&sys->matrix);
 	memset(sys->rhs, 0, sys->matrix.n_cells * sizeof(f64));
@@ -168,13 +168,12 @@ void jnl_fvsys_reset(struct jnl_fvsys *sys)
 	sys->singularity = JNL_SING_UNCHECKED;
 }
 
-void jnl_fvsys_reset_singularity(struct jnl_fvsys *sys)
+void jnl_fvsys_reset_singularity(fvsys *sys)
 {
 	sys->singularity = JNL_SING_UNCHECKED;
 }
 
-void jnl_fvsys_under_relax(struct jnl_fvsys *sys, const f64 *field_old,
-                           f64 alpha)
+void jnl_fvsys_under_relax(fvsys *sys, const f64 *field_old, f64 alpha)
 {
 	i32 n = sys->matrix.n_cells;
 	for (i32 i = 0; i < n; i++) {
@@ -184,7 +183,7 @@ void jnl_fvsys_under_relax(struct jnl_fvsys *sys, const f64 *field_old,
 	}
 }
 
-void jnl_fvsys_pin_cell(struct jnl_fvsys *sys, i32 cell_idx, f64 value)
+void jnl_fvsys_pin_cell(fvsys *sys, i32 cell_idx, f64 value)
 {
 	struct jnl_ldu_matrix *m = &sys->matrix;
 
@@ -199,8 +198,7 @@ void jnl_fvsys_pin_cell(struct jnl_fvsys *sys, i32 cell_idx, f64 value)
 	sys->rhs[cell_idx] = value;
 }
 
-void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
-                         f64 value)
+void jnl_fvsys_pin_cells(fvsys *sys, const i32 *cells, i32 n_cells, f64 value)
 {
 	struct jnl_ldu_matrix *m = &sys->matrix;
 
@@ -224,7 +222,7 @@ void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
 // Singularity helpers (internal)
 //
 
-static f64 fvsys_max_row_sum_ratio(const struct jnl_fvsys *sys,
+static f64 fvsys_max_row_sum_ratio(const fvsys *sys,
                                    struct jnl_scratch_pool *pool)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
@@ -259,8 +257,7 @@ static f64 fvsys_max_row_sum_ratio(const struct jnl_fvsys *sys,
 	return max_sum / max_diag;
 }
 
-static void fvsys_ensure_nonsingular(struct jnl_fvsys *sys,
-                                     struct jnl_scratch_pool *pool)
+static void fvsys_ensure_nonsingular(fvsys *sys, struct jnl_scratch_pool *pool)
 {
 	switch (sys->singularity) {
 	case JNL_SING_NONSINGULAR:
@@ -286,7 +283,7 @@ static void fvsys_ensure_nonsingular(struct jnl_fvsys *sys,
 
 // Implementation not exposed
 static struct jnl_solve_result
-fvsys_solve_cg_impl(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
+fvsys_solve_cg_impl(fvsys *sys, struct jnl_scratch_pool *pool,
                     const f64 *x_init, f64 tolerance, i32 max_iters)
 {
 	// NOTE: caller must reset pool and ensure nonsingular before calling
@@ -352,8 +349,7 @@ fvsys_solve_cg_impl(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
 	};
 }
 
-i32 jnl_fvsys_solve_cg_into(struct jnl_fvsys *sys,
-                            struct jnl_scratch_pool *pool, f64 *x,
+i32 jnl_fvsys_solve_cg_into(fvsys *sys, struct jnl_scratch_pool *pool, f64 *x,
                             f64 tolerance, i32 max_iters)
 {
 	jnl_scratch_reset(pool);
@@ -366,7 +362,7 @@ i32 jnl_fvsys_solve_cg_into(struct jnl_fvsys *sys,
 }
 
 // Returns scratch pointer - valid until scrach is next used for something
-struct jnl_solve_result jnl_fvsys_solve_cg(struct jnl_fvsys *sys,
+struct jnl_solve_result jnl_fvsys_solve_cg(fvsys *sys,
                                            struct jnl_scratch_pool *pool,
                                            const f64 *x_init, f64 tolerance,
                                            i32 max_iters)
@@ -381,7 +377,7 @@ struct jnl_solve_result jnl_fvsys_solve_cg(struct jnl_fvsys *sys,
 //
 
 static struct jnl_solve_result
-fvsys_solve_bicgstab_impl(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
+fvsys_solve_bicgstab_impl(fvsys *sys, struct jnl_scratch_pool *pool,
                           const f64 *x_init, f64 tolerance, i32 max_iters)
 {
 	// NOTE: caller must reset pool and ensure nonsingular before calling
@@ -483,9 +479,8 @@ fvsys_solve_bicgstab_impl(struct jnl_fvsys *sys, struct jnl_scratch_pool *pool,
 	return (struct jnl_solve_result){x, iter};
 }
 
-i32 jnl_fvsys_solve_bicgstab_into(struct jnl_fvsys *sys,
-                                  struct jnl_scratch_pool *pool, f64 *x,
-                                  f64 tolerance, i32 max_iters)
+i32 jnl_fvsys_solve_bicgstab_into(fvsys *sys, struct jnl_scratch_pool *pool,
+                                  f64 *x, f64 tolerance, i32 max_iters)
 {
 	jnl_scratch_reset(pool);
 	fvsys_ensure_nonsingular(sys, pool);
@@ -497,7 +492,7 @@ i32 jnl_fvsys_solve_bicgstab_into(struct jnl_fvsys *sys,
 }
 
 // Returns scratch pointer - valid until scrach is next used for something
-struct jnl_solve_result jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
+struct jnl_solve_result jnl_fvsys_solve_bicgstab(fvsys *sys,
                                                  struct jnl_scratch_pool *pool,
                                                  const f64 *x_init,
                                                  f64 tolerance, i32 max_iters)
@@ -520,7 +515,7 @@ u64 jnl_fvsys_arena_size(const pmsh2d *mesh)
 	i32 n_coupled_faces = n_internal_faces + n_baffle_pairs;
 	i32 n_closure_faces = n_mesh_faces - n_internal_faces;
 
-	return ARENA_SIZE(struct jnl_fvsys, 1) +  //
+	return ARENA_SIZE(fvsys, 1) +             //
 	       ARENA_SIZE(f64, n_real_cells) +    // diag
 	       ARENA_SIZE(f64, n_coupled_faces) + // lower
 	       ARENA_SIZE(f64, n_coupled_faces) + // upper
@@ -537,8 +532,8 @@ u64 jnl_fvsys_arena_size(const pmsh2d *mesh)
 // Diagnostics
 //
 
-f64 jnl_fvsys_residual_norm(const struct jnl_fvsys *sys,
-                            struct jnl_scratch_pool *pool, const f64 *x)
+f64 jnl_fvsys_residual_norm(const fvsys *sys, struct jnl_scratch_pool *pool,
+                            const f64 *x)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
 	i32 n = m->n_cells;
@@ -557,12 +552,14 @@ f64 jnl_fvsys_residual_norm(const struct jnl_fvsys *sys,
 	return sqrt(jnl_vec_dot(r, r, n));
 }
 
-f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys)
+f64 jnl_fvsys_diagonal_dominance(const fvsys *sys,
+                                 struct jnl_scratch_pool *pool)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
 	i32 n = m->n_cells;
 
-	f64 off[n];
+	jnl_scratch_reset(pool);
+	f64 *off = jnl_scratch_acquire(pool);
 	memset(off, 0, n * sizeof(f64));
 
 	for (i32 k = 0; k < m->n_coupled_faces; k++) {
@@ -582,7 +579,7 @@ f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys)
 	return min_ratio;
 }
 
-bool jnl_fvsys_all_diagonals_positive(const struct jnl_fvsys *sys)
+bool jnl_fvsys_all_diagonals_positive(const fvsys *sys)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
 	for (i32 i = 0; i < m->n_cells; i++)
@@ -591,7 +588,7 @@ bool jnl_fvsys_all_diagonals_positive(const struct jnl_fvsys *sys)
 	return true;
 }
 
-f64 jnl_fvsys_max_asymmetry(const struct jnl_fvsys *sys)
+f64 jnl_fvsys_max_asymmetry(const fvsys *sys)
 {
 	const struct jnl_ldu_matrix *m = &sys->matrix;
 	f64 max_asym = 0.0;

@@ -178,31 +178,31 @@ static int l_div_tvd_superbee(lua_State *L)
 // Su
 //
 
-static int l_su_volumetric_k(lua_State *L)
+static int l_su_v_k(lua_State *L)
 {
-	jnl_su_volumetric_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                    luaL_checknumber(L, 3));
+	jnl_su_v_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	           luaL_checknumber(L, 3));
 	return 0;
 }
 
-static int l_su_volumetric_f(lua_State *L)
+static int l_su_v_f(lua_State *L)
 {
-	jnl_su_volumetric_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                    check_vec(L, 3)->data);
+	jnl_su_v_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	           check_vec(L, 3)->data);
 	return 0;
 }
 
-static int l_su_integrated_k(lua_State *L)
+static int l_su_i_k(lua_State *L)
 {
-	jnl_su_integrated_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                    luaL_checknumber(L, 3));
+	jnl_su_i_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	           luaL_checknumber(L, 3));
 	return 0;
 }
 
-static int l_su_integrated_f(lua_State *L)
+static int l_su_i_f(lua_State *L)
 {
-	jnl_su_integrated_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                    check_vec(L, 3)->data);
+	jnl_su_i_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	           check_vec(L, 3)->data);
 	return 0;
 }
 
@@ -210,31 +210,31 @@ static int l_su_integrated_f(lua_State *L)
 // Sp
 //
 
-static int l_sp_volumetric_k(lua_State *L)
+static int l_sp_v_k(lua_State *L)
 {
-	jnl_sp_volumetric_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                    luaL_checknumber(L, 3));
+	jnl_sp_v_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	           luaL_checknumber(L, 3));
 	return 0;
 }
 
-static int l_sp_volumetric_f(lua_State *L)
+static int l_sp_v_f(lua_State *L)
 {
-	jnl_sp_volumetric_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                    check_vec(L, 3)->data);
+	jnl_sp_v_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	           check_vec(L, 3)->data);
 	return 0;
 }
 
-static int l_sp_integrated_k(lua_State *L)
+static int l_sp_i_k(lua_State *L)
 {
-	jnl_sp_integrated_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                    luaL_checknumber(L, 3));
+	jnl_sp_i_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	           luaL_checknumber(L, 3));
 	return 0;
 }
 
-static int l_sp_integrated_f(lua_State *L)
+static int l_sp_i_f(lua_State *L)
 {
-	jnl_sp_integrated_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
-	                    check_vec(L, 3)->data);
+	jnl_sp_i_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	           check_vec(L, 3)->data);
 	return 0;
 }
 
@@ -261,16 +261,16 @@ static const luaL_Reg operator_funcs[] = {
     {"div_tvd_superbee", l_div_tvd_superbee},
 
     // constant term
-    {"su_volumetric_k", l_su_volumetric_k},
-    {"su_volumetric_f", l_su_volumetric_f},
-    {"su_integrated_k", l_su_integrated_k},
-    {"su_integrated_f", l_su_integrated_f},
+    {"su_v_k", l_su_v_k},
+    {"su_v_f", l_su_v_f},
+    {"su_i_k", l_su_i_k},
+    {"su_i_f", l_su_i_f},
 
     // linear term
-    {"sp_volumetric_k", l_sp_volumetric_k},
-    {"sp_volumetric_f", l_sp_volumetric_f},
-    {"sp_integrated_k", l_sp_integrated_k},
-    {"sp_integrated_f", l_sp_integrated_f},
+    {"sp_v_k", l_sp_v_k},
+    {"sp_v_f", l_sp_v_f},
+    {"sp_i_k", l_sp_i_k},
+    {"sp_i_f", l_sp_i_f},
 
     {NULL, NULL}};
 

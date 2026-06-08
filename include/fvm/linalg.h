@@ -8,6 +8,9 @@
 
 #define LINALG_MIN_SCRATCH 9 // for bicgstab + scratch return
 
+// convenient typedef
+typedef struct jnl_fvsys fvsys;
+
 //
 // LDU Matrix
 //
@@ -67,17 +70,15 @@ struct jnl_fvsys {
 	enum jnl_singularity singularity;
 };
 
-struct jnl_fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena);
+fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena);
 
-void jnl_fvsys_reset(struct jnl_fvsys *sys);
-void jnl_fvsys_reset_singularity(struct jnl_fvsys *sys);
+void jnl_fvsys_reset(fvsys *sys);
+void jnl_fvsys_reset_singularity(fvsys *sys);
 
-void jnl_fvsys_under_relax(struct jnl_fvsys *sys, const f64 *field_old,
-                           f64 alpha);
+void jnl_fvsys_under_relax(fvsys *sys, const f64 *field_old, f64 alpha);
 
-void jnl_fvsys_pin_cell(struct jnl_fvsys *sys, i32 cell_idx, f64 value);
-void jnl_fvsys_pin_cells(struct jnl_fvsys *sys, const i32 *cells, i32 n_cells,
-                         f64 value);
+void jnl_fvsys_pin_cell(fvsys *sys, i32 cell_idx, f64 value);
+void jnl_fvsys_pin_cells(fvsys *sys, const i32 *cells, i32 n_cells, f64 value);
 
 //
 // Solvers
@@ -88,20 +89,18 @@ struct jnl_solve_result {
 	i32 iters;
 };
 
-i32 jnl_fvsys_solve_cg_into(struct jnl_fvsys *sys,
-                            struct jnl_scratch_pool *pool, f64 *x,
+i32 jnl_fvsys_solve_cg_into(fvsys *sys, struct jnl_scratch_pool *pool, f64 *x,
                             f64 tolerance, i32 max_iters);
 
-struct jnl_solve_result jnl_fvsys_solve_cg(struct jnl_fvsys *sys,
+struct jnl_solve_result jnl_fvsys_solve_cg(fvsys *sys,
                                            struct jnl_scratch_pool *pool,
                                            const f64 *x_init, f64 tolerance,
                                            i32 max_iters);
 
-i32 jnl_fvsys_solve_bicgstab_into(struct jnl_fvsys *sys,
-                                  struct jnl_scratch_pool *pool, f64 *x,
-                                  f64 tolerance, i32 max_iters);
+i32 jnl_fvsys_solve_bicgstab_into(fvsys *sys, struct jnl_scratch_pool *pool,
+                                  f64 *x, f64 tolerance, i32 max_iters);
 
-struct jnl_solve_result jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
+struct jnl_solve_result jnl_fvsys_solve_bicgstab(fvsys *sys,
                                                  struct jnl_scratch_pool *pool,
                                                  const f64 *x_init,
                                                  f64 tolerance, i32 max_iters);
@@ -110,12 +109,13 @@ struct jnl_solve_result jnl_fvsys_solve_bicgstab(struct jnl_fvsys *sys,
 // Useful diagnostics
 //
 
-f64 jnl_fvsys_residual_norm(const struct jnl_fvsys *sys,
-                            struct jnl_scratch_pool *pool, const f64 *x);
+f64 jnl_fvsys_residual_norm(const fvsys *sys, struct jnl_scratch_pool *pool,
+                            const f64 *x);
 
-f64 jnl_fvsys_diagonal_dominance(const struct jnl_fvsys *sys);
-bool jnl_fvsys_all_diagonals_positive(const struct jnl_fvsys *sys);
-f64 jnl_fvsys_max_asymmetry(const struct jnl_fvsys *sys);
+f64 jnl_fvsys_diagonal_dominance(const fvsys *sys,
+                                 struct jnl_scratch_pool *pool);
+bool jnl_fvsys_all_diagonals_positive(const fvsys *sys);
+f64 jnl_fvsys_max_asymmetry(const fvsys *sys);
 
 //
 // Arena sizing helpers

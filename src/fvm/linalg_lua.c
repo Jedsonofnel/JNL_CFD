@@ -125,7 +125,8 @@ static int l_fvsys_diag_vec(lua_State *L)
 
 static int l_fvsys_diagonal_dominance(lua_State *L)
 {
-	lua_pushnumber(L, jnl_fvsys_diagonal_dominance(check_fvsys(L, 1)->sys));
+	lua_fvsys *s = check_fvsys(L, 1);
+	lua_pushnumber(L, jnl_fvsys_diagonal_dominance(s->sys, s->pool));
 	return 1;
 }
 

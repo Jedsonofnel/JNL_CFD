@@ -259,7 +259,7 @@ int main(void)
 		//
 
 		fill_pressure_ghosts(mesh, p, &p_bcs);
-		jnl_grad_green_gauss(mesh, p, grad_px, grad_py);
+		jnl_grad_lsq(mesh, p, grad_px, grad_py);
 
 		//
 		// 2. Rhie-Chow face flux from current fields.
@@ -276,16 +276,12 @@ int main(void)
 
 		jnl_laplacian_k(ux_sys, mesh, MU);
 		jnl_div_uds_k(ux_sys, mesh, RHO, un_mwi);
-		jnl_su_volumetric_fs(ux_sys, mesh, -1.0, grad_px);
+		jnl_su_v_fs(ux_sys, mesh, -1.0, grad_px);
 
 		close_scalar_bcs(ux_sys, mesh, &ux_bcs);
 
-		/*
-		 * Use relaxed diagonal for Rhie-Chow / pressure correction.
-		 * This matches the actual matrix solved and damps coupling.
-		 */
+		jnl_diag_snapshot(mesh, ux_sys, ap_x);
 		jnl_fvsys_under_relax(ux_sys, Ux, ALPHA_U);
-		jnl_field_from_fvsys_diag(mesh, ux_sys, ap_x);
 
 		jnl_fvsys_solve_bicgstab_into(ux_sys, pool, Ux, 1e-6, 200);
 
@@ -301,12 +297,12 @@ int main(void)
 
 		jnl_laplacian_k(uy_sys, mesh, MU);
 		jnl_div_uds_k(uy_sys, mesh, RHO, un_mwi);
-		jnl_su_volumetric_fs(uy_sys, mesh, -1.0, grad_py);
+		jnl_su_v_fs(uy_sys, mesh, -1.0, grad_py);
 
 		close_scalar_bcs(uy_sys, mesh, &uy_bcs);
 
+		jnl_diag_snapshot(mesh, uy_sys, ap_y);
 		jnl_fvsys_under_relax(uy_sys, Uy, ALPHA_U);
-		jnl_field_from_fvsys_diag(mesh, uy_sys, ap_y);
 
 		jnl_fvsys_solve_bicgstab_into(uy_sys, pool, Uy, 1e-6, 200);
 
@@ -320,7 +316,7 @@ int main(void)
 
 		jnl_rhie_chow(mesh, Ux, Uy, p, grad_px, grad_py, ap_x, ap_y, un_mwi);
 
-		jnl_divergence2d_integrated_from_un(mesh, un_mwi, divU);
+		jnl_divergence_i(mesh, un_mwi, divU);
 
 		//
 		// 6. inv_d = vol * 2 / (ap_x + ap_y)
@@ -329,7 +325,7 @@ int main(void)
 		for (i32 c = 0; c < n_real; c++)
 			inv_d[c] = vol[c] * 2.0 / (ap_x[c] + ap_y[c]);
 
-		jnl_field_fill_ghosts_copy_owner(mesh, inv_d);
+		jnl_ghost_copy(mesh, inv_d);
 
 		//
 		// 7. Pressure correction p'.
@@ -340,7 +336,7 @@ int main(void)
 		jnl_fvsys_reset(pp_sys);
 
 		jnl_laplacian_f(pp_sys, mesh, inv_d);
-		jnl_su_integrated_fs(pp_sys, mesh, -RHO, divU);
+		jnl_su_i_fs(pp_sys, mesh, -RHO, divU);
 
 		close_scalar_bcs(pp_sys, mesh, &pp_bcs);
 
@@ -354,7 +350,7 @@ int main(void)
 		// 8. Corrections.
 		//
 
-		jnl_grad_green_gauss(mesh, pp, grad_ppx, grad_ppy);
+		jnl_grad_gg(mesh, pp, grad_ppx, grad_ppy);
 
 		for (i32 c = 0; c < n_real; c++) {
 			Ux[c] -= vol[c] * grad_ppx[c] / ap_x[c];
@@ -369,11 +365,11 @@ int main(void)
 		// 9. Recompute pressure gradient and divergence for reporting.
 		//
 
-		jnl_grad_green_gauss(mesh, p, grad_px, grad_py);
+		jnl_grad_gg(mesh, p, grad_px, grad_py);
 
 		jnl_rhie_chow(mesh, Ux, Uy, p, grad_px, grad_py, ap_x, ap_y, un_mwi);
 
-		jnl_divergence2d_integrated_from_un(mesh, un_mwi, divU);
+		jnl_divergence_i(mesh, un_mwi, divU);
 
 		//
 		// Reporting.
