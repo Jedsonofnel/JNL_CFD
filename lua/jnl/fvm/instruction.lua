@@ -25,6 +25,44 @@ function Inst:__newindex(k, v)
 end
 
 --
+-- Config
+--
+
+local INST_DEFAULTS = {
+	grad      = "gg", -- "gg" (Green-Gauss) | "lsq" (least-squares)
+	div       = "uds", -- "uds" | "cds" | "tvd"
+	non_ortho = true,
+	relax     = 1.0,
+	solver    = "BICGSTAB",
+	tol       = 1e-6,
+	max_iters = 100,
+}
+
+local Cfg = {}
+Cfg.__index = Cfg
+
+---@param fields table?  per-field config  (config.fields from Alg)
+---@param default table?  algorithm-wide defaults (config.default from Alg)
+function Cfg.new(fields, default)
+	return setmetatable({ _f = fields or {}, _d = default or {} }, Cfg)
+end
+
+---Hierarchical lookup: field-specific → alg-default → INST_DEFAULTS
+---@param field string   field name, or "default" to skip per-field lookup
+---@param key   string   config key
+function Cfg:get(field, key)
+	if field ~= "default" then
+		local fc = self._f[field]
+		if fc and fc[key] ~= nil then return fc[key] end
+	end
+	local dc = self._d[key]
+	if dc ~= nil then return dc end
+	return INST_DEFAULTS[key]
+end
+
+local default_cfg = Cfg.new()
+
+--
 -- Constructors: abstract instructions (high level)
 --
 
@@ -225,10 +263,11 @@ end
 ---@param field string
 ---@param flux string
 ---@param coeff string
-function Inst.div_f(field, flux, coeff)
+---@param expr Node?
+function Inst.div_f(field, flux, coeff, expr)
 	V.identifier(field, "Inst.div_f field")
 	V.identifier(flux, "Inst.div_f flux")
-	return new("div_f", { field = field, fulx = flux, coeff = coeff })
+	return new("div_f", { field = field, fulx = flux, coeff = coeff, node = expr })
 end
 
 ---Explicit deferred correction RHS contribution.
@@ -247,38 +286,36 @@ end
 
 ---@param field string
 ---@param coeff number
----@param volumetric boolean?
+---@param volumetric boolean
 function Inst.su_k(field, coeff, volumetric)
-	volumetric = volumetric or false -- default su applies integrated-ly
 	V.identifier(field, "Inst.su_k field")
-	return new("su", { field = field, coeff = coeff, volumetric = volumetric })
+	return new("su_k", { field = field, coeff = coeff, volumetric = volumetric })
 end
 
 ---@param field string
 ---@param coeff string
----@param volumetric boolean?
-function Inst.su_f(field, coeff, volumetric)
-	volumetric = volumetric or false -- default su applies integrated-ly
+---@param volumetric boolean
+---@param expr Node?
+function Inst.su_f(field, coeff, volumetric, expr)
 	V.identifier(field, "Inst.su_f field")
-	return new("su", { field = field, coeff = coeff, volumetric = volumetric })
+	return new("su_f", { field = field, coeff = coeff, volumetric = volumetric, node = expr })
 end
 
 ---@param field string
 ---@param coeff number
----@param volumetric boolean?
+---@param volumetric boolean
 function Inst.sp_k(field, coeff, volumetric)
-	volumetric = volumetric or false
 	V.identifier(field, "Inst.sp_k field")
-	return new("sp", { field = field, coeff = coeff, volumetric = volumetric })
+	return new("sp_k", { field = field, coeff = coeff, volumetric = volumetric })
 end
 
 ---@param field string
 ---@param coeff string
----@param volumetric boolean?
-function Inst.sp_f(field, coeff, volumetric)
-	volumetric = volumetric or false
+---@param volumetric boolean
+---@param expr Node?
+function Inst.sp_f(field, coeff, volumetric, expr)
 	V.identifier(field, "Inst.sp_k field")
-	return new("sp", { field = field, coeff = coeff, volumetric = volumetric })
+	return new("sp_f", { field = field, coeff = coeff, volumetric = volumetric, node = expr })
 end
 
 --
@@ -460,58 +497,206 @@ end
 -- Display: concrete instruction formatting
 --
 
--- OLD - TODO move to individual functions
-local concrete_fmt = {
-	sys_reset     = function(f) return string.format("SYS_RESET     %s", f.field) end,
-	laplacian     = function(f) return string.format("LAPLACIAN     %s gamma=%s", f.field, f.coeff) end,
-	lap_nonorth   = function(f) return string.format("LAP_NONORTH   %s gamma=%s", f.field, f.coeff) end,
-	div_uds       = function(f) return string.format("DIV_UDS       %s flux=%s, rho=%s", f.field, f.flux, f.coeff) end,
-	div_dc        = function(f) return string.format("DIV_DC        %s flux=%s", f.field, f.flux) end,
-	ddt           = function(f) return string.format("DDT           %s rho=%s", f.field, f.coeff) end,
-	su            = function(f) return string.format("SU            %s src=%s", f.field, f.node) end,
-	sp            = function(f) return string.format("SP            %s src=%s", f.field, f.node) end,
-	diag_snapshot = function(f) return string.format("DIAG_SNAPSHOT %s -> %s", f.field, f.out) end,
-	under_relax   = function(f) return string.format("UNDER_RELAX   %s  alpha=%g", f.field, f.alpha) end,
-	solve_linalg  = function(f) return string.format("SOLVE         %s", f.field) end,
-}
-
-function concrete_fmt.eval_expr(f)
-	return string.format("EVAL_EXPR     %s expr=%s", f.field, f.node)
+-- Prefer the Nabla node's pretty-print over the raw (potentially mangled)
+-- coefficient field name.  f.node is set by the lowering pass whenever the
+-- coefficient came from a field or expression; tostring(Node) calls
+-- nabla.pretty and renders human-readable maths.
+local function coeff_str(f)
+	if f.node then return tostring(f.node) end
+	return tostring(f.coeff)
 end
 
-function concrete_fmt.eval_coeff(f)
-	return string.format("EVAL_COEFF    coeff=%s", f.node)
+local concrete_fmt = {}
+
+-- infrastructure
+
+function concrete_fmt.sys_reset(f, _)
+	return string.format("SYS_RESET     %s", f.field)
 end
 
-function concrete_fmt.apply_correction(f)
-	return string.format("CORRECT       %s <- %s", f.field, f.node)
-end
-
-function concrete_fmt.fill(f)
+function concrete_fmt.fill(f, _)
 	return string.format("FILL          %-16s %g", f.field, f.value or 0)
 end
 
-function concrete_fmt.face_interp(f)
+function concrete_fmt.eval_expr(f, _)
+	return string.format("EVAL_EXPR     %s", f.field)
+end
+
+-- eval_coeff always has a node (that's its whole job)
+function concrete_fmt.eval_coeff(f, _)
+	return string.format("EVAL_COEFF    %s", tostring(f.node))
+end
+
+function concrete_fmt.apply_correction(f, _)
+	return string.format("CORRECT       %s <- %s", f.field, tostring(f.node))
+end
+
+function concrete_fmt.diag_snapshot(f, _)
+	return string.format("DIAG_SNAPSHOT %s -> %s", f.field, f.out)
+end
+
+function concrete_fmt.under_relax(f, _)
+	return string.format("UNDER_RELAX   %s  alpha=%g", f.field, f.alpha)
+end
+
+function concrete_fmt.solve_linalg(f, _)
+	return string.format("SOLVE         %s", f.field)
+end
+
+-- field / face ops
+
+function concrete_fmt.face_interp(f, _)
 	return string.format("FACE_INTERP   %s -> %s", f.field, f.out)
 end
 
-function concrete_fmt.face_normal(f)
+function concrete_fmt.face_normal(f, _)
 	return string.format("FACE_NORMAL   (%s,%s) -> %s", f.ux_face, f.uy_face, f.out)
 end
 
--- TODO: better cfg or nil treatment here
-function concrete_fmt.grad(f, cfg)
-	cfg = cfg or {}
-	local method = "[" .. cfg:get(f.field, "grad").upper() .. "]" -- "GG" or "LSQ"
-	return string.format("GRAD %-5s        %s -> (%s,%s)", method, f.field, f.out_x, f.out_y)
-end
-
-function concrete_fmt.divergence(f)
+function concrete_fmt.divergence(f, _)
 	return string.format("DIVERGENCE    %s -> %s", f.face_normal, f.out)
 end
 
-function concrete_fmt.rhie_chow(f)
-	return string.format("RHIE_CHOW     (%s,%s) p=%s -> %s", f.Ux, f.Uy, f.p, f.out)
+function concrete_fmt.rhie_chow(f, _)
+	return string.format("RHIE_CHOW     (%s,%s)  p=%s -> %s", f.Ux, f.Uy, f.p, f.out)
+end
+
+-- gradient: reconstruction method comes from cfg
+function concrete_fmt.grad(f, cfg)
+	local method = cfg:get(f.field, "grad"):upper() -- "GG" or "LSQ"
+	return string.format("GRAD [%-3s]    %s -> (%s,%s)", method, f.field, f.out_x, f.out_y)
+end
+
+-- ddt
+
+function concrete_fmt.ddt_k(f, _)
+	return string.format("DDT_K         %s  rho=%g", f.field, f.coeff)
+end
+
+function concrete_fmt.ddt_f(f, _)
+	return string.format("DDT_F         %s  rho=%s", f.field, coeff_str(f))
+end
+
+-- laplacian
+-- Non-ortho correction is always emitted as a separate instruction by the
+-- lowering pass, so base lap lines carry no annotation for it.
+
+function concrete_fmt.lap_k(f, _)
+	return string.format("LAP_K         %s  gamma=%g", f.field, f.coeff)
+end
+
+function concrete_fmt.lap_f(f, _)
+	return string.format("LAP_F         %s  gamma=%s", f.field, coeff_str(f))
+end
+
+-- Returns nil (suppressed) when non_ortho is disabled: runner already no-ops
+-- these, so there's no point cluttering the listing with dead instructions.
+function concrete_fmt.lap_nonorth_k(f, cfg)
+	if not cfg:get(f.field, "non_ortho") then return nil end
+	return string.format("LAP_NONORTH_K %s  gamma=%g  grad=(%s,%s)",
+		f.field, f.coeff, f.grad_x, f.grad_y)
+end
+
+function concrete_fmt.lap_nonorth_f(f, cfg)
+	if not cfg:get(f.field, "non_ortho") then return nil end
+	return string.format("LAP_NONORTH_F %s  gamma=%s  grad=(%s,%s)",
+		f.field, coeff_str(f), f.grad_x, f.grad_y)
+end
+
+-- convection
+
+function concrete_fmt.div_k(f, cfg)
+	local scheme = cfg:get(f.field, "div"):upper()
+	return string.format("DIV_K [%s]    %s  flux=%s  rho=%g",
+		scheme, f.field, f.flux, f.coeff)
+end
+
+function concrete_fmt.div_f(f, cfg)
+	local scheme = cfg:get(f.field, "div"):upper()
+	return string.format("DIV_F [%s]    %s  flux=%s  rho=%s",
+		scheme, f.field, f.flux, coeff_str(f))
+end
+
+-- Deferred correction is a no-op in the runner for UDS/CDS, so suppress the
+-- line entirely when the scheme isn't TVD — matches runner behaviour exactly.
+function concrete_fmt.div_dc(f, cfg)
+	if cfg:get(f.field, "div") ~= "tvd" then return nil end
+	return string.format("DIV_DC        %s  flux=%s  grad=(%s,%s)",
+		f.field, f.flux, f.grad_x, f.grad_y)
+end
+
+-- source terms
+-- Discriminated _k / _f; volumetric vs integrated shown inline so the reader
+-- knows whether this is already *V or needs cell-volume weighting.
+
+function concrete_fmt.su_k(f, _)
+	local tag = f.volumetric and "[vol]" or "[int]"
+	return string.format("SU_K %-5s    %s  src=%g", tag, f.field, f.coeff)
+end
+
+function concrete_fmt.su_f(f, _)
+	local tag = f.volumetric and "[vol]" or "[int]"
+	return string.format("SU_F %-5s    %s  src=%s", tag, f.field, coeff_str(f))
+end
+
+function concrete_fmt.sp_k(f, _)
+	local tag = f.volumetric and "[vol]" or "[int]"
+	return string.format("SP_K %-5s    %s  src=%g", tag, f.field, f.coeff)
+end
+
+function concrete_fmt.sp_f(f, _)
+	local tag = f.volumetric and "[vol]" or "[int]"
+	return string.format("SP_F %-5s    %s  src=%s", tag, f.field, coeff_str(f))
+end
+
+-- patch: scalar ghost fill
+
+function concrete_fmt.patch_s_fill_d(f, _)
+	return string.format("PFILL_S_D     %s@%s  val=%g", f.field, f.patch, f.value)
+end
+
+function concrete_fmt.patch_s_fill_n(f, _)
+	return string.format("PFILL_S_N     %s@%s  grad_n=%g", f.field, f.patch, f.grad_n)
+end
+
+function concrete_fmt.patch_s_fill_r(f, _)
+	return string.format("PFILL_S_R     %s@%s  a=%g b=%g c=%g",
+		f.field, f.patch, f.a, f.b, f.c)
+end
+
+-- patch: scalar implicit close
+
+function concrete_fmt.patch_s_close_d(f, _)
+	return string.format("PCLOSE_S_D    %s@%s  val=%g", f.field, f.patch, f.value)
+end
+
+function concrete_fmt.patch_s_close_n(f, _)
+	return string.format("PCLOSE_S_N    %s@%s  grad_n=%g", f.field, f.patch, f.grad_n)
+end
+
+function concrete_fmt.patch_s_close_r(f, _)
+	return string.format("PCLOSE_S_R    %s@%s  a=%g b=%g c=%g",
+		f.field, f.patch, f.a, f.b, f.c)
+end
+
+-- patch: vector ghost fill
+
+function concrete_fmt.patch_v_fill_d(f, _)
+	return string.format("PFILL_V_D     (%s,%s)@%s  val=(%g,%g)",
+		f.ux, f.uy, f.patch, f.ux_val, f.uy_val)
+end
+
+function concrete_fmt.patch_v_fill_n(f, _)
+	return string.format("PFILL_V_N     (%s,%s)@%s  gn=(%g,%g)",
+		f.ux, f.uy, f.patch, f.ux_gn, f.uy_gn)
+end
+
+function concrete_fmt.patch_v_fill_nt(f, _)
+	local bk = { [0] = "N", [1] = "D", [2] = "R" }
+	return string.format("PFILL_V_NT    (%s,%s)@%s  n:%s=%g  t:%s=%g",
+		f.ux, f.uy, f.patch,
+		bk[f.nkind] or "?", f.nval,
+		bk[f.tkind] or "?", f.tval)
 end
 
 --
@@ -522,18 +707,28 @@ function Inst:tostring_abstract(indent)
 	indent = indent or ""
 	local fn = abstract_fmt[self.op]
 	if fn then return indent .. fn(self.fields) end
-	return nil -- not an abstract-level instruction
+	return nil
 end
 
-function Inst:tostring(indent)
-	indent = indent or "  "
+---@param indent string?
+---@param cfg    table?    falls back to INST_DEFAULTS if nil
+function Inst:tostring(indent, cfg)
+	indent   = indent or "  "
+	cfg      = cfg or default_cfg
 	local fn = concrete_fmt[self.op]
-	if fn then return indent .. fn(self.fields) end
-	return indent .. "?" .. self.op
+	if not fn then return indent .. "?" .. self.op end
+	local s = fn(self.fields, cfg)
+	if s == nil then return nil end
+	return indent .. s
 end
 
 function Inst:__tostring()
-	return self:tostring()
+	return self:tostring() or ("  ?" .. self.op)
 end
+
+-- Export Cfg so algorithm.lua can build typed config objects
+Inst.Cfg         = Cfg
+Inst.DEFAULTS    = INST_DEFAULTS
+Inst.default_cfg = default_cfg
 
 return Inst

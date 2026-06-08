@@ -3,7 +3,7 @@
 -- deps
 local V = require("jnl.core.validation")
 local Node = require("jnl.nabla.node")
-local deps = require("jnl.nabla.deps")
+local Deps = require("jnl.nabla.deps")
 local Mangle = require("jnl.nabla.mangle")
 local Inst = require("jnl.fvm.instruction")
 
@@ -43,28 +43,15 @@ local function fname(v)
 end
 
 --
--- Config
+-- Config: storage lives here, defaults/logic live in Inst.Cfg
 --
 
-local DEFAULTS = {
-	solver = "BICGSTAB",
-	tol = 1e-6,
-	max_iters = 100,
-	relax = 1.0,
-	div = "uds",
-	non_ortho = true,
-}
+-- Re-export so users can inspect or extend defaults without touching instruction.lua
+Alg.DEFAULTS = Inst.DEFAULTS
+Alg.Cfg      = Inst.Cfg
 
 function Alg:cfg(field, key)
-	if field ~= "default" then field = fname(field) end
-
-	local fc = self.config.fields[field]
-	if fc and fc[key] ~= nil then return fc[key] end
-
-	local dc = self.config.default[key]
-	if dc ~= nil then return dc end
-
-	return DEFAULTS[key]
+	return self:as_cfg():get(field, key)
 end
 
 function Alg:set_cfg(field_or_default, key, value)
@@ -76,6 +63,14 @@ function Alg:set_cfg(field_or_default, key, value)
 		self.config.fields[f][key] = value
 	end
 	return self
+end
+
+function Alg.default_config()
+	return Inst.Cfg.new()
+end
+
+function Alg:as_cfg()
+	return Inst.Cfg.new(self.config.fields, self.config.default)
 end
 
 --
@@ -235,6 +230,18 @@ function Alg:add_rule(rule)
 end
 
 --
+-- Compilation: name manglers
+--
+
+local function mangle_diag(field)
+	return "__diag_" .. field
+end
+
+local function mangle_coeff()
+	return "__coeff"
+end
+
+--
 -- Compilation: Freshness helpers
 --
 
@@ -252,7 +259,7 @@ local function invalidate_dependents(reg, field, fresh, inserted)
 	local to_clear = {}
 
 	for name in pairs(fresh) do
-		if deps.deps_transitive_invalidation(reg, name, {})[field] then
+		if Deps.deps_transitive_invalidation(reg, name, {})[field] then
 			to_clear[#to_clear + 1] = name
 		end
 	end
@@ -306,7 +313,7 @@ local function emit_fills(reg, out)
 end
 
 local function emit_pre_evaluates(reg, pre_names, inserted, fresh, out)
-	for _, name in ipairs(deps.topo_sort(reg, pre_names)) do
+	for _, name in ipairs(Deps.topo_sort(reg, pre_names)) do
 		local entry = reg:entry(name)
 		if entry.is_prescribed or entry.kind == "const" or not entry.expr then
 			goto continue
@@ -322,7 +329,7 @@ end
 local function emit_post_evaluates(reg, post_names, inserted)
 	local out = {}
 
-	for _, name in ipairs(deps.topo_sort(reg, post_names)) do
+	for _, name in ipairs(Deps.topo_sort(reg, post_names)) do
 		if inserted[name] then goto continue end
 
 		local entry = reg:entry(name)
@@ -363,7 +370,7 @@ local expand_steps
 local expand_inner
 
 emit_deps_for = function(reg, field, sorted_main, inserted, fresh, out)
-	local tdeps = deps.deps_transitive(reg, field, {})
+	local tdeps = Deps.deps_transitive(reg, field, {})
 
 	for _, name in ipairs(sorted_main) do
 		if not tdeps[name] or inserted[name] then goto continue end
@@ -467,8 +474,8 @@ expand_inner = function(alg, reg, inserted, fresh, outer_explicit)
 		explicit[k] = true
 	end
 
-	local _, main_names, _ = deps.classify(reg, explicit)
-	local sorted_main = deps.topo_sort(reg, main_names)
+	local _, main_names, _ = Deps.classify(reg, explicit)
+	local sorted_main = Deps.topo_sort(reg, main_names)
 
 	local result = Alg.new(alg.label)
 	result.op = alg.op
@@ -551,6 +558,161 @@ local function scan_phase_systems(phase, reg, man)
 end
 
 --
+-- Compilation: elaborate intermediates
+--
+
+-- NOTE: intermediate -> { kind, source fields, ... }
+-- NOTE: invalidates  -> registry field name -> list of intermediate names
+
+local function elab_add_inv(elab, source, iname)
+	local t = elab.invalidates[source]
+	if not t then
+		t = {}; elab.invalidates[source] = t
+	end
+	for _, v in ipairs(t) do if v == iname then return end end
+	t[#t + 1] = iname
+end
+
+local function elab_add_grad(elab, field, rank)
+	if rank == 0 then
+		for _, ax in ipairs({ "x", "y" }) do
+			local gname = Mangle.grad(field, ax)
+			if elab.fields[gname] then goto continue end
+
+			elab.fields[gname] = { kind = "grad", source = field, axis = ax, deps = { field } }
+			elab_add_inv(elab, field, gname)
+
+			::continue::
+		end
+	elseif rank == 1 then
+		for _, ax in ipairs({ "x", "y" }) do
+			local comp = Mangle.field(field, ax)
+
+			for _, gax in ipairs({ "x", "y" }) do
+				local gname = Mangle.grad(comp, gax)
+				if elab.fields[gname] then goto continue end
+
+				elab.fields[gname] = { kind = "grad", source = comp, axis = gax, deps = { comp } }
+				elab_add_inv(elab, comp, gname)
+				elab_add_inv(elab, field, gname)
+
+				::continue::
+			end
+		end
+	end
+end
+
+local function elab_add_mwi(elab, reg, mwi_node)
+	local Uname = mwi_node.a.name
+	local pname = mwi_node.b.name
+	local mname = Mangle.accessor("mwi", mwi_node)
+
+	if elab.fields[mname] then return end
+
+	local Uentry = reg:entry(Uname)
+	local comps  = {}
+
+	if Uentry and Uentry.rank == 1 then
+		comps = { Mangle.field(Uname, "x"), Mangle.field(Uname, "y") }
+	else
+		comps = { Uname }
+	end
+
+	local deps = {}
+
+	for _, comp in ipairs(comps) do
+		local dname = mangle_diag(comp)
+
+		if not elab.fields[dname] then
+			elab.fields[dname] = { kind = "diag", source = comp, deps = { comp } }
+			elab_add_inv(elab, comp, dname)
+			elab_add_inv(elab, Uname, dname)
+		end
+
+		deps[#deps + 1] = comp
+		deps[#deps + 1] = dname
+	end
+
+	deps[#deps + 1] = pname
+
+	elab.fields[mname] = { kind = "mwi", U = Uname, p = pname, deps = deps }
+
+	for _, comp in ipairs(comps) do elab_add_inv(elab, comp, mname) end
+	elab_add_inv(elab, Uname, mname)
+	elab_add_inv(elab, pname, mname)
+end
+
+-- walk a scale chain to find the rank >= 1 symbol leaf (the field being diffused)
+local function field_in_scale(node)
+	if not node then return nil end
+	if node.kind == "symbol" then return node end
+	if node.kind == "scale" then return field_in_scale(node.b) end
+	if node.kind == "mul" then
+		local b = field_in_scale(node.b)
+		if b then return b end
+		return field_in_scale(node.a)
+	end
+	return nil
+end
+
+local function elab_scan(elab, reg, node)
+	if not node or type(node) ~= "table" then return end
+	if not Node.is_node(node) then return end
+
+	local k = node.kind
+
+	if k == "mwi" then
+		elab_add_mwi(elab, reg, node)
+		return
+	end
+
+	if k == "grad" then
+		local op = node.a
+		if op and op.kind == "symbol" and op.name then
+			local e = reg:entry(op.name)
+			elab_add_grad(elab, op.name, e and e.rank or op.rank or 0)
+		end
+		elab_scan(elab, reg, node.a)
+		return
+	end
+
+	if k == "laplacian" then
+		local fnode = field_in_scale(node.a)
+		if fnode and fnode.name then
+			local e = reg:entry(fnode.name)
+			elab_add_grad(elab, fnode.name, e and e.rank or fnode.rank or 0)
+		end
+		elab_scan(elab, reg, node.a)
+		return
+	end
+
+	elab_scan(elab, reg, node.a)
+	elab_scan(elab, reg, node.b)
+end
+
+local function elaborate(reg)
+	local elab = { fields = {}, invalidates = {} }
+
+	reg:each(function(_, entry)
+		if entry.kind == "const" then return end
+
+		local nodes = {}
+		if entry.equation then
+			nodes[#nodes + 1] = entry.equation.lhs
+			nodes[#nodes + 1] = entry.equation.rhs
+		end
+		if entry.expr then nodes[#nodes + 1] = entry.expr end
+		if entry.correction then nodes[#nodes + 1] = entry.correction end
+
+		for _, n in ipairs(nodes) do
+			elab_scan(elab, reg, n)
+		end
+	end)
+
+	return elab
+end
+
+--
 -- Compilation: lower abstract -> concrete
 --
 
@@ -568,8 +730,8 @@ function Alg:compile(reg)
 	local fresh = {}
 	local explicit_set = build_explicit_set(self.steps)
 
-	local pre_names, main_names, post_names = deps.classify(reg, explicit_set)
-	local sorted_main = deps.topo_sort(reg, main_names)
+	local pre_names, main_names, post_names = Deps.classify(reg, explicit_set)
+	local sorted_main = Deps.topo_sort(reg, main_names)
 
 	-- pass 1: abstract schedule
 	local pre = {}
@@ -592,6 +754,9 @@ function Alg:compile(reg)
 	scan_phase_systems(post, reg, man)
 	self.manifest = man
 
+	-- pass 1.5: elaboration
+	self.elaborated = elaborate(reg)
+
 	-- pass 2: lower abstract → concrete FVM instructions (scaffolded)
 	lower(self, reg)
 
@@ -612,11 +777,12 @@ local function write_phase(lines, phase, header)
 	end
 end
 
-local function write_phase_full(lines, phase, header)
+local function write_phase_full(lines, phase, header, cfg)
 	if not phase or #phase == 0 then return end
 	lines[#lines + 1] = header
 	for _, inst in ipairs(phase) do
-		lines[#lines + 1] = inst:tostring()
+		local s = inst:tostring(nil, cfg)
+		if s then lines[#lines + 1] = s end
 	end
 end
 
@@ -643,11 +809,13 @@ function Alg:listing()
 end
 
 -- full FVM instruction view: everything
+
 function Alg:instruction_listing()
 	local lines = {}
-	write_phase_full(lines, self.pre, ".PRE:")
-	write_phase_full(lines, self.main, ".LOOP:")
-	write_phase_full(lines, self.post, ".POST:")
+	local cfg = self:as_cfg()
+	write_phase_full(lines, self.pre, ".PRE:", cfg)
+	write_phase_full(lines, self.main, ".LOOP:", cfg)
+	write_phase_full(lines, self.post, ".POST:", cfg)
 	return table.concat(lines, "\n")
 end
 

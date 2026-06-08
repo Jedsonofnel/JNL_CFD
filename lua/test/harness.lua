@@ -304,7 +304,14 @@ local function run_test(block, test)
 	ctx.failed = false
 	ctx.failures = {}
 
-	if block.before_each then pcall(block.before_each) end
+	if block.before_each then
+		local ok, err = pcall(block.before_each)
+		if not ok then
+			fail("before_each: " .. tostring(err))
+			return false, ctx.failures
+		end
+	end
+
 	local ok, err = pcall(test.fn)
 	if block.after_each then pcall(block.after_each) end
 

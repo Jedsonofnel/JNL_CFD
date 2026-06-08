@@ -52,7 +52,8 @@ end
 -- Accessors
 function Nabla.register_accessor(name, spec)
 	local acc = require("jnl.nabla.accessor")
-	return acc.register(name, spec)
+	acc.register(name, spec)
+	Nabla[name] = acc[name]
 end
 
 return Nabla
