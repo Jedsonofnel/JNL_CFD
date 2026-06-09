@@ -7,9 +7,43 @@
 #include "fvm/linalg.h"
 #include "scratch.h"
 
+//
+// Field pool for dynamic field buffer allocation
+//
+
+#ifndef JNL_FIELD_POOL_DEFAULT_CAP
+#define JNL_FIELD_POOL_DEFAULT_CAP 10
+#endif
+
+#ifndef JNL_FIELD_POOL_DEFAULT_MAX
+#define JNL_FIELD_POOL_DEFAULT_MAX 100
+#endif
+
+struct jnl_field_pool {
+	f64 **buf;
+
+	i32 len;
+	i32 n_buf;
+	i32 cap;
+	i32 max_buf;
+};
+
+struct jnl_field_pool *jnl_field_pool_new(i32 len);
+struct jnl_field_pool *jnl_field_pool_new_ex(i32 len, i32 initial_cap,
+                                             i32 max_buf);
+void jnl_field_pool_free(struct jnl_field_pool *pool);
+
+f64 *jnl_field_pool_alloc(struct jnl_field_pool *pool);
+
+i32 jnl_field_pool_count(const struct jnl_field_pool *pool);
+i32 jnl_field_pool_max(const struct jnl_field_pool *pool);
+
+//
+// Context object for memory for FVM
+//
+
 struct jnl_fvm_ctx {
 	jnl_arena *arena;
-
 	const pmsh2d *mesh;
 
 	i32 n_cells;      // real + ghost
@@ -17,14 +51,18 @@ struct jnl_fvm_ctx {
 	i32 n_faces;
 	i32 n_internal_faces;
 
+	// persistent dynamic fields
+	struct jnl_field_pool *cell_fields;
+	struct jnl_field_pool *real_fields;
+	struct jnl_field_pool *face_fields;
+
+	// temporary anonymous work buffers
 	struct jnl_scratch_pool *cell_scratch; // len = n_cells
 	struct jnl_scratch_pool *real_scratch; // len = n_real_cells
 	struct jnl_scratch_pool *face_scratch; // len = n_faces
 };
 
-struct jnl_fvm_ctx *jnl_fvm_ctx_new(const pmsh2d *mesh, i32 n_fields,
-                                    i32 n_real_fields, i32 n_face_fields,
-                                    i32 n_systems);
+struct jnl_fvm_ctx *jnl_fvm_ctx_new(const pmsh2d *mesh, i32 n_systems);
 
 void jnl_fvm_ctx_free(struct jnl_fvm_ctx *ctx);
 

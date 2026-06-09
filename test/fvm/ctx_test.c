@@ -37,7 +37,7 @@ static void test_ctx_new_initialises_counts_and_scratch_pools(void)
 {
 	pmsh2d mesh = make_minimal_count_mesh();
 
-	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 2, 3, 4, 1);
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 1);
 
 	NOT_NULL(ctx);
 	EQ_PTR(ctx->mesh, &mesh);
@@ -68,7 +68,7 @@ static void test_ctx_allocates_zeroed_persistent_fields(void)
 {
 	pmsh2d mesh = make_minimal_count_mesh();
 
-	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 1, 1, 1, 0);
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0);
 	NOT_NULL(ctx);
 
 	f64 *cell = jnl_fvm_ctx_field(ctx);
@@ -95,7 +95,7 @@ static void test_ctx_persistent_fields_are_independent(void)
 {
 	pmsh2d mesh = make_minimal_count_mesh();
 
-	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 2, 2, 2, 0);
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0);
 	NOT_NULL(ctx);
 
 	f64 *a = jnl_fvm_ctx_field(ctx);
@@ -143,7 +143,7 @@ static void test_ctx_scratch_grows_independently_of_persistent_arena(void)
 {
 	pmsh2d mesh = make_minimal_count_mesh();
 
-	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 1, 1, 1, 0);
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0);
 	NOT_NULL(ctx);
 
 	f64 *persistent = jnl_fvm_ctx_real_field(ctx);
@@ -180,7 +180,7 @@ static void test_ctx_allocates_fvsys_with_expected_sizes(void)
 {
 	pmsh2d mesh = make_minimal_fvsys_mesh();
 
-	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0, 0, 0, 2);
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 2);
 	NOT_NULL(ctx);
 
 	fvsys *a = jnl_fvm_ctx_fvsys(ctx);
@@ -211,7 +211,7 @@ static void test_ctx_fvsys_memory_is_zeroed(void)
 {
 	pmsh2d mesh = make_minimal_fvsys_mesh();
 
-	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0, 0, 0, 1);
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 1);
 	NOT_NULL(ctx);
 
 	fvsys *sys = jnl_fvm_ctx_fvsys(ctx);
@@ -230,6 +230,162 @@ static void test_ctx_fvsys_memory_is_zeroed(void)
 	jnl_fvm_ctx_free(ctx);
 }
 
+//
+// Field Pool tests
+//
+
+static void test_ctx_dynamic_real_fields_grow_and_remain_valid(void)
+{
+	pmsh2d mesh = make_minimal_count_mesh();
+
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0);
+	NOT_NULL(ctx);
+
+	f64 *fields[12];
+
+	for (i32 i = 0; i < 12; i++) {
+		fields[i] = jnl_fvm_ctx_real_field(ctx);
+		NOT_NULL(fields[i]);
+
+		fields[i][0] = (f64)(100 + i);
+		fields[i][ctx->n_real_cells - 1] = (f64)(200 + i);
+	}
+
+	EQ_I32(jnl_field_pool_count(ctx->real_fields), 12);
+
+	for (i32 i = 0; i < 12; i++) {
+		NEAR_F64(fields[i][0], (f64)(100 + i), EPS);
+		NEAR_F64(fields[i][ctx->n_real_cells - 1], (f64)(200 + i), EPS);
+	}
+
+	jnl_fvm_ctx_free(ctx);
+}
+
+static void test_ctx_dynamic_cell_and_face_fields_have_correct_lengths(void)
+{
+	pmsh2d mesh = make_minimal_count_mesh();
+
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0);
+	NOT_NULL(ctx);
+
+	f64 *cell = jnl_fvm_ctx_field(ctx);
+	f64 *real = jnl_fvm_ctx_real_field(ctx);
+	f64 *face = jnl_fvm_ctx_face_field(ctx);
+
+	NOT_NULL(cell);
+	NOT_NULL(real);
+	NOT_NULL(face);
+
+	cell[ctx->n_cells - 1] = 1.0;
+	real[ctx->n_real_cells - 1] = 2.0;
+	face[ctx->n_faces - 1] = 3.0;
+
+	NEAR_F64(cell[ctx->n_cells - 1], 1.0, EPS);
+	NEAR_F64(real[ctx->n_real_cells - 1], 2.0, EPS);
+	NEAR_F64(face[ctx->n_faces - 1], 3.0, EPS);
+
+	EQ_I32(jnl_field_pool_count(ctx->cell_fields), 1);
+	EQ_I32(jnl_field_pool_count(ctx->real_fields), 1);
+	EQ_I32(jnl_field_pool_count(ctx->face_fields), 1);
+
+	jnl_fvm_ctx_free(ctx);
+}
+
+static void test_ctx_dynamic_fields_are_zeroed_each_allocation(void)
+{
+	pmsh2d mesh = make_minimal_count_mesh();
+
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0);
+	NOT_NULL(ctx);
+
+	f64 *a = jnl_fvm_ctx_real_field(ctx);
+	NOT_NULL(a);
+
+	for (i32 i = 0; i < ctx->n_real_cells; i++)
+		a[i] = 42.0;
+
+	f64 *b = jnl_fvm_ctx_real_field(ctx);
+	NOT_NULL(b);
+
+	for (i32 i = 0; i < ctx->n_real_cells; i++)
+		NEAR_F64(b[i], 0.0, EPS);
+
+	CHECK(a != b);
+	EQ_I32(jnl_field_pool_count(ctx->real_fields), 2);
+
+	jnl_fvm_ctx_free(ctx);
+}
+
+static void test_ctx_scratch_reset_does_not_affect_persistent_fields(void)
+{
+	pmsh2d mesh = make_minimal_count_mesh();
+
+	struct jnl_fvm_ctx *ctx = jnl_fvm_ctx_new(&mesh, 0);
+	NOT_NULL(ctx);
+
+	f64 *persistent = jnl_fvm_ctx_real_field(ctx);
+	NOT_NULL(persistent);
+
+	persistent[0] = 123.0;
+	persistent[ctx->n_real_cells - 1] = 456.0;
+
+	f64 *scratch = jnl_scratch_acquire(ctx->real_scratch);
+	NOT_NULL(scratch);
+
+	scratch[0] = 999.0;
+
+	jnl_scratch_reset(ctx->real_scratch);
+
+	NEAR_F64(persistent[0], 123.0, EPS);
+	NEAR_F64(persistent[ctx->n_real_cells - 1], 456.0, EPS);
+
+	EQ_I32(jnl_scratch_in_use(ctx->real_scratch), 0);
+	EQ_I32(jnl_field_pool_count(ctx->real_fields), 1);
+
+	jnl_fvm_ctx_free(ctx);
+}
+
+static void test_field_pool_allocates_independent_zeroed_buffers(void)
+{
+	struct jnl_field_pool *p = jnl_field_pool_new_ex(4, 1, 10);
+	NOT_NULL(p);
+
+	f64 *a = jnl_field_pool_alloc(p);
+	f64 *b = jnl_field_pool_alloc(p);
+	f64 *c = jnl_field_pool_alloc(p);
+
+	NOT_NULL(a);
+	NOT_NULL(b);
+	NOT_NULL(c);
+
+	CHECK(a != b);
+	CHECK(b != c);
+	CHECK(a != c);
+
+	EQ_I32(jnl_field_pool_count(p), 3);
+	EQ_I32(jnl_field_pool_max(p), 10);
+
+	for (i32 i = 0; i < 4; i++) {
+		NEAR_F64(a[i], 0.0, EPS);
+		NEAR_F64(b[i], 0.0, EPS);
+		NEAR_F64(c[i], 0.0, EPS);
+	}
+
+	a[0] = 1.0;
+	b[0] = 2.0;
+	c[0] = 3.0;
+
+	NEAR_F64(a[0], 1.0, EPS);
+	NEAR_F64(b[0], 2.0, EPS);
+	NEAR_F64(c[0], 3.0, EPS);
+
+	jnl_field_pool_free(p);
+}
+
+//
+// Test execution
+//
+
 int main(void)
 {
 	struct jnl_test_suite t = jnl_test_begin("ctx");
@@ -240,6 +396,12 @@ int main(void)
 	JNL_TEST(&t, test_ctx_scratch_grows_independently_of_persistent_arena);
 	JNL_TEST(&t, test_ctx_allocates_fvsys_with_expected_sizes);
 	JNL_TEST(&t, test_ctx_fvsys_memory_is_zeroed);
+
+	JNL_TEST(&t, test_ctx_dynamic_real_fields_grow_and_remain_valid);
+	JNL_TEST(&t, test_ctx_dynamic_cell_and_face_fields_have_correct_lengths);
+	JNL_TEST(&t, test_ctx_dynamic_fields_are_zeroed_each_allocation);
+	JNL_TEST(&t, test_ctx_scratch_reset_does_not_affect_persistent_fields);
+	JNL_TEST(&t, test_field_pool_allocates_independent_zeroed_buffers);
 
 	return jnl_test_end(&t);
 }

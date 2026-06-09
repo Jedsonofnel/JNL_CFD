@@ -121,16 +121,15 @@ static int l_ctx_field(lua_State *L)
 static int l_ctx_real_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_owned_vec(L, jnl_fvm_ctx_real_field(lc->ctx),
-	               lc->ctx->n_real_cells, 1);
+	push_owned_vec(L, jnl_fvm_ctx_real_field(lc->ctx), lc->ctx->n_real_cells,
+	               1);
 	return 1;
 }
 
 static int l_ctx_face_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_owned_vec(L, jnl_fvm_ctx_face_field(lc->ctx), lc->ctx->n_faces,
-	               1);
+	push_owned_vec(L, jnl_fvm_ctx_face_field(lc->ctx), lc->ctx->n_faces, 1);
 	return 1;
 }
 
@@ -224,16 +223,11 @@ static const luaL_Reg ctx_mt[] = {{"field", l_ctx_field},
 static int l_ctx_new(lua_State *L)
 {
 	pmsh2d *mesh = check_pmsh2d(L, 1);
-
-	i32 n_fields = (i32)luaL_checkinteger(L, 2);
-	i32 n_real_fields = (i32)luaL_checkinteger(L, 3);
-	i32 n_face_fields = (i32)luaL_checkinteger(L, 4);
 	i32 n_systems = (i32)luaL_checkinteger(L, 5);
 
 	lua_fvm_ctx_ud *lc = lua_newuserdata(L, sizeof(lua_fvm_ctx_ud));
 
-	lc->ctx = jnl_fvm_ctx_new(mesh, n_fields, n_real_fields, n_face_fields,
-	                          n_systems);
+	lc->ctx = jnl_fvm_ctx_new(mesh, n_systems);
 
 	if (!lc->ctx)
 		return luaL_error(L, "fvm_ctx allocation failed");
