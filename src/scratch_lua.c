@@ -9,11 +9,11 @@ static int l_pool_tostring(lua_State *L)
 {
 	struct jnl_scratch_pool *p = check_pool(L, 1);
 	i32 in_use = 0;
-	for (i32 i = 0; i < p->n_scratch; i++)
+	for (i32 i = 0; i < p->n_buf; i++)
 		if (p->in_use[i])
 			in_use++;
 	lua_pushfstring(L, "scratch_pool(len=%d, n=%d, in_use=%d)", p->len,
-	                p->n_scratch, in_use);
+	                p->n_buf, in_use);
 	return 1;
 }
 
@@ -26,7 +26,7 @@ static int l_pool_reset(lua_State *L)
 static int l_pool_depth(lua_State *L)
 {
 	struct jnl_scratch_pool *p = check_pool(L, 1);
-	lua_pushinteger(L, p->n_scratch);
+	lua_pushinteger(L, p->n_buf);
 	return 1;
 }
 

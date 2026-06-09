@@ -114,14 +114,14 @@ static const luaL_Reg fvsys_mt[] = {
 static int l_ctx_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_owned_vec(L, jnl_fvm_ctx_alloc_field(lc->ctx), lc->ctx->n_cells, 1);
+	push_owned_vec(L, jnl_fvm_ctx_field(lc->ctx), lc->ctx->n_cells, 1);
 	return 1;
 }
 
 static int l_ctx_real_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_owned_vec(L, jnl_fvm_ctx_alloc_real_field(lc->ctx),
+	push_owned_vec(L, jnl_fvm_ctx_real_field(lc->ctx),
 	               lc->ctx->n_real_cells, 1);
 	return 1;
 }
@@ -129,7 +129,7 @@ static int l_ctx_real_field(lua_State *L)
 static int l_ctx_face_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_owned_vec(L, jnl_fvm_ctx_alloc_face_field(lc->ctx), lc->ctx->n_faces,
+	push_owned_vec(L, jnl_fvm_ctx_face_field(lc->ctx), lc->ctx->n_faces,
 	               1);
 	return 1;
 }
@@ -139,8 +139,8 @@ static int l_ctx_fvsys(lua_State *L)
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
 
 	lua_fvsys *ls = lua_newuserdata(L, sizeof(lua_fvsys));
-	ls->sys = jnl_fvm_ctx_alloc_fvsys(lc->ctx);
-	ls->pool = lc->ctx->real_cell_pool;
+	ls->sys = jnl_fvm_ctx_fvsys(lc->ctx);
+	ls->pool = lc->ctx->real_scratch;
 	ls->ctx = lc->ctx;
 
 	lua_pushvalue(L, 1);
@@ -153,21 +153,21 @@ static int l_ctx_fvsys(lua_State *L)
 static int l_ctx_cell_pool(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_borrowed_pool(L, lc->ctx->cell_pool, 1);
+	push_borrowed_pool(L, lc->ctx->cell_scratch, 1);
 	return 1;
 }
 
 static int l_ctx_real_cell_pool(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_borrowed_pool(L, lc->ctx->real_cell_pool, 1);
+	push_borrowed_pool(L, lc->ctx->real_scratch, 1);
 	return 1;
 }
 
 static int l_ctx_face_pool(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_borrowed_pool(L, lc->ctx->face_pool, 1);
+	push_borrowed_pool(L, lc->ctx->face_scratch, 1);
 	return 1;
 }
 
@@ -226,19 +226,14 @@ static int l_ctx_new(lua_State *L)
 	pmsh2d *mesh = check_pmsh2d(L, 1);
 
 	i32 n_fields = (i32)luaL_checkinteger(L, 2);
-	i32 n_face_fields = (i32)luaL_checkinteger(L, 3);
-	i32 n_systems = (i32)luaL_checkinteger(L, 4);
-
-	i32 n_cell_scratch = (i32)luaL_optinteger(L, 5, 4);
-	i32 n_real_cell_scratch =
-	    (i32)luaL_optinteger(L, 6, JNL_FVM_REAL_CELL_SCRATCH_MIN);
-	i32 n_face_scratch = (i32)luaL_optinteger(L, 7, 4);
+	i32 n_real_fields = (i32)luaL_checkinteger(L, 3);
+	i32 n_face_fields = (i32)luaL_checkinteger(L, 4);
+	i32 n_systems = (i32)luaL_checkinteger(L, 5);
 
 	lua_fvm_ctx_ud *lc = lua_newuserdata(L, sizeof(lua_fvm_ctx_ud));
 
-	lc->ctx =
-	    jnl_fvm_ctx_new(mesh, n_fields, n_face_fields, n_systems,
-	                    n_cell_scratch, n_real_cell_scratch, n_face_scratch);
+	lc->ctx = jnl_fvm_ctx_new(mesh, n_fields, n_real_fields, n_face_fields,
+	                          n_systems);
 
 	if (!lc->ctx)
 		return luaL_error(L, "fvm_ctx allocation failed");

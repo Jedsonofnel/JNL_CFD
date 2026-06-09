@@ -27,7 +27,7 @@ static fixture make_fixture(void)
 	f.arena = arena_create(16 * 1024);
 	NOT_NULL(f.arena);
 
-	f.pool = jnl_scratch_pool_new(N, 8, f.arena);
+	f.pool = jnl_scratch_pool_new(N);
 	NOT_NULL(f.pool);
 
 	for (i32 i = 0; i < N; i++) {

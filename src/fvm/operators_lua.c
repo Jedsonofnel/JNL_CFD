@@ -192,6 +192,14 @@ static int l_su_v_f(lua_State *L)
 	return 0;
 }
 
+static int l_su_v_fs(lua_State *L)
+{
+	f64 scale = luaL_checknumber(L, 3);
+	jnl_su_v_fs(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2), scale,
+	            check_vec(L, 3)->data);
+	return 0;
+}
+
 static int l_su_i_k(lua_State *L)
 {
 	jnl_su_i_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
@@ -203,6 +211,14 @@ static int l_su_i_f(lua_State *L)
 {
 	jnl_su_i_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
 	           check_vec(L, 3)->data);
+	return 0;
+}
+
+static int l_su_i_fs(lua_State *L)
+{
+	f64 scale = luaL_checknumber(L, 3);
+	jnl_su_i_fs(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2), scale,
+	            check_vec(L, 3)->data);
 	return 0;
 }
 
@@ -224,6 +240,14 @@ static int l_sp_v_f(lua_State *L)
 	return 0;
 }
 
+static int l_sp_v_fs(lua_State *L)
+{
+	f64 scale = luaL_checknumber(L, 3);
+	jnl_sp_v_fs(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2), scale,
+	            check_vec(L, 3)->data);
+	return 0;
+}
+
 static int l_sp_i_k(lua_State *L)
 {
 	jnl_sp_i_k(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
@@ -235,6 +259,14 @@ static int l_sp_i_f(lua_State *L)
 {
 	jnl_sp_i_f(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
 	           check_vec(L, 3)->data);
+	return 0;
+}
+
+static int l_sp_i_fs(lua_State *L)
+{
+	f64 scale = luaL_checknumber(L, 3);
+	jnl_sp_i_fs(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2), scale,
+	            check_vec(L, 3)->data);
 	return 0;
 }
 
@@ -263,14 +295,18 @@ static const luaL_Reg operator_funcs[] = {
     // constant term
     {"su_v_k", l_su_v_k},
     {"su_v_f", l_su_v_f},
+    {"su_v_fs", l_su_v_fs},
     {"su_i_k", l_su_i_k},
     {"su_i_f", l_su_i_f},
+    {"su_i_fs", l_su_i_fs},
 
     // linear term
     {"sp_v_k", l_sp_v_k},
     {"sp_v_f", l_sp_v_f},
+    {"sp_v_fs", l_sp_v_fs},
     {"sp_i_k", l_sp_i_k},
     {"sp_i_f", l_sp_i_f},
+    {"sp_i_fs", l_sp_i_fs},
 
     {NULL, NULL}};
 

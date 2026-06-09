@@ -57,6 +57,7 @@ static inline struct jnl_test_suite jnl_test_begin(const char *name)
 	t.name = name ? name : "tests";
 
 	printf("%s\n", t.name);
+	fflush(stdout);
 
 	return t;
 }
@@ -114,6 +115,7 @@ static inline void jnl_test_run(struct jnl_test_suite *t, const char *name,
 		t->failed++;
 		putchar('F');
 	}
+	fflush(stdout);
 
 	jnl_test_current_suite = NULL;
 }
@@ -123,6 +125,7 @@ static inline void jnl_test_skip(struct jnl_test_suite *t, const char *name)
 	t->total++;
 	t->skipped++;
 	putchar('S');
+	fflush(stdout);
 
 	if (t->n_failures < JNL_TEST_MAX_FAILURES) {
 		struct jnl_test_failure *f = &t->failures[t->n_failures++];

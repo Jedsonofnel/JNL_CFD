@@ -187,11 +187,7 @@ static void make_singular_constant_nullspace_sys(fvsys *sys)
 static void make_scratch(struct jnl_scratch_pool **pool, jnl_arena **arena,
                          i32 len, i32 n_scratch)
 {
-	u64 cap = jnl_scratch_pool_arena_size(len, n_scratch);
-	*arena = arena_create(cap);
-	NOT_NULL(*arena);
-
-	*pool = jnl_scratch_pool_new(len, n_scratch, *arena);
+	*pool = jnl_scratch_pool_new(len);
 	NOT_NULL(*pool);
 }
 
