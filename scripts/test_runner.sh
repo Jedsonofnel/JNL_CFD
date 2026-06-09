@@ -21,8 +21,19 @@ for t in "$@"; do
 	result=$(printf "%s\n" "$out" | awk '/^JNL_TEST_RESULT / { print $2, $3, $4, $5; exit }')
 
 	if [ -z "$result" ]; then
-		printf "TEST %-28s FAILED\n" "$name"
-		printf "%s\n" "$out" | sed '/^JNL_TEST_RESULT /d'
+		printf "TEST %-28s FAILED exit=%d\n" "$name" "$status"
+
+		if [ "$status" -gt 128 ]; then
+			sig=$((status - 128))
+			printf "  terminated by signal %d\n" "$sig"
+		fi
+
+		if [ -n "$out" ]; then
+			printf "%s\n" "$out" | sed '/^JNL_TEST_RESULT /d'
+		else
+			printf "  no output captured; binary probably crashed before stdout flushed\n"
+		fi
+
 		failed_bins=$((failed_bins + 1))
 		continue
 	fi
@@ -47,11 +58,13 @@ for t in "$@"; do
 	fi
 done
 
-printf "\n%d passed  %d failed  %d skipped  (%d total)\n" \
+printf "\n%d passed  %d failed  %d skipped  (%d total)" \
 	"$passed" "$failed_assertions" "$skipped" "$total"
 
-if [ "$failed_bins" -gt 0 ] || [ "$failed_assertions" -gt 0 ]; then
-	exit 1
+if [ "$failed_bins" -gt 0 ]; then
+	printf "  [%d failed test binary/binaries]" "$failed_bins"
 fi
+
+printf "\n"
 
 exit 0

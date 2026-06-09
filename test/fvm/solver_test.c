@@ -184,11 +184,11 @@ static void make_singular_constant_nullspace_sys(fvsys *sys)
 	sys->singularity = JNL_SING_UNCHECKED;
 }
 
-static void make_scratch(struct jnl_scratch_pool **pool, jnl_arena **arena,
-                         i32 len, i32 n_scratch)
+static struct jnl_scratch_pool *make_scratch(i32 len)
 {
-	*pool = jnl_scratch_pool_new(len);
-	NOT_NULL(*pool);
+	struct jnl_scratch_pool *pool = jnl_scratch_pool_new(len);
+	NOT_NULL(pool);
+	return pool;
 }
 
 static void assert_spd_solution(const f64 *x, f64 eps)
@@ -204,25 +204,23 @@ static void assert_nonsymmetric_solution(const f64 *x, f64 eps)
 }
 
 //
-// Tests
+// CG + Jacobi
 //
 
-static void test_cg_incremental_solves_spd_system(void)
+static void test_cg_jac_incremental_solves_spd_system(void)
 {
 	fvsys sys;
 	make_two_cell_spd_sys(&sys);
 
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
+	struct jnl_scratch_pool *pool = make_scratch(2);
 
 	f64 x[2] = {0.0, 0.0};
 
-	struct jnl_cg cg = jnl_fvsys_cg_begin(&sys, pool, x, 1e-12);
+	struct jnl_cg_jac cg = jnl_fvsys_cg_jac_begin(&sys, pool, x, 1e-12);
 
 	struct jnl_solver_step r = {0};
 	for (i32 i = 0; i < 20; i++) {
-		r = jnl_cg_iter(&cg);
+		r = jnl_cg_jac_iter(&cg);
 		if (r.done || r.breakdown)
 			break;
 	}
@@ -231,147 +229,325 @@ static void test_cg_incremental_solves_spd_system(void)
 	CHECK(r.done);
 	CHECK(r.iter > 0);
 
-	jnl_cg_finish_into(&cg, x);
+	jnl_cg_jac_finish_into(&cg, x);
 	assert_spd_solution(x, 1e-9);
 
-	arena_destroy(arena);
+	jnl_scratch_pool_free(pool);
 }
 
-static void test_cg_blocking_into_solves_spd_system(void)
+static void test_cg_jac_blocking_into_solves_spd_system(void)
 {
 	fvsys sys;
 	make_two_cell_spd_sys(&sys);
 
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
+	struct jnl_scratch_pool *pool = make_scratch(2);
 
 	f64 x[2] = {0.0, 0.0};
 
-	i32 iters = jnl_fvsys_solve_cg_into(&sys, pool, x, 1e-12, 20);
+	i32 iters = jnl_fvsys_solve_cg_jac_into(&sys, pool, x, 1e-12, 20);
 
 	CHECK(iters > 0);
 	assert_spd_solution(x, 1e-9);
 
-	arena_destroy(arena);
-}
-
-static void test_cg_finish_change_into_reports_change_and_updates_field(void)
-{
-	fvsys sys;
-	make_two_cell_spd_sys(&sys);
-
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
-
-	f64 x[2] = {0.0, 0.0};
-
-	struct jnl_cg cg = jnl_fvsys_cg_begin(&sys, pool, x, 1e-12);
-
-	for (i32 i = 0; i < 20; i++) {
-		struct jnl_solver_step r = jnl_cg_iter(&cg);
-		if (r.done || r.breakdown)
-			break;
-	}
-
-	f64 change = jnl_cg_finish_change_into(&cg, x, x);
-
-	CHECK(change > 0.0);
-	assert_spd_solution(x, 1e-9);
-
-	arena_destroy(arena);
-}
-
-static void test_bicgstab_incremental_solves_nonsymmetric_system(void)
-{
-	fvsys sys;
-	make_two_cell_nonsymmetric_sys(&sys);
-
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
-
-	f64 x[2] = {0.0, 0.0};
-
-	struct jnl_bicgstab bicg = jnl_fvsys_bicgstab_begin(&sys, pool, x, 1e-12);
-
-	struct jnl_solver_step r = {0};
-	for (i32 i = 0; i < 20; i++) {
-		r = jnl_bicgstab_iter(&bicg);
-		if (r.done || r.breakdown)
-			break;
-	}
-
-	CHECK(!r.breakdown);
-	CHECK(r.done);
-	CHECK(r.iter > 0);
-
-	jnl_bicgstab_finish_into(&bicg, x);
-	assert_nonsymmetric_solution(x, 1e-9);
-
-	arena_destroy(arena);
-}
-
-static void test_bicgstab_blocking_into_solves_nonsymmetric_system(void)
-{
-	fvsys sys;
-	make_two_cell_nonsymmetric_sys(&sys);
-
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
-
-	f64 x[2] = {0.0, 0.0};
-
-	i32 iters = jnl_fvsys_solve_bicgstab_into(&sys, pool, x, 1e-12, 20);
-
-	CHECK(iters > 0);
-	assert_nonsymmetric_solution(x, 1e-9);
-
-	arena_destroy(arena);
+	jnl_scratch_pool_free(pool);
 }
 
 static void
-test_bicgstab_finish_change_into_reports_change_and_updates_field(void)
+test_cg_jac_finish_change_into_reports_change_and_updates_field(void)
 {
 	fvsys sys;
-	make_two_cell_nonsymmetric_sys(&sys);
+	make_two_cell_spd_sys(&sys);
 
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
+	struct jnl_scratch_pool *pool = make_scratch(2);
 
 	f64 x[2] = {0.0, 0.0};
 
-	struct jnl_bicgstab bicg = jnl_fvsys_bicgstab_begin(&sys, pool, x, 1e-12);
+	struct jnl_cg_jac cg = jnl_fvsys_cg_jac_begin(&sys, pool, x, 1e-12);
 
 	for (i32 i = 0; i < 20; i++) {
-		struct jnl_solver_step r = jnl_bicgstab_iter(&bicg);
+		struct jnl_solver_step r = jnl_cg_jac_iter(&cg);
 		if (r.done || r.breakdown)
 			break;
 	}
 
-	f64 change = jnl_bicgstab_finish_change_into(&bicg, x, x);
+	f64 change = jnl_cg_jac_finish_change_into(&cg, x, x);
+
+	CHECK(change > 0.0);
+	assert_spd_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+//
+// CG + DIC
+//
+
+static void test_cg_dic_incremental_solves_spd_system(void)
+{
+	fvsys sys;
+	make_two_cell_spd_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	struct jnl_cg_dic cg = jnl_fvsys_cg_dic_begin(&sys, pool, x, 1e-12);
+
+	struct jnl_solver_step r = {0};
+	for (i32 i = 0; i < 20; i++) {
+		r = jnl_cg_dic_iter(&cg);
+		if (r.done || r.breakdown)
+			break;
+	}
+
+	CHECK(!r.breakdown);
+	CHECK(r.done);
+	CHECK(r.iter > 0);
+
+	jnl_cg_dic_finish_into(&cg, x);
+	assert_spd_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+static void test_cg_dic_blocking_into_solves_spd_system(void)
+{
+	fvsys sys;
+	make_two_cell_spd_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	i32 iters = jnl_fvsys_solve_cg_dic_into(&sys, pool, x, 1e-12, 20);
+
+	CHECK(iters > 0);
+	assert_spd_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+//
+// BiCGSTAB + Jacobi
+//
+
+static void test_bicgstab_jac_incremental_solves_nonsymmetric_system(void)
+{
+	fvsys sys;
+	make_two_cell_nonsymmetric_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	struct jnl_bicgstab_jac bicg =
+	    jnl_fvsys_bicgstab_jac_begin(&sys, pool, x, 1e-12);
+
+	struct jnl_solver_step r = {0};
+	for (i32 i = 0; i < 20; i++) {
+		r = jnl_bicgstab_jac_iter(&bicg);
+		if (r.done || r.breakdown)
+			break;
+	}
+
+	CHECK(!r.breakdown);
+	CHECK(r.done);
+	CHECK(r.iter > 0);
+
+	jnl_bicgstab_jac_finish_into(&bicg, x);
+	assert_nonsymmetric_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+static void test_bicgstab_jac_blocking_into_solves_nonsymmetric_system(void)
+{
+	fvsys sys;
+	make_two_cell_nonsymmetric_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	i32 iters = jnl_fvsys_solve_bicgstab_jac_into(&sys, pool, x, 1e-12, 20);
+
+	CHECK(iters > 0);
+	assert_nonsymmetric_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+static void
+test_bicgstab_jac_finish_change_into_reports_change_and_updates_field(void)
+{
+	fvsys sys;
+	make_two_cell_nonsymmetric_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	struct jnl_bicgstab_jac bicg =
+	    jnl_fvsys_bicgstab_jac_begin(&sys, pool, x, 1e-12);
+
+	for (i32 i = 0; i < 20; i++) {
+		struct jnl_solver_step r = jnl_bicgstab_jac_iter(&bicg);
+		if (r.done || r.breakdown)
+			break;
+	}
+
+	f64 change = jnl_bicgstab_jac_finish_change_into(&bicg, x, x);
 
 	CHECK(change > 0.0);
 	assert_nonsymmetric_solution(x, 1e-9);
 
-	arena_destroy(arena);
+	jnl_scratch_pool_free(pool);
 }
+
+//
+// BiCGSTAB + DILU
+//
+
+static void test_bicgstab_dilu_incremental_solves_nonsymmetric_system(void)
+{
+	fvsys sys;
+	make_two_cell_nonsymmetric_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	struct jnl_bicgstab_dilu bicg =
+	    jnl_fvsys_bicgstab_dilu_begin(&sys, pool, x, 1e-12);
+
+	struct jnl_solver_step r = {0};
+	for (i32 i = 0; i < 20; i++) {
+		r = jnl_bicgstab_dilu_iter(&bicg);
+		if (r.done || r.breakdown)
+			break;
+	}
+
+	CHECK(!r.breakdown);
+	CHECK(r.done);
+	CHECK(r.iter > 0);
+
+	jnl_bicgstab_dilu_finish_into(&bicg, x);
+	assert_nonsymmetric_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+static void test_bicgstab_dilu_blocking_into_solves_nonsymmetric_system(void)
+{
+	fvsys sys;
+	make_two_cell_nonsymmetric_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	i32 iters = jnl_fvsys_solve_bicgstab_dilu_into(&sys, pool, x, 1e-12, 20);
+
+	CHECK(iters > 0);
+	assert_nonsymmetric_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+//
+// GMRES + DILU
+//
+
+static void test_gmres_dilu_incremental_solves_nonsymmetric_system(void)
+{
+	fvsys sys;
+	make_two_cell_nonsymmetric_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	struct jnl_gmres_dilu gm =
+	    jnl_fvsys_gmres_dilu_begin(&sys, pool, x, 1e-12, 4);
+
+	struct jnl_solver_step r = {0};
+	for (i32 i = 0; i < 20; i++) {
+		r = jnl_gmres_dilu_iter(&gm);
+		if (r.done || r.breakdown)
+			break;
+	}
+
+	CHECK(!r.breakdown);
+	CHECK(r.done);
+	CHECK(r.iter > 0);
+
+	jnl_gmres_dilu_finish_into(&gm, x);
+	jnl_gmres_dilu_destroy(&gm);
+
+	assert_nonsymmetric_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+static void test_gmres_dilu_blocking_into_solves_nonsymmetric_system(void)
+{
+	fvsys sys;
+	make_two_cell_nonsymmetric_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	i32 iters = jnl_fvsys_solve_gmres_dilu_into(&sys, pool, x, 1e-12, 20, 4);
+
+	CHECK(iters > 0);
+	assert_nonsymmetric_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+static void test_gmres_dilu_finish_change_into_updates_field(void)
+{
+	fvsys sys;
+	make_two_cell_nonsymmetric_sys(&sys);
+
+	struct jnl_scratch_pool *pool = make_scratch(2);
+
+	f64 x[2] = {0.0, 0.0};
+
+	struct jnl_gmres_dilu gm =
+	    jnl_fvsys_gmres_dilu_begin(&sys, pool, x, 1e-12, 4);
+
+	for (i32 i = 0; i < 20; i++) {
+		struct jnl_solver_step r = jnl_gmres_dilu_iter(&gm);
+		if (r.done || r.breakdown)
+			break;
+	}
+
+	f64 change = jnl_gmres_dilu_finish_change_into(&gm, x, x);
+	jnl_gmres_dilu_destroy(&gm);
+
+	CHECK(change > 0.0);
+	assert_nonsymmetric_solution(x, 1e-9);
+
+	jnl_scratch_pool_free(pool);
+}
+
+//
+// Singularity / smoother
+//
 
 static void test_solver_begin_pins_singular_constant_nullspace_system(void)
 {
 	fvsys sys;
 	make_singular_constant_nullspace_sys(&sys);
 
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
+	struct jnl_scratch_pool *pool = make_scratch(2);
 
 	f64 x[2] = {0.0, 0.0};
 
-	struct jnl_bicgstab bicg = jnl_fvsys_bicgstab_begin(&sys, pool, x, 1e-12);
+	struct jnl_bicgstab_jac bicg =
+	    jnl_fvsys_bicgstab_jac_begin(&sys, pool, x, 1e-12);
 
 	(void)bicg;
 
@@ -382,7 +558,7 @@ static void test_solver_begin_pins_singular_constant_nullspace_system(void)
 	NEAR_F64(sys.matrix.lower[0], 0.0, EPS);
 	NEAR_F64(sys.matrix.upper[0], 0.0, EPS);
 
-	arena_destroy(arena);
+	jnl_scratch_pool_free(pool);
 }
 
 static void
@@ -391,9 +567,7 @@ test_jacobi_smoother_one_sweep_from_zero_matches_weighted_jacobi(void)
 	fvsys sys;
 	make_two_cell_spd_sys(&sys);
 
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
+	struct jnl_scratch_pool *pool = make_scratch(2);
 
 	f64 x[2] = {0.0, 0.0};
 
@@ -408,12 +582,10 @@ test_jacobi_smoother_one_sweep_from_zero_matches_weighted_jacobi(void)
 
 	jnl_jacobi_smoother_finish_into(&sm, x);
 
-	// From zero, offdiag(x)=0.
-	// x_new = 0.5 * b / diag = {0.5*1/4, 0.5*2/3}
 	NEAR_F64(x[0], 0.125, EPS);
 	NEAR_F64(x[1], 1.0 / 3.0, EPS);
 
-	arena_destroy(arena);
+	jnl_scratch_pool_free(pool);
 }
 
 static void test_jacobi_smoother_multiple_sweeps_moves_toward_solution(void)
@@ -421,9 +593,7 @@ static void test_jacobi_smoother_multiple_sweeps_moves_toward_solution(void)
 	fvsys sys;
 	make_two_cell_spd_sys(&sys);
 
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
+	struct jnl_scratch_pool *pool = make_scratch(2);
 
 	f64 x[2] = {0.0, 0.0};
 
@@ -442,7 +612,7 @@ static void test_jacobi_smoother_multiple_sweeps_moves_toward_solution(void)
 	NEAR_F64(x[0], 5.0 / 11.0, 1e-4);
 	NEAR_F64(x[1], 9.0 / 11.0, 1e-4);
 
-	arena_destroy(arena);
+	jnl_scratch_pool_free(pool);
 }
 
 static void test_jacobi_smoother_finish_change_into_updates_field(void)
@@ -450,9 +620,7 @@ static void test_jacobi_smoother_finish_change_into_updates_field(void)
 	fvsys sys;
 	make_two_cell_spd_sys(&sys);
 
-	jnl_arena *arena = NULL;
-	struct jnl_scratch_pool *pool = NULL;
-	make_scratch(&pool, &arena, 2, 9);
+	struct jnl_scratch_pool *pool = make_scratch(2);
 
 	f64 x[2] = {0.0, 0.0};
 
@@ -470,21 +638,33 @@ static void test_jacobi_smoother_finish_change_into_updates_field(void)
 	CHECK(x[0] > 0.0);
 	CHECK(x[1] > 0.0);
 
-	arena_destroy(arena);
+	jnl_scratch_pool_free(pool);
 }
 
 int main(void)
 {
 	struct jnl_test_suite t = jnl_test_begin("solver");
 
-	JNL_TEST(&t, test_cg_incremental_solves_spd_system);
-	JNL_TEST(&t, test_cg_blocking_into_solves_spd_system);
-	JNL_TEST(&t, test_cg_finish_change_into_reports_change_and_updates_field);
-
-	JNL_TEST(&t, test_bicgstab_incremental_solves_nonsymmetric_system);
-	JNL_TEST(&t, test_bicgstab_blocking_into_solves_nonsymmetric_system);
+	JNL_TEST(&t, test_cg_jac_incremental_solves_spd_system);
+	JNL_TEST(&t, test_cg_jac_blocking_into_solves_spd_system);
 	JNL_TEST(&t,
-	         test_bicgstab_finish_change_into_reports_change_and_updates_field);
+	         test_cg_jac_finish_change_into_reports_change_and_updates_field);
+
+	JNL_TEST(&t, test_cg_dic_incremental_solves_spd_system);
+	JNL_TEST(&t, test_cg_dic_blocking_into_solves_spd_system);
+
+	JNL_TEST(&t, test_bicgstab_jac_incremental_solves_nonsymmetric_system);
+	JNL_TEST(&t, test_bicgstab_jac_blocking_into_solves_nonsymmetric_system);
+	JNL_TEST(
+	    &t,
+	    test_bicgstab_jac_finish_change_into_reports_change_and_updates_field);
+
+	JNL_TEST(&t, test_bicgstab_dilu_incremental_solves_nonsymmetric_system);
+	JNL_TEST(&t, test_bicgstab_dilu_blocking_into_solves_nonsymmetric_system);
+
+	JNL_TEST(&t, test_gmres_dilu_incremental_solves_nonsymmetric_system);
+	JNL_TEST(&t, test_gmres_dilu_blocking_into_solves_nonsymmetric_system);
+	JNL_TEST(&t, test_gmres_dilu_finish_change_into_updates_field);
 
 	JNL_TEST(&t, test_solver_begin_pins_singular_constant_nullspace_system);
 

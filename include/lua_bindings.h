@@ -15,8 +15,12 @@
 
 #define CTX_MT "jnl.fvm.ctx"
 #define FVSYS_MT "jnl.fvm.fvsys"
-#define CG_SOLVE_MT "jnl.fvm.cg_solve"
-#define BICGSTAB_SOLVE_MT "jnl.fvm.bicgstab_solve"
+
+#define CG_JAC_SOLVE_MT "jnl.fvm.cg_jac_solve"
+#define CG_DIC_SOLVE_MT "jnl.fvm.cg_dic_solve"
+#define BICGSTAB_JAC_SOLVE_MT "jnl.fvm.bicgstab_jac_solve"
+#define BICGSTAB_DILU_SOLVE_MT "jnl.fvm.bicgstab_dilu_solve"
+#define GMRES_DILU_SOLVE_MT "jnl.fvm.gmres_dilu_solve"
 #define JACOBI_SMOOTHER_MT "jnl.fvm.jacobi_smoother"
 
 //
