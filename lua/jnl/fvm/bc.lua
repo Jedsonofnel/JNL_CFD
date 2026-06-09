@@ -1,118 +1,209 @@
--- fvm/bc.lua - BC constructors
--- <jed@nelson.ac> // 2026-05-23
+-- jnl/fvm/bc.lua - BC descriptor constructors
 
-local M = {}
+local BC = {}
+
+-- Kind constants matching C enum jnl_bc_kind, re-exported for nt() callers
+BC.N = 0
+BC.D = 1
+BC.R = 2
 
 --
--- Validation
+-- Scalar primitives
 --
 
-local KNOWN_BC_KINDS = {
-	dirichlet_const       = true,
-	neumann_const         = true,
-	robin_const           = true,
-	dirichlet_face_const  = true,
-	neumann_face_const    = true,
-	dirichlet_face_normal = true,
-	neumann_face_normal   = true,
-}
-M.KNOWN_BC_KINDS = KNOWN_BC_KINDS
+function BC.dirichlet(value)
+	assert(type(value) == "number", "BC.dirichlet: value must be a number")
+	return { kind = "dirichlet_s", value = value }
+end
 
-function M.validate(field_name, i, bc)
-	local loc = string.format("bcs['%s'][%d]", field_name, i)
-	assert(bc.patch == true or type(bc.patch) == "string",
-		loc .. ": .patch must be a string or true (wildcard), got "
-		.. type(bc.patch))
-	assert(bc.kind,
-		loc .. ": missing .kind")
-	assert(KNOWN_BC_KINDS[bc.kind],
-		loc .. ": unknown kind '" .. bc.kind .. "'")
+-- grad_n defaults to zero (zero-flux)
+function BC.neumann(grad_n)
+	grad_n = grad_n or 0.0
+	assert(type(grad_n) == "number", "BC.neumann: grad_n must be a number")
+	return { kind = "neumann_s", grad_n = grad_n }
+end
 
-	if bc.kind == "robin_const" then
-		assert(bc.h ~= nil, loc .. ": robin_const missing .h")
-		assert(bc.phi_ref ~= nil, loc .. ": robin_const missing .phi_ref")
-	elseif not bc.kind:find("normal", 1, true) then
-		assert(bc.value ~= nil, loc .. ": missing .value")
+-- general Robin: a*phi + b*(dphi/dn) = c
+function BC.robin(a, b, c)
+	assert(type(a) == "number" and type(b) == "number" and type(c) == "number",
+		"BC.robin: a, b, c must be numbers")
+	return { kind = "robin_s", a = a, b = b, c = c }
+end
+
+--
+-- Vector primitives
+--
+
+function BC.dirichlet_v(ux, uy)
+	assert(type(ux) == "number" and type(uy) == "number",
+		"BC.dirichlet_v: ux and uy must be numbers")
+	return { kind = "dirichlet_v", ux = ux, uy = uy }
+end
+
+-- zero-gradient vector by default
+function BC.neumann_v(ux_gn, uy_gn)
+	ux_gn = ux_gn or 0.0
+	uy_gn = uy_gn or 0.0
+	assert(type(ux_gn) == "number" and type(uy_gn) == "number",
+		"BC.neumann_v: ux_gn and uy_gn must be numbers")
+	return { kind = "neumann_v", ux_gn = ux_gn, uy_gn = uy_gn }
+end
+
+-- normal/tangential split — use BC.N / BC.D / BC.R for kind args
+function BC.nt(nkind, nval, tkind, tval)
+	assert(type(nval) == "number" and type(tval) == "number",
+		"BC.nt: nval and tval must be numbers")
+	return { kind = "nt_v", nkind = nkind, nval = nval, tkind = tkind, tval = tval }
+end
+
+--
+-- Scalar helpers
+--
+
+-- alias: intent is clearer than raw dirichlet at a fixed wall temperature etc.
+function BC.fixed(value)
+	return BC.dirichlet(value)
+end
+
+-- zero normal gradient — the most common outlet/symmetry scalar condition
+function BC.nograd()
+	return BC.neumann(0.0)
+end
+
+-- pressure outlet at a specified reference value
+function BC.pressure_outlet(value)
+	return BC.dirichlet(value or 0.0)
+end
+
+--
+-- Vector helpers
+--
+
+-- no-slip viscous wall
+function BC.no_slip()
+	return BC.dirichlet_v(0.0, 0.0)
+end
+
+-- alias
+BC.wall = BC.no_slip
+
+-- free-slip / symmetry plane: zero normal velocity, zero tangential gradient
+function BC.free_slip()
+	return BC.nt(BC.D, 0.0, BC.N, 0.0)
+end
+
+-- alias: same condition, different physical intent name
+BC.slip     = BC.free_slip
+BC.symmetry = BC.free_slip
+
+-- prescribed inlet velocity
+function BC.inlet(ux, uy)
+	assert(type(ux) == "number" and type(uy) == "number",
+		"BC.inlet: ux and uy must be numbers")
+	return BC.dirichlet_v(ux, uy)
+end
+
+-- advective / zero-gradient outlet
+function BC.outlet()
+	return BC.neumann_v(0.0, 0.0)
+end
+
+-- moving wall (e.g. Couette lid)
+function BC.moving_wall(ux, uy)
+	uy = uy or 0.0
+	assert(type(ux) == "number" and type(uy) == "number",
+		"BC.moving_wall: ux and uy must be numbers")
+	return BC.dirichlet_v(ux, uy)
+end
+
+--
+-- BC Set
+--
+
+local Set = {}
+Set.__index = Set
+
+local FieldSpec = {}
+FieldSpec.__index = FieldSpec
+
+--
+-- FieldSpec
+--
+
+local function new_field_spec(parent_set, name, rank)
+	local fs = setmetatable({
+		parent = parent_set,
+		name   = name,
+		rank   = rank,
+		list   = {},
+	}, FieldSpec)
+	parent_set.fields[name] = fs
+	return fs
+end
+
+function FieldSpec:on(patch, spec)
+	assert(type(patch) == "string", "Set:on: patch must be a string")
+	assert(type(spec) == "table", "Set:on: spec must be a BC descriptor table")
+	local bc = { patch = patch }
+	for k, v in pairs(spec) do bc[k] = v end
+	self.list[#self.list + 1] = bc
+	return self
+end
+
+-- delegation back to parent for continued chaining
+function FieldSpec:scalar(name) return self.parent:scalar(name) end
+
+function FieldSpec:vector(name) return self.parent:vector(name) end
+
+function FieldSpec:default(spec) return self.parent:default(spec) end
+
+function FieldSpec:build() return self.parent:build() end
+
+--
+-- Set
+--
+
+function Set.new()
+	return setmetatable({
+		fields   = {},
+		order    = {},
+		fallback = nil,
+	}, Set)
+end
+
+function Set:scalar(name)
+	assert(type(name) == "string", "Set:scalar: name must be a string")
+	self.order[#self.order + 1] = name
+	return new_field_spec(self, name, 0)
+end
+
+function Set:vector(name)
+	assert(type(name) == "string", "Set:vector: name must be a string")
+	self.order[#self.order + 1] = name
+	return new_field_spec(self, name, 1)
+end
+
+function Set:default(spec)
+	assert(type(spec) == "table", "Set:default: spec must be a BC descriptor table")
+	self.fallback = spec
+	return self
+end
+
+function Set:build()
+	local out   = {}
+	local ranks = {}
+	for _, name in ipairs(self.order) do
+		local fs    = self.fields[name]
+		out[name]   = fs.list
+		ranks[name] = fs.rank
 	end
+	return { fields = out, ranks = ranks, default = self.fallback }
 end
 
---
--- Constructors
---
+Set.__call = function(self) return self:build() end
 
-function M.dirichlet(patch, value)
-	return { patch = patch, kind = "dirichlet_const", value = value }
+function BC.new_set()
+	return Set.new()
 end
 
-function M.neumann(patch, value)
-	return { patch = patch, kind = "neumann_const", value = value or 0.0 }
-end
-
-function M.neumann_all(value)
-	return { patch = true, kind = "neumann_const", value = value or 0.0 }
-end
-
-function M.symmetry(patch)
-	return { patch = patch, kind = "neumann_const", value = 0.0 }
-end
-
-function M.robin(patch, h, phi_ref)
-	assert(type(h) == "number", "BC.robin: h must be a number")
-	assert(type(phi_ref) == "number", "BC.robin: phi_ref must be a number")
-	return { patch = patch, kind = "robin_const", h = h, phi_ref = phi_ref }
-end
-
-function M.robin_all(h, phi_ref)
-	assert(type(h) == "number", "BC.robin_all: h must be a number")
-	assert(type(phi_ref) == "number", "BC.robin_all: phi_ref must be a number")
-	return { patch = true, kind = "robin_const", h = h, phi_ref = phi_ref }
-end
-
---
--- API
---
-
-M._doc = "Boundary condition constructors for FVM field equations."
-
-M._doc_subsection =
-	"BCs are plain tables { patch, kind, value } passed as lists under each field name " ..
-	"in the bcs table given to Case.new(). patch is a string patch name or true to match " ..
-	"all patches. Uncovered patches default to neumann_const 0.0 with a warning. " ..
-	"Robin BCs carry { h, phi_ref } instead of value; face-normal BCs for Robin " ..
-	"are automatically translated to Dirichlet zero for Rhie-Chow."
-
-M._api = {
-	dirichlet   = { args = "patch:string, value:number", ret = "BC", doc = "Fixed value on patch" },
-	neumann     = { args = "patch:string, value:number?", ret = "BC", doc = "Fixed normal gradient on patch; value defaults to 0.0" },
-	neumann_all = { args = "value:number?", ret = "BC", doc = "Neumann 0 on all patches; shorthand wildcard" },
-	symmetry    = { args = "patch:string", ret = "BC", doc = "Zero normal gradient; alias for neumann(patch, 0.0)" },
-	robin       = { args = "patch:string, h:number, phi_ref:number", ret = "BC", doc = "Robin (mixed) BC: -γ ∂φ/∂n = h(φ - phi_ref); apply after Laplacian" },
-	robin_all   = { args = "h:number, phi_ref:number", ret = "BC", doc = "Robin BC on all patches" },
-	validate    = { args = "field:string, i:int, bc:BC", ret = "nil", doc = "Error if bc is malformed; called automatically by Case" },
-}
-
-M._types = {
-	BC = {
-		doc         = "Boundary condition descriptor table",
-		constructor = "M.dirichlet / M.neumann / M.robin etc.",
-		kind        = "table",
-		methods     = {},
-	},
-}
-
-M._constants = {
-	KNOWN_BC_KINDS = {
-		doc    = "Set of valid bc.kind strings",
-		values = {
-			dirichlet_const       = { value = "true", doc = "Fixed cell-field value" },
-			neumann_const         = { value = "true", doc = "Fixed normal gradient on cell field" },
-			robin_const           = { value = "true", doc = "Mixed BC: h(phi - phi_ref); requires .h and .phi_ref; apply after Laplacian" },
-			dirichlet_face_const  = { value = "true", doc = "Fixed face-field value" },
-			neumann_face_const    = { value = "true", doc = "Fixed normal gradient on face field" },
-			dirichlet_face_normal = { value = "true", doc = "Dirichlet from velocity vector projected onto face normal" },
-			neumann_face_normal   = { value = "true", doc = "Neumann from velocity vector projected onto face normal" },
-		},
-	},
-}
-
-return M
+return BC

@@ -67,8 +67,6 @@ local default_cfg = Cfg.new()
 --
 
 function Inst.fill(field, value)
-	V.identifier(field, "Inst.fill field")
-	V.typeof(value, "number", "Inst.fill value")
 	return new("fill", { field = field, value = value, level = "abstract" })
 end
 
@@ -76,28 +74,23 @@ end
 ---@param implicit boolean?
 function Inst.evaluate(field, implicit)
 	implicit = implicit or true
-	V.identifier(field, "Inst.evaluate field")
 	return new("evaluate", { field = field, implicit = implicit, level = "abstract" })
 end
 
 function Inst.solve(field)
-	V.identifier(field, "Inst.solve field")
 	return new("solve", { field = field, level = "abstract" })
 end
 
 function Inst.correct(field)
-	V.identifier(field, "Inst.correct field")
 	return new("correct", { field = field, level = "abstract" })
 end
 
 function Inst.clip(field, lo, hi)
 	hi = hi or math.huge
-	V.identifier(field, "Inst.clip field")
 	return new("clip", { field = field, lo = lo, hi = hi, level = "abstract" })
 end
 
 function Inst.zero(field)
-	V.identifier(field, "Inst.zero field")
 	return new("zero", { field = field, level = "abstract" })
 end
 
@@ -106,7 +99,6 @@ end
 --
 
 function Inst.eval_expr(field, node)
-	V.identifier(field, "Inst.eval_expr field")
 	return new("eval_expr", { field = field, node = node })
 end
 
@@ -171,24 +163,19 @@ end
 --
 
 function Inst.sys_reset(field)
-	V.identifier(field, "Inst.sys_reset field")
 	return new("sys_reset", { field = field })
 end
 
 function Inst.diag_snapshot(field, out)
-	V.identifier(field, "Inst.diag_snapshot field")
-	V.identifier(out, "Inst.diag_snapshot out")
 	return new("diag_snapshot", { field = field, out = out })
 end
 
-function Inst.under_relax(field, alpha)
+function Inst.under_relax(field)
 	V.identifier(field, "Inst.under_relax field")
-	V.typeof(alpha, "number", "Inst.under_relax alpha")
-	return new("under_relax", { field = field, alpha = alpha })
+	return new("under_relax", { field = field })
 end
 
 function Inst.solve_linalg(field)
-	V.identifier(field, "Inst.solve_linalg field")
 	return new("solve_linalg", { field = field })
 end
 
@@ -200,7 +187,6 @@ end
 ---@param rho number
 ---@param expr Node? Optional rho-expr for display
 function Inst.ddt_k(field, rho, expr)
-	V.identifier(field, "Inst.ddt_k field")
 	return new("ddt_k", { field = field, coeff = rho, node = expr })
 end
 
@@ -208,7 +194,6 @@ end
 ---@param rho string Name of rho field
 ---@param expr Node? Optional rho-expr for display
 function Inst.ddt_f(field, rho, expr)
-	V.identifier(field, "Inst.ddt_f field")
 	return new("ddt_f", { field = field, coeff = rho, node = expr })
 end
 
@@ -216,7 +201,6 @@ end
 ---@param gamma number
 ---@param expr Node? Optional gamma-expr for display
 function Inst.lap_k(field, gamma, expr)
-	V.identifier(field, "Inst.lap_k field")
 	return new("lap_k", { field = field, coeff = gamma, node = expr })
 end
 
@@ -224,7 +208,6 @@ end
 ---@param gamma string
 ---@param expr Node?
 function Inst.lap_f(field, gamma, expr)
-	V.identifier(field, "Inst.lap_f field")
 	return new("lap_f", { field = field, coeff = gamma, node = expr })
 end
 
@@ -234,9 +217,6 @@ end
 ---@param coeff number
 ---@param expr Node?
 function Inst.lap_nonorth_k(field, grad_x, grad_y, coeff, expr)
-	V.identifier(field, "Inst.lap_nonorth_k field")
-	V.identifier(grad_x, "Inst.lap_nonorth_k grad_x")
-	V.identifier(grad_y, "Inst.lap_nonorth_k grad_y")
 	return new("lap_nonorth_k", { field = field, grad_x = grad_x, grad_y = grad_y, coeff = coeff, node = expr })
 end
 
@@ -246,9 +226,6 @@ end
 ---@param coeff string
 ---@param expr Node?
 function Inst.lap_nonorth_f(field, grad_x, grad_y, coeff, expr)
-	V.identifier(field, "Inst.lap_nonorth_f field")
-	V.identifier(grad_x, "Inst.lap_nonorth_f grad_x")
-	V.identifier(grad_y, "Inst.lap_nonorth_f grad_y")
 	return new("lap_nonorth_f", { field = field, grad_x = grad_x, grad_y = grad_y, coeff = coeff, node = expr })
 end
 
@@ -257,8 +234,6 @@ end
 ---@param flux string
 ---@param coeff number
 function Inst.div_k(field, flux, coeff)
-	V.identifier(field, "Inst.div_k field")
-	V.identifier(flux, "Inst.div_k flux")
 	return new("div_k", { field = field, flux = flux, coeff = coeff })
 end
 
@@ -268,8 +243,6 @@ end
 ---@param coeff string
 ---@param expr Node?
 function Inst.div_f(field, flux, coeff, expr)
-	V.identifier(field, "Inst.div_f field")
-	V.identifier(flux, "Inst.div_f flux")
 	return new("div_f", { field = field, fulx = flux, coeff = coeff, node = expr })
 end
 
@@ -280,10 +253,6 @@ end
 ---@param grad_x string
 ---@param grad_y string
 function Inst.div_dc(field, flux, grad_x, grad_y)
-	V.identifier(field, "Inst.div_dc field")
-	V.identifier(flux, "Inst.div_dc flux")
-	V.identifier(grad_x, "Inst.grad_x flux")
-	V.identifier(grad_y, "Inst.grad_y flux")
 	return new("div_dc", { field = field, flux = flux, grad_x = grad_x, grad_y = grad_y })
 end
 
@@ -291,7 +260,6 @@ end
 ---@param coeff number
 ---@param volumetric boolean
 function Inst.su_k(field, coeff, volumetric)
-	V.identifier(field, "Inst.su_k field")
 	return new("su_k", { field = field, coeff = coeff, volumetric = volumetric })
 end
 
@@ -300,15 +268,28 @@ end
 ---@param volumetric boolean
 ---@param expr Node?
 function Inst.su_f(field, coeff, volumetric, expr)
-	V.identifier(field, "Inst.su_f field")
 	return new("su_f", { field = field, coeff = coeff, volumetric = volumetric, node = expr })
+end
+
+---@param field     string
+---@param scale     number   scalar multiplier (negative to subtract)
+---@param src       string   name of source cell field
+---@param volumetric boolean default true
+---@param expr Node?
+function Inst.su_fs(field, scale, src, volumetric, expr)
+	return new("su_fs", {
+		field      = field,
+		scale      = scale,
+		src        = src,
+		volumetric = volumetric ~= false,
+		node       = expr,
+	})
 end
 
 ---@param field string
 ---@param coeff number
 ---@param volumetric boolean
 function Inst.sp_k(field, coeff, volumetric)
-	V.identifier(field, "Inst.sp_k field")
 	return new("sp_k", { field = field, coeff = coeff, volumetric = volumetric })
 end
 
@@ -317,8 +298,22 @@ end
 ---@param volumetric boolean
 ---@param expr Node?
 function Inst.sp_f(field, coeff, volumetric, expr)
-	V.identifier(field, "Inst.sp_k field")
 	return new("sp_f", { field = field, coeff = coeff, volumetric = volumetric, node = expr })
+end
+
+---@param field     string
+---@param scale     number
+---@param src       string
+---@param volumetric boolean default true
+---@param expr Node?
+function Inst.sp_fs(field, scale, src, volumetric, expr)
+	return new("sp_fs", {
+		field      = field,
+		scale      = scale,
+		src        = src,
+		volumetric = volumetric ~= false,
+		node       = expr,
+	})
 end
 
 --
@@ -339,9 +334,6 @@ Inst.BC_R = 2 -- Robin
 ---@param patch string
 ---@param value number
 function Inst.pfill_s_d(field, patch, value)
-	V.identifier(field, "Inst.pfill_s_d field")
-	V.identifier(patch, "Inst.pfill_s_d patch")
-	V.typeof(value, "number", "Inst.pfill_s_d value")
 	return new("patch_s_fill_d", { field = field, patch = patch, value = value })
 end
 
@@ -349,9 +341,6 @@ end
 ---@param patch string
 ---@param grad_n number
 function Inst.pfill_s_n(field, patch, grad_n)
-	V.identifier(field, "Inst.pfill_s_n field")
-	V.identifier(patch, "Inst.pfill_s_n patch")
-	V.typeof(grad_n, "number", "Inst.pfill_s_n grad_n")
 	return new("patch_s_fill_n", { field = field, patch = patch, grad_n = grad_n })
 end
 
@@ -361,8 +350,6 @@ end
 ---@param b number
 ---@param c number
 function Inst.pfill_s_r(field, patch, a, b, c)
-	V.identifier(field, "Inst.pfill_s_r field")
-	V.identifier(patch, "Inst.pfill_s_r patch")
 	return new("patch_s_fill_r", { field = field, patch = patch, a = a, b = b, c = c })
 end
 
@@ -374,9 +361,6 @@ end
 ---@param patch string
 ---@param value number
 function Inst.pclose_s_d(field, patch, value)
-	V.identifier(field, "Inst.pclose_s_d field")
-	V.identifier(patch, "Inst.pclose_s_d patch")
-	V.typeof(value, "number", "Inst.pclose_s_d value")
 	return new("patch_s_close_d", { field = field, patch = patch, value = value })
 end
 
@@ -384,9 +368,6 @@ end
 ---@param patch string
 ---@param grad_n number
 function Inst.pclose_s_n(field, patch, grad_n)
-	V.identifier(field, "Inst.pclose_s_n field")
-	V.identifier(patch, "Inst.pclose_s_n patch")
-	V.typeof(grad_n, "number", "Inst.pclose_s_n grad_n")
 	return new("patch_s_close_n", { field = field, patch = patch, grad_n = grad_n })
 end
 
@@ -396,8 +377,6 @@ end
 ---@param b number
 ---@param c number
 function Inst.pclose_s_r(field, patch, a, b, c)
-	V.identifier(field, "Inst.pclose_s_r field")
-	V.identifier(patch, "Inst.pclose_s_r patch")
 	return new("patch_s_close_r", { field = field, patch = patch, a = a, b = b, c = c })
 end
 
@@ -411,9 +390,6 @@ end
 ---@param ux_val number
 ---@param uy_val number
 function Inst.pfill_v_d(ux, uy, patch, ux_val, uy_val)
-	V.identifier(ux, "Inst.pfill_v_d ux")
-	V.identifier(uy, "Inst.pfill_v_d uy")
-	V.identifier(patch, "Inst.pfill_v_d patch")
 	return new("patch_v_fill_d", {
 		ux = ux,
 		uy = uy,
@@ -429,9 +405,6 @@ end
 ---@param ux_gn number
 ---@param uy_gn number
 function Inst.pfill_v_n(ux, uy, patch, ux_gn, uy_gn)
-	V.identifier(ux, "Inst.pfill_v_n ux")
-	V.identifier(uy, "Inst.pfill_v_n uy")
-	V.identifier(patch, "Inst.pfill_v_n patch")
 	return new("patch_v_fill_n", {
 		ux = ux,
 		uy = uy,
@@ -449,9 +422,6 @@ end
 ---@param tkind jnl_bc_kind
 ---@param tval number
 function Inst.pfill_v_nt(ux, uy, patch, nkind, nval, tkind, tval)
-	V.identifier(ux, "Inst.pfill_v_nt ux")
-	V.identifier(uy, "Inst.pfill_v_nt uy")
-	V.identifier(patch, "Inst.pfill_v_nt patch")
 	return new("patch_v_fill_nt", {
 		ux = ux,
 		uy = uy,
@@ -509,6 +479,21 @@ local function coeff_str(f)
 	return tostring(f.coeff)
 end
 
+-- source field: prefer node pretty-print over raw field name
+local function src_str(f)
+	if f.node then return tostring(f.node) end
+	return tostring(f.src or f.coeff)
+end
+
+-- scaled source: absorbs scale=±1 cleanly
+local function scaled_src_str(f)
+	local s  = src_str(f)
+	local sc = f.scale
+	if sc == 1.0 then return s end
+	if sc == -1.0 then return "(-" .. s .. ")" end
+	return string.format("(%+.6g * %s)", sc, s)
+end
+
 local concrete_fmt = {}
 
 -- infrastructure
@@ -538,8 +523,9 @@ function concrete_fmt.diag_snapshot(f, _)
 	return string.format("DIAG_SNAPSHOT %s -> %s", f.field, f.out)
 end
 
-function concrete_fmt.under_relax(f, _)
-	return string.format("UNDER_RELAX   %s  alpha=%g", f.field, f.alpha)
+function concrete_fmt.under_relax(f, cfg)
+	local alpha = cfg:get(f.field, "relax")
+	return string.format("UNDER_RELAX   %s  alpha=%g", f.field, alpha)
 end
 
 function concrete_fmt.solve_linalg(f, _)
@@ -646,22 +632,32 @@ end
 
 function concrete_fmt.su_k(f, _)
 	local tag = f.volumetric and "[vol]" or "[int]"
-	return string.format("SU_K %-5s    %s  src=%g", tag, f.field, f.coeff)
+	return string.format("SU_K  %-4s    %s  src=%g", tag, f.field, f.coeff)
 end
 
 function concrete_fmt.su_f(f, _)
 	local tag = f.volumetric and "[vol]" or "[int]"
-	return string.format("SU_F %-5s    %s  src=%s", tag, f.field, coeff_str(f))
+	return string.format("SU_F  %-4s    %s  src=%s", tag, f.field, src_str(f))
+end
+
+function concrete_fmt.su_fs(f, _)
+	local tag = f.volumetric and "[vol]" or "[int]"
+	return string.format("SU_FS %-4s    %s  src=%s", tag, f.field, scaled_src_str(f))
 end
 
 function concrete_fmt.sp_k(f, _)
 	local tag = f.volumetric and "[vol]" or "[int]"
-	return string.format("SP_K %-5s    %s  src=%g", tag, f.field, f.coeff)
+	return string.format("SP_K  %-4s    %s  src=%g", tag, f.field, f.coeff)
 end
 
 function concrete_fmt.sp_f(f, _)
 	local tag = f.volumetric and "[vol]" or "[int]"
-	return string.format("SP_F %-5s    %s  src=%s", tag, f.field, coeff_str(f))
+	return string.format("SP_F  %-4s    %s  src=%s", tag, f.field, src_str(f))
+end
+
+function concrete_fmt.sp_fs(f, _)
+	local tag = f.volumetric and "[vol]" or "[int]"
+	return string.format("SP_FS %-4s    %s  src=%s", tag, f.field, scaled_src_str(f))
 end
 
 -- patch: scalar ghost fill

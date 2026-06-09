@@ -156,6 +156,14 @@ function Node:is_minus_one()
 	return self.kind == "constant" and self.a == -1 and not self.name
 end
 
+---Return the numeric value of a constant node, errors if different type
+---@return number
+function Node:to_number()
+	assert(self.kind == "constant",
+		"Node:to_number: expected constant, got '" .. self.kind .. "'")
+	return self.a --[[@as number]]
+end
+
 function Node:is_anon_const()
 	return self.kind == "constant" and not self.name
 end
