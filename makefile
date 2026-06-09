@@ -71,11 +71,13 @@ DEPS     += $(CMD_OBJS:.o=.d)
 # test/ vars
 TEST_RUNNER := scripts/test_runner.sh
 
-TEST_SRCS     := $(wildcard $(TESTDIR)/*.c)
-TEST_BINS     := $(patsubst $(TESTDIR)/%.c, $(BINDIR)/test/%, $(TEST_SRCS))
-TEST_OBJS     := $(patsubst $(TESTDIR)/%.c, $(OBJDIR)/test/%.o, $(TEST_SRCS))
+TEST_SRCS := $(sort $(shell find $(TESTDIR) -name '*_test.c'))
+TEST_BINS := $(patsubst $(TESTDIR)/%.c, $(BINDIR)/test/%, $(TEST_SRCS))
+TEST_OBJS := $(patsubst $(TESTDIR)/%.c, $(OBJDIR)/test/%.o, $(TEST_SRCS))
+
 TEST_LIB_SRCS := $(filter-out %_lua.c $(SRCDIR)/ui.c $(SRCDIR)/ui_%.c, $(SRCS))
 TEST_LIB_OBJS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(TEST_LIB_SRCS))
+
 DEPS          += $(TEST_OBJS:.o=.d)
 
 # verbosity: make V=1 for full commands
@@ -145,7 +147,8 @@ $(TRIANGLE_CORE_LIB) $(TRIANGLE_API_LIB):
 # test/ build
 #
 
-$(BINDIR)/test/%: $(OBJDIR)/test/%.o $(TEST_LIB_OBJS) $(TRIANGLE_LIBS) | $(BINDIR)/test
+$(BINDIR)/test/%: $(OBJDIR)/test/%.o $(TEST_LIB_OBJS) $(TRIANGLE_LIBS)
+	@mkdir -p $(dir $@)
 	$(LOG_LD)
 	$(Q)$(CC) $(CFLAGS) -o $@ \
 		$(OBJDIR)/test/$*.o \
@@ -219,9 +222,6 @@ llm: llm_spiel.md
 #
 
 $(BINDIR):
-	mkdir -p $@
-
-$(BINDIR)/test:
 	mkdir -p $@
 
 $(OUTDIR):
