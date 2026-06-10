@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "curve2d.h"
+#include "geo2d/curve2d.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

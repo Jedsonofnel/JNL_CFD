@@ -1,4 +1,4 @@
-#include "strucmesh2d.h"
+#include "mesh2d/strucmesh2d.h"
 
 #include <math.h>
 #include <stdio.h>

@@ -1,5 +1,5 @@
 #include "jnl/test.h"
-#include "curve2d.h"
+#include "geo2d/curve2d.h"
 
 #include <math.h>
 

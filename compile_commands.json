@@ -21,12 +21,12 @@
       "/usr/bin/cc",
       "-v",
       "-o",
-      "CMakeFiles/cmTC_7dc94.dir/CMakeCCompilerABI.c.o",
+      "CMakeFiles/cmTC_a0df3.dir/CMakeCCompilerABI.c.o",
       "-c",
       "/usr/share/cmake/Modules/CMakeCCompilerABI.c"
     ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-ttRcUF",
-    "output": "CMakeFiles/cmTC_7dc94.dir/CMakeCCompilerABI.c.o"
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-RVLxx6",
+    "output": "CMakeFiles/cmTC_a0df3.dir/CMakeCCompilerABI.c.o"
   },
   {
     "file": "/usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp",
@@ -34,53 +34,53 @@
       "/usr/bin/c++",
       "-v",
       "-o",
-      "CMakeFiles/cmTC_0e208.dir/CMakeCXXCompilerABI.cpp.o",
+      "CMakeFiles/cmTC_f4cab.dir/CMakeCXXCompilerABI.cpp.o",
       "-c",
       "/usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp"
     ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-Bqn32H",
-    "output": "CMakeFiles/cmTC_0e208.dir/CMakeCXXCompilerABI.cpp.o"
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-jBelsi",
+    "output": "CMakeFiles/cmTC_f4cab.dir/CMakeCXXCompilerABI.cpp.o"
   },
   {
-    "file": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-JwSmpF/src.cxx",
+    "file": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-pxzkun/src.cxx",
     "arguments": [
       "/usr/bin/c++",
       "-DCOMPILER_HAS_HIDDEN_VISIBILITY",
       "-fvisibility=hidden",
       "-o",
-      "CMakeFiles/cmTC_224a4.dir/src.cxx.o",
+      "CMakeFiles/cmTC_79e07.dir/src.cxx.o",
       "-c",
-      "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-JwSmpF/src.cxx"
+      "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-pxzkun/src.cxx"
     ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-JwSmpF",
-    "output": "CMakeFiles/cmTC_224a4.dir/src.cxx.o"
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-pxzkun",
+    "output": "CMakeFiles/cmTC_79e07.dir/src.cxx.o"
   },
   {
-    "file": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-n19ib5/src.cxx",
+    "file": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-dC6nlG/src.cxx",
     "arguments": [
       "/usr/bin/c++",
       "-DCOMPILER_HAS_HIDDEN_INLINE_VISIBILITY",
       "-fvisibility-inlines-hidden",
       "-o",
-      "CMakeFiles/cmTC_26430.dir/src.cxx.o",
+      "CMakeFiles/cmTC_a87a9.dir/src.cxx.o",
       "-c",
-      "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-n19ib5/src.cxx"
+      "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-dC6nlG/src.cxx"
     ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-n19ib5",
-    "output": "CMakeFiles/cmTC_26430.dir/src.cxx.o"
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-dC6nlG",
+    "output": "CMakeFiles/cmTC_a87a9.dir/src.cxx.o"
   },
   {
-    "file": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-82drEM/src.cxx",
+    "file": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-PqZ4d2/src.cxx",
     "arguments": [
       "/usr/bin/c++",
       "-DCOMPILER_HAS_DEPRECATED_ATTR",
       "-o",
-      "CMakeFiles/cmTC_f7a47.dir/src.cxx.o",
+      "CMakeFiles/cmTC_f16e7.dir/src.cxx.o",
       "-c",
-      "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-82drEM/src.cxx"
+      "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-PqZ4d2/src.cxx"
     ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-82drEM",
-    "output": "CMakeFiles/cmTC_f7a47.dir/src.cxx.o"
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/build/debug/vendor/Triangle-cmake/CMakeFiles/CMakeScratch/TryCompile-PqZ4d2",
+    "output": "CMakeFiles/cmTC_f16e7.dir/src.cxx.o"
   },
   {
     "file": "/home/jedn/Documents/JEDN-Codes/JNL_CFD/vendor/Triangle/src/Triangle/acute.c",
@@ -276,28 +276,6 @@
     "output": "build/debug/vec_lua.o"
   },
   {
-    "file": "src/geo2d_lua.c",
-    "arguments": [
-      "/usr/bin/gcc",
-      "-Wall",
-      "-pedantic",
-      "-MMD",
-      "-MP",
-      "-Iinclude",
-      "-Ivendor/Triangle/src/Triangle",
-      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
-      "-DLUA_ASSET_PATH=\"lua\"",
-      "-O0",
-      "-g3",
-      "-c",
-      "-o",
-      "build/debug/geo2d_lua.o",
-      "src/geo2d_lua.c"
-    ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/geo2d_lua.o"
-  },
-  {
     "file": "src/ui.c",
     "arguments": [
       "/usr/bin/gcc",
@@ -320,7 +298,7 @@
     "output": "build/debug/ui.o"
   },
   {
-    "file": "src/mesh2d/tris.c",
+    "file": "src/geo2d/pslg2d.c",
     "arguments": [
       "/usr/bin/gcc",
       "-Wall",
@@ -335,11 +313,99 @@
       "-g3",
       "-c",
       "-o",
-      "build/debug/mesh2d/tris.o",
-      "src/mesh2d/tris.c"
+      "build/debug/geo2d/pslg2d.o",
+      "src/geo2d/pslg2d.c"
     ],
     "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/mesh2d/tris.o"
+    "output": "build/debug/geo2d/pslg2d.o"
+  },
+  {
+    "file": "src/geo2d/curve2d.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/geo2d/curve2d.o",
+      "src/geo2d/curve2d.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/geo2d/curve2d.o"
+  },
+  {
+    "file": "src/geo2d/pslg2d_lua.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/geo2d/pslg2d_lua.o",
+      "src/geo2d/pslg2d_lua.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/geo2d/pslg2d_lua.o"
+  },
+  {
+    "file": "src/mesh2d/polymesh2d_build.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/mesh2d/polymesh2d_build.o",
+      "src/mesh2d/polymesh2d_build.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/mesh2d/polymesh2d_build.o"
+  },
+  {
+    "file": "src/mesh2d/polymesh2d.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/mesh2d/polymesh2d.o",
+      "src/mesh2d/polymesh2d.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/mesh2d/polymesh2d.o"
   },
   {
     "file": "src/mesh2d/mesh2d_lua.c",
@@ -364,7 +430,7 @@
     "output": "build/debug/mesh2d/mesh2d_lua.o"
   },
   {
-    "file": "src/mesh2d/smesh.c",
+    "file": "src/mesh2d/trimesh2d.c",
     "arguments": [
       "/usr/bin/gcc",
       "-Wall",
@@ -379,14 +445,14 @@
       "-g3",
       "-c",
       "-o",
-      "build/debug/mesh2d/smesh.o",
-      "src/mesh2d/smesh.c"
+      "build/debug/mesh2d/trimesh2d.o",
+      "src/mesh2d/trimesh2d.c"
     ],
     "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/mesh2d/smesh.o"
+    "output": "build/debug/mesh2d/trimesh2d.o"
   },
   {
-    "file": "src/mesh2d/utils.c",
+    "file": "src/mesh2d/cartmesh2d.c",
     "arguments": [
       "/usr/bin/gcc",
       "-Wall",
@@ -401,11 +467,55 @@
       "-g3",
       "-c",
       "-o",
-      "build/debug/mesh2d/utils.o",
-      "src/mesh2d/utils.c"
+      "build/debug/mesh2d/cartmesh2d.o",
+      "src/mesh2d/cartmesh2d.c"
     ],
     "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/mesh2d/utils.o"
+    "output": "build/debug/mesh2d/cartmesh2d.o"
+  },
+  {
+    "file": "src/mesh2d/strucmesh2d.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/mesh2d/strucmesh2d.o",
+      "src/mesh2d/strucmesh2d.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/mesh2d/strucmesh2d.o"
+  },
+  {
+    "file": "src/mesh2d/polymesh2d_geom.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/mesh2d/polymesh2d_geom.o",
+      "src/mesh2d/polymesh2d_geom.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/mesh2d/polymesh2d_geom.o"
   },
   {
     "file": "src/vec.c",
@@ -496,6 +606,28 @@
     "output": "build/debug/expr.o"
   },
   {
+    "file": "src/fvm/solver_lua.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/fvm/solver_lua.o",
+      "src/fvm/solver_lua.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/fvm/solver_lua.o"
+  },
+  {
     "file": "src/fvm/field.c",
     "arguments": [
       "/usr/bin/gcc",
@@ -516,6 +648,28 @@
     ],
     "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
     "output": "build/debug/fvm/field.o"
+  },
+  {
+    "file": "src/fvm/field_lua.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/fvm/field_lua.o",
+      "src/fvm/field_lua.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/fvm/field_lua.o"
   },
   {
     "file": "src/fvm/operators.c",
@@ -584,7 +738,7 @@
     "output": "build/debug/fvm/bc.o"
   },
   {
-    "file": "src/fvm/fvm_lua.c",
+    "file": "src/fvm/bc_lua.c",
     "arguments": [
       "/usr/bin/gcc",
       "-Wall",
@@ -599,11 +753,33 @@
       "-g3",
       "-c",
       "-o",
-      "build/debug/fvm/fvm_lua.o",
-      "src/fvm/fvm_lua.c"
+      "build/debug/fvm/bc_lua.o",
+      "src/fvm/bc_lua.c"
     ],
     "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/fvm/fvm_lua.o"
+    "output": "build/debug/fvm/bc_lua.o"
+  },
+  {
+    "file": "src/fvm/operators_lua.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/fvm/operators_lua.o",
+      "src/fvm/operators_lua.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/fvm/operators_lua.o"
   },
   {
     "file": "src/fvm/ctx.c",
@@ -626,6 +802,50 @@
     ],
     "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
     "output": "build/debug/fvm/ctx.o"
+  },
+  {
+    "file": "src/fvm/solver.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/fvm/solver.o",
+      "src/fvm/solver.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/fvm/solver.o"
+  },
+  {
+    "file": "src/fvm/linalg_lua.c",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-pedantic",
+      "-MMD",
+      "-MP",
+      "-Iinclude",
+      "-Ivendor/Triangle/src/Triangle",
+      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
+      "-DLUA_ASSET_PATH=\"lua\"",
+      "-O0",
+      "-g3",
+      "-c",
+      "-o",
+      "build/debug/fvm/linalg_lua.o",
+      "src/fvm/linalg_lua.c"
+    ],
+    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
+    "output": "build/debug/fvm/linalg_lua.o"
   },
   {
     "file": "src/scratch_lua.c",
@@ -694,28 +914,6 @@
     "output": "build/debug/ui_lua.o"
   },
   {
-    "file": "src/geo2d.c",
-    "arguments": [
-      "/usr/bin/gcc",
-      "-Wall",
-      "-pedantic",
-      "-MMD",
-      "-MP",
-      "-Iinclude",
-      "-Ivendor/Triangle/src/Triangle",
-      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
-      "-DLUA_ASSET_PATH=\"lua\"",
-      "-O0",
-      "-g3",
-      "-c",
-      "-o",
-      "build/debug/geo2d.o",
-      "src/geo2d.c"
-    ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/geo2d.o"
-  },
-  {
     "file": "src/scratch.c",
     "arguments": [
       "/usr/bin/gcc",
@@ -780,71 +978,5 @@
     ],
     "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
     "output": "build/debug/cmd/couette/main.o"
-  },
-  {
-    "file": "cmd/ldc/main.c",
-    "arguments": [
-      "/usr/bin/gcc",
-      "-Wall",
-      "-pedantic",
-      "-MMD",
-      "-MP",
-      "-Iinclude",
-      "-Ivendor/Triangle/src/Triangle",
-      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
-      "-DLUA_ASSET_PATH=\"lua\"",
-      "-O0",
-      "-g3",
-      "-c",
-      "-o",
-      "build/debug/cmd/ldc/main.o",
-      "cmd/ldc/main.c"
-    ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/cmd/ldc/main.o"
-  },
-  {
-    "file": "cmd/poiseuille/main.c",
-    "arguments": [
-      "/usr/bin/gcc",
-      "-Wall",
-      "-pedantic",
-      "-MMD",
-      "-MP",
-      "-Iinclude",
-      "-Ivendor/Triangle/src/Triangle",
-      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
-      "-DLUA_ASSET_PATH=\"lua\"",
-      "-O0",
-      "-g3",
-      "-c",
-      "-o",
-      "build/debug/cmd/poiseuille/main.o",
-      "cmd/poiseuille/main.c"
-    ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/cmd/poiseuille/main.o"
-  },
-  {
-    "file": "cmd/ui/main.c",
-    "arguments": [
-      "/usr/bin/gcc",
-      "-Wall",
-      "-pedantic",
-      "-MMD",
-      "-MP",
-      "-Iinclude",
-      "-Ivendor/Triangle/src/Triangle",
-      "-Ibuild/debug/vendor/Triangle-cmake/Triangle",
-      "-DLUA_ASSET_PATH=\"lua\"",
-      "-O0",
-      "-g3",
-      "-c",
-      "-o",
-      "build/debug/cmd/ui/main.o",
-      "cmd/ui/main.c"
-    ],
-    "directory": "/home/jedn/Documents/JEDN-Codes/JNL_CFD",
-    "output": "build/debug/cmd/ui/main.o"
   }
 ]

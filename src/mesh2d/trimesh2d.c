@@ -6,7 +6,7 @@
 #include "triangle.h"
 #include "triangle_api.h"
 
-#include "trimesh2d.h"
+#include "mesh2d/trimesh2d.h"
 
 //
 // Small helpers

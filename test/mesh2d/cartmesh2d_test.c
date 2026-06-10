@@ -1,5 +1,5 @@
 #include "jnl/test.h"
-#include "cartmesh2d.h"
+#include "mesh2d/cartmesh2d.h"
 
 #define EPS 1e-10
 

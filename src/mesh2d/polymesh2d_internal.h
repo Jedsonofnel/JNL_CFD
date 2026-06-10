@@ -5,7 +5,7 @@
 #include <math.h>
 
 #include "jnl/common.h"
-#include "polymesh2d.h"
+#include "mesh2d/polymesh2d.h"
 
 //
 // Internal helpers/macros

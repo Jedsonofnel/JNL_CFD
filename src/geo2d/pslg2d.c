@@ -3,7 +3,7 @@
 #include <math.h>
 #include <string.h>
 
-#include "pslg2d.h"
+#include "geo2d/pslg2d.h"
 #include "jnl/common.h"
 #include "jnl/arena.h"
 

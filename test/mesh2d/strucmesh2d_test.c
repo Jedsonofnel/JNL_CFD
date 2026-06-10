@@ -1,8 +1,8 @@
 #include "jnl/test.h"
 
-#include "curve2d.h"
-#include "polymesh2d.h"
-#include "strucmesh2d.h"
+#include "geo2d/curve2d.h"
+#include "mesh2d/polymesh2d.h"
+#include "mesh2d/strucmesh2d.h"
 
 #define EPS 1e-10
 

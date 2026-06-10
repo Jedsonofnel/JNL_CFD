@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "jnl/test.h"
-#include "polymesh2d.h"
+#include "mesh2d/polymesh2d.h"
 
 #define EPS 1e-10
 

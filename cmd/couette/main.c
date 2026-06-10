@@ -24,7 +24,7 @@
 
 #include "jnl/common.h"
 #include "mesh2d.h"
-#include "cartmesh2d.h"
+#include "mesh2d/cartmesh2d.h"
 
 #include "fvm/linalg.h"
 #include "fvm/solver.h"

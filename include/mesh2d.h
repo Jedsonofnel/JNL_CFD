@@ -7,14 +7,12 @@
 // Umbrella header
 //
 
-#include "cartmesh2d.h"
-#include "polymesh2d.h"
-#include "trimesh2d.h"
-
-//
-// Convenient typedef
-//
+#include "mesh2d/cartmesh2d.h"
 
 typedef struct jnl_polymesh2d pmsh2d;
+
+#include "mesh2d/polymesh2d.h"
+#include "mesh2d/trimesh2d.h"
+#include "mesh2d/strucmesh2d.h"
 
 #endif // JNL_MESH2d_H

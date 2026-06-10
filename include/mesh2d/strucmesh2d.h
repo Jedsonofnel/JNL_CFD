@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 #include "jnl/common.h"
-#include "curve2d.h"
+#include "geo2d/curve2d.h"
 #include "polymesh2d.h"
 
 #define JNL_STRUC2D_DEFAULT_TOL 1e-10

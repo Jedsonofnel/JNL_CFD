@@ -4,8 +4,8 @@
 #include <stdbool.h>
 
 #include "jnl/common.h"
-#include "pslg2d.h"
-#include "polymesh2d.h"
+#include "geo2d/pslg2d.h"
+#include "mesh2d/polymesh2d.h"
 
 //
 // Triangle options

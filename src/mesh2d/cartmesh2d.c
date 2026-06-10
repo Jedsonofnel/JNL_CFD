@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "cartmesh2d.h"
+#include "mesh2d/cartmesh2d.h"
 
 #define PT(i, j, nx) ((i32)((j) * ((nx) + 1) + (i)))
 #define CELL(i, j, nx) ((i32)((j) * (nx) + (i)))
