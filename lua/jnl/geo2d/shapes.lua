@@ -2,28 +2,9 @@
 -- <jed@nelson.ac> // 2026-05-11
 
 ---@type { pslg_new: fun(): PSLG }
-local geo2d = require("jnl.geo2d_internal")
+local pslg2d = require("jnl.pslg2d_internal")
 
 local M = {}
-
-M._doc = "2D shape primitives for geometry and PSLG construction"
-
-M._api = {
-	line    = {
-		args = "pts:number[][] | x0,y0,x1,y1:number",
-		ret = "Line",
-		doc = "Open polyline. No closing edge. Used for named boundary segments and internal lines."
-	},
-	circle  = { args = "cx, cy, r:number, n:int?", ret = "Circle", doc = "Circle centred at cx,cy; n polygon segments (default 64)" },
-	rect    = { args = "x0, y0, x1, y1:number", ret = "Rect", doc = "Axis-aligned rectangle from two corners" },
-	polygon = { args = "pts:number[][]", ret = "Polygon", doc = "Arbitrary polygon; min 3 points, consistent winding" },
-}
-
----@class BBox
----@field min_x number
----@field min_y number
----@field max_x number
----@field max_y number
 
 --
 -- Helpers
@@ -112,7 +93,7 @@ end
 ---@param opts table?
 ---@return PSLG
 function Shape:discretise(marker, opts)
-	local g = geo2d.pslg_new()
+	local g = pslg2d.pslg_new()
 	self:discretise_onto(g, marker, opts)
 	return g
 end

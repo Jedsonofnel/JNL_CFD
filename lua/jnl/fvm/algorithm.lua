@@ -3,8 +3,6 @@
 -- deps
 local V = require("jnl.core.validation")
 local Node = require("jnl.nabla.node")
-local Deps = require("jnl.nabla.deps")
-local Mangle = require("jnl.nabla.mangle")
 local Inst = require("jnl.fvm.instruction")
 
 local Alg = {}
@@ -168,27 +166,19 @@ end
 -- Convergence / Divergence / Watch / Rulesets
 --
 
-function Alg:converge(field, pred)
-	field = fname(field)
-	V.identifier(field, "alg:converge")
-	self.convergence[field] = pred
+function Alg:converge(spec)
+	assert(type(spec) == "table" and spec.kind == "conv_crit",
+		"alg:converge: expected a conv_crit spec from Rules.*")
+
+	self.convergence[#self.convergence + 1] = spec
 	return self
 end
 
-function Alg:remove_converge(field)
-	self.convergence[fname(field)] = nil
-	return self
-end
+function Alg:guard(spec)
+	assert(type(spec) == "table" and spec.kind == "div_crit",
+		"alg:guard: expected a div_crit spec from Rules.*")
 
-function Alg:guard(field, pred)
-	field = fname(field)
-	V.identifier(field, "alg:guard")
-	self.divergence[field] = pred
-	return self
-end
-
-function Alg:remove_guard(field)
-	self.divergence[fname(field)] = nil
+	self.divergence[#self.divergence + 1] = spec
 	return self
 end
 
@@ -199,6 +189,7 @@ function Alg:watch(field, kind)
 	return self
 end
 
+-- TODO: maybe reconsider when I redesign sage
 function Alg:add_ruleset(rs)
 	self.rulesets[#self.rulesets + 1] = rs
 	return self

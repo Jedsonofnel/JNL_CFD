@@ -66,6 +66,13 @@ local default_cfg = Cfg.new()
 -- Constructors: abstract instructions (high level)
 --
 
+---@param text string?
+function Inst.comment(text)
+	return new("comment", { text = text or "", level = "abstract" })
+end
+
+---@param field string
+---@param value number
 function Inst.fill(field, value)
 	return new("fill", { field = field, value = value, level = "abstract" })
 end
@@ -243,7 +250,7 @@ end
 ---@param coeff string
 ---@param expr Node?
 function Inst.div_f(field, flux, coeff, expr)
-	return new("div_f", { field = field, fulx = flux, coeff = coeff, node = expr })
+	return new("div_f", { field = field, flux = flux, coeff = coeff, node = expr })
 end
 
 ---Explicit deferred correction RHS contribution.
@@ -315,16 +322,6 @@ function Inst.sp_fs(field, scale, src, volumetric, expr)
 		node       = expr,
 	})
 end
-
---
--- BCs
---
-
----@alias jnl_bc_kind integer
---- BC kind constants matching C enum jnl_bc_kind
-Inst.BC_N = 0 -- Neumann
-Inst.BC_D = 1 -- Dirichlet
-Inst.BC_R = 2 -- Robin
 
 --
 -- Patch scalar ghost fill
@@ -417,9 +414,9 @@ end
 ---@param ux string
 ---@param uy string
 ---@param patch string
----@param nkind jnl_bc_kind
+---@param nkind number
 ---@param nval number
----@param tkind jnl_bc_kind
+---@param tkind number
 ---@param tval number
 function Inst.pfill_v_nt(ux, uy, patch, nkind, nval, tkind, tval)
 	return new("patch_v_fill_nt", {
@@ -439,6 +436,10 @@ end
 
 -- dispatch table
 local abstract_fmt = {}
+
+function abstract_fmt.comment(f)
+	return ";; " .. (f.text or "")
+end
 
 function abstract_fmt.fill(f)
 	return string.format("  FILL       %-14s %g", f.field, f.value or 0)
@@ -497,6 +498,10 @@ end
 local concrete_fmt = {}
 
 -- infrastructure
+
+function concrete_fmt.comment(f)
+	return ";; " .. (f.text or "")
+end
 
 function concrete_fmt.sys_reset(f, _)
 	return string.format("SYS_RESET     %s", f.field)

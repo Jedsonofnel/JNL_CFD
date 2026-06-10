@@ -334,42 +334,6 @@ local function scan_max_scratch(reg, man)
 	man.max_cell_scratch = max_d
 end
 
-local function scan_node_resources(node, man)
-	if not node or type(node) ~= "table" then return end
-
-	if node.kind == "laplacian" then
-		local field = node.b and node.b.name
-		if field then
-			man.grad[Mangle.grad(field, "x")] = true
-			man.grad[Mangle.grad(field, "y")] = true
-		end
-	elseif node.kind == "mwi" or node.kind == "div_mwi" then
-		if node.a and node.b and node.a.name and node.b.name then
-			local mwi_name = Mangle.accessor("mwi", node)
-			man.face[mwi_name] = { Uname = node.a.name, pname = node.b.name }
-		end
-	end
-
-	scan_node_resources(node.a, man)
-	scan_node_resources(node.b, man)
-end
-
-local function scan_reg_resources(reg, man)
-	reg:each(function(_, entry)
-		if entry.equation then
-			scan_node_resources(entry.equation.lhs, man)
-			scan_node_resources(entry.equation.rhs, man)
-		end
-
-		if entry.expr then
-			scan_node_resources(entry.expr, man)
-		end
-		if entry.correction then
-			scan_node_resources(entry.correction, man)
-		end
-	end)
-end
-
 local function scan_phase_systems(phase, reg, man)
 	for _, inst in ipairs(phase) do
 		if inst.op ~= "solve" then goto continue end
@@ -706,18 +670,24 @@ end
 
 local function manifest_merge_elab(man, elab)
 	for name, entry in pairs(elab.fields) do
-		if entry.kind == "grad" or entry.kind == "diag"
-			or entry.kind == "vec_cache" or entry.kind == "div_cell" then
+		if entry.kind == "grad"
+			or entry.kind == "diag"
+			or entry.kind == "vec_cache"
+			or entry.kind == "div_cell" then
 			man.cell[name] = { ghost = true }
+		elseif entry.kind == "mwi" then
+			man.face[name] = { Uname = entry.U, pname = entry.p }
 		end
 	end
+
 	for name, entry in pairs(elab.face_flux) do
 		if entry.kind == "symbol" then
 			man.face[name] = { field = entry.field }
 		elseif entry.kind == "expr" then
 			man.face[name] = { vec_x = entry.vec_x, vec_y = entry.vec_y }
+		elseif entry.kind == "mwi" then
+			man.face[name] = { Uname = entry.U, pname = entry.p }
 		end
-		-- mwi already in man.face from scan_node_resources
 	end
 end
 
@@ -1210,13 +1180,13 @@ end
 --
 
 local function expand(alg, reg)
-	local inserted                          = {}
-	local fresh                             = {}
-	local explicit                          = build_explicit_set(alg.steps)
+	local inserted = {}
+	local fresh = {}
+	local explicit = build_explicit_set(alg.steps)
 	local pre_names, main_names, post_names = Deps.classify(reg, explicit)
-	local sorted_main                       = Deps.topo_sort(reg, main_names)
+	local sorted_main = Deps.topo_sort(reg, main_names)
 
-	local pre                               = {}
+	local pre = {}
 	emit_fills(reg, pre)
 	emit_pre_evaluates(reg, pre_names, inserted, fresh, pre)
 
@@ -1226,8 +1196,7 @@ local function expand(alg, reg)
 end
 
 local function manifest(alg, reg)
-	local man = init_manifest(reg)
-	scan_reg_resources(reg, man)
+	local man = init_manifest(reg) -- cell fields from registry declarations
 	scan_phase_systems(alg.pre, reg, man)
 	scan_phase_systems(alg.main, reg, man)
 	scan_phase_systems(alg.post, reg, man)

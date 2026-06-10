@@ -3,69 +3,54 @@
 
 local M = {}
 
-M._doc = "Documentation aggregator and API auditor for JNL suite"
-
-M._doc_subsection = {
-	"Three metadata tables drive documentation. _api is a flat map of function name to " ..
-	"{ args, ret, doc } — args and ret are plain strings, doc is one sentence.",
-	"_types is a map of type name to { doc, constructor, kind?, methods } where methods " ..
-	"is itself a flat map of method name to { args, ret, doc }. constructor is a string " ..
-	"showing how the type is obtained. kind is an optional tag such as 'table' or 'userdata'.",
-	"_constants is a map of constant group name to { doc, values } where values is a map " ..
-	"of key to { value, doc }. value should be the Lua literal as a string for display.",
-	"_doc is a single short sentence. _doc_subsection is a string or array of strings " ..
-	"printed before _api; keep each paragraph to 2-3 lines.",
-}
-
-
 --
 -- Module registry
 --
 
 local MODULES = {
-	-- geo2d
-	"jnl.geo2d.shapes",
-	"jnl.geo2d.domain",
-	"jnl.geo2d.types",
-	-- mesh2d
-	"jnl.mesh2d",
-	"jnl.mesh2d.smesh",
-	"jnl.mesh2d.types",
-	"jnl.mesh2d.tri",
-	-- fvm
-	"jnl.fvm",
-	"jnl.fvm.operators",
-	"jnl.fvm.rules",
-	"jnl.fvm.algorithm",
-	"jnl.fvm.expr",
-	"jnl.fvm.eq",
-	"jnl.fvm.canned",
-	"jnl.fvm.case",
-	"jnl.fvm.bc",
-	"jnl.fvm.study",
-	"jnl.fvm.vtk",
-	"jnl.fvm.compile",
-	-- core
-	"jnl.core.algorithm",
-	"jnl.core.registry",
-	"jnl.core.expr",
-	-- repl
-	"jnl.repl",
-	"jnl.repl.study",
-	"jnl.repl.printer",
-	-- gp
-	"jnl.gp",
-	"jnl.gp.compare",
-	"jnl.gp.mesh",
-	-- jnl
-	"jnl.sage",
-	"jnl.ui",
-	"jnl.doc",
-	"jnl.llm",
-	-- exploration
-	"jnl.explore",
-	"jnl.explore.uq",
-	"jnl.explore.stat",
+	-- -- geo2d
+	-- "jnl.geo2d.shapes",
+	-- "jnl.geo2d.domain",
+	-- "jnl.geo2d.types",
+	-- -- mesh2d
+	-- "jnl.mesh2d",
+	-- "jnl.mesh2d.smesh",
+	-- "jnl.mesh2d.types",
+	-- "jnl.mesh2d.tri",
+	-- -- fvm
+	-- "jnl.fvm",
+	-- "jnl.fvm.operators",
+	-- "jnl.fvm.rules",
+	-- "jnl.fvm.algorithm",
+	-- "jnl.fvm.expr",
+	-- "jnl.fvm.eq",
+	-- "jnl.fvm.canned",
+	-- "jnl.fvm.case",
+	-- "jnl.fvm.bc",
+	-- "jnl.fvm.study",
+	-- "jnl.fvm.vtk",
+	-- "jnl.fvm.compile",
+	-- -- core
+	-- "jnl.core.algorithm",
+	-- "jnl.core.registry",
+	-- "jnl.core.expr",
+	-- -- repl
+	-- "jnl.repl",
+	-- "jnl.repl.study",
+	-- "jnl.repl.printer",
+	-- -- gp
+	-- "jnl.gp",
+	-- "jnl.gp.compare",
+	-- "jnl.gp.mesh",
+	-- -- jnl
+	-- "jnl.sage",
+	-- "jnl.ui",
+	-- "jnl.doc",
+	-- "jnl.llm",
+	-- -- exploration
+	-- "jnl.explore",
+	-- "jnl.explore.uq",
+	-- "jnl.explore.stat",
 }
 
 local function load_modules()
@@ -440,52 +425,5 @@ end
 function M.dump_all(modules, opts)
 	io.write(M.dump_string(modules, opts or {}))
 end
-
---
--- API
---
-
-M._api = {
-	audit = {
-		args = "modules:table?",
-		ret = "number",
-		doc = "Audit modules for stale/missing docs; returns warning count",
-	},
-	modules = {
-		args = "",
-		ret = "string[]",
-		doc = "Return documented module names",
-	},
-	load = {
-		args = "name:string",
-		ret = "module:table?, err:string?",
-		doc = "Load one documented module by exact or unique suffix name",
-	},
-	dump_modules = {
-		args = "opts:table?",
-		ret = "nil",
-		doc = "Print documented module names",
-	},
-	dump_module = {
-		args = "name:string, opts:table?",
-		ret = "nil",
-		doc = "Print API reference for one module",
-	},
-	dump_all = {
-		args = "opts:table?",
-		ret = "nil",
-		doc = "Print full API reference",
-	},
-	dump_string = {
-		args = "modules:table?, opts:table?",
-		ret = "string",
-		doc = "Return API reference as a string",
-	},
-	llm_string = {
-		args = "opts:table?",
-		ret = "string",
-		doc = "Return full JNLCFD programming context for LLMs",
-	},
-}
 
 return M
