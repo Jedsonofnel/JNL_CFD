@@ -157,7 +157,7 @@ static inline void register_preloaders(lua_State *L)
 	lua_setfield(L, -2, "jnl.vtk_internal");
 
 	lua_pushcfunction(L, luaopen_pslg2d_internal);
-	lua_setfield(L, -2, "jnl.geo2d_internal");
+	lua_setfield(L, -2, "jnl.pslg2d_internal");
 
 	lua_pushcfunction(L, luaopen_ui_internal);
 	lua_setfield(L, -2, "jnl.ui_internal");

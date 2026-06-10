@@ -114,22 +114,45 @@ static const luaL_Reg fvsys_mt[] = {
 static int l_ctx_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_owned_vec(L, jnl_fvm_ctx_field(lc->ctx), lc->ctx->n_cells, 1);
+	f64 *data = jnl_fvm_ctx_field(lc->ctx);
+	push_owned_vec(L, data, lc->ctx->n_cells, 1);
+
+	if (!lua_isnoneornil(L, 2)) {
+		f64 init = luaL_checknumber(L, 2);
+		for (i32 i = 0; i < lc->ctx->n_cells; i++)
+			data[i] = init;
+	}
+
 	return 1;
 }
 
 static int l_ctx_real_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_owned_vec(L, jnl_fvm_ctx_real_field(lc->ctx), lc->ctx->n_real_cells,
-	               1);
+	f64 *data = jnl_fvm_ctx_real_field(lc->ctx);
+	push_owned_vec(L, data, lc->ctx->n_real_cells, 1);
+
+	if (!lua_isnoneornil(L, 2)) {
+		f64 init = luaL_checknumber(L, 2);
+		for (i32 i = 0; i < lc->ctx->n_real_cells; i++)
+			data[i] = init;
+	}
+
 	return 1;
 }
 
 static int l_ctx_face_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_owned_vec(L, jnl_fvm_ctx_face_field(lc->ctx), lc->ctx->n_faces, 1);
+	f64 *data = jnl_fvm_ctx_face_field(lc->ctx);
+	push_owned_vec(L, data, lc->ctx->n_faces, 1);
+
+	if (!lua_isnoneornil(L, 2)) {
+		f64 init = luaL_checknumber(L, 2);
+		for (i32 i = 0; i < lc->ctx->n_faces; i++)
+			data[i] = init;
+	}
+
 	return 1;
 }
 
@@ -223,7 +246,7 @@ static const luaL_Reg ctx_mt[] = {{"field", l_ctx_field},
 static int l_ctx_new(lua_State *L)
 {
 	pmsh2d *mesh = check_pmsh2d(L, 1);
-	i32 n_systems = (i32)luaL_checkinteger(L, 5);
+	i32 n_systems = (i32)luaL_checkinteger(L, 2);
 
 	lua_fvm_ctx_ud *lc = lua_newuserdata(L, sizeof(lua_fvm_ctx_ud));
 

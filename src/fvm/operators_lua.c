@@ -196,7 +196,7 @@ static int l_su_v_fs(lua_State *L)
 {
 	f64 scale = luaL_checknumber(L, 3);
 	jnl_su_v_fs(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2), scale,
-	            check_vec(L, 3)->data);
+	            check_vec(L, 4)->data);
 	return 0;
 }
 
