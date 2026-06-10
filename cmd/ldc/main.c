@@ -271,12 +271,7 @@ int main(void)
 	// Scratch pool
 	//
 
-	const i32 n_scratch = 12;
-	jnl_arena *sp_arena =
-	    arena_create(jnl_scratch_pool_arena_size(n_real, n_scratch));
-
-	struct jnl_scratch_pool *pool =
-	    jnl_scratch_pool_new(n_real, n_scratch, sp_arena);
+	struct jnl_scratch_pool *pool = jnl_scratch_pool_new(n_cells);
 
 	//
 	// Linear systems
@@ -364,7 +359,7 @@ int main(void)
 		jnl_diag_snapshot(mesh, ux_sys, ap_x);
 		jnl_fvsys_under_relax(ux_sys, Ux, ALPHA_U);
 
-		jnl_fvsys_solve_bicgstab_into(ux_sys, pool, Ux, MOM_TOL, MOM_LIN_ITERS);
+		jnl_fvsys_solve_bicgstab_dilu_into(ux_sys, pool, Ux, MOM_TOL, MOM_LIN_ITERS);
 
 		f64 res_Ux = jnl_fvsys_residual_norm(ux_sys, pool, Ux);
 
@@ -385,7 +380,7 @@ int main(void)
 		jnl_diag_snapshot(mesh, uy_sys, ap_y);
 		jnl_fvsys_under_relax(uy_sys, Uy, ALPHA_U);
 
-		jnl_fvsys_solve_bicgstab_into(uy_sys, pool, Uy, MOM_TOL, MOM_LIN_ITERS);
+		jnl_fvsys_solve_bicgstab_dilu_into(uy_sys, pool, Uy, MOM_TOL, MOM_LIN_ITERS);
 
 		f64 res_Uy = jnl_fvsys_residual_norm(uy_sys, pool, Uy);
 
@@ -421,7 +416,7 @@ int main(void)
 
 		close_scalar_bcs(pp_sys, mesh, &pp_bcs);
 
-		jnl_fvsys_solve_cg_into(pp_sys, pool, pp, PP_TOL, PP_LIN_ITERS);
+		jnl_fvsys_solve_cg_dic_into(pp_sys, pool, pp, PP_TOL, PP_LIN_ITERS);
 
 		f64 res_pp = jnl_fvsys_residual_norm(pp_sys, pool, pp);
 
@@ -495,7 +490,6 @@ int main(void)
 
 	jnl_polymesh2d_free(mesh);
 
-	arena_destroy(sp_arena);
 	arena_destroy(ux_arena);
 	arena_destroy(uy_arena);
 	arena_destroy(pp_arena);
