@@ -24,4 +24,13 @@ f64 jnl_vec2d_len(jnl_vec2d a);
 f64 jnl_vec2d_dot(jnl_vec2d a, jnl_vec2d b);
 f64 jnl_vec2d_cross(jnl_vec2d a, jnl_vec2d b);
 
+//
+// AABB (two vec2ds)
+//
+
+struct jnl_aabb {
+	f64 min_x, min_y;
+	f64 max_x, max_y;
+};
+
 #endif // JNL_VEC2D_H

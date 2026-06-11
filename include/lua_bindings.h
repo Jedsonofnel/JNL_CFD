@@ -8,9 +8,14 @@
 #include "jnl/common.h"
 #include "mesh2d.h"
 
-#define PSLG_MT "jnl.geo2d.pslg"
-#define MESH_MT "jnl.mesh2d.mesh"
 #define VEC_MT "jnl.vec"
+
+#define PSLG_MT "jnl.geo2d.pslg"
+#define CURVE2D_MT "jnl.geo2d.curve"
+#define DIST1D_MT "jnl.geo2d.dist"
+#define DOMAIN2D_MT "jnl.geo2d.domain"
+
+#define MESH_MT "jnl.mesh2d.mesh"
 #define POOL_MT "jnl.scratch_pool"
 
 #define CTX_MT "jnl.fvm.ctx"
@@ -133,7 +138,9 @@ int luaopen_expr_internal(lua_State *L);
 int luaopen_scratch_internal(lua_State *L);
 int luaopen_vtk_internal(lua_State *L);
 
+int luaopen_domain2d_internal(lua_State *L);
 int luaopen_pslg2d_internal(lua_State *L);
+int luaopen_curve2d_internal(lua_State *L);
 int luaopen_mesh2d_internal(lua_State *L);
 int luaopen_ui_internal(lua_State *L);
 int luaopen_fvm_internal(lua_State *L);
@@ -156,8 +163,14 @@ static inline void register_preloaders(lua_State *L)
 	lua_pushcfunction(L, luaopen_vtk_internal);
 	lua_setfield(L, -2, "jnl.vtk_internal");
 
+	lua_pushcfunction(L, luaopen_domain2d_internal);
+	lua_setfield(L, -2, "jnl.domain2d_internal");
+
 	lua_pushcfunction(L, luaopen_pslg2d_internal);
 	lua_setfield(L, -2, "jnl.pslg2d_internal");
+
+	lua_pushcfunction(L, luaopen_curve2d_internal);
+	lua_setfield(L, -2, "jnl.curve2d_internal");
 
 	lua_pushcfunction(L, luaopen_ui_internal);
 	lua_setfield(L, -2, "jnl.ui_internal");

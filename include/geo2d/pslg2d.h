@@ -4,8 +4,7 @@
 #include <stdio.h>
 
 #include "jnl/common.h"
-#include "jnl/arena.h"
-#include "vec2d.h"
+#include "geo2d/vec2d.h"
 
 #define PSLG_NOT_FOUND (-1)
 #define PSLG_OOB (-2)
@@ -21,15 +20,8 @@ struct jnl_node_array {
 	u32 len, cap;
 };
 
-struct jnl_aabb {
-	f64 max_x, max_y;
-	f64 min_x, min_y;
-};
-
 void jnl_node_array_init(struct jnl_node_array *ns);
 void jnl_node_array_free(struct jnl_node_array *ns);
-struct jnl_node_array jnl_node_array_compact(const struct jnl_node_array *ns,
-                                             struct jnl_arena *arena);
 
 u32 jnl_node_array_add(struct jnl_node_array *ns, f64 x, f64 y, i32 marker);
 u32 jnl_node_array_add_v(struct jnl_node_array *ns, jnl_vec2d v, i32 marker);
@@ -59,9 +51,6 @@ struct jnl_edge_array {
 void jnl_edge_array_init(struct jnl_edge_array *es);
 void jnl_edge_array_free(struct jnl_edge_array *es);
 
-struct jnl_edge_array jnl_edge_array_compact(const struct jnl_edge_array *es,
-                                             struct jnl_arena *arena);
-
 u32 jnl_edge_array_add(struct jnl_edge_array *es, u32 p, u32 q, i32 marker);
 
 void jnl_edge_array_write(const struct jnl_edge_array *es, FILE *file);
@@ -85,9 +74,6 @@ struct jnl_pslg {
 
 void jnl_pslg_init(struct jnl_pslg *g);
 void jnl_pslg_free(struct jnl_pslg *g);
-
-struct jnl_pslg jnl_pslg_compact(const struct jnl_pslg *g,
-                                 struct jnl_arena *arena);
 
 u32 jnl_pslg_node_add(struct jnl_pslg *g, f64 x, f64 y, i32 marker);
 u32 jnl_pslg_node_add_v(struct jnl_pslg *g, jnl_vec2d v, i32 marker);
