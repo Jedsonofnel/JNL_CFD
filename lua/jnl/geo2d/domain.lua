@@ -59,6 +59,7 @@ function M.from_pen(p, opts)
 	local default = opts.default or "wall"
 	local outer = p:build()
 	local d = I.new(outer)
+	d.reg = reg
 	d:set_default_marker(reg:get(default))
 
 	-- Iterate segs (not tags) so we preserve order and pick up hints.
@@ -66,7 +67,7 @@ function M.from_pen(p, opts)
 	local hints = {}
 	for _, seg in ipairs(p.segs) do
 		if seg.tag then
-			d:add_patch(seg.tag, reg:get(seg.tag), seg.curve)
+			d:add_patch(seg.tag, seg.curve)
 			if seg.hint then
 				hints[seg.tag] = seg.hint
 			end
@@ -77,6 +78,24 @@ function M.from_pen(p, opts)
 	d.reg = reg
 	d.hints = hints
 	return d, reg
+end
+
+--
+-- Methods
+--
+
+local mt = I.metatable()
+
+function mt:add_patch(name, curve)
+	return self:_add_patch(name, self.reg:get(name), curve)
+end
+
+function mt:add_hole(name, boundary, seed)
+	return self:_add_hole(name, self.reg:get(name), boundary, seed)
+end
+
+function mt:add_region(name, seed, max_area)
+	return self:_add_region(name, self.reg:get(name), seed, max_area)
 end
 
 return M

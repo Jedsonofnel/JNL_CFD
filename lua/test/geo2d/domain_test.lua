@@ -1,15 +1,15 @@
 -- test/geo2d/domain_test.lua
 
-local h       = require("test.harness")
-local new_pen = require("jnl.geo2d.pen")
-local domain  = require("jnl.geo2d.domain")
+local h      = require("test.harness")
+local pen    = require("jnl.geo2d.pen")
+local domain = require("jnl.geo2d.domain")
 
 local function rect_pen()
-	return new_pen():at(0, 0):east(2):north(1):west(2):close()
+	return pen.new():at(0, 0):east(2):north(1):west(2):close()
 end
 
 local function tagged_pen()
-	return new_pen():at(0, 0)
+	return pen.new():at(0, 0)
 		:east(2):tag("bottom")
 		:north(1):tag("right")
 		:west(2):tag("top")
@@ -93,7 +93,7 @@ h.describe("hints stored on pen segments", function()
 	-- do not touch the C userdata and are unconditionally safe.
 
 	h.it("hint n is stored on the tagged segment", function()
-		local p = new_pen():at(0, 0)
+		local p = pen.new():at(0, 0)
 			:east(2):tag("bottom"):hint({ n = 48 })
 			:north(1):tag("right")
 			:west(2)
@@ -103,12 +103,12 @@ h.describe("hints stored on pen segments", function()
 	end)
 
 	h.it("hint is nil when not set", function()
-		local p = new_pen():at(0, 0):east(1):tag("a")
+		local p = pen.new():at(0, 0):east(1):tag("a")
 		h.expect(p.segs[1].hint).is_nil()
 	end)
 
 	h.it("hint on one segment does not bleed to adjacent segments", function()
-		local p = new_pen():at(0, 0)
+		local p = pen.new():at(0, 0)
 			:east(1):tag("a"):hint({ n = 64 })
 			:north(1):tag("b")
 		h.expect(p.segs[1].hint).is_not_nil()

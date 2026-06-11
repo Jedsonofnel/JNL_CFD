@@ -82,6 +82,12 @@ static int l_domain_new(lua_State *L)
 	return 1;
 }
 
+static int l_domain_metatable(lua_State *L)
+{
+	luaL_getmetatable(L, DOMAIN2D_MT);
+	return 1;
+}
+
 //
 // Lifecycle
 //
@@ -412,9 +418,9 @@ static int l_domain_n_regions(lua_State *L)
 
 static const luaL_Reg domain_methods[] = {
     // Construction
-    {"add_patch", l_domain_add_patch},
-    {"add_hole", l_domain_add_hole},
-    {"add_region", l_domain_add_region},
+    {"_add_patch", l_domain_add_patch},
+    {"_add_hole", l_domain_add_hole},
+    {"_add_region", l_domain_add_region},
     {"set_default_marker", l_domain_set_default_marker},
     // Validation
     {"check", l_domain_check},
@@ -443,15 +449,16 @@ static const luaL_Reg domain_methods[] = {
 
 static const luaL_Reg domain2d_funcs[] = {
     {"new", l_domain_new},
+    {"metatable", l_domain_metatable},
     {NULL, NULL},
 };
 
 int luaopen_domain2d_internal(lua_State *L)
 {
-    luaL_newmetatable(L, DOMAIN2D_MT);
-    luaL_setfuncs(L, domain_methods, 0);
-    lua_pop(L, 1);
+	luaL_newmetatable(L, DOMAIN2D_MT);
+	luaL_setfuncs(L, domain_methods, 0);
+	lua_pop(L, 1);
 
-    luaL_newlib(L, domain2d_funcs);
-    return 1;
+	luaL_newlib(L, domain2d_funcs);
+	return 1;
 }

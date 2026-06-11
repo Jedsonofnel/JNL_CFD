@@ -19,10 +19,10 @@ local function build_domain()
 		:south(H):tag("outlet")
 		:close():tag("bottom")
 
-	local d, reg = domain.from_pen(p)
+	local d = domain.from_pen(p)
 
 	local cyl = curve.circle({ cx, cy }, r)
-	d:add_hole("cylinder", reg:get("cylinder"), cyl, { cx, cy })
+	d:add_hole("cylinder", cyl, { cx, cy })
 
 	return d
 end

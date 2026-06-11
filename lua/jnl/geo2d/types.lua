@@ -153,27 +153,24 @@ local Domain2D = {}
 
 ---Add a named boundary patch (a sub-curve of the outer boundary).
 ---@param name   string
----@param marker integer
 ---@param curve  Curve2D
 ---@return self
-function Domain2D:add_patch(name, marker, curve) end
+function Domain2D:add_patch(name, curve) end
 
 ---Add a closed interior hole.
 ---`seed` must be a point strictly inside the hole (used to suppress interior cells).
 ---@param name     string?
----@param marker   integer
 ---@param boundary Curve2D  Must be a closed curve.
 ---@param seed     Point2D  Interior point.
 ---@return self
-function Domain2D:add_hole(name, marker, boundary, seed) end
+function Domain2D:add_hole(name, boundary, seed) end
 
 ---Add a region seed for cell-region labelling and per-region area constraints.
 ---@param name     string
----@param marker   integer
 ---@param seed     Point2D
 ---@param max_area number?  Area constraint; `<= 0` means unconstrained.
 ---@return self
-function Domain2D:add_region(name, marker, seed, max_area) end
+function Domain2D:add_region(name, seed, max_area) end
 
 ---Set the marker applied to unpatched outer boundary edges.
 ---@param marker integer
