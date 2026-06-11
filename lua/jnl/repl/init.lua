@@ -182,6 +182,7 @@ local BUILTIN_COMMANDS = {
 			local docs = documentation_index(repl)
 			local opts = {
 				width = repl.help_width or 72,
+				types = "local",
 			}
 
 			if arg == "" then

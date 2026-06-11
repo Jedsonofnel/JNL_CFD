@@ -1,8 +1,20 @@
 -- geo2d/curve.lua - composable parameterised 2D curves
 -- <jed@nelson.ac> // 2026-06-10
 
-local I = require("jnl.curve2d_internal")
+local opt = require("jnl.core.optional")
+local I = opt.require("jnl.curve2d_internal")
 
+--- Low-level 2D curve primitives, transformations, and sampling utilities.
+---
+--- Curve2D objects are immutable value types produced by constructors and
+--- transformations here, or retrieved from a Pen via :get() and :build().
+---
+--- For constructing domain boundaries with named patches, prefer the Pen API
+--- (jnl.geo2d.pen).  Use this module for:
+---   - simple standalone shapes (circle, rectangle) used as hole boundaries;
+---   - post-construction transformations (translate, scale, rotate, map);
+---   - sampling points for analysis or comparison;
+---   - discretising curves onto a PSLG for custom meshing.
 local M = {}
 
 --

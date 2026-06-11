@@ -3,6 +3,29 @@
 
 local C = require("jnl.geo2d.curve")
 
+--- Fluent pen/turtle API for building closed domain boundaries.
+---
+--- A Pen traces a 2D shape step-by-step, tagging each segment with a BC
+--- name and optionally attaching discretisation hints.  Pass the finished
+--- pen to domain.from_pen() to produce a meshable Domain2D.
+---
+--- Typical workflow:
+---
+---     local pen    = require("jnl.geo2d.pen")
+---     local domain = require("jnl.geo2d.domain")
+---
+---     local p = pen.new()
+---         :at(0, 0)
+---         :north(1)  :tag("inlet")
+---         :east(2)   :tag("top")
+---         :south(1)  :tag("outlet")
+---         :close()   :tag("wall")
+---     local d, reg = domain.from_pen(p)
+---
+--- Holes and interior regions are added to the Domain2D afterwards using
+--- Domain2D:add_hole() and Domain2D:add_region().
+local M = {}
+
 local TAU = 2.0 * math.pi
 local DEG = math.pi / 180.0
 
@@ -360,4 +383,14 @@ function Pen:pos()
 	return self.x, self.y
 end
 
-return new_pen
+--
+-- Public API
+--
+
+--- Create a new pen at an unset position.
+---@return Pen
+function M.new()
+	return new_pen()
+end
+
+return M

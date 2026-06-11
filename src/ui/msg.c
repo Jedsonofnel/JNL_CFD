@@ -357,8 +357,10 @@ void ui_domain_free(struct jnl_ui_domain *d)
 {
 	if (!d->chains)
 		return;
-	for (u32 i = 0; i < d->n_chains; i++)
+	for (u32 i = 0; i < d->n_chains; i++) {
 		jnl_curve2d_free(&d->chains[i].curve);
+		free(d->chains[i].cached_pts); // add this
+	}
 	free(d->chains);
 	d->chains = NULL;
 	d->n_chains = 0;

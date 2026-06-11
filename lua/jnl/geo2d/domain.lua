@@ -3,6 +3,19 @@
 
 local opt = require("jnl.core.optional")
 local I = opt.require("jnl.domain2d_internal")
+
+--- Construct meshable Domain2D objects from closed Pen shapes.
+---
+--- The primary entry point is from_pen(), which converts a tagged Pen into a
+--- Domain2D and a MarkerRegistry.  Holes and interior regions are added to
+--- the Domain2D afterwards:
+---
+---     local curve  = require("jnl.geo2d.curve")
+---     local d, reg = domain.from_pen(p)
+---
+---     -- Add a circular hole; seed must be a point strictly inside the hole.
+---     local hole = curve.circle({0.5, 0.5}, 0.1)
+---     d:add_hole("cylinder", reg:get("cylinder"), hole, {0.5, 0.5})
 local M = {}
 
 --

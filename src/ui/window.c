@@ -170,27 +170,37 @@ static Color chain_color(const struct jnl_ui_chain *ch)
 // Draw
 //
 
-static void draw_chain(const struct jnl_ui_chain *ch, view_xf xf, Color col)
+static void draw_chain(struct jnl_ui_chain *ch, view_xf xf, Color col)
 {
-	int n = adaptive_n(&ch->curve, xf.scale);
+	int ideal_n = adaptive_n(&ch->curve, xf.scale);
 
-	jnl_vec2d *pts = malloc((size_t)n * sizeof *pts);
-	if (!pts)
-		return;
+	bool needs_resample =
+	    ch->cached_pts == NULL ||
+	    ideal_n > ch->cached_n * 3 / 2     // zoomed in past 1.5x
+	    || ideal_n < ch->cached_n * 2 / 3; // zoomed out past 0.67x
 
-	if (jnl_curve2d_sample_uniform_arclen(&ch->curve, n, pts) !=
-	    JNL_CURVE2D_OK) {
-		free(pts);
-		return;
+	if (needs_resample) {
+		free(ch->cached_pts);
+		ch->cached_pts = malloc((size_t)ideal_n * sizeof *ch->cached_pts);
+		if (!ch->cached_pts)
+			return;
+
+		if (jnl_curve2d_sample_uniform_arclen(
+		        &ch->curve, ideal_n, ch->cached_pts) != JNL_CURVE2D_OK) {
+			free(ch->cached_pts);
+			ch->cached_pts = NULL;
+			return;
+		}
+		ch->cached_n = ideal_n;
 	}
 
-	for (int i = 0; i + 1 < n; i++) {
-		Vector2 a = world_to_screen(xf, pts[i].x, pts[i].y);
-		Vector2 b = world_to_screen(xf, pts[i + 1].x, pts[i + 1].y);
-		DrawLineEx(a, b, 2.0f, col);
+	for (int i = 0; i + 1 < ch->cached_n; i++) {
+		Vector2 a =
+		    world_to_screen(xf, ch->cached_pts[i].x, ch->cached_pts[i].y);
+		Vector2 b = world_to_screen(xf, ch->cached_pts[i + 1].x,
+		                            ch->cached_pts[i + 1].y);
+		DrawLineEx(a, b, 1.5f, col);
 	}
-
-	free(pts);
 }
 
 static void draw_domain(const struct jnl_ui_domain *d,
@@ -207,7 +217,6 @@ static void draw_domain(const struct jnl_ui_domain *d,
 
 static void handle_input(struct jnl_ui_view *v)
 {
-	// Scroll to zoom, centred on cursor.
 	float wheel = GetMouseWheelMove();
 	if (wheel != 0.0f) {
 		float factor = (wheel > 0) ? 1.15f : (1.0f / 1.15f);
@@ -218,14 +227,14 @@ static void handle_input(struct jnl_ui_view *v)
 			v->zoom = 1000.f;
 	}
 
-	// Middle-mouse drag to pan (in normalised viewport units).
-	if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+	// Alt+left-drag to pan — trackpad friendly
+	bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
+	if (alt && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
 		Vector2 delta = GetMouseDelta();
 		v->cx += delta.x / (float)v->width;
-		v->cy -= delta.y / (float)v->height; // screen-y inverted
+		v->cy -= delta.y / (float)v->height;
 	}
 
-	// 'F' to fit / reset view.
 	if (IsKeyPressed(KEY_F)) {
 		v->zoom = 1.0f;
 		v->cx = 0.0f;
@@ -244,8 +253,10 @@ void ui_window_run(int sock_fd)
 
 	const int W = 800, H = 600;
 
+	SetConfigFlags(FLAG_MSAA_4X_HINT);
 	SetTraceLogLevel(LOG_WARNING);
 	InitWindow(W, H, "JNLCFD Visualiser");
+
 	SetTargetFPS(60);
 
 	struct jnl_ui_window_state ws;
@@ -307,7 +318,7 @@ void ui_window_run(int sock_fd)
 		// Status bar.
 		DrawRectangle(0, H - 40, W, 40, (Color){240, 240, 240, 255});
 		DrawText(ws.status, 10, H - 28, 18, DARKGRAY);
-		DrawText("scroll=zoom  middle-drag=pan  F=fit", W - 310, H - 28, 16,
+		DrawText("scroll=zoom  alt-drag=pan  F=fit", W - 280, H - 28, 16,
 		         LIGHTGRAY);
 
 		EndDrawing();

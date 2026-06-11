@@ -700,7 +700,16 @@ appropriate, and user-facing output.
 
 ## jnl.geo2d.curve
 
-   (no module description)
+   Low-level 2D curve primitives, transformations, and sampling utilities.
+
+   Curve2D objects are immutable value types produced by constructors and
+   transformations here, or retrieved from a Pen via :get() and :build().
+
+   For constructing domain boundaries with named patches, prefer the Pen API
+   (jnl.geo2d.pen). Use this module for: - simple standalone shapes (circle, rectangle)
+   used as hole boundaries; - post-construction transformations (translate, scale,
+   rotate, map); - sampling points for analysis or comparison; - discretising curves
+   onto a PSLG for custom meshing.
 
    Functions
 
@@ -779,7 +788,17 @@ appropriate, and user-facing output.
 
 ## jnl.geo2d.domain
 
-   (no module description)
+   Construct meshable Domain2D objects from closed Pen shapes.
+
+   The primary entry point is from_pen(), which converts a tagged Pen into a Domain2D
+   and a MarkerRegistry. Holes and interior regions are added to the Domain2D
+   afterwards:
+
+   local curve = require("jnl.geo2d.curve") local d, reg = domain.from_pen(p)
+
+   -- Add a circular hole; seed must be a point strictly inside the hole. local hole =
+   curve.circle({0.5, 0.5}, 0.1) d:add_hole("cylinder", reg:get("cylinder"), hole, {0.5,
+   0.5})
 
    Functions
 
@@ -789,11 +808,26 @@ appropriate, and user-facing output.
 
 ## jnl.geo2d.pen
 
-   (no module description)
+   Fluent pen/turtle API for building closed domain boundaries.
+
+   A Pen traces a 2D shape step-by-step, tagging each segment with a BC name and
+   optionally attaching discretisation hints. Pass the finished pen to domain.from_pen()
+   to produce a meshable Domain2D.
+
+   Typical workflow:
+
+   local pen = require("jnl.geo2d.pen") local domain = require("jnl.geo2d.domain")
+
+   local p = pen.new() :at(0, 0) :north(1) :tag("inlet") :east(2) :tag("top") :south(1)
+   :tag("outlet") :close() :tag("wall") local d, reg = domain.from_pen(p)
+
+   Holes and interior regions are added to the Domain2D afterwards using
+   Domain2D:add_hole() and Domain2D:add_region().
 
    Functions
 
-      jnl.geo2d.pen() -> Pen
+      jnl.geo2d.pen.new() -> Pen
+         Create a new pen at an unset position.
 
 
 ## jnl.gp
@@ -1136,7 +1170,26 @@ appropriate, and user-facing output.
 
 ## jnl.ui
 
-   (no module description)
+   Visualiser window management for meshes and scalar fields.
+
+   There are two distinct usage phases with different recovery semantics:
+
+   Setup phase — display_domain and display_mesh spawn a new window automatically if
+   the current default has been closed:
+
+   local ui = require("jnl.ui") ui.display_domain(domain) -- preview geometry before
+   meshing ui.display_mesh(mesh) -- send topology once mesh is built ui.set_vector("U",
+   "U_x", "U_y") ui.view_field("U")
+
+   Live phase — set_field does NOT recover; call it inside a solve loop only after
+   display_mesh has succeeded. It returns false silently if the window is closed
+   mid-run:
+
+   -- inside solve loop: ui.set_field("p", ctx:field_vec("p")) ui.set_field("U_x",
+   ctx:field_vec("U_x")) ui.set_field("U_y", ctx:field_vec("U_y"))
+
+   Handles are optional everywhere; pass one explicitly to manage multiple windows, or
+   omit to use the process-wide default.
 
    Functions
 
@@ -1237,7 +1290,7 @@ appropriate, and user-facing output.
       segs: PenSegment[]            
       tags: table<string, Curve2D>  Named segments, keyed by tag.
       Constructors
-         jnl.geo2d.pen() -> Pen
+         jnl.geo2d.pen.new() -> Pen
       Methods
 
          Pen:arc_to(x: number, y: number, radius: number, clockwise: boolean?) -> Pen

@@ -79,7 +79,7 @@ static int l_ui_send_domain(lua_State *L)
 {
 	jnl_ui_handle *h = check_ui(L, 1);
 	struct jnl_domain2d *d =
-	    *(struct jnl_domain2d **)luaL_checkudata(L, 2, DOMAIN2D_MT);
+	    (struct jnl_domain2d *)luaL_checkudata(L, 2, DOMAIN2D_MT);
 	lua_pushboolean(L, jnl_ui_send_domain(h, d) == 0);
 	return 1;
 }

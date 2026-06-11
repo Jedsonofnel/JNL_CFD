@@ -3,6 +3,31 @@
 
 local opt = require("jnl.core.optional")
 local I = opt.require("jnl.ui_internal")
+
+--- Visualiser window management for meshes and scalar fields.
+---
+--- There are two distinct usage phases with different recovery semantics:
+---
+--- Setup phase — display_domain and display_mesh spawn a new window
+--- automatically if the current default has been closed:
+---
+---     local ui = require("jnl.ui")
+---     ui.display_domain(domain)   -- preview geometry before meshing
+---     ui.display_mesh(mesh)       -- send topology once mesh is built
+---     ui.set_vector("U", "U_x", "U_y")
+---     ui.view_field("U")
+---
+--- Live phase — set_field does NOT recover; call it inside a solve loop only
+--- after display_mesh has succeeded.  It returns false silently if the window
+--- is closed mid-run:
+---
+---     -- inside solve loop:
+---     ui.set_field("p",   ctx:field_vec("p"))
+---     ui.set_field("U_x", ctx:field_vec("U_x"))
+---     ui.set_field("U_y", ctx:field_vec("U_y"))
+---
+--- Handles are optional everywhere; pass one explicitly to manage multiple
+--- windows, or omit to use the process-wide default.
 local M = {}
 
 --

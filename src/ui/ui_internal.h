@@ -15,6 +15,10 @@ struct jnl_ui_chain {
 	i32 marker;
 	char name[64];
 	struct jnl_curve2d curve;
+
+	// Cached sample
+	jnl_vec2d *cached_pts;
+	int cached_n;
 };
 
 struct jnl_ui_domain {
