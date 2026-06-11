@@ -181,3 +181,91 @@ h.describe("doc audit", function()
 		h.expect(count).equals(0)
 	end)
 end)
+
+local function scan_visibility_samples()
+	return doc.scan({
+		modules = {
+			"test.doc_sample",
+			"test.doc_private_sample",
+		},
+	})
+end
+
+h.describe("doc module visibility", function()
+	h.it("records module privacy", function()
+		local docs = scan_visibility_samples()
+		local module = docs.raw.modules[
+		"test.doc_private_sample"
+		]
+
+		h.expect(module.private).is_truthy()
+	end)
+
+	h.it("hides private modules by default", function()
+		local docs = scan_visibility_samples()
+
+		h.expect(docs:modules())
+			.not_contains("test.doc_private_sample")
+	end)
+
+	h.it("can include private modules explicitly", function()
+		local docs = scan_visibility_samples()
+
+		h.expect(docs:modules({
+			include_private = true,
+		})).contains("test.doc_private_sample")
+	end)
+
+	h.it("does not render private modules by default", function()
+		local docs = scan_visibility_samples()
+		local text = docs:render_all()
+
+		h.expect(text:find(
+			"test.doc_private_sample",
+			1,
+			true
+		)).is_nil()
+	end)
+
+	h.it("renders private modules when requested", function()
+		local docs = scan_visibility_samples()
+
+		local text, err = docs:render_module(
+			"test.doc_private_sample",
+			{
+				include_private = true,
+			}
+		)
+
+		h.expect(err).is_nil()
+		h.expect(text).is_not_nil()
+		h.expect(text:find(
+			"test.doc_private_sample.hidden",
+			1,
+			true
+		)).is_not_nil()
+	end)
+
+	h.it("rejects direct private rendering by default", function()
+		local docs = scan_visibility_samples()
+
+		local text, err = docs:render_module(
+			"test.doc_private_sample"
+		)
+
+		h.expect(text).is_nil()
+		h.expect(err).is_not_nil()
+	end)
+
+	h.it("supports context-specific module exclusions", function()
+		local docs = scan_visibility_samples()
+
+		local names = docs:modules({
+			exclude_modules = {
+				"test.doc_sample",
+			},
+		})
+
+		h.expect(names).not_contains("test.doc_sample")
+	end)
+end)

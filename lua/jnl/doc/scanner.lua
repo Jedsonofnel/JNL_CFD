@@ -5,6 +5,7 @@
 ---
 --- This module deliberately recognises a small LuaLS-style annotation subset
 --- and predictable JNL declaration forms. It never executes scanned modules.
+---@private
 local M = {}
 
 local BUILTIN_TYPES = {
@@ -249,17 +250,39 @@ local function parse_return(rest)
 end
 
 local function parse_field(rest)
-	local name, tail = rest:match("^(%S+)%s+(.+)$")
+	rest = trim(rest)
+
+	local visibility
+	local first, tail = rest:match("^(%S+)%s+(.+)$")
+
+	if first == "public"
+		or first == "private"
+		or first == "protected"
+	then
+		visibility = first
+		rest = tail
+	end
+
+	local name, type_tail = rest:match("^(%S+)%s+(.+)$")
 	if not name then return nil end
-	local type_expr, description = parse_named_type_and_doc(tail)
+
+	local type_expr, description =
+		parse_named_type_and_doc(type_tail)
+
 	if not type_expr then return nil end
+
 	local optional = name:sub(-1) == "?"
-	if optional then name = name:sub(1, -2) end
+
+	if optional then
+		name = name:sub(1, -2)
+	end
+
 	return {
 		name = name,
 		type = type_expr,
 		doc = description,
 		optional = optional,
+		visibility = visibility or "public",
 	}
 end
 
@@ -276,17 +299,17 @@ local function parse_doc_block(raw_lines)
 		local line = trim(raw)
 		local tag, rest = line:match("^@([%w_]+)%s*(.*)$")
 		if tag then
-			if tag == "module" then
-				doc.module = trim(rest)
-			elseif tag == "class" then
+			if tag == "class" then
 				local name, description = rest:match("^(%S+)%s*(.*)$")
 				doc.class = name
+
 				if description and trim(description) ~= "" then
 					doc.class_doc = trim(description)
 				end
 			elseif tag == "alias" then
 				local name, type_expr = rest:match("^(%S+)%s*(.*)$")
 				doc.alias = name
+
 				if type_expr and trim(type_expr) ~= "" then
 					doc.alias_type = trim(type_expr)
 				end
@@ -369,6 +392,7 @@ local function make_module(module_name, path)
 		path = path,
 		doc = "",
 		paragraphs = {},
+		private = false,
 		export_root = nil,
 		functions = {},
 		function_list = {},
@@ -514,10 +538,26 @@ local function finalize_function(index, module, candidate, class_vars)
 		private = doc.private or (name and starts_with(name, "_"))
 	elseif exported then
 		kind = "function"
-		local relative = candidate.target:sub(#module.export_root + 2)
-		qualified_name = module.name .. "." .. relative:gsub(":", ".")
-		display_name = module.name .. "." .. relative
-		private = doc.private or starts_with(name or "", "_")
+
+		if candidate.target == module.export_root then
+			qualified_name = module.name
+			display_name = module.name
+		else
+			local relative = candidate.target:sub(
+				#module.export_root + 2
+			)
+
+			qualified_name = module.name
+				.. "."
+				.. relative:gsub(":", ".")
+
+			display_name = module.name
+				.. "."
+				.. relative
+		end
+
+		private = doc.private
+			or starts_with(name or "", "_")
 	elseif doc.public then
 		kind = "function"
 		qualified_name = module.name .. "." .. candidate.target:gsub(":", ".")
@@ -729,7 +769,6 @@ local function scan_source(index, module_name, path, source)
 	local values = {}
 	local table_docs = {}
 	local class_vars = {}
-	local explicit_module_doc = nil
 
 	local function consume_pending()
 		local doc = pending and parse_doc_block(pending.lines) or nil
@@ -739,8 +778,9 @@ local function scan_source(index, module_name, path, source)
 
 	local function flush_standalone()
 		if not pending then return end
+
 		local doc = parse_doc_block(pending.lines)
-		if doc.module then explicit_module_doc = doc end
+
 		if doc.alias then
 			local type_doc = {
 				name = doc.alias,
@@ -757,8 +797,12 @@ local function scan_source(index, module_name, path, source)
 				private = doc.private,
 				deprecated = doc.deprecated,
 			}
-			if not type_doc.private then add_type(index, module, type_doc) end
+
+			if not type_doc.private then
+				add_type(index, module, type_doc)
+			end
 		end
+
 		pending = nil
 	end
 
@@ -783,7 +827,7 @@ local function scan_source(index, module_name, path, source)
 				if table_name then
 					local doc = consume_pending()
 					table_docs[table_name] = doc
-					if doc and doc.module then explicit_module_doc = doc end
+
 					if doc and doc.class then
 						local type_doc = {
 							name = doc.class,
@@ -855,13 +899,11 @@ local function scan_source(index, module_name, path, source)
 		end
 	end
 
-	if explicit_module_doc then
-		module.doc = explicit_module_doc.description or ""
-		module.paragraphs = explicit_module_doc.paragraphs or {}
-	elseif module.export_root and table_docs[module.export_root] then
+	if module.export_root and table_docs[module.export_root] then
 		local doc = table_docs[module.export_root]
 		module.doc = doc.description or ""
 		module.paragraphs = doc.paragraphs or {}
+		module.private = doc.private or false
 	end
 
 	if not module.export_root then

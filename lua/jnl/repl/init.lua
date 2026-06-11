@@ -1,70 +1,103 @@
--- jnl/repl/init.lua - Configurable REPL for the JNL suite
--- <jed@nelson.ac> // 2026-05-21
+-- lua/jnl/repl/init.lua - Configurable Fennel REPL for the JNL suite
+-- <jed@nelson.ac> // 2026-06-11
 
 local Printer = require("jnl.repl.printer")
 
-local REPL = {}
-REPL.__index = REPL
+--- Provide a configurable Fennel REPL with comma commands, documentation,
+--- cancellation, registered values, and study-specific usage.
+local M = {}
 
-REPL._doc = "Configurable Fennel REPL with comma commands and help system"
+--- A registered value exposed through the REPL.
+---@class ReplRegistryEntry
+---@field value any
+---@field doc string
 
-REPL._doc_subsection = {
-	"Use jnl.repl.new() in interactive scripts, register useful values with repl:register, then end with return repl:run().",
-	"The REPL evaluates Fennel input, even when the startup script itself is written in Lua.",
-	"Registered names should be user-facing and Fennel-friendly; prefer names like show-mesh while optionally adding Lua-style aliases.",
-	"Comma commands are for REPL control and discovery; registered globals are for user-callable demo functions and objects.",
-	"Scripts can call repl:usage(text_or_fn) to provide a study-specific ,usage guide alongside the general ,help command.",
-}
+--- A comma command registered with the REPL.
+---@class ReplCommand
+---@field fn fun(repl: Repl, arg: string)
+---@field usage string
+---@field doc string
 
--- Lua stdlib names
+--- A configurable JNL Fennel REPL instance.
+---@class Repl
+---@field registry table<string, ReplRegistryEntry>
+---@field commands table<string, ReplCommand>
+---@field help_width integer
+---@field doc_index DocIndex?
+---@field usage_spec string|table|fun(repl: Repl): string|nil
+---@field globals_at_start table<string, boolean>?
+---@field fennel table?
+---@field quit boolean
+local Repl = {}
+Repl.__index = Repl
+
+--
+-- Known host globals
+--
+
 local STDLIB = {
-	_G = 1,
-	_VERSION = 1,
-	assert = 1,
-	collectgarbage = 1,
-	dofile = 1,
-	error = 1,
-	getmetatable = 1,
-	ipairs = 1,
-	load = 1,
-	loadfile = 1,
-	next = 1,
-	pairs = 1,
-	pcall = 1,
-	print = 1,
-	rawequal = 1,
-	rawget = 1,
-	rawlen = 1,
-	rawset = 1,
-	require = 1,
-	select = 1,
-	setmetatable = 1,
-	tonumber = 1,
-	tostring = 1,
-	type = 1,
-	warn = 1,
-	xpcall = 1,
-	coroutine = 1,
-	debug = 1,
-	io = 1,
-	math = 1,
-	os = 1,
-	package = 1,
-	string = 1,
-	table = 1,
-	utf8 = 1,
-	_script = 1,
+	_G = true,
+	_VERSION = true,
+
+	assert = true,
+	collectgarbage = true,
+	dofile = true,
+	error = true,
+	getmetatable = true,
+	ipairs = true,
+	load = true,
+	loadfile = true,
+	next = true,
+	pairs = true,
+	pcall = true,
+	print = true,
+	rawequal = true,
+	rawget = true,
+	rawlen = true,
+	rawset = true,
+	require = true,
+	select = true,
+	setmetatable = true,
+	tonumber = true,
+	tostring = true,
+	type = true,
+	warn = true,
+	xpcall = true,
+
+	coroutine = true,
+	debug = true,
+	io = true,
+	math = true,
+	os = true,
+	package = true,
+	string = true,
+	table = true,
+	utf8 = true,
+
+	_script = true,
+	readline = true,
+	__jnl_repl_cancel_seen = true,
+	__jnl_repl_cancel_clear = true,
+	__jnl_repl_mark_started = true,
 }
 
 local CONTROL = {
 	state = "idle",
 }
 
--- Forward declarations for local helpers used by command tables.
+--
+-- Forward declarations
+--
+
 local trim
+local documentation_index
 local print_help_overview
 local print_help_topic
 local print_user_globals
+
+--
+-- Built-in values
+--
 
 local BUILTIN_VALUES = {
 	{
@@ -78,7 +111,7 @@ local BUILTIN_VALUES = {
 	},
 	{
 		name = "remember",
-		doc = "Store a value in a named REPL special, e.g. (remember \"*last-run*\" result)",
+		doc = "Store a named REPL special: (remember \"*last-run*\" result)",
 		value = function(repl)
 			return function(name, value, label)
 				return repl:special(name, value, label)
@@ -86,6 +119,10 @@ local BUILTIN_VALUES = {
 		end,
 	},
 }
+
+--
+-- Built-in comma commands
+--
 
 local BUILTIN_COMMANDS = {
 	{
@@ -102,16 +139,17 @@ local BUILTIN_COMMANDS = {
 		doc = "Exit the REPL",
 		fn = function(repl, _)
 			io.write("bye\n")
-			repl._quit = true
+			repl.quit = true
 			CONTROL.state = "stopping"
 		end,
 	},
 	{
 		name = "help",
 		usage = ",help [topic]",
-		doc = "Show help. ,help <name> for a specific registered value or command",
+		doc = "Show help, or show details for a command or registered value",
 		fn = function(repl, arg)
 			arg = trim(arg)
+
 			if arg == "" then
 				print_help_overview(repl)
 			else
@@ -129,31 +167,50 @@ local BUILTIN_COMMANDS = {
 	},
 	{
 		name = "doc",
-		usage = ",doc [module|all]",
-		doc = "List documented modules, or show docs for one module",
+		usage = ",doc [module|all|refresh]",
+		doc = "List modules, show one module, print all docs, or rescan sources",
 		fn = function(repl, arg)
-			local doc = require("jnl.doc")
 			arg = trim(arg)
 
-			local opts = { width = repl._help_width or 72 }
+			if arg == "refresh" then
+				repl.doc_index = nil
+				documentation_index(repl)
+				io.write("documentation index refreshed\n")
+				return
+			end
+
+			local docs = documentation_index(repl)
+			local opts = {
+				width = repl.help_width or 72,
+			}
 
 			if arg == "" then
-				doc.dump_modules(opts)
-			elseif arg == "all" then
-				doc.dump_all(opts)
-			else
-				doc.dump_module(arg, opts)
+				io.write(docs:render_modules(opts))
+				return
+			end
+
+			if arg == "all" then
+				docs:dump_all(opts)
+				return
+			end
+
+			local ok, err = docs:dump_module(arg, opts)
+
+			if not ok then
+				io.write(tostring(err))
+				io.write("\n")
 			end
 		end,
 	},
 	{
 		name = "llm",
 		usage = ",llm",
-		doc = "Print full JNLCFD coding context for an LLM",
+		doc = "Print JNL coding instructions, examples, and API documentation",
 		fn = function(repl, _)
-			local llm = require("jnl.llm")
+			local llm = require("jnl.doc.llm")
+
 			io.write(llm.context_string({
-				width = repl._help_width or 72,
+				width = repl.help_width or 72,
 			}))
 		end,
 	},
@@ -172,12 +229,19 @@ local function starts_with(s, prefix)
 end
 
 local function is_top_level(state)
-	return not (state and state["stack-size"] and state["stack-size"] > 0)
+	return not (
+		state
+		and state["stack-size"]
+		and state["stack-size"] > 0
+	)
 end
 
 local function is_result_name(name)
 	return type(name) == "string"
-		and (name == "*_" or name:match("^%*%d+$") ~= nil)
+		and (
+			name == "*_"
+			or name:match("^%*%d+$") ~= nil
+		)
 end
 
 local function is_special_name(name)
@@ -192,10 +256,11 @@ local function repl_message(message)
 	io.write("\n")
 end
 
-local function append_sorted_keys(out, t)
-	for k in pairs(t) do
-		out[#out + 1] = k
+local function append_sorted_keys(out, values)
+	for key in pairs(values) do
+		out[#out + 1] = key
 	end
+
 	table.sort(out)
 	return out
 end
@@ -219,15 +284,17 @@ local function require_fennel()
 	local ok, fennel = pcall(require, "fennel")
 
 	if not ok then
-		error("fennel not available; install/require fennel before starting REPL")
+		error(
+			"Fennel is unavailable; install or preload it before starting the REPL"
+		)
 	end
 
 	return fennel
 end
 
 local function default_readline(prompt)
-	local read = readline or function(p)
-		io.write(p)
+	local read = readline or function(text)
+		io.write(text)
 		io.flush()
 		return io.read("l")
 	end
@@ -239,11 +306,23 @@ local function printer_for(repl, opts)
 	opts = opts or {}
 
 	return Printer.new({
-		width = opts.width or repl._help_width or 72,
+		width = opts.width or repl.help_width or 72,
 		out = opts.out or function(s)
 			io.write(s)
 		end,
 	})
+end
+
+documentation_index = function(repl)
+	if not repl.doc_index then
+		local doc = require("jnl.doc")
+
+		repl.doc_index = doc.scan({
+			packages = { "jnl" },
+		})
+	end
+
+	return repl.doc_index
 end
 
 --
@@ -251,14 +330,17 @@ end
 --
 
 local function cancel_seen()
-	local f = rawget(_G, "__jnl_repl_cancel_seen")
-	return type(f) == "function" and f()
+	local callback = rawget(_G, "__jnl_repl_cancel_seen")
+
+	return type(callback) == "function"
+		and callback()
 end
 
 local function cancel_clear()
-	local f = rawget(_G, "__jnl_repl_cancel_clear")
-	if type(f) == "function" then
-		f()
+	local callback = rawget(_G, "__jnl_repl_cancel_clear")
+
+	if type(callback) == "function" then
+		callback()
 	end
 end
 
@@ -283,31 +365,43 @@ end
 
 local function fennel_view_opts(repl)
 	return {
-		["line-length"] = repl._help_width or 72,
+		["line-length"] = repl.help_width or 72,
 		depth = 8,
 	}
 end
 
 local function fennel_view(repl, value, opts)
-	local fennel = repl._fennel
+	local fennel = repl.fennel
 
 	if not fennel then
-		local ok, f = pcall(require, "fennel")
-		if ok then fennel = f end
+		local ok, loaded = pcall(require, "fennel")
+
+		if ok then
+			fennel = loaded
+		end
 	end
 
 	local view = fennel and fennel.view
+
 	if not view then
 		return tostring(value)
 	end
 
 	opts = opts or fennel_view_opts(repl)
-	local ok_call, rendered = pcall(view, value, opts)
-	return ok_call and rendered or tostring(value)
+
+	local ok, rendered = pcall(view, value, opts)
+
+	if ok then
+		return rendered
+	end
+
+	return tostring(value)
 end
 
 local function view_value(repl, value, opts)
-	local mt = type(value) == "table" and getmetatable(value)
+	local mt = type(value) == "table"
+		and getmetatable(value)
+
 	if mt and mt.__tostring then
 		return tostring(value)
 	end
@@ -329,28 +423,31 @@ end
 --
 
 local function registered_names(repl)
-	return append_sorted_keys({}, repl._registry)
+	return append_sorted_keys({}, repl.registry)
 end
 
 local function command_names(repl)
-	return append_sorted_keys({}, repl._commands)
+	return append_sorted_keys({}, repl.commands)
 end
 
 local function user_global_names(repl)
 	local names = {}
 
-	for k, _ in pairs(_G) do
-		if not STDLIB[k]
-			and not is_result_name(k)
-			and not is_special_name(k)
-			and not (repl._globals_at_start and repl._globals_at_start[k])
+	for name in pairs(_G) do
+		if not STDLIB[name]
+			and not is_result_name(name)
+			and not is_special_name(name)
+			and not (
+				repl.globals_at_start
+				and repl.globals_at_start[name]
+			)
 		then
-			names[#names + 1] = k
+			names[#names + 1] = name
 		end
 	end
 
-	for k, _ in pairs(repl._registry) do
-		names[#names + 1] = k
+	for name in pairs(repl.registry) do
+		names[#names + 1] = name
 	end
 
 	return dedup_sorted(names)
@@ -367,7 +464,7 @@ print_user_globals = function(repl)
 	local p = printer_for(repl)
 
 	for _, name in ipairs(names) do
-		local entry = repl._registry[name]
+		local entry = repl.registry[name]
 		local doc = entry and entry.doc or ""
 
 		if doc ~= "" then
@@ -377,7 +474,7 @@ print_user_globals = function(repl)
 				gap = "  ",
 			})
 		else
-			p:line(string.format("  %s", name))
+			p:line("  " .. name)
 		end
 	end
 end
@@ -385,31 +482,29 @@ end
 print_help_overview = function(repl)
 	local p = printer_for(repl)
 
-	p:blank()
-	p:line("  Comma commands")
-	p:line("  --------------")
+	p:header("Comma commands", 2)
 
 	for _, name in ipairs(command_names(repl)) do
-		local c = repl._commands[name]
+		local command = repl.commands[name]
 
-		p:columns(c.usage, c.doc, {
+		p:columns(command.usage, command.doc, {
 			indent = "  ",
-			left_width = 24,
+			left_width = 26,
 			gap = "  ",
 		})
 	end
 
-	local reg_names = registered_names(repl)
+	local names = registered_names(repl)
 
-	if #reg_names > 0 then
+	if #names > 0 then
+		p:header("Registered globals", 2)
+		p:line("Use ,help <name> for details.")
 		p:blank()
-		p:line("  Registered globals (,help <name> for detail)")
-		p:line("  --------------------------------------------")
 
-		for _, name in ipairs(reg_names) do
-			local e = repl._registry[name]
+		for _, name in ipairs(names) do
+			local entry = repl.registry[name]
 
-			p:columns(name, e.doc, {
+			p:columns(name, entry.doc, {
 				indent = "  ",
 				left_width = 24,
 				gap = "  ",
@@ -419,8 +514,10 @@ print_help_overview = function(repl)
 
 	p:blank()
 	p:line("  Fennel results are available as *1, *2, and *3")
-	p:line("  Named specials may be stored as *name* using remember or repl:special")
-	p:line("  Ctrl-C cancels running code; ctrl-D or ,quit exits")
+	p:line("  Named specials may be stored as *name* with remember")
+	p:line("  Ctrl-C once requests cancellation; twice forces it")
+	p:line("  Ctrl-C at the prompt clears the line")
+	p:line("  Ctrl-D or ,quit exits")
 	p:blank()
 end
 
@@ -432,10 +529,10 @@ print_help_topic = function(repl, name)
 		return
 	end
 
-	local entry = repl._registry[name]
+	local entry = repl.registry[name]
+
 	if entry then
-		p:blank()
-		p:line("  " .. name)
+		p:header(name, 2)
 
 		if entry.doc ~= "" then
 			p:wrap("  ", "  ", entry.doc)
@@ -446,13 +543,13 @@ print_help_topic = function(repl, name)
 		return
 	end
 
-	local cmd = repl._commands[name]
-	if cmd then
-		p:blank()
-		p:line("  " .. cmd.usage)
+	local command = repl.commands[name]
 
-		if cmd.doc ~= "" then
-			p:wrap("  ", "  ", cmd.doc)
+	if command then
+		p:header(command.usage, 2)
+
+		if command.doc ~= "" then
+			p:wrap("  ", "  ", command.doc)
 			p:blank()
 		end
 
@@ -466,39 +563,53 @@ end
 -- Comma commands
 --
 
-local function dispatch_command(repl, cmd, rest)
-	local entry = repl._commands[cmd]
-	if not entry then
+local function dispatch_command(repl, name, rest)
+	local command = repl.commands[name]
+
+	if not command then
 		io.write(string.format(
-			"unknown command: ,%s  (type ,help for a list)\n", cmd))
+			"unknown command: ,%s  (type ,help for a list)\n",
+			name
+		))
 		return
 	end
 
-	entry.fn(repl, rest)
+	command.fn(repl, rest)
 end
 
 local function handle_comma_line(repl, line, state)
 	if not is_top_level(state) then
-		io.write("error: comma commands are only available at top level\n")
+		io.write(
+			"error: comma commands are only available at top level\n"
+		)
 		return
 	end
 
-	local cmd, rest = line:match("^,(%S+)%s*(.*)")
+	local command, rest = line:match("^,(%S+)%s*(.*)")
 
-	if cmd then
-		dispatch_command(repl, cmd, rest or "")
+	if command then
+		dispatch_command(repl, command, rest or "")
 	else
-		io.write("error: bare comma — did you mean ,help?\n")
+		io.write("error: bare comma - did you mean ,help?\n")
 	end
 end
 
 local function register_builtins(repl)
 	for _, spec in ipairs(BUILTIN_VALUES) do
-		repl:register(spec.name, spec.value(repl), spec.doc)
+		repl:register(
+			spec.name,
+			spec.value(repl),
+			spec.doc
+		)
 	end
 
 	for _, spec in ipairs(BUILTIN_COMMANDS) do
-		repl:command(spec.name, spec.fn, spec.usage, spec.doc)
+		repl:command(
+			spec.name,
+			spec.fn,
+			spec.usage,
+			spec.doc
+		)
 	end
 end
 
@@ -507,7 +618,10 @@ end
 --
 
 local function fennel_prompt(_, state)
-	if state and state["stack-size"] and state["stack-size"] > 0 then
+	if state
+		and state["stack-size"]
+		and state["stack-size"] > 0
+	then
 		return ".... "
 	end
 
@@ -518,16 +632,18 @@ local function read_fennel_chunk(repl, state)
 	enter_reading()
 
 	while true do
-		if repl._quit then
+		if repl.quit then
 			CONTROL.state = "stopping"
 			return nil
 		end
 
-		local line = default_readline(fennel_prompt(repl, state))
+		local line = default_readline(
+			fennel_prompt(repl, state)
+		)
 
 		if line == nil then
 			io.write("\n")
-			repl._quit = true
+			repl.quit = true
 			CONTROL.state = "stopping"
 			return nil
 		end
@@ -535,7 +651,7 @@ local function read_fennel_chunk(repl, state)
 		line = trim(line)
 
 		if line == "" then
-			-- Ignore blank lines.
+			-- Ignore blank and interrupted prompt lines.
 		elseif starts_with(line, ",") then
 			handle_comma_line(repl, line, state)
 		else
@@ -546,15 +662,20 @@ local function read_fennel_chunk(repl, state)
 end
 
 local function print_fennel_error(err_type, err, _)
-	io.write(string.format("error [%s]: %s\n", err_type, tostring(err)))
+	io.write(string.format(
+		"error [%s]: %s\n",
+		err_type,
+		tostring(err)
+	))
+
 	enter_reading()
 end
 
 local function capture_globals_at_start(repl)
-	repl._globals_at_start = {}
+	repl.globals_at_start = {}
 
-	for k, _ in pairs(_G) do
-		repl._globals_at_start[k] = true
+	for name in pairs(_G) do
+		repl.globals_at_start[name] = true
 	end
 end
 
@@ -563,8 +684,7 @@ local function fennel_repl_options(repl)
 		env = _G,
 		compilerEnv = _G,
 
-		-- Let dynamically-created globals such as *last-run* be visible
-		-- without predeclaring them before fennel.repl starts.
+		-- Dynamically created names such as *last-run* remain visible.
 		allowedGlobals = false,
 		["global-mangle"] = false,
 
@@ -572,9 +692,8 @@ local function fennel_repl_options(repl)
 			return read_fennel_chunk(repl, state)
 		end,
 
-		-- onValues receives already-rendered strings.
+		-- Fennel passes already-rendered strings here.
 		onValues = print_rendered_values,
-
 		onError = print_fennel_error,
 
 		pp = function(value, opts)
@@ -586,114 +705,170 @@ local function fennel_repl_options(repl)
 end
 
 local function print_welcome()
-	repl_message("JNLCFD repl - ,help commands - ,usage guide - Ctrl-C cancels - ctrl-D exits")
+	repl_message(
+		"JNL REPL - ,help commands - ,usage guide - "
+		.. "Ctrl-C cancels - Ctrl-D exits"
+	)
+end
+
+local function mark_repl_started()
+	local callback = rawget(_G, "__jnl_repl_mark_started")
+
+	if type(callback) == "function" then
+		callback()
+	end
 end
 
 --
 -- Constructor
 --
 
-function REPL.new()
-	local self = setmetatable({
-		_registry = {},
-		_commands = {},
-		_special_names = {},
-		_help_width = 80,
-	}, REPL)
+--- Create a REPL with the standard JNL commands and registered values.
+---@return Repl repl
+function M.new()
+	local repl = setmetatable({
+		registry = {},
+		commands = {},
+		help_width = 80,
+		doc_index = nil,
+		usage_spec = nil,
+		globals_at_start = nil,
+		fennel = nil,
+		quit = false,
+	}, Repl)
 
-	register_builtins(self)
-	return self
+	register_builtins(repl)
+	return repl
 end
 
 --
--- Public API
+-- Public instance API
 --
 
-function REPL:register(name, value, doc)
-	self._registry[name] = { value = value, doc = doc or "" }
+--- Expose a value as a global and add it to the help system.
+---@param name string User-facing global name.
+---@param value any Value to expose.
+---@param doc? string Help text.
+function Repl:register(name, value, doc)
+	self.registry[name] = {
+		value = value,
+		doc = doc or "",
+	}
+
 	_G[name] = value
 end
 
-function REPL:command(name, fn, usage, doc)
-	self._commands[name] = {
+--- Register a custom comma command.
+---@param name string Command name without the comma.
+---@param fn fun(repl: Repl, arg: string) Command callback.
+---@param usage? string Displayed command usage.
+---@param doc? string Help text.
+function Repl:command(name, fn, usage, doc)
+	self.commands[name] = {
 		fn = fn,
 		usage = usage or ("," .. name),
 		doc = doc or "",
 	}
 end
 
-function REPL:usage(spec)
-	self._usage = spec
+--- Register study-specific usage text or a usage provider.
+---@param spec string|table|fun(repl: Repl): string Usage source.
+function Repl:usage(spec)
+	self.usage_spec = spec
 end
 
-function REPL:usage_string()
-	if type(self._usage) == "function" then
-		return self._usage(self)
+--- Return the registered study-specific usage text.
+---@return string text
+function Repl:usage_string()
+	local spec = self.usage_spec
+
+	if type(spec) == "function" then
+		return spec(self) or ""
 	end
 
-	if type(self._usage) == "string" then
-		return self._usage
+	if type(spec) == "string" then
+		return spec
 	end
 
-	if type(self._usage) == "table" and type(self._usage.string) == "function" then
-		return self._usage:string()
+	if type(spec) == "table"
+		and type(spec.string) == "function"
+	then
+		return spec:string()
 	end
 
-	if type(self._usage) == "table" and type(self._usage.usage_string) == "function" then
-		return self._usage:usage_string()
+	if type(spec) == "table"
+		and type(spec.usage_string) == "function"
+	then
+		return spec:usage_string()
 	end
 
-	return "No study-specific usage has been registered.\nUse ,help for REPL commands.\n"
+	return table.concat({
+		"No study-specific usage has been registered.",
+		"Use ,help for REPL commands.",
+		"",
+	}, "\n")
 end
 
-function REPL:print_usage()
-	local s = self:usage_string()
-	io.write(s)
-	if s:sub(-1) ~= "\n" then
+--- Print the registered study-specific usage text.
+function Repl:print_usage()
+	local text = self:usage_string()
+
+	io.write(text)
+
+	if text:sub(-1) ~= "\n" then
 		io.write("\n")
 	end
 end
 
-function REPL:pp(value, opts)
+--- Pretty-print a Lua or Fennel value and return it unchanged.
+---@param value any Value to print.
+---@param opts? table Fennel view options.
+---@return any value
+function Repl:pp(value, opts)
 	io.write(fennel_view(self, value, opts))
 	io.write("\n")
 	return value
 end
 
-function REPL:special(name, value, label)
+--- Store a value in a named REPL special such as `*last-run*`.
+---@param name string Special name surrounded by asterisks.
+---@param value any Value to store.
+---@param label? string Optional confirmation label.
+---@return any value
+function Repl:special(name, value, label)
 	if not is_special_name(name) then
-		error("special REPL names should look like *name*, e.g. *last-result*")
+		error(
+			"special REPL names should look like *name*, "
+			.. "for example *last-result*"
+		)
 	end
 
 	_G[name] = value
-	self._special_names[name] = true
 
 	if label and label ~= "" then
-		repl_message(string.format("%s -> %s", label, name))
+		repl_message(string.format(
+			"%s -> %s",
+			label,
+			name
+		))
 	else
-		repl_message(string.format("stored -> %s", name))
+		repl_message("stored -> " .. name)
 	end
 
 	return value
 end
 
-local function mark_repl_started()
-	local f = rawget(_G, "__jnl_repl_mark_started")
-	if type(f) == "function" then
-		f()
-	end
-end
-
-function REPL:run()
+--- Start the Fennel REPL loop.
+function Repl:run()
 	mark_repl_started()
 	print_welcome()
 
-	self._quit = false
+	self.quit = false
 	capture_globals_at_start(self)
 	enter_reading()
 
-	self._fennel = require_fennel()
-	self._fennel.repl(fennel_repl_options(self))
+	self.fennel = require_fennel()
+	self.fennel.repl(fennel_repl_options(self))
 
 	self.quit = true
 	enter_idle()
@@ -703,29 +878,31 @@ end
 -- Module-level helpers
 --
 
-function REPL.is_cancelled()
-	return CONTROL.state == "evaluating" and cancel_seen()
+--- Return true when Ctrl-C has requested cancellation of active evaluation.
+---@return boolean cancelled
+function M.is_cancelled()
+	return CONTROL.state == "evaluating"
+		and cancel_seen()
 end
 
---
--- Convenience: post-script summary
---
-
----Print globals that a script introduced, for the "ran <script>" summary.
-function REPL.script_summary(script_path)
+--- Print globals introduced by a script.
+---@param script_path string Executed script path.
+function M.script_summary(script_path)
 	local user_globals = {}
 
-	for k, _ in pairs(_G) do
-		if not STDLIB[k]
-			and not is_result_name(k)
-			and not is_special_name(k)
+	for name in pairs(_G) do
+		if not STDLIB[name]
+			and not is_result_name(name)
+			and not is_special_name(name)
 		then
-			table.insert(user_globals, k)
+			user_globals[#user_globals + 1] = name
 		end
 	end
+
 	table.sort(user_globals)
 
 	print(string.format("ran %s", script_path))
+
 	if #user_globals > 0 then
 		print("globals: " .. table.concat(user_globals, ", "))
 	else
@@ -733,98 +910,18 @@ function REPL.script_summary(script_path)
 	end
 end
 
-function REPL.llm_string(opts)
-	local llm = require("jnl.llm")
+--- Return the complete JNL coding context for a language model.
+---@param opts? table Context rendering options.
+---@return string text
+function M.llm_string(opts)
+	local llm = require("jnl.doc.llm")
 	return llm.context_string(opts or {})
 end
 
-function REPL.llm(opts)
-	io.write(REPL.llm_string(opts or {}))
+--- Print the complete JNL coding context for a language model.
+---@param opts? table Context rendering options.
+function M.llm(opts)
+	io.write(M.llm_string(opts or {}))
 end
 
--- API
-
-REPL._api = {
-	new = {
-		args = "",
-		ret = "Repl",
-		doc = "Create a new REPL instance with built-in commands registered",
-	},
-	is_cancelled = {
-		args = "",
-		ret = "boolean",
-		doc = "Return true if Ctrl-C has requested cancellation of the active REPL evaluation",
-	},
-	special = {
-		args = "name:string, value:any, label:string?",
-		ret = "any",
-		doc = "Store a value in a named REPL special such as *last-run* and return it",
-	},
-	script_summary = {
-		args = "script_path:string",
-		ret = "nil",
-		doc = "Print globals that a script introduced",
-	},
-	llm_string = {
-		args = "opts:table?",
-		ret = "string",
-		doc = "Return full JNL coding context for LLMs",
-	},
-	llm = {
-		args = "opts:table?",
-		ret = "nil",
-		doc = "Print full JNL coding context for LLMs",
-	},
-}
-
-REPL._types = {
-	Repl = {
-		kind = "table",
-		constructor = "jnl.repl.new",
-		doc = "Configurable Fennel REPL object",
-		methods = {
-			register = {
-				args = "name:string, value:any, doc:string?",
-				ret = "nil",
-				doc = "Expose a value as a global and add it to the help system",
-			},
-			command = {
-				args = "name:string, fn:function, usage:string?, doc:string?",
-				ret = "nil",
-				doc = "Register a custom comma command",
-			},
-			run = {
-				args = "",
-				ret = "nil",
-				doc = "Start the Fennel REPL loop",
-			},
-			usage = {
-				args = "spec:string|table|function",
-				ret = "nil",
-				doc = "Register study-specific usage text or a usage provider for ,usage",
-			},
-			usage_string = {
-				args = "",
-				ret = "string",
-				doc = "Return registered study-specific usage text",
-			},
-			print_usage = {
-				args = "",
-				ret = "nil",
-				doc = "Print registered study-specific usage text",
-			},
-			pp = {
-				args = "value:any, opts:table?",
-				ret = "any",
-				doc = "Pretty-print a Lua/Fennel value and return it",
-			},
-			special = {
-				args = "name:string, value:any, label:string?",
-				ret = "any",
-				doc = "Store a value in a named REPL special such as *last-run* and return it",
-			},
-		},
-	},
-}
-
-return REPL
+return M

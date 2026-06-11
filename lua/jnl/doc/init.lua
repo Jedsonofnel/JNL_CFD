@@ -41,6 +41,50 @@ local function suffix_match(name, suffix)
 	return name == suffix or name:sub(- #suffix - 1) == "." .. suffix
 end
 
+local function module_is_excluded(name, opts)
+	opts = opts or {}
+
+	for _, excluded in ipairs(opts.exclude_modules or {}) do
+		if name == excluded
+			or starts_with(name, excluded .. ".")
+		then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function module_is_visible(module, opts)
+	opts = opts or {}
+
+	if module.private and not opts.include_private then
+		return false
+	end
+
+	return not module_is_excluded(module.name, opts)
+end
+
+local function constructor_is_visible(index, constructor, opts)
+	local module = index.raw.modules[constructor.module]
+
+	return module
+		and module_is_visible(module, opts)
+end
+
+local function module_has_content(module)
+	if module.doc ~= "" then return true end
+	if #(module.value_list or {}) > 0 then return true end
+
+	for _, symbol in ipairs(module.function_list or {}) do
+		if symbol.kind ~= "method" then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function new_printer(opts)
 	local Printer = require("jnl.repl.printer")
 	return Printer.new({
@@ -102,30 +146,69 @@ end
 
 local function relevant_types(index, modules, mode)
 	mode = mode or "closure"
+
+	if mode == "none" then
+		return {}
+	end
+
 	local selected = {}
-	if mode == "none" then return {} end
+	local include_local = mode == "local"
+		or mode == "closure"
+	local recurse = mode == "closure"
 
 	for _, module in ipairs(modules) do
-		for _, type_doc in ipairs(module.type_list) do
-			add_type_closure(index, type_doc.qualified_name, selected, mode == "closure")
+		if include_local then
+			for _, type_doc in ipairs(module.type_list) do
+				add_type_closure(
+					index,
+					type_doc.qualified_name,
+					selected,
+					recurse
+				)
+			end
 		end
+
 		if mode ~= "local" then
 			for _, symbol in ipairs(module.function_list) do
-				for _, referenced in ipairs(references_for(index, symbol.qualified_name)) do
-					add_type_closure(index, referenced, selected, mode == "closure")
+				if symbol.kind ~= "method" then
+					for _, referenced in ipairs(
+						references_for(index, symbol.qualified_name)
+					) do
+						add_type_closure(
+							index,
+							referenced,
+							selected,
+							recurse
+						)
+					end
 				end
 			end
+
 			for _, value in ipairs(module.value_list) do
-				for _, referenced in ipairs(references_for(index, value.qualified_name)) do
-					add_type_closure(index, referenced, selected, mode == "closure")
+				for _, referenced in ipairs(
+					references_for(index, value.qualified_name)
+				) do
+					add_type_closure(
+						index,
+						referenced,
+						selected,
+						recurse
+					)
 				end
 			end
 		end
 	end
 
 	local out = {}
-	for _, type_doc in pairs(selected) do out[#out + 1] = type_doc end
-	table.sort(out, function(a, b) return a.qualified_name < b.qualified_name end)
+
+	for _, type_doc in pairs(selected) do
+		out[#out + 1] = type_doc
+	end
+
+	table.sort(out, function(a, b)
+		return a.qualified_name < b.qualified_name
+	end)
+
 	return out
 end
 
@@ -191,19 +274,33 @@ local function dump_function(p, symbol, indent)
 	p:blank()
 end
 
-local function dump_type(p, type_doc)
+local function dump_type(index, p, type_doc, opts)
+	opts = opts or {}
+
 	local heading = type_doc.qualified_name
-	if type_doc.kind == "alias" then heading = heading .. " [alias]" end
+
+	if type_doc.kind == "alias" then
+		heading = heading .. " [alias]"
+	end
+
 	p:wrap("   ", "   ", heading)
+
 	if type_doc.deprecated then
-		local message = type_doc.deprecated == true and "deprecated" or ("deprecated: " .. type_doc.deprecated)
+		local message = type_doc.deprecated == true
+			and "deprecated"
+			or ("deprecated: " .. type_doc.deprecated)
+
 		p:wrap("      ", "      ", message)
 	end
-	if type_doc.doc and type_doc.doc ~= "" then p:wrap("      ", "      ", type_doc.doc) end
+
+	if type_doc.doc and type_doc.doc ~= "" then
+		p:wrap("      ", "      ", type_doc.doc)
+	end
 
 	if type_doc.alias_type and type_doc.alias_type ~= "" then
 		p:wrap("      ", "      ", "= " .. type_doc.alias_type)
 	end
+
 	for _, value in ipairs(type_doc.alias_values or {}) do
 		p:columns(value.value, value.doc or "", {
 			indent = "      ",
@@ -211,28 +308,59 @@ local function dump_type(p, type_doc)
 			doc_indent = "         ",
 		})
 	end
+
 	for _, field in ipairs(type_doc.fields or {}) do
-		local left = field.name .. (field.optional and "?" or "")
-		if field.type and field.type ~= "" then left = left .. ": " .. field.type end
-		p:columns(left, field.doc or "", {
-			indent = "      ",
-			left_width = 28,
-			doc_indent = "         ",
-		})
-	end
-	if #(type_doc.constructors or {}) > 0 then
-		p:line("      Constructors")
-		for _, constructor in ipairs(sorted_copy(type_doc.constructors, "qualified_name")) do
-			p:wrap("         ", "         ", function_signature(constructor))
+		if field.visibility ~= "private"
+			or opts.include_private
+		then
+			local left = field.name
+				.. (field.optional and "?" or "")
+
+			if field.type and field.type ~= "" then
+				left = left .. ": " .. field.type
+			end
+
+			p:columns(left, field.doc or "", {
+				indent = "      ",
+				left_width = 28,
+				doc_indent = "         ",
+			})
 		end
 	end
+
+	local constructors = {}
+
+	for _, constructor in ipairs(type_doc.constructors or {}) do
+		if constructor_is_visible(index, constructor, opts) then
+			constructors[#constructors + 1] = constructor
+		end
+	end
+
+	if #constructors > 0 then
+		p:line("      Constructors")
+
+		for _, constructor in ipairs(
+			sorted_copy(constructors, "qualified_name")
+		) do
+			p:wrap(
+				"         ",
+				"         ",
+				function_signature(constructor)
+			)
+		end
+	end
+
 	if #(type_doc.methods or {}) > 0 then
 		p:line("      Methods")
 		p:blank()
-		for _, method in ipairs(sorted_copy(type_doc.methods, "qualified_name")) do
+
+		for _, method in ipairs(
+			sorted_copy(type_doc.methods, "qualified_name")
+		) do
 			dump_function(p, method, "         ")
 		end
 	end
+
 	p:blank()
 end
 
@@ -281,11 +409,20 @@ local function dump_module_body(p, module, opts)
 	end
 end
 
----Return documented module names in sorted order.
+--- Return documented module names in sorted order.
+---@param opts? table Visibility options.
 ---@return string[] modules
-function Index:modules()
+function Index:modules(opts)
+	opts = opts or {}
+
 	local names = {}
-	for name in pairs(self.raw.modules) do names[#names + 1] = name end
+
+	for name, module in pairs(self.raw.modules) do
+		if module_is_visible(module, opts) then
+			names[#names + 1] = name
+		end
+	end
+
 	table.sort(names)
 	return names
 end
@@ -298,15 +435,30 @@ function Index:module(name)
 	return resolve_module(self, name)
 end
 
----Return all documented modules below a package prefix.
+--- Return visible documented modules below a package prefix.
 ---@param prefix string Dotted package prefix.
+---@param opts? table Visibility options.
 ---@return table[] modules
-function Index:package(prefix)
+function Index:package(prefix, opts)
+	opts = opts or {}
+
 	local modules = {}
+
 	for name, module in pairs(self.raw.modules) do
-		if name == prefix or starts_with(name, prefix .. ".") then modules[#modules + 1] = module end
+		if module_is_visible(module, opts)
+			and (
+				name == prefix
+				or starts_with(name, prefix .. ".")
+			)
+		then
+			modules[#modules + 1] = module
+		end
 	end
-	table.sort(modules, function(a, b) return a.name < b.name end)
+
+	table.sort(modules, function(a, b)
+		return a.name < b.name
+	end)
+
 	return modules
 end
 
@@ -389,23 +541,63 @@ function Index:audit(opts)
 	end
 
 	for _, module in pairs(self.raw.modules) do
-		if undocumented_public and (not module.doc or module.doc == "") then
-			add("warning", "undocumented-module", module.name .. " has no module description", module)
-		end
-		for _, symbol in ipairs(module.function_list) do
-			if undocumented_public and (not symbol.doc or symbol.doc == "") then
-				add("warning", "undocumented-symbol", symbol.qualified_name .. " has no description", symbol)
+		if module_is_visible(module, opts) then
+			if undocumented_public
+				and (not module.doc or module.doc == "")
+			then
+				add(
+					"warning",
+					"undocumented-module",
+					module.name .. " has no module description",
+					module
+				)
 			end
-			if missing_param_types then
-				for _, param in ipairs(symbol.params or {}) do
-					if param.name ~= "..." and (not param.type or param.type == "") then
-						add("warning", "untyped-parameter",
-							symbol.qualified_name .. " parameter '" .. param.name .. "' has no type", symbol)
+
+			for _, symbol in ipairs(module.function_list) do
+				if undocumented_public
+					and (not symbol.doc or symbol.doc == "")
+				then
+					add(
+						"warning",
+						"undocumented-symbol",
+						symbol.qualified_name
+						.. " has no description",
+						symbol
+					)
+				end
+
+				if missing_param_types then
+					for _, param in ipairs(symbol.params or {}) do
+						if param.name ~= "..."
+							and (
+								not param.type
+								or param.type == ""
+							)
+						then
+							add(
+								"warning",
+								"untyped-parameter",
+								symbol.qualified_name
+								.. " parameter '"
+								.. param.name
+								.. "' has no type",
+								symbol
+							)
+						end
 					end
 				end
-			end
-			if missing_return_types and #symbol.returns == 0 then
-				add("warning", "missing-return", symbol.qualified_name .. " has no return annotation", symbol)
+
+				if missing_return_types
+					and #symbol.returns == 0
+				then
+					add(
+						"warning",
+						"missing-return",
+						symbol.qualified_name
+						.. " has no return annotation",
+						symbol
+					)
+				end
 			end
 		end
 	end
@@ -429,86 +621,151 @@ function Index:relevant_types(module_name, mode)
 	return relevant_types(self, { module }, mode or "closure")
 end
 
----Render the documented module list.
----@param opts? table Printer options.
+--- Render the documented module list.
+---@param opts? table Rendering and visibility options.
 ---@return string text
 function Index:render_modules(opts)
 	opts = opts or {}
+
 	local p = new_printer(opts)
-	p:line("Documented modules")
-	p:blank()
-	for _, name in ipairs(self:modules()) do
+
+	p:header("Documented modules", 1)
+
+	for _, name in ipairs(self:modules(opts)) do
 		local module = self.raw.modules[name]
+
 		p:columns(name, module.doc or "", {
-			indent = "   ",
+			indent = "  ",
 			left_width = opts.left_width or 28,
-			doc_indent = "      ",
+			doc_indent = "    ",
 		})
 	end
+
 	return p:string()
 end
 
----Render one module and its relevant type appendix.
+--- Render one module and its relevant type appendix.
 ---@param name string Module name or suffix.
----@param opts? table Rendering options.
+---@param opts? table Rendering and visibility options.
 ---@return string? text
 ---@return string? error
 function Index:render_module(name, opts)
 	opts = opts or {}
+
 	local module, err = resolve_module(self, name)
-	if not module then return nil, err end
+
+	if not module then
+		return nil, err
+	end
+
+	if module.private and not opts.include_private then
+		return nil, "documented module is private: " .. module.name
+	end
+
+	if module_is_excluded(module.name, opts) then
+		return nil, "documented module is excluded: " .. module.name
+	end
+
 	local p = new_printer(opts)
-	p:line(opts.title or "JNL API Reference")
-	p:blank()
+
+	p:header(opts.title or "JNL API Reference", 1)
 	dump_module_body(p, module, opts)
 
-	local types = relevant_types(self, { module }, opts.types or "closure")
+	local types = relevant_types(
+		self,
+		{ module },
+		opts.types or "closure"
+	)
+
 	if #types > 0 then
 		p:header("Relevant types", 2)
-		for _, type_doc in ipairs(types) do dump_type(p, type_doc) end
+
+		for _, type_doc in ipairs(types) do
+			dump_type(self, p, type_doc, opts)
+		end
 	end
+
 	return p:string()
 end
 
----Render all modules below a package prefix with a de-duplicated type appendix.
+--- Render visible modules below a package prefix.
 ---@param prefix string Dotted package prefix.
----@param opts? table Rendering options.
+---@param opts? table Rendering and visibility options.
 ---@return string text
 function Index:render_package(prefix, opts)
 	opts = opts or {}
-	local modules = self:package(prefix)
+
+	local modules = self:package(prefix, opts)
 	local p = new_printer(opts)
-	p:line(opts.title or ("JNL package: " .. prefix))
-	p:blank()
+
+	p:header(
+		opts.title or ("JNL package: " .. prefix),
+		1
+	)
+
 	if #modules == 0 then
 		p:line("No documented modules found.")
 		return p:string()
 	end
-	for _, module in ipairs(modules) do dump_module_body(p, module, opts) end
-	local types = relevant_types(self, modules, opts.types or "direct")
+
+	for _, module in ipairs(modules) do
+		if module_has_content(module) then
+			dump_module_body(p, module, opts)
+		end
+	end
+
+	local types = relevant_types(
+		self,
+		modules,
+		opts.types or "direct"
+	)
+
 	if #types > 0 then
 		p:header("Relevant types", 2)
-		for _, type_doc in ipairs(types) do dump_type(p, type_doc) end
+
+		for _, type_doc in ipairs(types) do
+			dump_type(self, p, type_doc, opts)
+		end
 	end
+
 	return p:string()
 end
 
----Render every indexed module.
----@param opts? table Rendering options.
+--- Render every visible indexed module.
+---@param opts? table Rendering and visibility options.
 ---@return string text
 function Index:render_all(opts)
 	opts = opts or {}
+
 	local p = new_printer(opts)
-	p:line(opts.title or "JNL API Reference")
-	p:blank()
 	local modules = {}
-	for _, name in ipairs(self:modules()) do modules[#modules + 1] = self.raw.modules[name] end
-	for _, module in ipairs(modules) do dump_module_body(p, module, opts) end
-	local types = relevant_types(self, modules, opts.types or "local")
+
+	p:header(opts.title or "JNL API Reference", 1)
+
+	for _, name in ipairs(self:modules(opts)) do
+		modules[#modules + 1] = self.raw.modules[name]
+	end
+
+	for _, module in ipairs(modules) do
+		if module_has_content(module) then
+			dump_module_body(p, module, opts)
+		end
+	end
+
+	local types = relevant_types(
+		self,
+		modules,
+		opts.types or "direct"
+	)
+
 	if #types > 0 then
 		p:header("Types", 2)
-		for _, type_doc in ipairs(types) do dump_type(p, type_doc) end
+
+		for _, type_doc in ipairs(types) do
+			dump_type(self, p, type_doc, opts)
+		end
 	end
+
 	return p:string()
 end
 

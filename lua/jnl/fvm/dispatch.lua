@@ -1,11 +1,9 @@
 -- jnl/fvm/dispatch.lua
--- Pure dispatch table: fn(case, inst) -> nil
--- No state. All mutable execution state lives on Case.
--- solve_linalg and inner are NOT here: they yield and interact with Sage,
--- so they live in case.lua as run_krylov and run_inner.
 
 local B = require("jnl.fvm.bindings")
 
+--- Dispatch compiled FVM instructions against a runtime case.
+---@private
 local D = {}
 
 --

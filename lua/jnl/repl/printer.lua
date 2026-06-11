@@ -1,258 +1,359 @@
--- lua/jnl/repl/printer.lua - Terminal text printer with string formatters and builder API
--- <jed@nelson.ac> // 2026-05-26
+-- lua/jnl/repl/printer.lua - Markdown-like terminal text printer
+-- <jed@nelson.ac> // 2026-06-11
 
+--- Format wrapped, Markdown-like text for terminals and generated documents.
+local M = {}
+
+--- A buffered or callback-backed terminal text printer.
+---@class Printer
+---@field width integer Maximum output width.
+---@field out fun(text: string) Output callback.
+---@field buffer string[] Buffered chunks used by `string`.
 local Printer = {}
 Printer.__index = Printer
-
-Printer._doc = "Terminal text printer with wrapping and indentation"
 
 --
 -- Static string formatters
 --
 
-local fmt = {}
+M.fmt = {}
 
-function fmt.header(text, level)
-	level = level or 1
-	return "\n" .. string.rep("#", level) .. " " .. tostring(text) .. "\n"
+local function clamp_heading_level(level)
+	level = math.floor(tonumber(level) or 1)
+
+	if level < 1 then return 1 end
+	if level > 6 then return 6 end
+
+	return level
 end
 
-function fmt.bullet(text)
-	return "  - " .. tostring(text or "") .. "\n"
+--- Return a Markdown-style heading with surrounding whitespace.
+---@param text any Heading text.
+---@param level? integer Heading level from 1 to 6.
+---@return string text
+function M.fmt.header(text, level)
+	level = clamp_heading_level(level)
+
+	return string.format(
+		"\n%s %s\n\n",
+		string.rep("#", level),
+		tostring(text or "")
+	)
 end
 
--- left-aligned key in a fixed column followed by value
-function fmt.kv(key, value, opts)
+--- Return a Markdown-style bullet.
+---@param text any Bullet text.
+---@param opts? table Formatting options, including `indent`.
+---@return string text
+function M.fmt.bullet(text, opts)
 	opts = opts or {}
-	local w = opts.width or 16
-	return string.format("  %-" .. w .. "s  %s\n",
-		tostring(key or ""), tostring(value or ""))
+
+	return string.format(
+		"%s- %s\n",
+		opts.indent or "",
+		tostring(text or "")
+	)
 end
 
-function fmt.rule(opts)
-	opts        = opts or {}
-	local char  = opts.char or "-"
-	local width = opts.width or 40
-	return char:rep(width) .. "\n"
+--- Return a simple key-value line.
+---@param key any Key or label.
+---@param value any Value text.
+---@param opts? table Formatting options, including `indent` and `separator`.
+---@return string text
+function M.fmt.kv(key, value, opts)
+	opts = opts or {}
+
+	return string.format(
+		"%s%s%s%s\n",
+		opts.indent or "",
+		tostring(key or ""),
+		opts.separator or ": ",
+		tostring(value or "")
+	)
 end
 
--- indent every line of a block by n spaces
-function fmt.indent(text, n)
-	local pad   = string.rep(" ", n or 2)
+--- Return a Markdown horizontal rule.
+---@param opts? table Formatting options, including `indent`.
+---@return string text
+function M.fmt.rule(opts)
+	opts = opts or {}
+
+	return (opts.indent or "") .. "---\n\n"
+end
+
+--- Indent every line of a text block.
+---@param text any Text to indent.
+---@param count? integer Number of spaces; defaults to 2.
+---@return string text
+function M.fmt.indent(text, count)
+	local pad = string.rep(" ", count or 2)
 	local lines = {}
-	for line in (tostring(text or "") .. "\n"):gmatch("([^\n]*)\n") do
+
+	text = tostring(text or "")
+
+	for line in (text .. "\n"):gmatch("(.-)\n") do
 		lines[#lines + 1] = pad .. line
 	end
+
 	return table.concat(lines, "\n")
 end
 
-Printer.fmt = fmt
-
 --
--- Builder
+-- Construction
 --
 
-local function default_out(self)
-	return function(s)
-		self._buf[#self._buf + 1] = s
+local function default_out(printer)
+	return function(text)
+		printer.buffer[#printer.buffer + 1] = text
 	end
 end
 
-function Printer.new(opts)
+--- Create a buffered or callback-backed printer.
+---@param opts? table Options containing `width` and optional `out`.
+---@return Printer printer
+function M.new(opts)
 	opts = opts or {}
-	local self = setmetatable({
+
+	local printer = setmetatable({
 		width = opts.width or 80,
-		_buf  = {},
+		buffer = {},
 	}, Printer)
-	self.out = opts.out or default_out(self)
-	return self
-end
 
--- _emit adds a trailing newline; for pre-formatted strings use self.out() directly
-function Printer:_emit(line)
-	self.out((line or "") .. "\n")
-end
+	printer.out = opts.out or default_out(printer)
 
-function Printer:line(text)
-	self:_emit(text)
-end
-
-function Printer:blank()
-	self:_emit("")
-end
-
-function Printer:header(text, level)
-	self.out(fmt.header(text, level))
-end
-
-function Printer:bullet(text)
-	self.out(fmt.bullet(text))
-end
-
-function Printer:kv(key, value, opts)
-	self.out(fmt.kv(key, value, opts))
-end
-
-function Printer:rule(opts)
-	self.out(fmt.rule(opts))
+	return printer
 end
 
 --
--- Wrapping helpers
+-- Basic output
+--
+
+local function emit_line(printer, text)
+	printer.out((text or "") .. "\n")
+end
+
+--- Emit one line.
+---@param text? any Line content.
+function Printer:line(text)
+	emit_line(self, tostring(text or ""))
+end
+
+--- Emit one blank line.
+function Printer:blank()
+	emit_line(self, "")
+end
+
+--- Emit a Markdown-style heading.
+---@param text any Heading text.
+---@param level? integer Heading level from 1 to 6.
+function Printer:header(text, level)
+	self.out(M.fmt.header(text, level))
+end
+
+--- Emit a Markdown-style bullet.
+---@param text any Bullet text.
+---@param opts? table Formatting options.
+function Printer:bullet(text, opts)
+	self.out(M.fmt.bullet(text, opts))
+end
+
+--- Emit a key-value line.
+---@param key any Key or label.
+---@param value any Value text.
+---@param opts? table Formatting options.
+function Printer:kv(key, value, opts)
+	self.out(M.fmt.kv(key, value, opts))
+end
+
+--- Emit a Markdown horizontal rule.
+---@param opts? table Formatting options.
+function Printer:rule(opts)
+	self.out(M.fmt.rule(opts))
+end
+
+--
+-- Wrapping
 --
 
 local function split_long_word(word, width)
 	local chunks = {}
+
 	while #word > width do
 		chunks[#chunks + 1] = word:sub(1, width)
 		word = word:sub(width + 1)
 	end
-	if #word > 0 then chunks[#chunks + 1] = word end
+
+	if word ~= "" then
+		chunks[#chunks + 1] = word
+	end
+
 	return chunks
 end
 
+--- Emit wrapped text with separate first-line and continuation indents.
+---@param first_indent? string First-line indentation or prefix.
+---@param rest_indent? string Continuation indentation.
+---@param text? any Text to wrap.
 function Printer:wrap(first_indent, rest_indent, text)
 	first_indent = first_indent or ""
-	rest_indent  = rest_indent or first_indent
-	text         = tostring(text or "")
+	rest_indent = rest_indent or first_indent
+	text = tostring(text or "")
 
 	if text == "" then
-		self:_emit(first_indent)
+		emit_line(self, first_indent)
 		return
 	end
 
-	for para in (text .. "\n"):gmatch("(.-)\n") do
-		if para:match("^%s*$") then
-			self:_emit("")
+	for paragraph in (text .. "\n"):gmatch("(.-)\n") do
+		if paragraph:match("^%s*$") then
+			emit_line(self, "")
 		else
-			self:_wrap_para(first_indent, rest_indent, para)
+			self:wrap_paragraph(
+				first_indent,
+				rest_indent,
+				paragraph
+			)
 		end
+
 		first_indent = rest_indent
 	end
 end
 
-function Printer:_wrap_para(first_indent, rest_indent, para)
-	local indent   = first_indent
-	local line     = indent
+--- Emit one wrapped paragraph.
+---@private
+---@param first_indent string First-line indentation or prefix.
+---@param rest_indent string Continuation indentation.
+---@param paragraph string Paragraph text.
+function Printer:wrap_paragraph(first_indent, rest_indent, paragraph)
+	local indent = first_indent
+	local line = indent
 	local has_word = false
 
-	for word in para:gmatch("%S+") do
-		local room  = math.max(1, self.width - #indent)
-		local parts = #word > room and split_long_word(word, room) or { word }
+	for word in paragraph:gmatch("%S+") do
+		local room = math.max(1, self.width - #indent)
+		local parts
+
+		if #word > room then
+			parts = split_long_word(word, room)
+		else
+			parts = { word }
+		end
 
 		for _, part in ipairs(parts) do
-			local sep = has_word and " " or ""
-			if #line + #sep + #part <= self.width then
-				line     = line .. sep .. part
+			local separator = has_word and " " or ""
+
+			if #line + #separator + #part <= self.width then
+				line = line .. separator .. part
 				has_word = true
 			else
-				self:_emit(line)
-				indent   = rest_indent
-				line     = indent .. part
+				emit_line(self, line)
+
+				indent = rest_indent
+				line = indent .. part
 				has_word = true
 			end
 		end
 	end
 
-	if has_word then self:_emit(line) else self:_emit(first_indent) end
+	if has_word then
+		emit_line(self, line)
+	else
+		emit_line(self, first_indent)
+	end
 end
 
+--
+-- Structured output
+--
+
+--- Emit a responsive two-column row.
+---
+--- The row is rendered inline when enough room remains for the right column.
+--- Otherwise the left and right values are stacked.
+---@param left any Left-hand label.
+---@param right any Right-hand description.
+---@param opts? table Column layout options.
 function Printer:columns(left, right, opts)
-	opts                = opts or {}
+	opts = opts or {}
 
-	local indent        = opts.indent or "   "
-	local left_width    = opts.left_width or 32
-	local gap           = opts.gap or "  "
-	local doc_indent    = opts.doc_indent or (indent .. "  ")
+	local indent = opts.indent or "  "
+	local gap = opts.gap or "  "
+	local left_width = opts.left_width or 24
+	local min_right_width = opts.min_right_width or 28
+	local doc_indent = opts.doc_indent or (indent .. "  ")
 
-	left                = tostring(left or "")
-	right               = tostring(right or "")
+	left = tostring(left or "")
+	right = tostring(right or "")
 
-	local inline_prefix = string.format(
-		"%s%-" .. tostring(left_width) .. "s%s",
-		indent, left, gap)
+	local prefix_width = #indent + left_width + #gap
+	local right_width = self.width - prefix_width
 
-	if #left <= left_width then
-		local rest = string.rep(" ", #inline_prefix)
-		self:wrap(inline_prefix, rest, right)
+	local can_render_inline = not opts.stack
+		and #left <= left_width
+		and right_width >= min_right_width
+
+	if can_render_inline then
+		local first = string.format(
+			"%s%-" .. left_width .. "s%s",
+			indent,
+			left,
+			gap
+		)
+
+		local rest = string.rep(" ", #first)
+
+		self:wrap(first, rest, right)
 		return
 	end
 
 	self:wrap(indent, indent, left)
+
 	if right ~= "" then
 		self:wrap(doc_indent, doc_indent, right)
 	end
 end
 
+--- Emit a named item followed by labelled fields.
+---@param name any Item name.
+---@param fields table[] Fields represented as `{ label, text }`.
+---@param opts? table Item layout options.
 function Printer:item(name, fields, opts)
-	opts               = opts or {}
+	opts = opts or {}
 
-	local indent       = opts.indent or "   "
+	local indent = opts.indent or "  "
 	local field_indent = opts.field_indent or (indent .. "  ")
-	local label_width  = opts.label_width or 5
+	local label_width = opts.label_width or 8
 
-	self:wrap(indent, indent, tostring(name or ""))
+	self:wrap(
+		indent .. "- ",
+		indent .. "  ",
+		tostring(name or "")
+	)
 
 	for _, field in ipairs(fields or {}) do
-		local label = tostring(field[1] or "")
-		local text  = tostring(field[2] or "")
+		local label = tostring(field[1] or "") .. ":"
+		local text = tostring(field[2] or "")
+
 		local first = string.format(
-			"%s%-" .. tostring(label_width) .. "s ",
-			field_indent, label .. ":")
-		local rest  = string.rep(" ", #first)
+			"%s%-" .. label_width .. "s ",
+			field_indent,
+			label
+		)
+
+		local rest = string.rep(" ", #first)
+
 		self:wrap(first, rest, text)
 	end
 end
 
+--
+-- Buffered output
+--
+
+--- Return all output accumulated by the default buffered sink.
+---@return string text
 function Printer:string()
-	return table.concat(self._buf)
+	return table.concat(self.buffer)
 end
 
---
--- API
---
-
-Printer._api = {
-	new = {
-		args = "opts:table?",
-		ret  = "Printer",
-		doc  = "Create a printer; opts: { width=72, out:fn? }; default out buffers to string()",
-	},
-}
-
-Printer._types = {
-	Printer = {
-		kind        = "table",
-		constructor = "Printer.new(opts?)",
-		doc         = "Builder that accumulates formatted terminal output; all emit methods return nil",
-		methods     = {
-			-- structural
-			header  = { args = "text:string, level:int?", ret = "nil", doc = "Emit a markdown heading (# = level 1); blank line before, none after" },
-			bullet  = { args = "text:string", ret = "nil", doc = "Emit a single bullet item" },
-			kv      = { args = "key:string, value:string, opts:table?", ret = "nil", doc = "Emit a key-value row; opts: { width=16 }" },
-			rule    = { args = "opts:table?", ret = "nil", doc = "Emit a horizontal rule; opts: { char='-', width=40 }" },
-			-- text
-			line    = { args = "text:string?", ret = "nil", doc = "Emit one line" },
-			blank   = { args = "", ret = "nil", doc = "Emit a blank line" },
-			wrap    = { args = "first_indent, rest_indent, text:string", ret = "nil", doc = "Emit word-wrapped text with separate first/rest indentation" },
-			columns = { args = "left, right:string, opts:table?", ret = "nil", doc = "Emit a two-column row; opts: { indent, left_width=32, gap, doc_indent }" },
-			item    = { args = "name:string, fields:table, opts:table?", ret = "nil", doc = "Emit a named item with labelled sub-fields" },
-			-- output
-			string  = { args = "", ret = "string", doc = "Return buffered output; only valid with the default buffer sink" },
-		},
-	},
-	["Printer.fmt"] = {
-		kind        = "table",
-		constructor = "Printer.fmt (static sub-table)",
-		doc         = "Pure string formatters; return complete strings with newlines; safe to io.write() directly",
-		methods     = {
-			header = { args = "text:string, level:int?", ret = "string", doc = "Markdown heading; blank line before; level defaults to 1" },
-			bullet = { args = "text:string", ret = "string", doc = "Single bullet item: '  - text'" },
-			kv     = { args = "key, value:string, opts:table?", ret = "string", doc = "Key-value row; opts: { width=16 }" },
-			rule   = { args = "opts:table?", ret = "string", doc = "Horizontal rule; opts: { char='-', width=40 }" },
-			indent = { args = "text:string, n:int?", ret = "string", doc = "Indent every line of a block by n spaces (default 2)" },
-		},
-	},
-}
-
-return Printer
+return M

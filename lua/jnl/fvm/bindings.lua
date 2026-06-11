@@ -2,6 +2,8 @@
 local opt = require("jnl.core.optional")
 local I   = opt.require("jnl.fvm_internal")
 
+--- Provide low-level Lua bindings and convenience wrappers for the FVM C API.
+---@private
 local M   = {}
 
 --

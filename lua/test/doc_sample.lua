@@ -1,6 +1,4 @@
 --- Example geometry module used by the documentation tests.
----@module test.doc_sample
-
 local M = {}
 
 --- Available meshing schemes.

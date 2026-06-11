@@ -108,7 +108,6 @@ local SECTIONS = {
 			"Document a module near its declaration:",
 			"",
 			"--- Build and query two-dimensional meshes.",
-			"---@module jnl.mesh2d",
 			"local M = {}",
 			"",
 			"Document public functions immediately before their definitions:",
@@ -453,10 +452,21 @@ function M.context_string(opts)
 
 	local docs = scan_docs(opts)
 
-	p:header("Complete API reference", 1)
+	local exclude_modules = opts.exclude_modules
+
+	if exclude_modules == nil then
+		exclude_modules = {
+			"jnl.doc",
+			"jnl.demo_nabla",
+		}
+	end
+
 	p:line(docs:render_all({
 		width = opts.width or 88,
-		types = opts.types or "local",
+		title = "Complete API reference",
+		types = opts.types or "direct",
+		include_private = opts.include_private == true,
+		exclude_modules = exclude_modules,
 	}))
 
 	return p:string()
