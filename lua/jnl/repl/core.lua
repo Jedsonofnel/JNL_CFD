@@ -3,6 +3,7 @@
 
 local Commands = require("jnl.repl.commands")
 local Help = require("jnl.repl.help")
+local Completion = require("jnl.repl.completion")
 
 --- Implement the JNL Fennel REPL object and evaluation loop.
 ---@private
@@ -324,6 +325,23 @@ end
 -- Construction
 --
 
+local function install_completion(repl)
+	local ok,
+	host = pcall(require, "jnl.repl.host")
+
+	if not ok or type(host.set_completer) ~=
+		"function" then
+		return nil
+	end
+
+	host.set_completer(function(context)
+		return Completion.complete(
+			repl, context)
+	end)
+
+	return host
+end
+
 --- Create an independent JNL REPL.
 ---@param opts? table Construction options.
 ---@return jnl.repl.Repl repl
@@ -518,15 +536,23 @@ function Repl:run()
 	self.running = true
 	self.quit = false
 
-	print_welcome()
-	enter_reading()
+	local completion_host
 
-	self.fennel = require_fennel()
+	local ok, err = pcall(function()
+		self.fennel = require_fennel()
+		completion_host = install_completion(self)
 
-	local ok, err = pcall(
-		self.fennel.repl,
-		fennel_repl_options(self)
-	)
+		print_welcome()
+		enter_reading()
+
+		self.fennel.repl(
+			fennel_repl_options(self)
+		)
+	end)
+
+	if completion_host then
+		completion_host.set_completer(nil)
+	end
 
 	self.running = false
 	self.quit = true

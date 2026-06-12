@@ -94,6 +94,277 @@ static void force_cancel_hook(lua_State *L, lua_Debug *debug)
 }
 
 //
+// Lua completion provider
+//
+
+static lua_State *completion_state = NULL;
+static int completion_ref = LUA_NOREF;
+
+static char **completion_candidates = NULL;
+static size_t completion_count = 0;
+static size_t completion_index = 0;
+
+static char *copy_string(const char *source)
+{
+	size_t len = strlen(source);
+
+	char *copy = malloc(len + 1);
+
+	if (!copy) {
+		return NULL;
+	}
+
+	memcpy(copy, source, len + 1);
+
+	return copy;
+}
+
+static void free_completion_candidates(void)
+{
+	if (!completion_candidates) {
+		return;
+	}
+
+	for (size_t i = 0; i < completion_count; i++) {
+		free(completion_candidates[i]);
+	}
+
+	free(completion_candidates);
+
+	completion_candidates = NULL;
+	completion_count = 0;
+	completion_index = 0;
+}
+
+static int lua_set_completer(lua_State *L)
+{
+	if (completion_ref != LUA_NOREF && completion_state) {
+		luaL_unref(completion_state, LUA_REGISTRYINDEX, completion_ref);
+	}
+
+	completion_state = L;
+	completion_ref = LUA_NOREF;
+
+	if (lua_isnoneornil(L, 1)) {
+		return 0;
+	}
+
+	luaL_checktype(L, 1, LUA_TFUNCTION);
+
+	lua_pushvalue(L, 1);
+
+	completion_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+	return 0;
+}
+
+static int luaopen_repl_host(lua_State *L)
+{
+	static const luaL_Reg functions[] = {
+	    {"set_completer", lua_set_completer},
+	    {NULL, NULL},
+	};
+
+	luaL_newlib(L, functions);
+
+	return 1;
+}
+
+static void set_context_string(lua_State *L, const char *name,
+                               const char *value)
+{
+	lua_pushstring(L, value ? value : "");
+	lua_setfield(L, -2, name);
+}
+
+static void set_context_integer(lua_State *L, const char *name,
+                                lua_Integer value)
+{
+	lua_pushinteger(L, value);
+	lua_setfield(L, -2, name);
+}
+
+static int copy_lua_candidates(lua_State *L, int table_index)
+{
+	table_index = lua_absindex(L, table_index);
+
+	size_t count = lua_rawlen(L, table_index);
+
+	if (count == 0) {
+		return 0;
+	}
+
+	char **candidates = calloc(count, sizeof(*candidates));
+
+	if (!candidates) {
+		return -1;
+	}
+
+	size_t copied = 0;
+
+	for (size_t i = 1; i <= count; i++) {
+		lua_geti(L, table_index, (lua_Integer)i);
+
+		const char *candidate = lua_tostring(L, -1);
+
+		if (candidate && *candidate) {
+			candidates[copied] = copy_string(candidate);
+
+			if (!candidates[copied]) {
+				lua_pop(L, 1);
+
+				for (size_t j = 0; j < copied; j++) {
+					free(candidates[j]);
+				}
+
+				free(candidates);
+
+				return -1;
+			}
+
+			copied++;
+		}
+
+		lua_pop(L, 1);
+	}
+
+	if (copied == 0) {
+		free(candidates);
+		return 0;
+	}
+
+	completion_candidates = candidates;
+	completion_count = copied;
+	completion_index = 0;
+
+	return 0;
+}
+
+static int call_completion_provider(const char *text, int start, int end,
+                                    int *fallback, int *append)
+{
+	if (!completion_state || completion_ref == LUA_NOREF) {
+		return 0;
+	}
+
+	lua_State *L = completion_state;
+	int top = lua_gettop(L);
+
+	*fallback = 1;
+	*append = 0;
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, completion_ref);
+
+	if (!lua_isfunction(L, -1)) {
+		lua_settop(L, top);
+		return 0;
+	}
+
+	lua_createtable(L, 0, 5);
+
+	set_context_string(L, "text", text);
+
+	set_context_string(L, "line", rl_line_buffer);
+
+	/*
+	 * Readline positions are zero-based and end is exclusive.
+	 * Expose one-based inclusive positions to Lua.
+	 */
+	set_context_integer(L, "start", start + 1);
+
+	set_context_integer(L, "finish", end);
+
+	set_context_integer(L, "point", rl_point + 1);
+
+	if (lua_pcall(L, 1, 2, 0) != LUA_OK) {
+		/*
+		 * Completion errors should not corrupt the prompt. Silently fall
+		 * back to Readline's normal completion behaviour.
+		 */
+		lua_settop(L, top);
+		return -1;
+	}
+
+	int matches_index = top + 1;
+	int opts_index = top + 2;
+
+	if (lua_istable(L, opts_index)) {
+		lua_getfield(L, opts_index, "fallback");
+
+		if (!lua_isnil(L, -1)) {
+			*fallback = lua_toboolean(L, -1);
+		}
+
+		lua_pop(L, 1);
+
+		lua_getfield(L, opts_index, "append");
+
+		if (!lua_isnil(L, -1)) {
+			*append = lua_toboolean(L, -1);
+		}
+
+		lua_pop(L, 1);
+	}
+
+	int result = 0;
+
+	if (lua_istable(L, matches_index)) {
+		result = copy_lua_candidates(L, matches_index);
+	}
+
+	lua_settop(L, top);
+
+	return result;
+}
+
+static char *completion_generator(const char *text, int state)
+{
+	(void)text;
+
+	if (state == 0) {
+		completion_index = 0;
+	}
+
+	if (completion_index >= completion_count) {
+		return NULL;
+	}
+
+	/*
+	 * Readline owns and frees strings returned by the generator.
+	 */
+	return copy_string(completion_candidates[completion_index++]);
+}
+
+static char **attempt_completion(const char *text, int start, int end)
+{
+	free_completion_candidates();
+
+	int fallback = 1;
+	int append = 0;
+
+	int result = call_completion_provider(text, start, end, &fallback, &append);
+
+	if (result != 0) {
+		return NULL;
+	}
+
+	rl_attempted_completion_over = fallback ? 0 : 1;
+	rl_completion_suppress_append = append ? 0 : 1;
+	rl_completion_append_character = append ? ' ' : '\0';
+
+	if (completion_count == 0) {
+		free_completion_candidates();
+		return NULL;
+	}
+
+	char **matches = rl_completion_matches(text, completion_generator);
+
+	free_completion_candidates();
+
+	return matches;
+}
+
+//
 // Persistent history
 //
 
@@ -201,6 +472,13 @@ void jnl_cli_readline_shutdown(void)
 
 	history_ready = 0;
 	history_path[0] = '\0';
+
+	rl_attempted_completion_function = NULL;
+
+	free_completion_candidates();
+
+	completion_state = NULL;
+	completion_ref = LUA_NOREF;
 }
 
 //
@@ -346,6 +624,18 @@ int jnl_cli_readline_init(lua_State *L)
 	install_lua_function(L, "__jnl_repl_cancel_clear", lua_cancel_clear);
 
 	install_lua_function(L, "__jnl_repl_mark_started", lua_mark_repl_started);
+
+	/*
+	 * Keep punctuation commonly used in Fennel symbols inside the token.
+	 * In particular, '.', '-', '*', and ',' are not word breaks.
+	 */
+	rl_completer_word_break_characters = " \t\n\"'`@$><=;|&{()}[]";
+
+	rl_attempted_completion_function = attempt_completion;
+
+	luaL_requiref(L, "jnl.repl.host", luaopen_repl_host, 0);
+
+	lua_pop(L, 1);
 
 	return 0;
 }

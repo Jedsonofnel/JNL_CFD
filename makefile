@@ -276,12 +276,12 @@ $(OBJDIR)/test/%.o: $(TESTDIR)/%.c | $(TRIANGLE_LIBS)
 define COMMAND_template
 
 $(BINDIR)/$(1): $(call cmd_objects,$(1)) $(OBJS) $(TRIANGLE_LIBS) | $(BINDIR) $(OUTDIR)
-	$(LOG_LD)
-	$(Q)$(CC) $(CFLAGS) -o $$@ \
+	$$(LOG_LD)
+	$$(Q)$$(CC) $$(CFLAGS) -o $$@ \
 		$(call cmd_objects,$(1)) \
-		$(OBJS) \
-		$(TRIANGLE_LIBS) \
-		$(LDFLAGS)
+		$$(OBJS) \
+		$$(TRIANGLE_LIBS) \
+		$$(LDFLAGS)
 
 endef
 
