@@ -78,6 +78,7 @@ end
 ---@field private y       number?
 ---@field private heading number
 ---@field private closed  boolean
+---@field private join_start integer? Segment index where the current :startjoin() bracket began.
 ---@field segs    PenSegment[]
 ---@field tags table<string, Curve2D>  Named segments, keyed by tag.
 local Pen = {}
@@ -86,14 +87,15 @@ Pen.__index = Pen
 ---@return Pen
 local function new_pen()
 	return setmetatable({
-		sx      = nil,
-		sy      = nil,
-		x       = nil,
-		y       = nil,
-		heading = 0.0,
-		segs    = {},
-		tags    = {},
-		closed  = false,
+		sx         = nil,
+		sy         = nil,
+		x          = nil,
+		y          = nil,
+		heading    = 0.0,
+		segs       = {},
+		tags       = {},
+		closed     = false,
+		join_start = nil,
 	}, Pen)
 end
 
@@ -199,6 +201,27 @@ function Pen:line_to(x, y)
 	self.x = x
 	self.y = y
 	self.heading = dir_bear(dx, dy)
+	return self
+end
+
+--- Append an externally constructed Curve2D as a segment.
+---
+--- The pen position advances to the curve's endpoint.  Use this when a
+--- boundary segment comes from coordinate data (e.g. an aerofoil surface)
+--- rather than pen movement.
+---@param c Curve2D
+---@return Pen
+function Pen:curve(c)
+	need_start(self)
+	need_open(self)
+
+	local p = c:finish()
+	local tx, ty = c:tangent_end()
+	push(self, c:clone())
+
+	self.x = p[1]
+	self.y = p[2]
+	self.heading = dir_bear(tx, ty)
 	return self
 end
 
@@ -344,6 +367,70 @@ function Pen:hint(opts)
 	return self
 end
 
+--- Mark the start of a compound segment group.
+---
+--- All segments appended until :endjoin() are merged into a single named
+--- curve when :endjoin() is called.  Individual :tag() calls inside the
+--- bracket still work and remain accessible via :get().
+---@return Pen
+function Pen:startjoin()
+	assert(not self.join_start,
+		"pen: :startjoin() already open — call :endjoin() first")
+
+	self.join_start = #self.segs + 1
+	return self
+end
+
+--- Close an open :startjoin() bracket and register the compound curve.
+---@param name string
+---@return Pen
+function Pen:endjoin(name)
+	local from = assert(self.join_start,
+		"pen: :endjoin() called without a matching :startjoin()")
+	assert(not self.tags[name],
+		("pen: tag %q is already in use"):format(name))
+
+	local to = #self.segs
+	assert(to >= from,
+		"pen: :endjoin() bracket contains no segments")
+	assert(to - from + 1 >= 2,
+		"pen: :endjoin() bracket needs at least two segments")
+
+	local parts = {}
+	for i = from, to do
+		parts[#parts + 1] = self.segs[i].curve
+	end
+
+	self.tags[name] = C.join(parts)
+	self.join_start = nil
+	return self
+end
+
+--- Join the last n segments into a named compound curve.
+---
+--- Fine for stable two- or three-segment groups.  Prefer
+--- :startjoin()/:endjoin() when the segment count may change during
+--- development.
+---@param n    integer Number of trailing segments to join (minimum 2).
+---@param name string
+---@return Pen
+function Pen:joinlast(n, name)
+	assert(n >= 2,
+		"pen: joinlast n must be at least 2")
+	assert(not self.tags[name],
+		("pen: tag %q is already in use"):format(name))
+	assert(#self.segs >= n,
+		("pen: joinlast(%d) but only %d segments exist"):format(n, #self.segs))
+
+	local parts = {}
+	for i = #self.segs - n + 1, #self.segs do
+		parts[#parts + 1] = self.segs[i].curve
+	end
+
+	self.tags[name] = C.join(parts)
+	return self
+end
+
 --
 -- Build / access
 --
@@ -373,6 +460,21 @@ function Pen:get(name)
 	local c = self.tags[name]
 	assert(c, ("pen: no segment tagged %q"):format(name))
 	return c
+end
+
+--- Return the curve formed by joining several tagged segments in order.
+---
+--- Post-hoc composition from named tags; useful when combining segments
+--- from different pens or in a different order than they were drawn.
+--- For inline grouping during pen construction prefer :startjoin()/:endjoin().
+---@param names string[]
+---@return Curve2D
+function Pen:joined(names)
+	local parts = {}
+	for i, name in ipairs(names) do
+		parts[i] = self:get(name)
+	end
+	return C.join(parts)
 end
 
 ---Return the current pen position.

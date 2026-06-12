@@ -190,6 +190,9 @@ f64 jnl_curve2d_length(const struct jnl_curve2d *c);
 // Evaluate by normalised arc length, s in [0, 1].
 jnl_vec2d jnl_curve2d_eval_arclen(const struct jnl_curve2d *c, f64 s);
 
+jnl_vec2d jnl_curve2d_tangent_start(const struct jnl_curve2d *c);
+jnl_vec2d jnl_curve2d_tangent_end(const struct jnl_curve2d *c);
+
 //
 // Sampling
 //

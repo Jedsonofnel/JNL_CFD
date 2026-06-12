@@ -23,8 +23,10 @@ and ask for the relevant source when necessary.
 - Prefer small local helpers over deeply nested blocks.
 - Keep public module functions easy to find.
 - Avoid unnecessary abstraction and speculative generality.
+- Do not prefix Lua names with underscores to imply privacy. Lua has no private fields or methods, and the convention is visually noisy without enforcing anything.
+- Express privacy structurally: keep implementation helpers local, avoid exporting internal values, and use @private only for documentation visibility.
 - Comment only to explain non-obvious behaviour, constraints, invariants, or design decisions.
-- Do not use Unicode arrows or mathematical symbols in identifiers or comments.
+- Use plain ASCII in comments, documentation, identifiers, and user-facing diagnostic text; do not use Unicode arrows, mathematical symbols, or typographic punctuation.
 - Do not add decorative rulers or banners beyond the standard three-line section header.
 - When changing a public API, update its source annotations in the same change.
 
@@ -40,6 +42,7 @@ or maintain parallel _doc, _api, _types, or _constants tables.
 - Use @private when a declaration would otherwise appear public but should be excluded.
 - Keep documentation concise and describe behaviour rather than restating the function name.
 - Do not document unsupported behaviour merely because it might be useful.
+- Use @private for documentation visibility; do not rename public or internal symbols with leading underscores merely to suggest privacy.
 
 
 # Documentation comment style
@@ -893,33 +896,113 @@ appropriate, and user-facing output.
 
    Functions
 
-      jnl.mesh2d.new_cartmesh(width, height, nx, ny)
+      jnl.mesh2d.patch_list(mesh: Mesh2D) -> PatchInfo[]
+         Return a normalised list of patches from a mesh.
 
-      jnl.mesh2d.patch_list(mesh)
+         Each entry renames `marker` to `id` for consistency with BC tables.
 
-      jnl.mesh2d.patch_lookup(mesh)
+      jnl.mesh2d.patch_lookup(mesh: Mesh2D) -> table<integer|string, PatchInfo>
+         Return a table indexed by both integer marker and name string.
 
-      jnl.mesh2d.patch_name_list(mesh)
+         Allows lookup by either `t[marker]` or `t["name"]`.
 
-      jnl.mesh2d.patch_name_set(mesh)
+      jnl.mesh2d.patch_name_list(mesh: Mesh2D) -> string[]
+         Return an ordered list of patch name strings.
+
+      jnl.mesh2d.patch_name_set(mesh: Mesh2D) -> table<string, true>
+         Return a set of patch name strings present in the mesh.
 
 
-## jnl.mesh2d.smesh
+## jnl.mesh2d.block
 
-   (no module description)
+   Fluent builders for single structured blocks and multi-block grids.
 
-   Values
+   Single block:
 
-      jnl.mesh2d.smesh.PATCH: SmeshPatchNames
+   local mesh2d = require("jnl.mesh2d") local mesh, err = mesh2d.block(33, 33)
+   :south(curve.line(0,0, 1,0), { marker = WALL }) :east( curve.line(1,0, 1,1), { marker
+   = OUTLET }) :north(curve.line(0,1, 1,1), { marker = TOP }) :west( curve.line(0,0,
+   0,1), { marker = INLET }) :tfi() :build()
+
+   Multi-block grid:
+
+   local E = mesh2d.edges local g = mesh2d.grid() local b0 = g:block(33, 33) local b1 =
+   g:block(33, 33) g:join(b0, E.E, b1, E.W) b0:south(...):east(...):north(...):west(...)
+   b1:south(...):east(...):north(...) -- west is auto-populated local mesh, err =
+   g:build()
+
+   O-mesh cyclic topology:
+
+   local blocks = { g:block(33,33), g:block(33,33), g:block(33,33), g:block(33,33) }
+   g:join_ring(blocks, E.E, E.W)
+
+   Functions
+
+      jnl.mesh2d.block.block(ni: integer, nj: integer) -> BlockBuilder
+         Create a standalone structured block builder.
+
+         ni is the number of grid points along the south and north edges. nj is the
+         number of grid points along the east and west edges.
+
+      jnl.mesh2d.block.grid() -> GridBuilder
+         Create a multi-block structured grid builder.
+
+
+## jnl.mesh2d.cartesian
+
+   Build axis-aligned Cartesian meshes with standard NESW patch names.
+
+   Functions
+
+      jnl.mesh2d.cartesian.build(width: number, height: number, nx: integer, ny:
+      integer) -> Mesh2D?, string?
+         Build a Cartesian mesh with nx * ny cells over a width * height domain.
+         nx                  Cell count in x.
+         ny                  Cell count in y.
+         return 1            mesh
+         return 2            err
+
+
+## jnl.mesh2d.edges
+
+   NESW edge direction constants and patch name strings shared across cartesian,
+   structured block, and triangulated mesh modules.
+
+   Integer direction constants (S/E/N/W) are used by the block and grid builders. String
+   patch names (PATCH.*) are used as BC identifiers on any mesh type.
 
 
 ## jnl.mesh2d.tri
 
-   (no module description)
+   Fluent specification builder and entry points for Triangle-backed unstructured mesh
+   generation.
+
+   Typical workflow:
+
+   local pslg = curve.discretise(domain_curve, marker) local mesh = tri.spec()
+   :from_domain_reg(reg) :min_angle(28) :resolution(pslg, 0.05) :triangulate(pslg)
+
+   For Domain2D input use tri.from_domain()
 
    Functions
 
-      jnl.mesh2d.tri.spec()
+      jnl.mesh2d.tri.from_domain(domain: Domain2D, spec: TriSpecBuilder, opts?: {
+      n:integer? }) -> Mesh2D?, string?
+         Triangulate a Domain2D directly.
+         return 1            mesh
+         return 2            err
+
+      jnl.mesh2d.tri.pslg_from_domain(domain: Domain2D, opts?: { n:integer? }) -> PSLG?,
+      string?
+         Lower a Domain2D to a PSLG suitable for triangulation.
+
+         Samples each boundary curve at n points, adds nodes and constrained edges to a
+         new PSLG, and inserts hole and region seeds.
+         return 1            pslg
+         return 2            err
+
+      jnl.mesh2d.tri.spec() -> TriSpecBuilder
+         Create a triangulation specification.
 
 
 ## jnl.nabla
@@ -1075,10 +1158,20 @@ appropriate, and user-facing output.
 
 ## jnl.repl
 
-   Provide a configurable Fennel REPL with comma commands, documentation, cancellation,
-   registered values, and study-specific usage.
+   Provide a configurable Fennel REPL with a convenient default instance.
 
    Functions
+
+      jnl.repl.command(name: string, fn: fun(repl: jnl.repl.Repl, arg: string), usage?:
+      string, doc?: string)
+         Register a comma command on the default REPL.
+         name                Command name without the comma.
+         usage               Displayed command usage.
+         doc                 Help text.
+
+      jnl.repl.default() -> jnl.repl.Repl
+         Return the process-wide default REPL, creating it when needed.
+         return 1            repl
 
       jnl.repl.is_cancelled() -> boolean
          Return true when Ctrl-C has requested cancellation of active evaluation.
@@ -1093,13 +1186,48 @@ appropriate, and user-facing output.
          opts                Context rendering options.
          return 1            text
 
-      jnl.repl.new() -> Repl
-         Create a REPL with the standard JNL commands and registered values.
+      jnl.repl.new(opts?: table) -> jnl.repl.Repl
+         Create an independent REPL instance.
+         opts                Construction options.
          return 1            repl
+
+      jnl.repl.pp(value: any, opts?: table) -> any
+         Pretty-print a value using the default REPL printer.
+         value               Value to print.
+         opts                Fennel view options.
+         return 1            value
+
+      jnl.repl.register(name: string, value: any, doc?: ReplDocSpec) -> any
+         Expose a value as a global and register it with the default REPL help system.
+
+         With no documentation argument, JNL attempts to find a uniquely matching
+         source-derived API description. Pass literal text, `{ from = "module.symbol"
+         }`, or `false` to suppress documentation lookup.
+         name                User-facing global name.
+         value               Value to expose.
+         doc                 Documentation source.
+         return 1            value
+
+      jnl.repl.run()
+         Start the default REPL.
+
+         Calling this from a script marks the REPL as started in the host program, so
+         `--repl` does not start another REPL after the script returns.
 
       jnl.repl.script_summary(script_path: string)
          Print globals introduced by a script.
          script_path         Executed script path.
+
+      jnl.repl.special(name: string, value: any, label?: string|false) -> any
+         Store a value in a named special on the default REPL.
+         name                Name such as `*last-run*`.
+         value               Value to store.
+         label               Confirmation label; false suppresses output.
+         return 1            value
+
+      jnl.repl.usage(spec: ReplUsageSpec)
+         Register study-specific usage on the default REPL.
+         spec                Usage text or provider.
 
 
 ## jnl.repl.printer
@@ -1316,7 +1444,17 @@ appropriate, and user-facing output.
          Pen:close() -> Pen
             Draw a straight line back to the starting point.
 
+         Pen:curve(c: Curve2D) -> Pen
+            Append an externally constructed Curve2D as a segment.
+
+            The pen position advances to the curve's endpoint. Use this when a boundary
+            segment comes from coordinate data (e.g. an aerofoil surface) rather than
+            pen movement.
+
          Pen:east(d: number) -> Pen
+
+         Pen:endjoin(name: string) -> Pen
+            Close an open :startjoin() bracket and register the compound curve.
 
          Pen:get(name: string) -> Curve2D
             Return a previously tagged segment as a Curve2D.
@@ -1333,6 +1471,20 @@ appropriate, and user-facing output.
             :line_to(L, H) :tag("top") :line_to(L, 0) :tag("outlet") :hint({ n = 32,
             dist = curve.cosine_both() }) :close() ```
 
+         Pen:joined(names: string[]) -> Curve2D
+            Return the curve formed by joining several tagged segments in order.
+
+            Post-hoc composition from named tags; useful when combining segments from
+            different pens or in a different order than they were drawn. For inline
+            grouping during pen construction prefer :startjoin()/:endjoin().
+
+         Pen:joinlast(n: integer, name: string) -> Pen
+            Join the last n segments into a named compound curve.
+
+            Fine for stable two- or three-segment groups. Prefer :startjoin()/:endjoin()
+            when the segment count may change during development.
+            n                   Number of trailing segments to join (minimum 2).
+
          Pen:line_to(x: number, y: number) -> Pen
             Straight line to an absolute position.
 
@@ -1344,6 +1496,13 @@ appropriate, and user-facing output.
             return 2            y
 
          Pen:south(d: number) -> Pen
+
+         Pen:startjoin() -> Pen
+            Mark the start of a compound segment group.
+
+            All segments appended until :endjoin() are merged into a single named curve
+            when :endjoin() is called. Individual :tag() calls inside the bracket still
+            work and remain accessible via :get().
 
          Pen:tag(name: string) -> Pen
             Tag the most recently drawn segment with a name.
@@ -1413,6 +1572,16 @@ appropriate, and user-facing output.
          Curve2D:start() -> Point2D
             Return the first point in the current orientation.
 
+         Curve2D:tangent_end() -> number, number
+            Unit tangent vector at the end of the curve.
+            return 1            tx
+            return 2            ty
+
+         Curve2D:tangent_start() -> number, number
+            Unit tangent vector at the start of the curve.
+            return 1            tx
+            return 2            ty
+
 
    jnl.geo2d.types.Curve2DSampleMode [alias]
       = "arclen"|"param"
@@ -1435,18 +1604,16 @@ appropriate, and user-facing output.
          MarkerRegistry
       Methods
 
-         Domain2D:add_hole(name: string?, marker: integer, boundary: Curve2D, seed:
-         Point2D) -> self
+         Domain2D:add_hole(name: string?, boundary: Curve2D, seed: Point2D) -> self
             Add a closed interior hole. `seed` must be a point strictly inside the hole
             (used to suppress interior cells).
             boundary            Must be a closed curve.
             seed                Interior point.
 
-         Domain2D:add_patch(name: string, marker: integer, curve: Curve2D) -> self
+         Domain2D:add_patch(name: string, curve: Curve2D) -> self
             Add a named boundary patch (a sub-curve of the outer boundary).
 
-         Domain2D:add_region(name: string, marker: integer, seed: Point2D, max_area:
-         number?) -> self
+         Domain2D:add_region(name: string, seed: Point2D, max_area: number?) -> self
             Add a region seed for cell-region labelling and per-region area constraints.
             max_area            Area constraint; `<= 0` means unconstrained.
 
@@ -1504,6 +1671,8 @@ appropriate, and user-facing output.
       Constructors
          jnl.geo2d.curve.discretise(curve: Curve2D, marker: integer?, opts?: table) ->
          PSLG
+         jnl.mesh2d.tri.pslg_from_domain(domain: Domain2D, opts?: { n:integer? }) ->
+         PSLG?, string?
       Methods
 
          PSLG:bbox() -> number, number, number, number
@@ -1543,50 +1712,225 @@ appropriate, and user-facing output.
             Add a region seed point with optional area constraint.
 
 
+   jnl.mesh2d.block.BlockBuilder
+      Constructors
+         jnl.mesh2d.block.block(ni: integer, nj: integer) -> BlockBuilder
+      Methods
+
+         BlockBuilder:build() -> Mesh2D?, string?
+            Lower the block to a Mesh2D.
+            return 1            mesh
+            return 2            err
+
+         BlockBuilder:east(c: Curve2D, opts?: { marker:integer?, dist:Dist1D? }) ->
+         BlockBuilder
+
+         BlockBuilder:edge(edge: integer, c: Curve2D, opts?: { marker:integer?,
+         dist:Dist1D? }) -> BlockBuilder
+            Set an edge by direction constant.
+            edge                Direction constant (E.S / E.E / E.N / E.W).
+
+         BlockBuilder:from_pen(p: Pen, mapping: table<string, string>, markers:
+         table<string, integer>?) -> BlockBuilder
+            Populate edges from a Pen's tagged segments.
+
+         BlockBuilder:north(c: Curve2D, opts?: { marker:integer?, dist:Dist1D? }) ->
+         BlockBuilder
+
+         BlockBuilder:smooth(opts?: { max_iter:integer?, omega:number?, tol:number? })
+         -> BlockBuilder
+
+         BlockBuilder:south(c: Curve2D, opts?: { marker:integer?, dist:Dist1D? }) ->
+         BlockBuilder
+            Set the south (j = 0) edge.
+
+         BlockBuilder:tfi() -> BlockBuilder
+
+         BlockBuilder:west(c: Curve2D, opts?: { marker:integer?, dist:Dist1D? }) ->
+         BlockBuilder
+
+
+   jnl.mesh2d.block.GridBuilder
+      Constructors
+         jnl.mesh2d.block.grid() -> GridBuilder
+      Methods
+
+         GridBuilder:block(ni: integer, nj: integer, opts?: { tfi:boolean?,
+         smooth:table? }) -> GridBlockHandle
+            Add a block to the grid and return a handle for edge assignment.
+
+            tfi and smooth may be set immediately as shorthand:
+
+            local b = g:block(33, 33, { tfi = true, smooth = { max_iter = 100 } })
+
+         GridBuilder:build() -> Mesh2D?, string?
+            Build the grid into a single Mesh2D.
+            return 1            mesh
+            return 2            err
+
+         GridBuilder:join(src_blk: GridBlockHandle, src_edge: integer, dst_blk:
+         GridBlockHandle, dst_edge: integer, reversed: boolean?) -> GridBuilder
+            Declare a topology join between two block edges.
+
+            src_blk.src_edge must be assigned by the caller. dst_blk.dst_edge must NOT
+            be assigned; build() populates it via copy_edge in declaration order before
+            running TFI.
+
+            Multi-hop chains (A -> B -> C) work provided joins are declared in
+            propagation order.
+            return 1            self
+
+         GridBuilder:join_ring(blocks: GridBlockHandle[], out_edge: integer, in_edge:
+         integer, reversed: boolean?) -> GridBuilder
+            Declare cyclic joins between a sequence of blocks.
+
+            Joins blocks[1].out_edge -> blocks[2].in_edge, ..., blocks[n].out_edge ->
+            blocks[1].in_edge.
+
+            Used for O-meshes and any topology that wraps around a full loop.
+            out_edge            Source edge on each block (e.g. E.E).
+            in_edge             Destination edge on each block (e.g. E.W).
+            return 1            self
+
+
+   jnl.mesh2d.tri.TriSpecBuilder
+      opts: table                   
+      spec: table                   
+      Constructors
+         jnl.mesh2d.tri.spec() -> TriSpecBuilder
+      Methods
+
+         TriSpecBuilder:baffle(name: string, marker: integer) -> TriSpecBuilder
+            return 1            self
+
+         TriSpecBuilder:cell_count(pslg: PSLG, n: integer) -> TriSpecBuilder
+            Derive the global max area from a target cell count.
+            return 1            self
+
+         TriSpecBuilder:conforming(enabled: boolean?) -> TriSpecBuilder
+            return 1            self
+
+         TriSpecBuilder:from_domain_reg(registry: MarkerRegistry) -> TriSpecBuilder
+            Populate patch, baffle, and region tags from a MarkerRegistry.
+
+            The registry is produced by domain.from_pen() and carries the name→marker
+            mapping built during pen tracing.
+            return 1            self
+
+         TriSpecBuilder:max_area(area: number) -> TriSpecBuilder
+            area                Global maximum triangle area.
+            return 1            self
+
+         TriSpecBuilder:min_angle(deg: number) -> TriSpecBuilder
+            deg                 Minimum interior angle in degrees.
+            return 1            self
+
+         TriSpecBuilder:patch(name: string, marker: integer) -> TriSpecBuilder
+            Add a named patch tag directly.
+            return 1            self
+
+         TriSpecBuilder:quiet(enabled: boolean?) -> TriSpecBuilder
+            return 1            self
+
+         TriSpecBuilder:region(name: string, marker: integer) -> TriSpecBuilder
+            return 1            self
+
+         TriSpecBuilder:region_areas(enabled: boolean?) -> TriSpecBuilder
+            enabled             Defaults to true.
+            return 1            self
+
+         TriSpecBuilder:resolution(pslg: PSLG, res: number) -> TriSpecBuilder
+            Derive the global max area from a target mean edge length.
+            return 1            self
+
+         TriSpecBuilder:triangulate(pslg: PSLG) -> Mesh2D?, string?
+            Triangulate a PSLG and return a Mesh2D.
+            return 1            mesh
+            return 2            err
+
+
    jnl.mesh2d.types.Mesh2D
+      A built 2D finite-volume polymesh.
+      Constructors
+         jnl.mesh2d.cartesian.build(width: number, height: number, nx: integer, ny:
+         integer) -> Mesh2D?, string?
+         jnl.mesh2d.tri.from_domain(domain: Domain2D, spec: TriSpecBuilder, opts?: {
+         n:integer? }) -> Mesh2D?, string?
       Methods
 
          Mesh2D:cell_centre(i: integer) -> number, number
+            Cell centre coordinates, 1-based.
+            return 1            x
+            return 2            y
 
          Mesh2D:cell_cx_vec() -> VecUD
+            Borrowed slice of real-cell x-coordinates. The mesh must remain alive.
 
          Mesh2D:cell_cy_vec() -> VecUD
+            Borrowed slice of real-cell y-coordinates. The mesh must remain alive.
 
          Mesh2D:cell_vol(i: integer) -> number
+            Cell area for cell i, 1-based.
 
          Mesh2D:cell_vol_vec() -> VecUD
+            Borrowed slice of real-cell volumes. The mesh must remain alive.
 
          Mesh2D:face_area0(f: integer) -> number
-            f                   0-based face index
+            f                   0-based face index.
 
          Mesh2D:face_centre(i: integer) -> number, number
+            Face centre coordinates, 1-based.
+            return 1            x
+            return 2            y
 
          Mesh2D:face_centre0(f: integer) -> number, number
-            f                   0-based face index
+            f                   0-based face index.
+            return 1            x
+            return 2            y
 
          Mesh2D:face_neighbour0(f: integer) -> integer
-            f                   0-based face index
-            return 1            neighbour 0-based cell index, or encoded negative patch
-                                marker for boundary faces
+            Neighbour cell index for face f, 0-based.
+
+            For boundary and baffle faces the neighbour is a ghost cell; no
+            negative-marker encoding is used.
+            f                   0-based face index.
 
          Mesh2D:face_normal(i: integer) -> number, number
+            Face outward unit normal, 1-based.
+            return 1            nx
+            return 2            ny
 
          Mesh2D:face_normal0(f: integer) -> number, number
-            f                   0-based face index
+            f                   0-based face index.
+            return 1            nx
+            return 2            ny
 
          Mesh2D:face_owner0(f: integer) -> integer
-            f                   0-based face index
-            return 1            owner 0-based cell index
+            Owner cell index for face f, 0-based.
+            f                   0-based face index.
 
          Mesh2D:mean_cell_size() -> number
+            Square root of mean cell area.
+
+         Mesh2D:n_baffle_faces() -> integer
+
+         Mesh2D:n_boundary_faces() -> integer
 
          Mesh2D:n_cells() -> integer
+            Number of real (conservation-volume) cells.
 
          Mesh2D:n_faces() -> integer
+
+         Mesh2D:n_ghost_cells() -> integer
 
          Mesh2D:n_internal_faces() -> integer
 
          Mesh2D:n_patches() -> integer
+
+         Mesh2D:n_real_cells() -> integer
+
+         Mesh2D:n_total_cells() -> integer
+            Total cell count including ghost cells.
 
          Mesh2D:patch_by_name(name: string) -> MeshPatch?
 
@@ -1736,23 +2080,25 @@ appropriate, and user-facing output.
 
    jnl.repl.Repl
       A configurable JNL Fennel REPL instance.
-      registry: table<string, ReplRegistryEntry>
-      commands: table<string, ReplCommand>
+      registry: table<string, jnl.repl.RegistryEntry>
+      commands: table<string, jnl.repl.Command>
       help_width: integer           
       doc_index: DocIndex?          
-      usage_spec: string|table|fun(repl: Repl): string|nil
-      globals_at_start: table<string, boolean>?
+      usage_spec: ReplUsageSpec?    
+      globals_at_start: table<string, boolean>
       fennel: table?                
       quit: boolean                 
+      started: boolean              
+      running: boolean              
       Constructors
-         jnl.repl.new() -> Repl
+         jnl.repl.default() -> jnl.repl.Repl
+         jnl.repl.new(opts?: table) -> jnl.repl.Repl
       Methods
 
-         Repl:command(name: string, fn: fun(repl: Repl, arg: string), usage?: string,
-         doc?: string)
+         Repl:command(name: string, fn: fun(repl: jnl.repl.Repl, arg: string), usage?:
+         string, doc?: string)
             Register a custom comma command.
             name                Command name without the comma.
-            fn                  Command callback.
             usage               Displayed command usage.
             doc                 Help text.
 
@@ -1763,32 +2109,51 @@ appropriate, and user-facing output.
             return 1            value
 
          Repl:print_usage()
-            Print the registered study-specific usage text.
+            Print registered study-specific usage text.
 
-         Repl:register(name: string, value: any, doc?: string)
-            Expose a value as a global and add it to the help system.
+         Repl:register(name: string, value: any, doc?: ReplDocSpec) -> any
+            Expose a value as a global and register it with the help system.
+
+            When `doc` is omitted, the documentation index is searched for a uniquely
+            matching symbol, type, or module. A string is literal help text. A table may
+            contain `from` for explicit lookup or `doc` for literal text. Pass `false`
+            to suppress lookup.
             name                User-facing global name.
             value               Value to expose.
-            doc                 Help text.
+            doc                 Documentation source.
+            return 1            value
 
          Repl:run()
             Start the Fennel REPL loop.
 
-         Repl:special(name: string, value: any, label?: string) -> any
+         Repl:special(name: string, value: any, label?: string|false) -> any
             Store a value in a named REPL special such as `*last-run*`.
             name                Special name surrounded by asterisks.
             value               Value to store.
-            label               Optional confirmation label.
+            label               Optional confirmation label; false suppresses output.
             return 1            value
 
-         Repl:usage(spec: string|table|fun(repl: Repl): string)
+         Repl:stop()
+            Request that this REPL loop stops.
+
+         Repl:usage(spec: ReplUsageSpec)
             Register study-specific usage text or a usage provider.
             spec                Usage source.
 
          Repl:usage_string() -> string
-            Return the registered study-specific usage text.
+            Return registered study-specific usage text.
             return 1            text
 
+
+   jnl.repl.core.ReplDocSpec [alias]
+      string                    
+      false                     
+      { doc:string?, from:string?, lookup:boolean? }
+
+   jnl.repl.core.ReplUsageSpec [alias]
+      string                    
+      fun(repl: jnl.repl.Repl): string
+      table                     
 
    jnl.repl.printer.Printer
       A buffered or callback-backed terminal text printer.

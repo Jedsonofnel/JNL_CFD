@@ -141,7 +141,11 @@ int luaopen_vtk_internal(lua_State *L);
 int luaopen_domain2d_internal(lua_State *L);
 int luaopen_pslg2d_internal(lua_State *L);
 int luaopen_curve2d_internal(lua_State *L);
+
 int luaopen_mesh2d_internal(lua_State *L);
+int luaopen_strucmesh2d_internal(lua_State *L);
+int luaopen_trimesh2d_internal(lua_State *L);
+
 int luaopen_ui_internal(lua_State *L);
 int luaopen_fvm_internal(lua_State *L);
 
@@ -177,6 +181,12 @@ static inline void register_preloaders(lua_State *L)
 
 	lua_pushcfunction(L, luaopen_mesh2d_internal);
 	lua_setfield(L, -2, "jnl.mesh2d_internal");
+
+	lua_pushcfunction(L, luaopen_strucmesh2d_internal);
+	lua_setfield(L, -2, "jnl.strucmesh2d_internal");
+
+	lua_pushcfunction(L, luaopen_trimesh2d_internal);
+	lua_setfield(L, -2, "jnl.trimesh2d_internal");
 
 	lua_pushcfunction(L, luaopen_fvm_internal);
 	lua_setfield(L, -2, "jnl.fvm_internal");

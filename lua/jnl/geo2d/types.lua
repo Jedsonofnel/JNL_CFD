@@ -127,6 +127,16 @@ function Curve2D:eval(t) end
 ---@return Point2D
 function Curve2D:eval_arclen(s) end
 
+--- Unit tangent vector at the start of the curve.
+---@return number tx
+---@return number ty
+function Curve2D:tangent_start() end
+
+--- Unit tangent vector at the end of the curve.
+---@return number tx
+---@return number ty
+function Curve2D:tangent_end() end
+
 ---Sample points from the curve.
 ---@param n integer
 ---@param distribution Dist1D?

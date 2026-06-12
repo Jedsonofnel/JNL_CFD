@@ -341,6 +341,24 @@ static int l_curve_eval_arclen(lua_State *L)
 	return 1;
 }
 
+static int l_curve2d_tangent_start(lua_State *L)
+{
+	struct jnl_curve2d *c = check_curve2d(L, 1);
+	jnl_vec2d t = jnl_curve2d_tangent_start(c);
+	lua_pushnumber(L, t.x);
+	lua_pushnumber(L, t.y);
+	return 2;
+}
+
+static int l_curve2d_tangent_end(lua_State *L)
+{
+	struct jnl_curve2d *c = check_curve2d(L, 1);
+	jnl_vec2d t = jnl_curve2d_tangent_end(c);
+	lua_pushnumber(L, t.x);
+	lua_pushnumber(L, t.y);
+	return 2;
+}
+
 // curve:sample(n [, distribution [, mode]]) -> {{x, y}, ...}
 //
 // mode:
@@ -498,6 +516,8 @@ static const luaL_Reg curve_methods[] = {
     {"finish", l_curve_end},
     {"eval", l_curve_eval},
     {"eval_arclen", l_curve_eval_arclen},
+    {"tangent_start", l_curve2d_tangent_start},
+    {"tangent_end", l_curve2d_tangent_end},
     {"sample", l_curve_sample},
 
     {"__tostring", l_curve_tostring},

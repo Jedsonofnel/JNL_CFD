@@ -1,15 +1,32 @@
--- mesh2d/init.lua - basic 2D meshing capability
--- <jed@nelson.ac> // 2026-05-21
+-- lua/jnl/mesh2d/init.lua - 2D mesh utilities
+-- <jed@nelson.ac> // 2026-06-12
 
-local mesh2d_internal = require("jnl.mesh2d_internal")
 local M = {}
 
-function M.new_cartmesh(width, height, nx, ny)
-	return mesh2d_internal.cartmesh_gen(width, height, nx, ny)
-end
+M.edges = require("jnl.mesh2d.edges")
+M.cart = require("jnl.mesh2d.cartesian")
+M.tri = require("jnl.mesh2d.tri")
 
-M.smesh = require("jnl.mesh2d.smesh")
+-- block.lua is geo2d/struc.lua moved here; exposes M.block() and M.grid()
+-- local _block = require("jnl.mesh2d.block")
+-- M.block = _block.block
+-- M.grid = _block.grid
 
+--
+-- Helpers
+--
+
+--- A normalised patch record returned by patch_list.
+---@class PatchInfo
+---@field id      integer Integer marker.
+---@field name    string  Patch label.
+---@field n_faces integer Number of boundary faces in this patch.
+
+--- Return a normalised list of patches from a mesh.
+---
+--- Each entry renames `marker` to `id` for consistency with BC tables.
+---@param mesh Mesh2D
+---@return PatchInfo[]
 function M.patch_list(mesh)
 	local result = {}
 	for _, p in ipairs(mesh:patches()) do
@@ -22,6 +39,11 @@ function M.patch_list(mesh)
 	return result
 end
 
+--- Return a table indexed by both integer marker and name string.
+---
+--- Allows lookup by either `t[marker]` or `t["name"]`.
+---@param mesh Mesh2D
+---@return table<integer|string, PatchInfo>
 function M.patch_lookup(mesh)
 	local t = {}
 	for _, p in ipairs(M.patch_list(mesh)) do
@@ -31,7 +53,9 @@ function M.patch_lookup(mesh)
 	return t
 end
 
--- Returns a set of patch name strings present in the mesh.
+--- Return a set of patch name strings present in the mesh.
+---@param mesh Mesh2D
+---@return table<string, true>
 function M.patch_name_set(mesh)
 	local s = {}
 	for _, p in ipairs(mesh:patches()) do
@@ -40,7 +64,9 @@ function M.patch_name_set(mesh)
 	return s
 end
 
--- Returns an ordered list of patch name strings.
+--- Return an ordered list of patch name strings.
+---@param mesh Mesh2D
+---@return string[]
 function M.patch_name_list(mesh)
 	local names = {}
 	for _, p in ipairs(mesh:patches()) do

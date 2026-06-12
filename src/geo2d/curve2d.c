@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "geo2d/curve2d.h"
+#include "geo2d/vec2d.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -749,6 +750,94 @@ jnl_vec2d jnl_curve2d_eval_arclen(const struct jnl_curve2d *c, f64 s)
 	default:
 		return v2(0.0, 0.0);
 	}
+}
+
+//
+// Tangents
+//
+
+static jnl_vec2d tangent_start_natural(const struct jnl_curve2d *c)
+{
+	switch (c->kind) {
+
+	case JNL_CURVE2D_LINE: {
+		jnl_vec2d p0 = c->line.p0, p1 = c->line.p1;
+		return jnl_vec2d_normalise(jnl_vec2d_sub(p1, p0));
+	}
+
+	case JNL_CURVE2D_ARC: {
+		// Parametric: (cx + r*cos(theta), cy + r*sin(theta))
+		// d/dtheta:   (-r*sin(theta),      r*cos(theta))
+		// Natural direction goes from theta0 toward theta1.
+		f64 t0 = c->arc.theta0;
+		f64 dir = (c->arc.theta1 >= c->arc.theta0) ? 1.0 : -1.0;
+		return (jnl_vec2d){-dir * sin(t0), dir * cos(t0)};
+	}
+
+	case JNL_CURVE2D_POLYLINE: {
+		// First segment direction.
+		jnl_vec2d p0 = c->polyline.p[0];
+		jnl_vec2d p1 = c->polyline.p[1];
+		return jnl_vec2d_normalise(jnl_vec2d_sub(p1, p0));
+	}
+
+	case JNL_CURVE2D_CHAIN:
+		return jnl_curve2d_tangent_start(&c->chain.curves[0]);
+
+	default:
+		return (jnl_vec2d){0.0, 0.0};
+	}
+}
+
+static jnl_vec2d tangent_end_natural(const struct jnl_curve2d *c)
+{
+	switch (c->kind) {
+
+	case JNL_CURVE2D_LINE: {
+		// Same direction as start for a line.
+		jnl_vec2d p0 = c->line.p0, p1 = c->line.p1;
+		return jnl_vec2d_normalise(jnl_vec2d_sub(p1, p0));
+	}
+
+	case JNL_CURVE2D_ARC: {
+		f64 t1 = c->arc.theta1;
+		f64 dir = (c->arc.theta1 >= c->arc.theta0) ? 1.0 : -1.0;
+		return (jnl_vec2d){-dir * sin(t1), dir * cos(t1)};
+	}
+
+	case JNL_CURVE2D_POLYLINE: {
+		i32 n = c->polyline.n;
+		jnl_vec2d p0 = c->polyline.p[n - 2];
+		jnl_vec2d p1 = c->polyline.p[n - 1];
+		return jnl_vec2d_normalise(jnl_vec2d_sub(p1, p0));
+	}
+
+	case JNL_CURVE2D_CHAIN: {
+		i32 n = c->chain.n;
+		return jnl_curve2d_tangent_end(&c->chain.curves[n - 1]);
+	}
+
+	default:
+		return (jnl_vec2d){0.0, 0.0};
+	}
+}
+
+jnl_vec2d jnl_curve2d_tangent_start(const struct jnl_curve2d *c)
+{
+	if (c->reversed) {
+		jnl_vec2d t = tangent_end_natural(c);
+		return (jnl_vec2d){-t.x, -t.y};
+	}
+	return tangent_start_natural(c);
+}
+
+jnl_vec2d jnl_curve2d_tangent_end(const struct jnl_curve2d *c)
+{
+	if (c->reversed) {
+		jnl_vec2d t = tangent_start_natural(c);
+		return (jnl_vec2d){-t.x, -t.y};
+	}
+	return tangent_end_natural(c);
 }
 
 //
