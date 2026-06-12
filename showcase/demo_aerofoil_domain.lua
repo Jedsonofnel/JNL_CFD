@@ -9,18 +9,11 @@ local repl = require("jnl.repl")
 local FOIL = { m = 0.02, p = 0.4, t = 0.12 }
 
 local R = 2.5
-local X_CUT = 1.5
 local L = 4.0
 
 local NI = 65
 local NJ = 33
 local NW = 65
-
-local SMOOTH = {
-	max_iter = 2000,
-	omega = 0.8,
-	tol = 1e-10,
-}
 
 local function naca4_surfaces(m, p, t, n)
 	local function thickness(x)
@@ -199,7 +192,4 @@ print(
 
 repl.register("show", show)
 repl.register("show-mesh", show_mesh)
-repl.run()
-repl.register("show-mesh", show_mesh)
-
 repl.run()
