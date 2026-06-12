@@ -1746,11 +1746,15 @@ appropriate, and user-facing output.
 
          BlockBuilder:tfi() -> BlockBuilder
 
+         BlockBuilder:to_domain() -> Domain2D?, string?
+
          BlockBuilder:west(c: Curve2D, opts?: { marker:integer?, dist:Dist1D? }) ->
          BlockBuilder
 
 
    jnl.mesh2d.block.GridBuilder
+      blocks: GridBlockHandle[]     
+      joins: GridJoin[]             
       Constructors
          jnl.mesh2d.block.grid() -> GridBuilder
       Methods
@@ -1791,6 +1795,10 @@ appropriate, and user-facing output.
             out_edge            Source edge on each block (e.g. E.E).
             in_edge             Destination edge on each block (e.g. E.W).
             return 1            self
+
+         GridBuilder:to_domain() -> Domain2D?, string?
+            return 1            domain
+            return 2            err
 
 
    jnl.mesh2d.tri.TriSpecBuilder

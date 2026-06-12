@@ -1,4 +1,4 @@
--- lua/jnl/mesh2d/block.lua - structured block and multi-block grid builders
+-- jnl/mesh2d/block.lua - structured block and multi-block grid builders
 -- <jed@nelson.ac> // 2026-06-12
 
 --- Fluent builders for single structured blocks and multi-block grids.
@@ -31,7 +31,8 @@
 ---     g:join_ring(blocks, E.E, E.W)
 local M = {}
 
-local S = require("jnl.strucmesh2d_internal")
+local opt = require("jnl.core.optional")
+local S = opt.require("jnl.strucmesh2d_internal")
 local C = require("jnl.geo2d.curve")
 
 local EDGE_NAME = {
@@ -232,6 +233,23 @@ function BlockBuilder:build()
 	return blk:build()
 end
 
+---@return Domain2D?, string?
+function BlockBuilder:to_domain()
+	for _, edge in ipairs(ALL_EDGES) do
+		if not self.edges[edge] then
+			return nil, ("block: edge '%s' not defined"):format(EDGE_NAME[edge])
+		end
+	end
+
+	local blk = S.block_new(self.ni, self.nj)
+	apply_free_edges(blk, self.edges, {})
+
+	if self.do_tfi then blk:tfi() end
+	if self.smooth_opts then blk:smooth(self.smooth_opts) end
+
+	return blk:to_domain()
+end
+
 -- Returns the number of grid points on a given edge of a block handle.
 local function edge_npoints(h, edge)
 	if edge == S.SOUTH or edge == S.NORTH then return h.ni end
@@ -410,8 +428,8 @@ end
 ---@field reversed boolean
 
 ---@class GridBuilder
----@field private blocks GridBlockHandle[]
----@field private joins  GridJoin[]
+---@field blocks GridBlockHandle[]
+---@field joins  GridJoin[]
 local GridBuilder = {}
 GridBuilder.__index = GridBuilder
 
@@ -493,46 +511,38 @@ function GridBuilder:join_ring(blocks, out_edge, in_edge, reversed)
 	return self
 end
 
---- Build the grid into a single Mesh2D.
----@return Mesh2D? mesh
----@return string?  err
-function GridBuilder:build()
+---@param self GridBuilder
+---@return Grid?, table<integer, integer>?, string?
+local function prepare_raw_grid(self)
 	local join_targets = collect_join_targets(self.joins)
 
 	for i, h in ipairs(self.blocks) do
 		local targets = join_targets[h] or {}
 		local err = check_block_edges(h, i, targets)
-		if err then return nil, err end
+		if err then return nil, nil, err end
 	end
 
-	-- Both checks run before any C allocation.
 	local corner_err = check_corners(self.joins)
-	if corner_err then return nil, corner_err end
+	if corner_err then return nil, nil, corner_err end
 
 	local npoints_err = check_join_npoints(self.joins)
-	if npoints_err then return nil, npoints_err end
+	if npoints_err then return nil, nil, npoints_err end
 
-	-- Sample free edges only; join-target edges are not yet touched.
 	for _, h in ipairs(self.blocks) do
 		local targets = join_targets[h] or {}
 		h.raw = S.block_new(h.ni, h.nj)
 		apply_free_edges(h.raw, h.edges, targets)
 	end
 
-	-- copy_edge before TFI: TFI needs all 4 edges populated.
-	-- Declaration order determines propagation for multi-hop chains.
 	for _, j in ipairs(self.joins) do
 		j.dst.raw:copy_edge(j.dst_edge, j.src.raw, j.src_edge, j.reversed)
 	end
 
-	-- TFI + smooth: all 4 edges are now populated on every block.
 	for _, h in ipairs(self.blocks) do
 		if h.do_tfi then h.raw:tfi() end
-		if h.smooth then h.raw:smooth(h.smooth_opts) end
+		if h.smooth_opts then h.raw:smooth(h.smooth_opts) end
 	end
 
-	-- Add fully-formed blocks to the C grid.
-	-- add_block clones each block; blocks must be complete before this point.
 	local raw_grid = S.grid_new()
 	local ids = {}
 	for i, h in ipairs(self.blocks) do
@@ -547,11 +557,31 @@ function GridBuilder:build()
 		)
 	end
 
-	-- Full check now that all edges are populated in the cloned blocks.
-	local ok, err = raw_grid:check()
-	if not ok then return nil, err end
+	return raw_grid, ids, nil
+end
+
+--- Build the grid into a single Mesh2D.
+---@return Mesh2D? mesh
+---@return string?  err
+function GridBuilder:build()
+	local raw_grid, _, err = prepare_raw_grid(self)
+	if err then return nil, err end
+	assert(raw_grid)
+
+	local ok, check_err = raw_grid:check()
+	if not ok then return nil, check_err end
 
 	return raw_grid:build()
+end
+
+---@return Domain2D? domain
+---@return string? err
+function GridBuilder:to_domain()
+	local raw_grid, _, err = prepare_raw_grid(self)
+	if err then return nil, err end
+	assert(raw_grid)
+
+	return raw_grid:to_domain()
 end
 
 return M

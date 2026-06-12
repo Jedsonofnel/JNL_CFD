@@ -115,6 +115,18 @@ static enum jnl_struc2d_err struc_err_from_mesh_err(enum jnl_mesh_err err)
 	}
 }
 
+static enum jnl_struc2d_err struc_err_from_domain_err(enum jnl_domain2d_err err)
+{
+	switch (err) {
+	case JNL_DOMAIN2D_OK:
+		return JNL_STRUC2D_OK;
+	case JNL_DOMAIN2D_ERR_ALLOC:
+		return JNL_STRUC2D_ERR_ALLOC;
+	default:
+		return JNL_STRUC2D_ERR_INTERNAL;
+	}
+}
+
 //
 // Smoothing opts
 //
@@ -1467,5 +1479,576 @@ enum jnl_struc2d_err jnl_struc2d_block_build(const struct jnl_struc2d_block *b,
 
 	jnl_struc2d_grid_free(&g);
 
+	return err;
+}
+
+//
+// Domain lowering
+//
+
+// Returns the block-local flat point index for the CCW start/end corner of
+// an edge. Needed to compute global UF roots for the boundary walk.
+//
+// CCW directions: SOUTH S->E, EAST S->N,
+//                 NORTH E->W, WEST N->S.
+
+static i32 edge_ccw_start_local(const struct jnl_struc2d_block *b,
+                                enum jnl_struc2d_edge edge)
+{
+	i32 n = jnl_struc2d_edge_npoints(b, edge);
+	bool rev = edge == JNL_STRUC2D_NORTH || edge == JNL_STRUC2D_WEST;
+
+	return jnl_struc2d_edge_point_index(b, edge, rev ? n - 1 : 0);
+}
+
+static i32 edge_ccw_end_local(const struct jnl_struc2d_block *b,
+                              enum jnl_struc2d_edge edge)
+{
+	i32 n = jnl_struc2d_edge_npoints(b, edge);
+	bool rev = edge == JNL_STRUC2D_NORTH || edge == JNL_STRUC2D_WEST;
+
+	return jnl_struc2d_edge_point_index(b, edge, rev ? 0 : n - 1);
+}
+
+struct struc2d_boundary_run {
+	i32 block_id;
+	enum jnl_struc2d_edge edge;
+	i32 g_start;
+	i32 g_end;
+};
+
+struct struc2d_boundary_loop {
+	i32 n_runs;
+	i32 *run_ids;
+
+	i32 n_points;
+	jnl_vec2d *points;
+
+	f64 signed_area;
+};
+
+static void boundary_loop_free(struct struc2d_boundary_loop *loop)
+{
+	if (!loop)
+		return;
+
+	free(loop->run_ids);
+	free(loop->points);
+
+	memset(loop, 0, sizeof(*loop));
+}
+
+static void boundary_loops_free(struct struc2d_boundary_loop *loops,
+                                i32 n_loops)
+{
+	if (!loops)
+		return;
+
+	for (i32 i = 0; i < n_loops; ++i)
+		boundary_loop_free(&loops[i]);
+
+	free(loops);
+}
+
+static f64 boundary_loop_signed_area(const jnl_vec2d *pts, i32 n)
+{
+	if (!pts || n < 3)
+		return 0.0;
+
+	// The sampled loop may explicitly repeat its first point. This formula
+	// works with either repeated or non-repeated closure.
+	f64 twice_area = 0.0;
+
+	for (i32 i = 0; i < n; ++i) {
+		i32 j = (i + 1) % n;
+
+		twice_area += pts[i].x * pts[j].y;
+		twice_area -= pts[j].x * pts[i].y;
+	}
+
+	return 0.5 * twice_area;
+}
+
+static void reverse_points(jnl_vec2d *pts, i32 n)
+{
+	for (i32 i = 0; i < n / 2; ++i) {
+		jnl_vec2d tmp = pts[i];
+		pts[i] = pts[n - 1 - i];
+		pts[n - 1 - i] = tmp;
+	}
+}
+
+// Return a point inside a simple polygon.
+//
+// The area centroid is appropriate for normal structured-domain holes such as
+// aerofoils. If the polygon is extremely thin or degenerate, fall back to the
+// arithmetic mean of its vertices.
+static jnl_vec2d boundary_loop_seed(const jnl_vec2d *pts, i32 n)
+{
+	jnl_vec2d mean = {0.0, 0.0};
+
+	if (!pts || n <= 0)
+		return mean;
+
+	i32 effective_n = n;
+
+	if (n > 1 && dist2(pts[0].x, pts[0].y, pts[n - 1].x, pts[n - 1].y) <=
+	                 JNL_STRUC2D_EPS * JNL_STRUC2D_EPS)
+		effective_n--;
+
+	if (effective_n <= 0)
+		return mean;
+
+	for (i32 i = 0; i < effective_n; ++i) {
+		mean.x += pts[i].x;
+		mean.y += pts[i].y;
+	}
+
+	mean.x /= (f64)effective_n;
+	mean.y /= (f64)effective_n;
+
+	f64 twice_area = 0.0;
+	f64 cx_num = 0.0;
+	f64 cy_num = 0.0;
+
+	for (i32 i = 0; i < effective_n; ++i) {
+		i32 j = (i + 1) % effective_n;
+
+		f64 cross = pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+
+		twice_area += cross;
+		cx_num += (pts[i].x + pts[j].x) * cross;
+		cy_num += (pts[i].y + pts[j].y) * cross;
+	}
+
+	if (fabs(twice_area) <= JNL_STRUC2D_EPS)
+		return mean;
+
+	jnl_vec2d centroid = {
+	    .x = cx_num / (3.0 * twice_area),
+	    .y = cy_num / (3.0 * twice_area),
+	};
+
+	if (!finite_f64(centroid.x) || !finite_f64(centroid.y))
+		return mean;
+
+	return centroid;
+}
+
+static enum jnl_struc2d_err
+build_next_boundary_runs(const struct struc2d_boundary_run *runs, i32 n_runs,
+                         i32 **out_next)
+{
+	if (!runs || n_runs <= 0 || !out_next)
+		return JNL_STRUC2D_ERR_INVALID_INPUT;
+
+	*out_next = NULL;
+
+	i32 *next = xmalloc((size_t)n_runs * sizeof(*next));
+	if (!next)
+		return JNL_STRUC2D_ERR_ALLOC;
+
+	for (i32 i = 0; i < n_runs; ++i) {
+		next[i] = -1;
+		i32 matches = 0;
+
+		for (i32 j = 0; j < n_runs; ++j) {
+			if (runs[j].g_start == runs[i].g_end) {
+				next[i] = j;
+				matches++;
+			}
+		}
+
+		if (matches != 1) {
+			free(next);
+			return JNL_STRUC2D_ERR_UNSUPPORTED;
+		}
+	}
+
+	*out_next = next;
+	return JNL_STRUC2D_OK;
+}
+
+static enum jnl_struc2d_err collect_boundary_loops(
+    const struct struc2d_boundary_run *runs, i32 n_runs, const i32 *next_run,
+    struct struc2d_boundary_loop **out_loops, i32 *out_n_loops)
+{
+	if (!runs || n_runs <= 0 || !next_run || !out_loops || !out_n_loops)
+		return JNL_STRUC2D_ERR_INVALID_INPUT;
+
+	*out_loops = NULL;
+	*out_n_loops = 0;
+
+	bool *visited = xcalloc((size_t)n_runs, sizeof(*visited));
+	struct struc2d_boundary_loop *loops =
+	    xcalloc((size_t)n_runs, sizeof(*loops));
+
+	if (!visited || !loops) {
+		free(visited);
+		free(loops);
+		return JNL_STRUC2D_ERR_ALLOC;
+	}
+
+	i32 n_loops = 0;
+
+	for (i32 start = 0; start < n_runs; ++start) {
+		if (visited[start])
+			continue;
+
+		i32 count = 0;
+		i32 cur = start;
+
+		do {
+			if (cur < 0 || cur >= n_runs || visited[cur]) {
+				boundary_loops_free(loops, n_loops);
+				free(visited);
+				return JNL_STRUC2D_ERR_UNSUPPORTED;
+			}
+
+			visited[cur] = true;
+			count++;
+			cur = next_run[cur];
+
+			if (count > n_runs) {
+				boundary_loops_free(loops, n_loops);
+				free(visited);
+				return JNL_STRUC2D_ERR_UNSUPPORTED;
+			}
+		} while (cur != start);
+
+		struct struc2d_boundary_loop *loop = &loops[n_loops];
+
+		loop->run_ids = xmalloc((size_t)count * sizeof(*loop->run_ids));
+		if (!loop->run_ids) {
+			boundary_loops_free(loops, n_loops);
+			free(visited);
+			return JNL_STRUC2D_ERR_ALLOC;
+		}
+
+		loop->n_runs = count;
+
+		cur = start;
+		for (i32 i = 0; i < count; ++i) {
+			loop->run_ids[i] = cur;
+			cur = next_run[cur];
+		}
+
+		n_loops++;
+	}
+
+	free(visited);
+
+	*out_loops = loops;
+	*out_n_loops = n_loops;
+	return JNL_STRUC2D_OK;
+}
+
+static enum jnl_struc2d_err
+sample_boundary_loop(const struct jnl_struc2d_grid *g,
+                     const struct struc2d_boundary_run *runs,
+                     struct struc2d_boundary_loop *loop)
+{
+	if (!g || !runs || !loop || loop->n_runs <= 0 || !loop->run_ids)
+		return JNL_STRUC2D_ERR_INVALID_INPUT;
+
+	i32 n_points = 0;
+
+	for (i32 i = 0; i < loop->n_runs; ++i) {
+		const struct struc2d_boundary_run *run = &runs[loop->run_ids[i]];
+
+		n_points +=
+		    jnl_struc2d_edge_npoints(&g->blocks[run->block_id], run->edge);
+	}
+
+	// Shared corner between each successive pair of runs.
+	n_points -= loop->n_runs - 1;
+
+	if (n_points < 3)
+		return JNL_STRUC2D_ERR_DEGENERATE;
+
+	jnl_vec2d *pts = xmalloc((size_t)n_points * sizeof(*pts));
+	if (!pts)
+		return JNL_STRUC2D_ERR_ALLOC;
+
+	i32 p = 0;
+
+	for (i32 ri = 0; ri < loop->n_runs; ++ri) {
+		const struct struc2d_boundary_run *run = &runs[loop->run_ids[ri]];
+		const struct jnl_struc2d_block *b = &g->blocks[run->block_id];
+
+		i32 n_edge = jnl_struc2d_edge_npoints(b, run->edge);
+		bool reversed =
+		    run->edge == JNL_STRUC2D_NORTH || run->edge == JNL_STRUC2D_WEST;
+
+		// Skip the first point after the first edge because it is the
+		// previous edge's final corner.
+		i32 first = ri == 0 ? 0 : 1;
+
+		for (i32 k = first; k < n_edge; ++k) {
+			i32 actual = reversed ? n_edge - 1 - k : k;
+			f64 x, y;
+
+			jnl_struc2d_edge_get_xy(b, run->edge, actual, &x, &y);
+
+			pts[p++] = (jnl_vec2d){x, y};
+		}
+	}
+
+	if (p != n_points) {
+		free(pts);
+		return JNL_STRUC2D_ERR_INTERNAL;
+	}
+
+	loop->points = pts;
+	loop->n_points = n_points;
+	loop->signed_area = boundary_loop_signed_area(pts, n_points);
+
+	if (!finite_f64(loop->signed_area) ||
+	    fabs(loop->signed_area) <= JNL_STRUC2D_EPS)
+		return JNL_STRUC2D_ERR_DEGENERATE;
+
+	return JNL_STRUC2D_OK;
+}
+
+static i32 find_outer_boundary_loop(const struct struc2d_boundary_loop *loops,
+                                    i32 n_loops)
+{
+	i32 outer = 0;
+
+	for (i32 i = 1; i < n_loops; ++i) {
+		if (fabs(loops[i].signed_area) > fabs(loops[outer].signed_area))
+			outer = i;
+	}
+
+	return outer;
+}
+
+static enum jnl_struc2d_err
+domain_add_boundary_loop_hole(struct jnl_domain2d *domain,
+                              struct struc2d_boundary_loop *loop,
+                              i32 hole_index)
+{
+	if (!domain || !loop || !loop->points || loop->n_points < 3)
+		return JNL_STRUC2D_ERR_INVALID_INPUT;
+
+	// Convention: hole boundaries run clockwise.
+	if (loop->signed_area > 0.0) {
+		reverse_points(loop->points, loop->n_points);
+		loop->signed_area = -loop->signed_area;
+	}
+
+	struct jnl_curve2d boundary = {0};
+
+	enum jnl_curve2d_err cerr =
+	    jnl_curve2d_polyline(&boundary, loop->points, loop->n_points);
+	if (cerr != JNL_CURVE2D_OK)
+		return JNL_STRUC2D_ERR_DEGENERATE;
+
+	char name[JNL_PMSH2D_NAME_CAP];
+	snprintf(name, sizeof(name), "hole_%d", hole_index + 1);
+	name[sizeof(name) - 1] = '\0';
+
+	jnl_vec2d seed = boundary_loop_seed(loop->points, loop->n_points);
+
+	/*
+	 * Adjust this call only if domain2d.h uses a different C name or
+	 * parameter order. No strucmesh2d public API change is required.
+	 */
+	enum jnl_domain2d_err derr =
+	    jnl_domain2d_add_hole(domain, name, hole_index + 1, &boundary, seed);
+
+	jnl_curve2d_free(&boundary);
+
+	return struc_err_from_domain_err(derr);
+}
+
+enum jnl_struc2d_err
+jnl_struc2d_grid_to_domain(const struct jnl_struc2d_grid *g,
+                           struct jnl_domain2d *out)
+{
+	if (!g || !out)
+		return JNL_STRUC2D_ERR_INVALID_INPUT;
+
+	enum jnl_struc2d_err err = jnl_struc2d_grid_check_join_topology(g);
+	if (err != JNL_STRUC2D_OK)
+		return err;
+
+	i32 *point_offsets = NULL;
+	i32 *cell_offsets = NULL;
+	i32 total_points = 0;
+	i32 total_cells = 0;
+
+	err = make_block_offsets(g, &point_offsets, &cell_offsets, &total_points,
+	                         &total_cells);
+	if (err != JNL_STRUC2D_OK)
+		return err;
+
+	free(cell_offsets);
+
+	struct uf u;
+	err = uf_init(&u, total_points);
+	if (err != JNL_STRUC2D_OK) {
+		free(point_offsets);
+		return err;
+	}
+
+	err = apply_joins_to_union_find(g, point_offsets, &u);
+	if (err != JNL_STRUC2D_OK) {
+		uf_free(&u);
+		free(point_offsets);
+		return err;
+	}
+
+	i32 max_runs = g->n_blocks * 4;
+
+	struct struc2d_boundary_run *runs =
+	    xmalloc((size_t)max_runs * sizeof(*runs));
+	if (!runs) {
+		uf_free(&u);
+		free(point_offsets);
+		return JNL_STRUC2D_ERR_ALLOC;
+	}
+
+	i32 n_runs = 0;
+
+	for (i32 bid = 0; bid < g->n_blocks; ++bid) {
+		const struct jnl_struc2d_block *b = &g->blocks[bid];
+
+		for (i32 e = 0; e < 4; ++e) {
+			enum jnl_struc2d_edge edge = (enum jnl_struc2d_edge)e;
+
+			if (edge_is_joined(g, bid, edge))
+				continue;
+
+			i32 local_start = edge_ccw_start_local(b, edge);
+			i32 local_end = edge_ccw_end_local(b, edge);
+
+			if (local_start < 0 || local_end < 0) {
+				err = JNL_STRUC2D_ERR_INTERNAL;
+				goto collect_fail;
+			}
+
+			struct struc2d_boundary_run *run = &runs[n_runs++];
+
+			run->block_id = bid;
+			run->edge = edge;
+			run->g_start = uf_find(&u, point_offsets[bid] + local_start);
+			run->g_end = uf_find(&u, point_offsets[bid] + local_end);
+		}
+	}
+
+	uf_free(&u);
+	free(point_offsets);
+	point_offsets = NULL;
+
+	if (n_runs == 0) {
+		free(runs);
+		return JNL_STRUC2D_ERR_INVALID_INPUT;
+	}
+
+	i32 *next_run = NULL;
+
+	err = build_next_boundary_runs(runs, n_runs, &next_run);
+	if (err != JNL_STRUC2D_OK) {
+		free(runs);
+		return err;
+	}
+
+	struct struc2d_boundary_loop *loops = NULL;
+	i32 n_loops = 0;
+
+	err = collect_boundary_loops(runs, n_runs, next_run, &loops, &n_loops);
+	free(next_run);
+
+	if (err != JNL_STRUC2D_OK) {
+		free(runs);
+		return err;
+	}
+
+	if (n_loops < 1) {
+		boundary_loops_free(loops, n_loops);
+		free(runs);
+		return JNL_STRUC2D_ERR_INVALID_INPUT;
+	}
+
+	for (i32 i = 0; i < n_loops; ++i) {
+		err = sample_boundary_loop(g, runs, &loops[i]);
+		if (err != JNL_STRUC2D_OK) {
+			boundary_loops_free(loops, n_loops);
+			free(runs);
+			return err;
+		}
+	}
+
+	free(runs);
+
+	i32 outer_index = find_outer_boundary_loop(loops, n_loops);
+	struct struc2d_boundary_loop *outer_loop = &loops[outer_index];
+
+	// Convention: outer boundaries run counter-clockwise.
+	if (outer_loop->signed_area < 0.0) {
+		reverse_points(outer_loop->points, outer_loop->n_points);
+		outer_loop->signed_area = -outer_loop->signed_area;
+	}
+
+	struct jnl_curve2d outer = {0};
+
+	enum jnl_curve2d_err cerr =
+	    jnl_curve2d_polyline(&outer, outer_loop->points, outer_loop->n_points);
+	if (cerr != JNL_CURVE2D_OK) {
+		boundary_loops_free(loops, n_loops);
+		return JNL_STRUC2D_ERR_DEGENERATE;
+	}
+
+	enum jnl_domain2d_err derr = jnl_domain2d_init(out, &outer);
+	jnl_curve2d_free(&outer);
+
+	if (derr != JNL_DOMAIN2D_OK) {
+		boundary_loops_free(loops, n_loops);
+		return struc_err_from_domain_err(derr);
+	}
+
+	i32 hole_index = 0;
+
+	for (i32 i = 0; i < n_loops; ++i) {
+		if (i == outer_index)
+			continue;
+
+		err = domain_add_boundary_loop_hole(out, &loops[i], hole_index++);
+
+		if (err != JNL_STRUC2D_OK) {
+			jnl_domain2d_free(out);
+			boundary_loops_free(loops, n_loops);
+			return err;
+		}
+	}
+
+	boundary_loops_free(loops, n_loops);
+	return JNL_STRUC2D_OK;
+
+collect_fail:
+	uf_free(&u);
+	free(point_offsets);
+	free(runs);
+	return err;
+}
+
+enum jnl_struc2d_err
+jnl_struc2d_block_to_domain(const struct jnl_struc2d_block *b,
+                            struct jnl_domain2d *out)
+{
+	if (!b || !out)
+		return JNL_STRUC2D_ERR_INVALID_INPUT;
+
+	struct jnl_struc2d_grid g;
+	jnl_struc2d_grid_init(&g);
+
+	i32 id = -1;
+	enum jnl_struc2d_err err = jnl_struc2d_grid_add_block(&g, b, &id);
+
+	if (err == JNL_STRUC2D_OK)
+		err = jnl_struc2d_grid_to_domain(&g, out);
+
+	jnl_struc2d_grid_free(&g);
 	return err;
 }

@@ -1,6 +1,7 @@
 #include "jnl/test.h"
 
 #include "geo2d/curve2d.h"
+#include "geo2d/domain2d.h"
 #include "mesh2d/polymesh2d.h"
 #include "mesh2d/strucmesh2d.h"
 
@@ -24,6 +25,14 @@ static void assert_mesh_ok(struct jnl_polymesh2d *m)
 
 	CHECK_MSG(err == JNL_MESH_OK, "polymesh check failed: %s",
 	          jnl_mesh_err_str(err));
+}
+
+static void assert_domain_ok(const struct jnl_domain2d *d)
+{
+	const char *msg = NULL;
+	enum jnl_domain2d_err err = jnl_domain2d_check(d, &msg);
+	CHECK_MSG(err == JNL_DOMAIN2D_OK, "domain2d check failed: %s",
+	          msg ? msg : "unknown");
 }
 
 static void assert_xy(const struct jnl_struc2d_block *b, i32 i, i32 j, f64 x,
@@ -374,6 +383,88 @@ static void test_join_geometry_mismatch_rejected_by_check(void)
 	jnl_struc2d_block_free(&b);
 }
 
+static void test_block_to_domain(void)
+{
+	struct jnl_struc2d_block b;
+	make_rect_block(&b, 5, 4, 0.0, 0.0, 2.0, 1.0);
+
+	struct jnl_domain2d d;
+	memset(&d, 0, sizeof(d));
+
+	assert_struc_ok(jnl_struc2d_block_to_domain(&b, &d));
+	assert_domain_ok(&d);
+
+	// Points clearly inside the [0,2]x[0,1] rectangle.
+	CHECK(jnl_domain2d_contains(&d, (jnl_vec2d){1.0, 0.5}, 64));
+	CHECK(jnl_domain2d_contains(&d, (jnl_vec2d){0.1, 0.1}, 64));
+
+	// Points clearly outside.
+	CHECK(!jnl_domain2d_contains(&d, (jnl_vec2d){3.0, 0.5}, 64));
+	CHECK(!jnl_domain2d_contains(&d, (jnl_vec2d){1.0, 2.0}, 64));
+	CHECK(!jnl_domain2d_contains(&d, (jnl_vec2d){-1.0, 0.5}, 64));
+
+	// Bbox should match the block extents exactly; the east/west/south/north
+	// edges of the polyline are axis-aligned so 256-point sampling always
+	// lands on the extremal values.
+	struct jnl_aabb bb = jnl_domain2d_bbox(&d);
+	assert_near(bb.min_x, 0.0);
+	assert_near(bb.max_x, 2.0);
+	assert_near(bb.min_y, 0.0);
+	assert_near(bb.max_y, 1.0);
+
+	jnl_domain2d_free(&d);
+	jnl_struc2d_block_free(&b);
+}
+
+static void test_two_block_grid_to_domain(void)
+{
+	// Two 1x1 blocks side by side producing a combined [0,2]x[0,1] domain.
+	struct jnl_struc2d_block a, b;
+	make_rect_block(&a, 3, 3, 0.0, 0.0, 1.0, 1.0);
+	make_rect_block(&b, 3, 3, 1.0, 0.0, 2.0, 1.0);
+
+	assert_struc_ok(jnl_struc2d_block_copy_edge(&b, JNL_STRUC2D_WEST, &a,
+	                                            JNL_STRUC2D_EAST, false));
+
+	struct jnl_struc2d_grid g;
+	jnl_struc2d_grid_init(&g);
+
+	i32 ia = -1, ib = -1;
+	assert_struc_ok(jnl_struc2d_grid_add_block(&g, &a, &ia));
+	assert_struc_ok(jnl_struc2d_grid_add_block(&g, &b, &ib));
+	assert_struc_ok(jnl_struc2d_grid_add_join(&g, ia, JNL_STRUC2D_EAST, ib,
+	                                          JNL_STRUC2D_WEST, false));
+
+	struct jnl_domain2d d;
+	memset(&d, 0, sizeof(d));
+
+	assert_struc_ok(jnl_struc2d_grid_to_domain(&g, &d));
+	assert_domain_ok(&d);
+
+	// Both halves of the combined domain should register as interior.
+	CHECK(jnl_domain2d_contains(&d, (jnl_vec2d){0.5, 0.5}, 64));
+	CHECK(jnl_domain2d_contains(&d, (jnl_vec2d){1.5, 0.5}, 64));
+
+	// The join interface itself is interior — no hole or gap there.
+	CHECK(jnl_domain2d_contains(&d, (jnl_vec2d){1.0, 0.5}, 64));
+
+	// Outside the combined rectangle.
+	CHECK(!jnl_domain2d_contains(&d, (jnl_vec2d){-0.5, 0.5}, 64));
+	CHECK(!jnl_domain2d_contains(&d, (jnl_vec2d){2.5, 0.5}, 64));
+	CHECK(!jnl_domain2d_contains(&d, (jnl_vec2d){1.0, 1.5}, 64));
+
+	struct jnl_aabb bb = jnl_domain2d_bbox(&d);
+	assert_near(bb.min_x, 0.0);
+	assert_near(bb.max_x, 2.0);
+	assert_near(bb.min_y, 0.0);
+	assert_near(bb.max_y, 1.0);
+
+	jnl_domain2d_free(&d);
+	jnl_struc2d_grid_free(&g);
+	jnl_struc2d_block_free(&a);
+	jnl_struc2d_block_free(&b);
+}
+
 //
 // Main
 //
@@ -391,6 +482,8 @@ int main(void)
 	JNL_TEST(&t, test_two_joined_blocks_build_welded_polymesh);
 	JNL_TEST(&t, test_join_rejects_topology_mismatch);
 	JNL_TEST(&t, test_join_geometry_mismatch_rejected_by_check);
+	JNL_TEST(&t, test_block_to_domain);
+	JNL_TEST(&t, test_two_block_grid_to_domain);
 
 	return jnl_test_end(&t);
 }

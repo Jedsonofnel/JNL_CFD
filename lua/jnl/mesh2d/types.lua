@@ -173,6 +173,12 @@ function Block:smooth(opts) end
 ---@return string?  err
 function Block:build() end
 
+--- Lower the block perimeter to a Domain2D for visualisation.
+--- Outer boundary is the four edges traversed CCW: S → E → N → W.
+---@return Domain2D? domain
+---@return string?   err
+function Block:to_domain() end
+
 --
 -- Grid (jnl.strucmesh2d_internal)
 --
@@ -206,6 +212,12 @@ function Grid:check() end
 ---@return Mesh2D? mesh
 ---@return string?  err
 function Grid:build() end
+
+--- Lower the grid's unjoined exterior edges to a Domain2D for visualisation.
+--- Returns an error if the exterior does not form exactly one closed loop.
+---@return Domain2D? domain
+---@return string?   err
+function Grid:to_domain() end
 
 --
 -- TriOpts (jnl.trimesh2d_internal)

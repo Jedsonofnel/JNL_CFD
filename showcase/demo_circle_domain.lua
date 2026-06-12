@@ -6,6 +6,8 @@ local domain = require("jnl.geo2d.domain")
 local curve  = require("jnl.geo2d.curve")
 local ui     = require("jnl.ui")
 
+local repl   = require("jnl.repl")
+
 -- Geometry
 local L, H   = 4.0, 2.0 -- channel length and height
 local cx, cy = 1.5, 1.0 -- cylinder centre
@@ -27,10 +29,13 @@ local function build_domain()
 	return d
 end
 
-function show()
+local function show()
 	ui.display_domain(build_domain())
 end
 
 show()
 print("Circle-flow domain loaded.  Call (show) to re-display.")
-return show
+
+repl.register("show", show)
+repl.run()
+

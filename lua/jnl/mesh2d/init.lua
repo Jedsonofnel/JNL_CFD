@@ -1,16 +1,15 @@
 -- lua/jnl/mesh2d/init.lua - 2D mesh utilities
 -- <jed@nelson.ac> // 2026-06-12
 
+local B = require("jnl.mesh2d.block")
+
 local M = {}
 
 M.edges = require("jnl.mesh2d.edges")
 M.cart = require("jnl.mesh2d.cartesian")
 M.tri = require("jnl.mesh2d.tri")
-
--- block.lua is geo2d/struc.lua moved here; exposes M.block() and M.grid()
--- local _block = require("jnl.mesh2d.block")
--- M.block = _block.block
--- M.grid = _block.grid
+M.block = B.block
+M.grid = B.grid
 
 --
 -- Helpers

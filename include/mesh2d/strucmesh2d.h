@@ -5,7 +5,8 @@
 
 #include "jnl/common.h"
 #include "geo2d/curve2d.h"
-#include "polymesh2d.h"
+#include "geo2d/domain2d.h"
+#include "mesh2d/polymesh2d.h"
 
 #define JNL_STRUC2D_DEFAULT_TOL 1e-10
 
@@ -235,5 +236,17 @@ enum jnl_struc2d_err jnl_struc2d_block_build(const struct jnl_struc2d_block *b,
 
 enum jnl_struc2d_err jnl_struc2d_grid_build(const struct jnl_struc2d_grid *g,
                                             struct jnl_polymesh2d **out_mesh);
+
+//
+// Domain lowering
+//
+
+enum jnl_struc2d_err
+jnl_struc2d_grid_to_domain(const struct jnl_struc2d_grid *g,
+                           struct jnl_domain2d *out);
+
+enum jnl_struc2d_err
+jnl_struc2d_block_to_domain(const struct jnl_struc2d_block *b,
+                            struct jnl_domain2d *out);
 
 #endif

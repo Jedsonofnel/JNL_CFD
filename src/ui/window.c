@@ -174,23 +174,24 @@ static void draw_chain(struct jnl_ui_chain *ch, view_xf xf, Color col)
 {
 	int ideal_n = adaptive_n(&ch->curve, xf.scale);
 
-	bool needs_resample =
-	    ch->cached_pts == NULL ||
-	    ideal_n > ch->cached_n * 3 / 2     // zoomed in past 1.5x
-	    || ideal_n < ch->cached_n * 2 / 3; // zoomed out past 0.67x
+	bool needs_resample = ch->cached_pts == NULL ||
+	                      ideal_n > ch->cached_n * 3 / 2 ||
+	                      ideal_n < ch->cached_n * 2 / 3;
 
 	if (needs_resample) {
-		free(ch->cached_pts);
-		ch->cached_pts = malloc((size_t)ideal_n * sizeof *ch->cached_pts);
-		if (!ch->cached_pts)
+		jnl_vec2d *new_pts = malloc((size_t)ideal_n * sizeof *new_pts);
+
+		if (!new_pts)
 			return;
 
-		if (jnl_curve2d_sample_uniform_arclen(
-		        &ch->curve, ideal_n, ch->cached_pts) != JNL_CURVE2D_OK) {
-			free(ch->cached_pts);
-			ch->cached_pts = NULL;
+		if (jnl_curve2d_sample_uniform_arclen(&ch->curve, ideal_n, new_pts) !=
+		    JNL_CURVE2D_OK) {
+			free(new_pts);
 			return;
 		}
+
+		free(ch->cached_pts);
+		ch->cached_pts = new_pts;
 		ch->cached_n = ideal_n;
 	}
 

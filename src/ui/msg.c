@@ -8,6 +8,12 @@
 #include "geo2d/curve2d.h"
 #include "geo2d/domain2d.h"
 
+enum {
+	UI_MAX_CHAINS = 4096,
+	UI_MAX_CURVE_POINTS = 1 << 20,
+	UI_MAX_CHAIN_CHILDREN = 1 << 16,
+};
+
 //
 // f64 wire helpers (same machine — fork — so endianness is identical)
 //
@@ -142,9 +148,13 @@ static int recv_curve(int fd, struct jnl_curve2d *out)
 			return -1;
 		u32 n = JNL_R32(nbuf);
 
-		jnl_vec2d *pts = malloc(n * sizeof *pts);
+		if (n < 2 || n > UI_MAX_CURVE_POINTS)
+			return -1;
+
+		jnl_vec2d *pts = malloc((size_t)n * sizeof *pts);
 		if (!pts)
 			return -1;
+
 		for (u32 i = 0; i < n; i++) {
 			if (recv_f64(fd, &pts[i].x) < 0) {
 				free(pts);
@@ -169,7 +179,10 @@ static int recv_curve(int fd, struct jnl_curve2d *out)
 			return -1;
 		u32 n = JNL_R32(nbuf);
 
-		struct jnl_curve2d *children = malloc(n * sizeof *children);
+		if (n == 0 || n > UI_MAX_CHAIN_CHILDREN)
+			return -1;
+
+		struct jnl_curve2d *children = calloc(n, sizeof *children);
 		if (!children)
 			return -1;
 
@@ -228,6 +241,8 @@ static int recv_chain(int fd, struct jnl_ui_chain *out)
 	u8 kind, name_len;
 	u8 marker_buf[4];
 
+	memset(out, 0, sizeof *out);
+
 	if (jnl_proto_recv_all(fd, &kind, 1) < 0)
 		return -1;
 	if (jnl_proto_recv_all(fd, marker_buf, 4) < 0)
@@ -235,12 +250,15 @@ static int recv_chain(int fd, struct jnl_ui_chain *out)
 	if (jnl_proto_recv_all(fd, &name_len, 1) < 0)
 		return -1;
 
-	memset(out->name, 0, sizeof out->name);
+	if (name_len >= sizeof out->name)
+		return -1;
+
 	if (name_len > 0) {
 		if (jnl_proto_recv_all(fd, out->name, name_len) < 0)
 			return -1;
 	}
-	out->name[63] = '\0';
+
+	out->name[name_len] = '\0';
 	out->kind = kind;
 	out->marker = (i32)JNL_R32(marker_buf);
 
@@ -293,9 +311,13 @@ static int recv_domain2d(int fd, struct jnl_ui_window_state *ws)
 	u8 nc_buf[4];
 	if (jnl_proto_recv_all(fd, nc_buf, 4) < 0)
 		return -1;
+
 	u32 n = JNL_R32(nc_buf);
 
-	struct jnl_ui_chain *chains = malloc(n * sizeof *chains);
+	if (n == 0 || n > UI_MAX_CHAINS)
+		return -1;
+
+	struct jnl_ui_chain *chains = calloc(n, sizeof *chains);
 	if (!chains)
 		return -1;
 
@@ -306,17 +328,20 @@ static int recv_domain2d(int fd, struct jnl_ui_window_state *ws)
 	}
 
 	ui_domain_free(&ws->domain);
+
 	ws->domain.chains = chains;
 	ws->domain.n_chains = n;
 	ws->has_domain = true;
 
 	snprintf(ws->status, sizeof ws->status, "Domain: %u chain%s", n,
 	         n == 1 ? "" : "s");
+
 	return JNL_UI_MSG_DOMAIN2D;
 
 fail:
 	for (u32 i = 0; i < decoded; i++)
 		jnl_curve2d_free(&chains[i].curve);
+
 	free(chains);
 	return -1;
 }
@@ -355,13 +380,20 @@ int ui_msg_recv(int fd, struct jnl_ui_window_state *ws)
 
 void ui_domain_free(struct jnl_ui_domain *d)
 {
-	if (!d->chains)
+	if (!d)
 		return;
-	for (u32 i = 0; i < d->n_chains; i++) {
-		jnl_curve2d_free(&d->chains[i].curve);
-		free(d->chains[i].cached_pts); // add this
+
+	if (d->chains) {
+		for (u32 i = 0; i < d->n_chains; i++) {
+			jnl_curve2d_free(&d->chains[i].curve);
+			free(d->chains[i].cached_pts);
+			d->chains[i].cached_pts = NULL;
+			d->chains[i].cached_n = 0;
+		}
+
+		free(d->chains);
 	}
-	free(d->chains);
+
 	d->chains = NULL;
 	d->n_chains = 0;
 }
