@@ -2,9 +2,11 @@
 #define JNL_UI_INTERNAL_H
 
 #include <stdbool.h>
+
 #include "jnl/common.h"
 #include "jnl/arena.h"
 #include "geo2d/curve2d.h"
+#include "tris.h"
 
 //
 // Decoded geometry types (child-side, arena-owned)
@@ -26,16 +28,21 @@ struct jnl_ui_domain {
 	struct jnl_ui_chain *chains; // malloc'd array, each curve owned
 };
 
-// Mesh topology (shared by wireframe and field renderer).
 struct jnl_ui_mesh {
 	u32 n_vertices;
+	u32 n_real_cells;
 	u32 n_faces;
-	u32 n_cells;      // 0 if no cell data was sent
-	f64 *vx;          // interleaved vxvy[i*2]
-	f64 *vy;          // interleaved vxvy[i*2+1]
-	i32 *face_vertex; // [f*2], [f*2+1]
-	i32 *cell_vertex; // [c*3] x3, NULL if n_cells==0
+
+	f64 *vx;                // [n_vertices]
+	f64 *vy;                // [n_vertices]
+	i32 *cell_vertex_start; // [n_real_cells + 1]
+	i32 *cell_vertex_list;  // [cell_vertex_start[n_real_cells]]
+	i32 *face_vertex;       // [n_faces * 2]
+
 	jnl_arena *arena;
+
+	struct jnl_ui_tris tris;
+	bool has_tris;
 };
 
 //

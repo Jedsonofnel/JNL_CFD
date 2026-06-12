@@ -79,6 +79,14 @@ static ui_bbox domain_bbox(const struct jnl_ui_domain *d)
 	return b;
 }
 
+static ui_bbox mesh_bbox_compute(const struct jnl_ui_mesh *m)
+{
+	ui_bbox b = bbox_empty();
+	for (u32 i = 0; i < m->n_vertices; i++)
+		bbox_expand(&b, m->vx[i], m->vy[i]);
+	return b;
+}
+
 typedef struct {
 	double scale, ox, oy;
 } view_xf;
@@ -212,6 +220,21 @@ static void draw_domain(const struct jnl_ui_domain *d,
 		draw_chain(&d->chains[i], xf, chain_color(&d->chains[i]));
 }
 
+static void draw_mesh_wire(const struct jnl_ui_mesh *m,
+                           const struct jnl_ui_view *v, const ui_bbox *bbox)
+{
+	view_xf xf = make_xf(v, bbox);
+	Color col = {70, 70, 70, 200};
+
+	for (u32 f = 0; f < m->n_faces; f++) {
+		i32 p0 = m->face_vertex[f * 2];
+		i32 p1 = m->face_vertex[f * 2 + 1];
+		Vector2 a = world_to_screen(xf, m->vx[p0], m->vy[p0]);
+		Vector2 b = world_to_screen(xf, m->vx[p1], m->vy[p1]);
+		DrawLineV(a, b, col);
+	}
+}
+
 //
 // Input: zoom and pan
 //
@@ -297,8 +320,14 @@ void ui_window_run(int sock_fd)
 				SetWindowFocused();
 			}
 			if (msg == JNL_UI_MSG_DOMAIN2D) {
-				// Recompute bbox and reset view to fit.
 				cached_bbox = domain_bbox(&ws.domain);
+				has_bbox = true;
+				ws.view.zoom = 1.0f;
+				ws.view.cx = 0.0f;
+				ws.view.cy = 0.0f;
+			}
+			if (msg == JNL_UI_MSG_SET_MESH && ws.has_mesh) {
+				cached_bbox = mesh_bbox_compute(&ws.mesh);
 				has_bbox = true;
 				ws.view.zoom = 1.0f;
 				ws.view.cx = 0.0f;
@@ -316,6 +345,10 @@ void ui_window_run(int sock_fd)
 			draw_domain(&ws.domain, &ws.view, &cached_bbox);
 		}
 
+		if (ws.has_mesh && has_bbox) {
+			draw_mesh_wire(&ws.mesh, &ws.view, &cached_bbox);
+		}
+
 		// Status bar.
 		DrawRectangle(0, H - 40, W, 40, (Color){240, 240, 240, 255});
 		DrawText(ws.status, 10, H - 28, 18, DARKGRAY);
@@ -325,7 +358,11 @@ void ui_window_run(int sock_fd)
 		EndDrawing();
 	}
 
-	ui_domain_free(&ws.domain);
+	if (ws.has_domain)
+		ui_domain_free(&ws.domain);
+	if (ws.has_mesh)
+		jnl_ui_mesh_free(&ws.mesh);
+
 	CloseWindow();
 	close(sock_fd);
 	exit(0);

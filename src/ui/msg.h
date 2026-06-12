@@ -3,6 +3,7 @@
 
 #include "ui_internal.h"
 #include "geo2d/domain2d.h"
+#include "mesh2d.h"
 
 //
 // Parent -> wire (called from handle.c)
@@ -11,9 +12,9 @@
 int ui_msg_send_close(int fd);
 int ui_msg_send_focus(int fd);
 int ui_msg_send_domain2d(int fd, const struct jnl_domain2d *d);
+int ui_msg_send_set_mesh(int fd, const pmsh2d *mesh);
 
 // Stubs — not yet implemented, return 0.
-int ui_msg_send_set_mesh(int fd, const void *mesh);
 int ui_msg_send_set_field(int fd, const char *name, const double *data,
                           unsigned n);
 int ui_msg_send_set_vector(int fd, const char *name, const char *fx,
@@ -30,5 +31,6 @@ int ui_msg_recv(int fd, struct jnl_ui_window_state *ws);
 
 // Release all curves in a domain (does NOT free the chains array itself).
 void ui_domain_free(struct jnl_ui_domain *d);
+void jnl_ui_mesh_free(struct jnl_ui_mesh *m);
 
 #endif // JNL_UI_MSG_H

@@ -7,6 +7,7 @@
 #include "ui_internal.h"
 #include "geo2d/curve2d.h"
 #include "geo2d/domain2d.h"
+#include "mesh2d.h"
 
 enum {
 	UI_MAX_CHAINS = 4096,
@@ -26,6 +27,22 @@ static int send_f64(int fd, double v)
 static int recv_f64(int fd, double *v)
 {
 	return jnl_proto_recv_all(fd, v, sizeof *v);
+}
+
+//
+// Basic sends
+//
+
+int ui_msg_send_close(int fd)
+{
+	u8 b = JNL_UI_MSG_CLOSE;
+	return jnl_proto_send_all(fd, &b, 1);
+}
+
+int ui_msg_send_focus(int fd)
+{
+	u8 b = JNL_UI_MSG_FOCUS;
+	return jnl_proto_send_all(fd, &b, 1);
 }
 
 //
@@ -303,6 +320,75 @@ int ui_msg_send_domain2d(int fd, const struct jnl_domain2d *d)
 }
 
 //
+// Mesh receiving
+//
+
+static int recv_set_mesh(int fd, struct jnl_ui_window_state *ws)
+{
+	u8 hdr[16];
+	if (jnl_proto_recv_all(fd, hdr, 16) < 0)
+		return -1;
+
+	u32 nv = JNL_R32(hdr + 0);
+	u32 nc = JNL_R32(hdr + 4);
+	u32 nf = JNL_R32(hdr + 8);
+	u32 tcv = JNL_R32(hdr + 12);
+
+	u64 sz = (u64)nv * 2 * sizeof(f64) + (u64)(nc + 1) * sizeof(i32) +
+	         (u64)tcv * sizeof(i32) + (u64)nf * 2 * sizeof(i32) +
+	         256; /* alignment slack */
+
+	jnl_arena *arena = arena_create(sz);
+	if (!arena)
+		return -1;
+
+	f64 *vx = ARENA_PUSH_ARRAY(arena, f64, nv);
+	f64 *vy = ARENA_PUSH_ARRAY(arena, f64, nv);
+	i32 *cvs = ARENA_PUSH_ARRAY(arena, i32, nc + 1);
+	i32 *cvl = ARENA_PUSH_ARRAY(arena, i32, tcv);
+	i32 *fv = ARENA_PUSH_ARRAY(arena, i32, nf * 2);
+
+	if (jnl_proto_recv_all(fd, vx, nv * sizeof(f64)) < 0)
+		goto fail;
+	if (jnl_proto_recv_all(fd, vy, nv * sizeof(f64)) < 0)
+		goto fail;
+	if (jnl_proto_recv_all(fd, cvs, (nc + 1) * sizeof(i32)) < 0)
+		goto fail;
+	if (jnl_proto_recv_all(fd, cvl, tcv * sizeof(i32)) < 0)
+		goto fail;
+	if (jnl_proto_recv_all(fd, fv, nf * 2 * sizeof(i32)) < 0)
+		goto fail;
+
+	if (ws->has_mesh) {
+		jnl_ui_mesh_free(&ws->mesh);
+		ws->has_mesh = false;
+	}
+
+	ws->mesh.n_vertices = nv;
+	ws->mesh.n_real_cells = nc;
+	ws->mesh.n_faces = nf;
+	ws->mesh.vx = vx;
+	ws->mesh.vy = vy;
+	ws->mesh.cell_vertex_start = cvs;
+	ws->mesh.cell_vertex_list = cvl;
+	ws->mesh.face_vertex = fv;
+	ws->mesh.arena = arena;
+	ws->mesh.has_tris = (jnl_ui_tris_build((i32)nv, vx, vy, (i32)nc, cvs, cvl,
+	                                       &ws->mesh.tris) == 0);
+	ws->has_mesh = true;
+
+	snprintf(ws->status, sizeof ws->status,
+	         "Mesh: %u verts, %u cells, %u faces (%d tris)", nv, nc, nf,
+	         ws->mesh.has_tris ? ws->mesh.tris.n_tris : 0);
+
+	return JNL_UI_MSG_SET_MESH;
+
+fail:
+	arena_destroy(arena);
+	return -1;
+}
+
+//
 // Public: receive dispatch
 //
 
@@ -346,6 +432,42 @@ fail:
 	return -1;
 }
 
+int ui_msg_send_set_mesh(int fd, const pmsh2d *mesh)
+{
+	const struct jnl_pmsh2d_topo *t = &mesh->topo;
+
+	u32 nv = (u32)t->n_vertices;
+	u32 nc = (u32)t->n_real_cells;
+	u32 nf = (u32)t->n_faces;
+	u32 tcv = (u32)t->cell_vertex_start[t->n_real_cells]; /* total cell verts */
+
+	u8 type = JNL_UI_MSG_SET_MESH;
+	u8 hdr[16];
+	JNL_W32(hdr + 0, nv);
+	JNL_W32(hdr + 4, nc);
+	JNL_W32(hdr + 8, nf);
+	JNL_W32(hdr + 12, tcv);
+
+	if (jnl_proto_send_all(fd, &type, 1) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, hdr, 16) < 0)
+		return -1;
+
+	if (jnl_proto_send_all(fd, t->vx, nv * sizeof(f64)) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, t->vy, nv * sizeof(f64)) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, t->cell_vertex_start, (nc + 1) * sizeof(i32)) <
+	    0)
+		return -1;
+	if (jnl_proto_send_all(fd, t->cell_vertex_list, tcv * sizeof(i32)) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, t->face_vertex, nf * 2 * sizeof(i32)) < 0)
+		return -1;
+
+	return 0;
+}
+
 int ui_msg_recv(int fd, struct jnl_ui_window_state *ws)
 {
 	u8 type;
@@ -359,10 +481,11 @@ int ui_msg_recv(int fd, struct jnl_ui_window_state *ws)
 		return JNL_UI_MSG_FOCUS;
 	case JNL_UI_MSG_DOMAIN2D:
 		return recv_domain2d(fd, ws);
+	case JNL_UI_MSG_SET_MESH:
+		return recv_set_mesh(fd, ws);
 
 	// Not yet implemented — drain to avoid protocol corruption.
 	// (Currently no variable-length payload on these, so safe to ignore.)
-	case JNL_UI_MSG_SET_MESH:
 	case JNL_UI_MSG_SET_FIELD:
 	case JNL_UI_MSG_SET_VECTOR:
 	case JNL_UI_MSG_VIEW_FIELD:
@@ -398,28 +521,22 @@ void ui_domain_free(struct jnl_ui_domain *d)
 	d->n_chains = 0;
 }
 
+void jnl_ui_mesh_free(struct jnl_ui_mesh *m)
+{
+	if (!m)
+		return;
+	if (m->has_tris) {
+		jnl_ui_tris_free(&m->tris);
+	}
+	if (m->arena) {
+		arena_destroy(m->arena);
+	}
+	memset(m, 0, sizeof *m);
+}
+
 //
 // Stubs: TODO: implement these
 //
-
-int ui_msg_send_close(int fd)
-{
-	u8 b = JNL_UI_MSG_CLOSE;
-	return jnl_proto_send_all(fd, &b, 1);
-}
-
-int ui_msg_send_focus(int fd)
-{
-	u8 b = JNL_UI_MSG_FOCUS;
-	return jnl_proto_send_all(fd, &b, 1);
-}
-
-int ui_msg_send_set_mesh(int fd, const void *mesh)
-{
-	(void)fd;
-	(void)mesh;
-	return 0;
-}
 
 int ui_msg_send_set_field(int fd, const char *n, const double *d, unsigned l)
 {

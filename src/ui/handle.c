@@ -124,6 +124,17 @@ int jnl_ui_send_domain(jnl_ui_handle *h, const struct jnl_domain2d *d)
 	return 0;
 }
 
+int jnl_ui_send_mesh(jnl_ui_handle *h, const pmsh2d *mesh)
+{
+	if (jnl_ui_closed(h))
+		return -1;
+	if (ui_msg_send_set_mesh(h->sock_fd, mesh) < 0) {
+		ui_handle_mark_closed(h);
+		return -1;
+	}
+	return 0;
+}
+
 int jnl_ui_focus(jnl_ui_handle *h)
 {
 	if (jnl_ui_closed(h))
@@ -161,13 +172,6 @@ void jnl_ui_free(jnl_ui_handle *h)
 //
 // Stubs for unimplemented API
 //
-
-int jnl_ui_send_mesh(jnl_ui_handle *h, const pmsh2d *m)
-{
-	(void)h;
-	(void)m;
-	return 0;
-}
 
 int jnl_ui_set_field(jnl_ui_handle *h, const char *n, const f64 *d, u32 len)
 {
