@@ -471,7 +471,7 @@ end
 --- Store a value in a named REPL special such as `*last-run*`.
 ---@param name string Special name surrounded by asterisks.
 ---@param value any Value to store.
----@param label? string Optional confirmation label.
+---@param label? string|false Optional confirmation label; false suppresses output.
 ---@return any value
 function Repl:special(name, value, label)
 	if not Help.is_special_name(name) then
@@ -483,7 +483,11 @@ function Repl:special(name, value, label)
 
 	_G[name] = value
 
-	if label and label ~= "" then
+	if label == false then
+		return value
+	end
+
+	if type(label) == "string" and label ~= "" then
 		repl_message(string.format(
 			"%s -> %s",
 			label,

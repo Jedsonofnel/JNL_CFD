@@ -240,7 +240,8 @@ h.describe("Default REPL facade", function()
 
 		local value = repl.special(
 			"*sample-result*",
-			123
+			123,
+			false
 		)
 
 		h.expect(value).equals(123)

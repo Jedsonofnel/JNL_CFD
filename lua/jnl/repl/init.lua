@@ -56,7 +56,7 @@ end
 --- Store a value in a named special on the default REPL.
 ---@param name string Name such as `*last-run*`.
 ---@param value any Value to store.
----@param label? string Confirmation label.
+---@param label? string|false Confirmation label; false suppresses output.
 ---@return any value
 function M.special(name, value, label)
 	return M.default():special(name, value, label)
