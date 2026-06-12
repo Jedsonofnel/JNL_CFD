@@ -48,9 +48,13 @@ local SECTIONS = {
 			bullet("Keep public module functions easy to find."),
 			bullet("Avoid unnecessary abstraction and speculative generality."),
 			bullet(
+				"Do not prefix Lua names with underscores to imply privacy. Lua has no private fields or methods, and the convention is visually noisy without enforcing anything."),
+			bullet(
+				"Express privacy structurally: keep implementation helpers local, avoid exporting internal values, and use @private only for documentation visibility."),
+			bullet(
 				"Comment only to explain non-obvious behaviour, constraints, invariants, or design decisions."),
 			bullet(
-				"Do not use Unicode arrows or mathematical symbols in identifiers or comments."),
+				"Use plain ASCII in comments, documentation, identifiers, and user-facing diagnostic text; do not use Unicode arrows, mathematical symbols, or typographic punctuation."),
 			bullet(
 				"Do not add decorative rulers or banners beyond the standard three-line section header."),
 			bullet(
@@ -76,6 +80,8 @@ local SECTIONS = {
 				"Keep documentation concise and describe behaviour rather than restating the function name."),
 			bullet(
 				"Do not document unsupported behaviour merely because it might be useful."),
+			bullet(
+				"Use @private for documentation visibility; do not rename public or internal symbols with leading underscores merely to suggest privacy."),
 		},
 	},
 
