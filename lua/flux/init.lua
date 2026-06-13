@@ -22,6 +22,7 @@ local M  = {}
 M.html   = require "flux.html"
 M.router = require "flux.router"
 M.server = require "flux.server"
+M.dev    = require "flux.dev"
 
 --- Convenience alias for flux.server.serve.
 ---@param router FluxRouter

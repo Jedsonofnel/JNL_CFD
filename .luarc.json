@@ -1,5 +1,5 @@
 {
 	"diagnostics": {
-		"globals": ["_script", "readline"]
+		"globals": ["_script", "readline", "__jnl_repl_cancel_seen"]
 	}
 }

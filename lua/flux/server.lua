@@ -190,19 +190,29 @@ end
 ---@param r FluxRouter
 ---@param opts? table
 function M.serve(r, opts)
-	opts                = opts or {}
-	local host          = opts.host or "127.0.0.1"
-	local port          = opts.port or 8080
+	opts = opts or {}
+	local host = opts.host or "127.0.0.1"
+	local port = opts.port or 8080
 	local static_prefix = opts.static or "/static/"
-	local static_root   = opts.static_root or "web/static"
+	local static_root = opts.static_root or "web/static"
 
-	local srv           = assert(socket.bind(host, port))
+	local srv = assert(socket.bind(host, port))
+	srv:settimeout(1)
+	local cancel_seen = __jnl_repl_cancel_seen or function() return false end
+
 	io.write(string.format("flux: listening on http://%s:%d\n", host, port))
 
 	while true do
 		local client = srv:accept()
+
+		if cancel_seen() then
+			io.write("\nflux: shutting down\n")
+			break
+		end
+
 		if client then
 			client:settimeout(10)
+
 			local req = parse(client)
 			if req then
 				local res = make_res(client, req)
@@ -216,6 +226,7 @@ function M.serve(r, opts)
 					end
 				end
 			end
+
 			client:close()
 		end
 	end

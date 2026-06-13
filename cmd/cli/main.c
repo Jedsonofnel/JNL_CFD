@@ -256,6 +256,11 @@ int main(int argc, char **argv)
 		lua_pushstring(L, script);
 		lua_setglobal(L, "_script");
 
+		lua_createtable(L, 0, 1);
+		lua_pushstring(L, script);
+		lua_rawseti(L, -2, 0);
+		lua_setglobal(L, "arg");
+
 		if (!run_script(L, script)) {
 			status = EXIT_FAILURE;
 			goto cleanup;

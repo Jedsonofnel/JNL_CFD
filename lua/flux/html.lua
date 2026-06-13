@@ -68,6 +68,7 @@ local function render(node)
 	if type(node) == "string" then return node end
 	if type(node) == "table" then
 		if node.flux_raw then return node[1] end
+		if node.flux_element then return tostring(node) end -- <-- add this
 		local parts = {}
 		for i = 1, #node do
 			parts[i] = render(node[i])
@@ -122,16 +123,19 @@ local function el(tag)
 			end
 			local a = attrs_str(first)
 			if is_void then return "<" .. tag .. a .. " />" end
-			-- Attrs supplied: return a closure that accepts children or a format string.
-			return function(children, ...)
-				if children == nil then
-					return "<" .. tag .. a .. "></" .. tag .. ">"
-				end
-				local inner = type(children) == "string"
-					and maybe_fmt(children, ...)
-					or render(children)
-				return "<" .. tag .. a .. ">" .. inner .. "</" .. tag .. ">"
-			end
+			local open  = "<" .. tag .. a .. ">"
+			local close = "</" .. tag .. ">"
+			local empty = open .. close
+			return setmetatable({ flux_element = true }, {
+				__tostring = function() return empty end,
+				__call = function(_, children, ...)
+					if children == nil then return empty end
+					local inner = type(children) == "string"
+						and maybe_fmt(children, ...)
+						or render(children)
+					return open .. inner .. close
+				end,
+			})
 		end
 		return "<" .. tag .. ">" .. tostring(first) .. "</" .. tag .. ">"
 	end
