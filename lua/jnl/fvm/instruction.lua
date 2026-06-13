@@ -4,6 +4,9 @@
 local V = require("jnl.core.validation")
 local G = require("jnl.core.glyphs")
 
+---@class Inst
+---@field op string
+---@field fields table
 local Inst = {}
 Inst.__index = Inst
 
