@@ -4,8 +4,10 @@ bin/
 build/
 /out/
 
-# vendored fennel
+# vendored Lua
 lua/fennel.lua
+lua/ltn12.lua
+lua/socket.lua
 
 *.d
 *.o

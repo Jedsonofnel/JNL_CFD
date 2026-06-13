@@ -4,3 +4,6 @@
 [submodule "vendor/fennel"]
 	path = vendor/fennel
 	url = https://git.sr.ht/~technomancy/fennel
+[submodule "vendor/luasocket"]
+	path = vendor/luasocket
+	url = https://github.com/lunarmodules/luasocket
