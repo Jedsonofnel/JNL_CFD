@@ -1005,17 +1005,6 @@ appropriate, and user-facing output.
          Create a triangulation specification.
 
 
-## jnl.nabla.accessor
-
-   (no module description)
-
-   Functions
-
-      jnl.nabla.accessor.get(name)
-
-      jnl.nabla.accessor.register(name: string, spec: table)
-
-
 ## jnl.nabla.equation
 
    Symbolic equation pairing a left-hand side and right-hand side expression.
@@ -1038,25 +1027,6 @@ appropriate, and user-facing output.
       jnl.nabla.eval.eval(node, bindings, pool, n)
 
       jnl.nabla.eval.scratch_depth(node)
-
-
-## jnl.nabla.mangle
-
-   (no module description)
-
-   Functions
-
-      jnl.nabla.mangle.accessor(kind: string, node: Node) -> string
-         Mangle a resolved accessor node to a flat binding name.
-
-      jnl.nabla.mangle.field(name: string, axis: string) -> string
-         Mangle a resolved field component to a binding name
-
-      jnl.nabla.mangle.grad(name: string, i: string, j: string?) -> string
-         Mangle a grad tensor component
-
-      jnl.nabla.mangle.tensor(name: string, axis_i: string, axis_j: string) -> string
-         Mangle a rank-2 symbol component
 
 
 ## jnl.nabla.node

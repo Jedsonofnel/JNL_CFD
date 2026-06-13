@@ -721,7 +721,7 @@ end
 ---Return a simplified form of this expression tree.
 ---@return Node
 function Node:simplify()
-	return require("jnl.nabla.simplify")(self)
+	return require("jnl.nabla.simplify").simplify(self)
 end
 
 ---Render this node as a human-readable string.

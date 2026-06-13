@@ -1,6 +1,6 @@
 local h = require("test.harness")
 local Node = require("jnl.nabla.node")
-local simplify = require("jnl.nabla.simplify")
+local simplify = require("jnl.nabla.simplify").simplify
 
 local function raw(fields)
 	return setmetatable(fields, Node)
