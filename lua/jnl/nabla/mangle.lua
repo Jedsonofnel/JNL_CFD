@@ -1,6 +1,7 @@
 -- jnl/nabla/mangle.lua
 local Acc = require("jnl.nabla.accessor")
 
+---@private
 local M = {}
 
 ---Mangle a resolved accessor node to a flat binding name.

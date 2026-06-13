@@ -4,6 +4,7 @@
 local V = require("jnl.core.validation")
 local Node = require("jnl.nabla.node")
 
+---@private
 local M = {}
 local registry = {}
 

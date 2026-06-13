@@ -5,6 +5,9 @@ local G = require("jnl.core.glyphs")
 local Node = require("jnl.nabla.node")
 local Acc = require("jnl.nabla.accessor")
 
+---@private
+local M = {}
+
 --
 -- Precendence
 --
@@ -208,4 +211,5 @@ node_pretty = function(node, parent_prec, is_right)
 	return string.format("<?:%s>", node.kind)
 end
 
-return node_pretty
+M.node_pretty = node_pretty
+return M

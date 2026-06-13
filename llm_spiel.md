@@ -1005,17 +1005,6 @@ appropriate, and user-facing output.
          Create a triangulation specification.
 
 
-## jnl.nabla
-
-   (no module description)
-
-   Functions
-
-      jnl.nabla.new_registry(label)
-
-      jnl.nabla.register_accessor(name, spec)
-
-
 ## jnl.nabla.accessor
 
    (no module description)
@@ -1029,8 +1018,10 @@ appropriate, and user-facing output.
 
 ## jnl.nabla.equation
 
-   Symbolic equation pairing a left-hand side and right-hand side Node. Constructed via
-   Node:equals(rhs) or Equation.new(lhs, rhs).
+   Symbolic equation pairing a left-hand side and right-hand side expression.
+
+   Equations are normally constructed with `Node:equals(rhs)` or `Equation.new(lhs,
+   rhs)`.
 
 
 ## jnl.nabla.eval
@@ -1075,85 +1066,14 @@ appropriate, and user-facing output.
    all operations return new nodes.
 
 
-## jnl.nabla.ops
-
-   (no module description)
-
-   Functions
-
-      jnl.nabla.ops.cross(a, b)
-
-      jnl.nabla.ops.curl(...)
-
-      jnl.nabla.ops.ddot(a, b)
-
-      jnl.nabla.ops.ddt(...)
-
-      jnl.nabla.ops.dev(a)
-
-      jnl.nabla.ops.div(...)
-
-      jnl.nabla.ops.dot(a, b)
-
-      jnl.nabla.ops.grad(...)
-
-      jnl.nabla.ops.inv(a)
-
-      jnl.nabla.ops.laplacian(...)
-
-      jnl.nabla.ops.mag(a)
-
-      jnl.nabla.ops.outer(a, b)
-
-      jnl.nabla.ops.pow_dispatch(a, b)
-
-      jnl.nabla.ops.skew(a)
-
-      jnl.nabla.ops.symm(a)
-
-      jnl.nabla.ops.trace(a)
-
-      jnl.nabla.ops.transpose(a)
-
-
-## jnl.nabla.pretty
-
-   (no module description)
-
-   Functions
-
-      jnl.nabla.pretty(node, parent_prec, is_right)
-
-
 ## jnl.nabla.registry
 
-   (no module description)
+   Declare fields, constants, governing equations, and derived expressions for a
+   symbolic physics model.
 
-   Functions
-
-      jnl.nabla.registry.new(label)
-
-
-## jnl.nabla.resolve
-
-   (no module description)
-
-   Functions
-
-      jnl.nabla.resolve.install(Node_class, Equation_class)
-
-      jnl.nabla.resolve.resolve(node, ndims)
-
-      jnl.nabla.resolve.resolve_equation(eq, ndims)
-
-
-## jnl.nabla.simplify
-
-   (no module description)
-
-   Functions
-
-      jnl.nabla.simplify(node)
+   A registry stores named symbolic fields in declaration order. Field declarations
+   return injected `Node` instances with chainable methods such as `governed_by`,
+   `defined_as`, `prescribed`, and `initial`.
 
 
 ## jnl.repl

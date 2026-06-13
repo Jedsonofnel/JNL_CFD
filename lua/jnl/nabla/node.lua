@@ -727,7 +727,7 @@ end
 ---Render this node as a human-readable string.
 ---@return string
 function Node:__tostring()
-	return require("jnl.nabla.pretty")(self)
+	return require("jnl.nabla.pretty").node_pretty(self)
 end
 
 ---Double contraction via the .. operator: a .. b = a:ddot(b).

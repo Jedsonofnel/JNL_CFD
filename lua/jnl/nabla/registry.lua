@@ -10,8 +10,44 @@ local Equation = require("jnl.nabla.equation")
 -- Registry
 --
 
+--- Declare fields, constants, governing equations, and derived expressions for
+--- a symbolic physics model.
+---
+--- A registry stores named symbolic fields in declaration order. Field
+--- declarations return injected `Node` instances with chainable methods such as
+--- `governed_by`, `defined_as`, `prescribed`, and `initial`.
+---@class Registry
+---@field label string? Human-readable registry label.
+---@field entries table<string, RegistryEntry> Field entries by name.
+---@field order string[] Declaration order.
 local Registry = {}
 Registry.__index = Registry
+
+--- Metadata for one declared registry symbol.
+---@class RegistryEntry
+---@field name string Symbol name.
+---@field rank integer Tensor rank.
+---@field node Node Symbol node.
+---@field kind? string Entry kind, currently `"const"` for constants.
+---@field value? number Constant scalar value.
+---@field initial? number Initial or prescribed value.
+---@field solve? boolean True for prognostic fields, false for diagnostic fields.
+---@field is_prescribed? boolean True when the field is externally prescribed.
+---@field equation? Equation Governing equation.
+---@field expr? Node Diagnostic expression.
+---@field correction? Node Correction expression.
+---@field clip? number[] Lower and upper clipping limits.
+
+--- A registry field node with chainable declaration helpers injected.
+---@class RegistryField: Node
+---@field governed_by fun(self: RegistryField, eq: Equation): RegistryField Mark this field as governed by an equation.
+---@field defined_as fun(self: RegistryField, expr: Node): RegistryField Define this field diagnostically.
+---@field prescribed fun(self: RegistryField, value: number): RegistryField Mark this field as externally prescribed.
+---@field correction fun(self: RegistryField, expr: Node): RegistryField Attach a correction expression.
+---@field add_lhs fun(self: RegistryField, expr: Node): RegistryField Add a term to the equation left-hand side.
+---@field add_rhs fun(self: RegistryField, expr: Node): RegistryField Add a term to the equation right-hand side.
+---@field initial fun(self: RegistryField, value: number): RegistryField Set the initial value.
+---@field clip fun(self: RegistryField, lo: number, hi?: number): RegistryField Set clipping limits.
 
 -- Dependency scanning
 
@@ -38,6 +74,7 @@ end
 -- Per-instance method injection
 --
 
+---@return RegistryField
 local function inject(node, reg)
 	local name = node.name
 
@@ -122,6 +159,9 @@ end
 
 -- Construction
 
+--- Create a new registry.
+---@param label? string Human-readable label.
+---@return Registry registry
 function Registry.new(label)
 	return setmetatable({
 		label   = label,
@@ -148,12 +188,26 @@ local function declare(reg, name, rank)
 	return inject(node, reg)
 end
 
+--- Declare a scalar field.
+---@param name string Field name.
+---@return RegistryField field
 function Registry:scalar(name) return declare(self, name, 0) end
 
+--- Declare a vector field.
+---@param name string Field name.
+---@return RegistryField field
 function Registry:vector(name) return declare(self, name, 1) end
 
+--- Declare a tensor field.
+---@param name string Field name.
+---@param rank? integer Tensor rank; defaults to 2.
+---@return RegistryField field
 function Registry:tensor(name, rank) return declare(self, name, rank or 2) end
 
+--- Declare a named scalar constant.
+---@param name string Constant name.
+---@param value number Constant value.
+---@return Node node
 function Registry:const(name, value)
 	V.identifier(name, "registry const name")
 	V.typeof(value, "number", "registry const value")
@@ -167,6 +221,10 @@ function Registry:const(name, value)
 	return node
 end
 
+--- Declare a named constant vector.
+---@param name string Constant vector name.
+---@param ... number Vector components.
+---@return Node node
 function Registry:cvec(name, ...)
 	V.identifier(name, "registry cvec name")
 	assert(not self.entries[name],
@@ -185,26 +243,42 @@ end
 -- Registry-level amendment
 --
 
+--- Return an injected field node by name.
+---@param name string Field name.
+---@return RegistryField field
 function Registry:get(name)
 	local e = self.entries[name]
 	assert(e, string.format("registry: unknown symbol '%s'", name))
 	return inject(e.node, self)
 end
 
+--- Return a registry entry by name, raising an error if absent.
+---@param name string Field name.
+---@return RegistryEntry entry
 function Registry:expect(name)
 	local e = self.entries[name]
 	assert(e, string.format("registry: unknown symbol '%s'", name))
 	return e
 end
 
+--- Return a registry entry by name, or nil if absent.
+---@param name string Field name.
+---@return RegistryEntry? entry
 function Registry:entry(name)
 	return self.entries[name]
 end
 
+--- Set the initial value for a declared field.
+---@param name string Field name.
+---@param value number Initial value.
 function Registry:set_initial(name, value)
 	self:expect(name).initial = value
 end
 
+--- Set clipping limits for a declared field.
+---@param name string Field name.
+---@param lo number Lower bound.
+---@param hi number Upper bound.
 function Registry:set_clip(name, lo, hi)
 	assert(lo < hi, "set_clip: lo must be less than hi")
 	self:expect(name).clip = { lo, hi }
@@ -214,12 +288,16 @@ end
 -- Iteration
 --
 
+--- Iterate over entries in declaration order.
+---@param fn fun(name: string, entry: RegistryEntry)
 function Registry:each(fn)
 	for _, name in ipairs(self.order) do
 		fn(name, self.entries[name])
 	end
 end
 
+--- Return names of fields solved from governing equations.
+---@return string[] names
 function Registry:prognostics()
 	local out = {}
 	for _, name in ipairs(self.order) do
@@ -228,6 +306,8 @@ function Registry:prognostics()
 	return out
 end
 
+--- Return names of diagnostic fields defined by expressions.
+---@return string[] names
 function Registry:diagnostics()
 	local out = {}
 	for _, name in ipairs(self.order) do
@@ -239,6 +319,8 @@ function Registry:diagnostics()
 	return out
 end
 
+--- Return names of externally prescribed fields.
+---@return string[] names
 function Registry:prescribed_fields()
 	local out = {}
 	for _, name in ipairs(self.order) do
@@ -249,6 +331,9 @@ end
 
 -- Dependency queries
 
+--- Return dependency sets for a field.
+---@param name string Field name.
+---@return table deps
 function Registry:deps_of(name)
 	local e                     = self:expect(name)
 
@@ -275,6 +360,7 @@ end
 -- Validation
 --
 
+--- Validate declarations, dependencies, and equation ranks.
 function Registry:validate()
 	local errors = {}
 	for _, name in ipairs(self.order) do
@@ -339,6 +425,8 @@ local function section(out, title, names, fn)
 	out[#out + 1] = ""
 end
 
+--- Return a multi-line listing of constants, diagnostics, prescribed fields, and prognostics.
+---@return string text
 function Registry:listing()
 	local indent = G.indent
 	local sep = ""
@@ -408,6 +496,8 @@ function Registry:listing()
 	return table.concat(out, "\n")
 end
 
+--- Return a multi-line dependency listing.
+---@return string text
 function Registry:dep_listing()
 	local lines = {}
 	for _, name in ipairs(self.order) do
@@ -441,6 +531,8 @@ function Registry:dep_listing()
 	return "Dependencies\n" .. table.concat(lines, "\n")
 end
 
+--- Return a compact registry summary.
+---@return string text
 function Registry:__tostring()
 	local label = self.label and (" [" .. self.label .. "]") or ""
 	return string.format("Registry%s  prog=%d  diag=%d  prescribed=%d  const=%d",

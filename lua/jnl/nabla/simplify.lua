@@ -3,6 +3,9 @@
 -- deps
 local Node = require("jnl.nabla.node")
 
+---@private
+local M = {}
+
 --
 -- Helpers
 --
@@ -171,6 +174,8 @@ local function simplify_div(a, b)
 	return setmetatable({ kind = "div", a = num, b = den, rank = num.rank }, Node)
 end
 
+---@param node Node
+---@return Node
 simplify = function(node)
 	if node:is_leaf() then return node end
 
@@ -193,4 +198,5 @@ simplify = function(node)
 	end
 end
 
-return simplify
+M.simplify = simplify
+return M

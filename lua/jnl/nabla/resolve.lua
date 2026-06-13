@@ -7,6 +7,9 @@ local Equation = require("jnl.nabla.equation")
 local Mangle = require("jnl.nabla.mangle")
 local Acc = require("jnl.nabla.accessor")
 
+-- jnl/nabla/resolve.lua
+--- Install cross-module methods and operator dispatch hooks for Nabla nodes.
+---@private
 local M = {}
 
 local AXES = Node.AXES -- { "x", "y", "z" }

@@ -1,9 +1,12 @@
 -- jnl/nabla/ops.lua - vector calculus and tensorial operators
+-- <jed@nelson.ac> // 2026-06-12
 
 -- deps
 local Node = require("jnl.nabla.node")
 local G = require("jnl.core.glyphs")
 
+--- Implement Nabla vector-calculus and tensor-operator node constructors.
+---@private
 local M = {}
 
 --
