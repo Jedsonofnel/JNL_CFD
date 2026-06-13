@@ -8,6 +8,7 @@
 #include "geo2d/curve2d.h"
 #include "geo2d/domain2d.h"
 #include "mesh2d.h"
+#include "fields.h"
 
 enum {
 	UI_MAX_CHAINS = 4096,
@@ -319,6 +320,76 @@ int ui_msg_send_domain2d(int fd, const struct jnl_domain2d *d)
 	return 0;
 }
 
+int ui_msg_send_set_field(int fd, const char *name, const double *data,
+                          unsigned n)
+{
+	u8 type = JNL_UI_MSG_SET_FIELD;
+	u8 name_len = (u8)strnlen(name, 63);
+	u8 n_buf[4];
+	JNL_W32(n_buf, (u32)n);
+
+	if (jnl_proto_send_all(fd, &type, 1) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, &name_len, 1) < 0)
+		return -1;
+	if (name_len && jnl_proto_send_all(fd, name, name_len) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, n_buf, 4) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, data, n * sizeof(double)) < 0)
+		return -1;
+	return 0;
+}
+
+int ui_msg_send_set_vector(int fd, const char *name, const char *fx,
+                           const char *fy)
+{
+	u8 type = JNL_UI_MSG_SET_VECTOR;
+	u8 nlen = (u8)strnlen(name, 63);
+	u8 fxlen = (u8)strnlen(fx, 63);
+	u8 fylen = (u8)strnlen(fy, 63);
+
+	if (jnl_proto_send_all(fd, &type, 1) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, &nlen, 1) < 0)
+		return -1;
+	if (nlen && jnl_proto_send_all(fd, name, nlen) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, &fxlen, 1) < 0)
+		return -1;
+	if (fxlen && jnl_proto_send_all(fd, fx, fxlen) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, &fylen, 1) < 0)
+		return -1;
+	if (fylen && jnl_proto_send_all(fd, fy, fylen) < 0)
+		return -1;
+	return 0;
+}
+
+int ui_msg_send_view_field(int fd, const char *name)
+{
+	u8 type = JNL_UI_MSG_VIEW_FIELD;
+	u8 nlen = name ? (u8)strnlen(name, 63) : 0;
+	if (jnl_proto_send_all(fd, &type, 1) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, &nlen, 1) < 0)
+		return -1;
+	if (nlen && jnl_proto_send_all(fd, name, nlen) < 0)
+		return -1;
+	return 0;
+}
+
+int ui_msg_send_view_mesh(int fd, int show)
+{
+	u8 type = JNL_UI_MSG_VIEW_MESH;
+	u8 s = (u8)(show ? 1 : 0);
+	if (jnl_proto_send_all(fd, &type, 1) < 0)
+		return -1;
+	if (jnl_proto_send_all(fd, &s, 1) < 0)
+		return -1;
+	return 0;
+}
+
 //
 // Mesh receiving
 //
@@ -468,6 +539,103 @@ int ui_msg_send_set_mesh(int fd, const pmsh2d *mesh)
 	return 0;
 }
 
+static int recv_set_field(int fd, struct jnl_ui_window_state *ws)
+{
+	u8 name_len;
+	if (jnl_proto_recv_all(fd, &name_len, 1) < 0)
+		return -1;
+
+	char name[JNL_UI_FIELD_NAME_CAP] = {0};
+	if (name_len && jnl_proto_recv_all(fd, name, name_len) < 0)
+		return -1;
+
+	u8 n_buf[4];
+	if (jnl_proto_recv_all(fd, n_buf, 4) < 0)
+		return -1;
+	u32 n = JNL_R32(n_buf);
+
+	double *data = malloc((size_t)n * sizeof(double));
+	if (!data)
+		return -1;
+
+	if (jnl_proto_recv_all(fd, data, n * sizeof(double)) < 0) {
+		free(data);
+		return -1;
+	}
+
+	/* Validate against current mesh before storing. */
+	if (ws->has_mesh) {
+		u32 nv = ws->mesh.n_vertices;
+		u32 nc = ws->mesh.n_real_cells;
+		if (n != nv && n != nc) {
+			snprintf(ws->status, sizeof ws->status,
+			         "SET_FIELD '%s' ignored: n=%u, expected nv=%u or nc=%u",
+			         name, n, nv, nc);
+			free(data);
+			return JNL_UI_MSG_SET_FIELD;
+		}
+	}
+
+	struct jnl_ui_field *f = field_map_upsert(&ws->fields, name, data, n);
+	free(data);
+	if (!f)
+		return -1;
+
+	snprintf(ws->status, sizeof ws->status, "Field '%s': n=%u  [%.4g, %.4g]",
+	         name, n, f->vmin, f->vmax);
+	return JNL_UI_MSG_SET_FIELD;
+}
+
+static int recv_set_vector(int fd, struct jnl_ui_window_state *ws)
+{
+	char name[JNL_UI_FIELD_NAME_CAP] = {0};
+	char fx[JNL_UI_FIELD_NAME_CAP] = {0};
+	char fy[JNL_UI_FIELD_NAME_CAP] = {0};
+	u8 len;
+
+	if (jnl_proto_recv_all(fd, &len, 1) < 0)
+		return -1;
+	if (len && jnl_proto_recv_all(fd, name, len) < 0)
+		return -1;
+	if (jnl_proto_recv_all(fd, &len, 1) < 0)
+		return -1;
+	if (len && jnl_proto_recv_all(fd, fx, len) < 0)
+		return -1;
+	if (jnl_proto_recv_all(fd, &len, 1) < 0)
+		return -1;
+	if (len && jnl_proto_recv_all(fd, fy, len) < 0)
+		return -1;
+
+	field_map_upsert_vector(&ws->fields, name, fx, fy);
+	return JNL_UI_MSG_SET_VECTOR;
+}
+
+static int recv_view_field(int fd, struct jnl_ui_window_state *ws)
+{
+	u8 name_len;
+	if (jnl_proto_recv_all(fd, &name_len, 1) < 0)
+		return -1;
+
+	memset(ws->view.active_field, 0, sizeof ws->view.active_field);
+	if (name_len && jnl_proto_recv_all(fd, ws->view.active_field, name_len) < 0)
+		return -1;
+
+	/* Mark all fields dirty so the new active field gets re-uploaded. */
+	for (i32 i = 0; i < ws->fields.n_fields; i++)
+		ws->fields.fields[i].tex_dirty = true;
+
+	return JNL_UI_MSG_VIEW_FIELD;
+}
+
+static int recv_view_mesh(int fd, struct jnl_ui_window_state *ws)
+{
+	u8 show;
+	if (jnl_proto_recv_all(fd, &show, 1) < 0)
+		return -1;
+	ws->view.show_mesh = (bool)show;
+	return JNL_UI_MSG_VIEW_MESH;
+}
+
 int ui_msg_recv(int fd, struct jnl_ui_window_state *ws)
 {
 	u8 type;
@@ -483,15 +651,14 @@ int ui_msg_recv(int fd, struct jnl_ui_window_state *ws)
 		return recv_domain2d(fd, ws);
 	case JNL_UI_MSG_SET_MESH:
 		return recv_set_mesh(fd, ws);
-
-	// Not yet implemented — drain to avoid protocol corruption.
-	// (Currently no variable-length payload on these, so safe to ignore.)
 	case JNL_UI_MSG_SET_FIELD:
+		return recv_set_field(fd, ws);
 	case JNL_UI_MSG_SET_VECTOR:
+		return recv_set_vector(fd, ws);
 	case JNL_UI_MSG_VIEW_FIELD:
+		return recv_view_field(fd, ws);
 	case JNL_UI_MSG_VIEW_MESH:
-		return (int)type; // no-op, caller ignores
-
+		return recv_view_mesh(fd, ws);
 	default:
 		return -1;
 	}
@@ -532,41 +699,4 @@ void jnl_ui_mesh_free(struct jnl_ui_mesh *m)
 		arena_destroy(m->arena);
 	}
 	memset(m, 0, sizeof *m);
-}
-
-//
-// Stubs: TODO: implement these
-//
-
-int ui_msg_send_set_field(int fd, const char *n, const double *d, unsigned l)
-{
-	(void)fd;
-	(void)n;
-	(void)d;
-	(void)l;
-	return 0;
-}
-
-int ui_msg_send_set_vector(int fd, const char *n, const char *fx,
-                           const char *fy)
-{
-	(void)fd;
-	(void)n;
-	(void)fx;
-	(void)fy;
-	return 0;
-}
-
-int ui_msg_send_view_field(int fd, const char *n)
-{
-	(void)fd;
-	(void)n;
-	return 0;
-}
-
-int ui_msg_send_view_mesh(int fd, int show)
-{
-	(void)fd;
-	(void)show;
-	return 0;
 }

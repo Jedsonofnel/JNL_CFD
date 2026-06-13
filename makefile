@@ -91,6 +91,7 @@ CFLAGS_COMMON := \
 	-I$(HDIR) \
 	-I$(TRIANGLE_INC_DIR) \
 	-I$(TRIANGLE_GEN_DIR) \
+	$(shell pkg-config --cflags raylib) \
 	$(CFLAGS_LUA)
 
 CFLAGS_DEBUG := \
@@ -369,6 +370,7 @@ $(OBJDIR)/vendor/luasocket/%.o: $(LUASOCKET_SRC_DIR)/%.c
 		-c -o $@ $<
 
 $(OBJDIR)/vendor/luasocket.stamp: $(LUASOCKET_LUA_SRCS) | $(LUADIR)
+	@mkdir -p $(dir $@)
 	$(Q)cp $(LUASOCKET_SRC_DIR)/socket.lua $(LUADIR)/socket.lua
 	$(Q)cp $(LUASOCKET_SRC_DIR)/ltn12.lua  $(LUADIR)/ltn12.lua
 	$(Q)touch $@

@@ -169,39 +169,47 @@ void jnl_ui_free(jnl_ui_handle *h)
 	free(h);
 }
 
-//
-// Stubs for unimplemented API
-//
-
-int jnl_ui_set_field(jnl_ui_handle *h, const char *n, const f64 *d, u32 len)
+int jnl_ui_set_field(jnl_ui_handle *h, const char *name, const f64 *data, u32 n)
 {
-	(void)h;
-	(void)n;
-	(void)d;
-	(void)len;
+	if (jnl_ui_closed(h))
+		return -1;
+	if (ui_msg_send_set_field(h->sock_fd, name, data, (unsigned)n) < 0) {
+		ui_handle_mark_closed(h);
+		return -1;
+	}
 	return 0;
 }
 
-int jnl_ui_set_vector(jnl_ui_handle *h, const char *n, const char *fx,
+int jnl_ui_set_vector(jnl_ui_handle *h, const char *name, const char *fx,
                       const char *fy)
 {
-	(void)h;
-	(void)n;
-	(void)fx;
-	(void)fy;
+	if (jnl_ui_closed(h))
+		return -1;
+	if (ui_msg_send_set_vector(h->sock_fd, name, fx, fy) < 0) {
+		ui_handle_mark_closed(h);
+		return -1;
+	}
 	return 0;
 }
 
-int jnl_ui_view_field(jnl_ui_handle *h, const char *n)
+int jnl_ui_view_field(jnl_ui_handle *h, const char *name)
 {
-	(void)h;
-	(void)n;
+	if (jnl_ui_closed(h))
+		return -1;
+	if (ui_msg_send_view_field(h->sock_fd, name ? name : "") < 0) {
+		ui_handle_mark_closed(h);
+		return -1;
+	}
 	return 0;
 }
 
 int jnl_ui_view_mesh(jnl_ui_handle *h, bool show)
 {
-	(void)h;
-	(void)show;
+	if (jnl_ui_closed(h))
+		return -1;
+	if (ui_msg_send_view_mesh(h->sock_fd, show ? 1 : 0) < 0) {
+		ui_handle_mark_closed(h);
+		return -1;
+	}
 	return 0;
 }

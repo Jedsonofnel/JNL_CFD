@@ -12,6 +12,9 @@
 #include "proto.h"
 #include "ui_internal.h"
 #include "geo2d/curve2d.h"
+#include "render.h"
+#include "fields.h"
+#include "colormap.h"
 
 //
 // Signal
@@ -283,6 +286,12 @@ void ui_window_run(int sock_fd)
 
 	SetTargetFPS(60);
 
+	jnl_render_state rs;
+	render_state_init(&rs, jnl_ui_colormap_cool_to_warm());
+
+	float active_vmin = 0.0f, active_vmax = 1.0f;
+	bool field_dirty = false;
+
 	struct jnl_ui_window_state ws;
 	memset(&ws, 0, sizeof ws);
 	snprintf(ws.status, sizeof ws.status, "Waiting for geometry...");
@@ -333,9 +342,35 @@ void ui_window_run(int sock_fd)
 				ws.view.cx = 0.0f;
 				ws.view.cy = 0.0f;
 			}
+			if (msg == JNL_UI_MSG_SET_MESH && ws.has_mesh) {
+				cached_bbox = mesh_bbox_compute(&ws.mesh);
+				has_bbox = true;
+				ws.view.zoom = 1.0f;
+				ws.view.cx = 0.0f;
+				ws.view.cy = 0.0f;
+				render_upload_mesh(&rs, &ws.mesh.tris);
+				field_dirty = true; /* re-upload active field onto new VBO */
+			}
+			if (msg == JNL_UI_MSG_SET_FIELD && ws.view.active_field[0] != '\0')
+				field_dirty = true;
+			if (msg == JNL_UI_MSG_VIEW_FIELD)
+				field_dirty = true;
 		}
 
 		handle_input(&ws.view);
+
+		if (field_dirty && ws.has_mesh && ws.mesh.has_tris &&
+		    ws.view.active_field[0] != '\0') {
+			struct jnl_ui_field *f =
+			    field_map_find(&ws.fields, ws.view.active_field);
+			if (f) {
+				render_upload_field(&rs, &ws.mesh.tris, f->data, f->n,
+				                    ws.mesh.n_vertices, ws.mesh.n_real_cells);
+				active_vmin = (float)f->vmin;
+				active_vmax = (float)f->vmax;
+				field_dirty = false;
+			}
+		}
 
 		// Draw
 		BeginDrawing();
@@ -346,7 +381,14 @@ void ui_window_run(int sock_fd)
 		}
 
 		if (ws.has_mesh && has_bbox) {
-			draw_mesh_wire(&ws.mesh, &ws.view, &cached_bbox);
+			if (ws.view.active_field[0] != '\0' && rs.mesh_loaded) {
+				view_xf xf = make_xf(&ws.view, &cached_bbox);
+				render_draw_field(&rs, (float)xf.scale, (float)xf.ox,
+				                  (float)xf.oy, ws.view.width, ws.view.height,
+				                  active_vmin, active_vmax);
+			}
+			if (ws.view.show_mesh)
+				draw_mesh_wire(&ws.mesh, &ws.view, &cached_bbox);
 		}
 
 		// Status bar.
@@ -358,10 +400,12 @@ void ui_window_run(int sock_fd)
 		EndDrawing();
 	}
 
-	if (ws.has_domain)
-		ui_domain_free(&ws.domain);
 	if (ws.has_mesh)
 		jnl_ui_mesh_free(&ws.mesh);
+
+	render_state_free(&rs);
+	field_map_free(&ws.fields);
+	ui_domain_free(&ws.domain);
 
 	CloseWindow();
 	close(sock_fd);
