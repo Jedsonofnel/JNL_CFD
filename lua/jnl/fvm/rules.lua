@@ -1,12 +1,41 @@
--- jnl/fvm/rules.lua
--- Convergence/divergence stopping rules for FVM Case.
+-- jnl/fvm/rules.lua - Convergence and divergence stopping rules for FVM cases.
+-- <jed@nelson.ac> // 2026-06-10
 
+--- Convergence and divergence criterion constructors for FVM cases.
+---
+--- Criterion objects are plain tables passed to Algorithm:converge() and
+--- Algorithm:guard() before the Case is constructed:
+---
+---     alg:converge(Rules.residual_below("*", 1e-4))
+---     alg:guard(Rules.nan_guard())
+---     alg:guard(Rules.norm_above("p", 1e8))
+---
+--- The wildcard field `"*"` expands at runtime to every field that has
+--- produced residual telemetry, so `residual_below("*", tol)` is the
+--- standard all-fields convergence criterion.
 local M            = {}
+
+--- Convergence criterion spec accepted by Algorithm:converge().
+---@class ConvCrit
+---@field kind "conv_crit"
+---@field field string   Field name or "*" to match all telemetry fields.
+---@field op string      "residual_below" | "change_below"
+---@field threshold number
+---@field n_consec integer Consecutive iterations the criterion must hold.
+
+--- Divergence guard spec accepted by Algorithm:guard().
+---@class DivCrit
+---@field kind "div_crit"
+---@field field string   Field name or "*" to match all telemetry fields.
+---@field op string      "residual_above" | "norm_above" | "nan"
+---@field threshold number?
 
 --
 -- Telemetry cache
 --
 
+-- Sage cache key used to index field telemetry by field name and kind.
+---@private
 local BY_FIELD_KEY = "rules:by_field"
 M.BY_FIELD_KEY     = BY_FIELD_KEY
 
@@ -29,14 +58,16 @@ local function latest_n(sage, field, kind, n)
 end
 
 --
--- Criterion fact constructors
+-- Criterion constructors
 --
 
--- Convergence: field residual below threshold for n_consec consecutive iters.
--- field = "*" means all fields that have produced residual facts.
----@param field    string    field name or "*"
----@param threshold number
----@param n_consec integer?  default 1
+--- Convergence criterion: field residual below threshold for n_consec consecutive iterations.
+---
+--- Pass `"*"` as the field to require all fields with residual telemetry to converge.
+---@param field string     Field name or "*".
+---@param threshold number Residual threshold.
+---@param n_consec? integer Consecutive iterations required; defaults to 1.
+---@return ConvCrit
 function M.residual_below(field, threshold, n_consec)
 	assert(type(field) == "string", "residual_below: field must be a string")
 	assert(type(threshold) == "number", "residual_below: threshold must be a number")
@@ -49,10 +80,11 @@ function M.residual_below(field, threshold, n_consec)
 	}
 end
 
--- Convergence: field L2 change below threshold for n_consec iters.
----@param field     string
----@param threshold number
----@param n_consec  integer?
+--- Convergence criterion: field L2 change below threshold for n_consec consecutive iterations.
+---@param field string     Field name or "*".
+---@param threshold number Change threshold.
+---@param n_consec? integer Consecutive iterations required; defaults to 1.
+---@return ConvCrit
 function M.change_below(field, threshold, n_consec)
 	assert(type(field) == "string", "change_below: field must be a string")
 	assert(type(threshold) == "number", "change_below: threshold must be a number")
@@ -65,9 +97,10 @@ function M.change_below(field, threshold, n_consec)
 	}
 end
 
--- Divergence: field residual exceeds threshold.
----@param field     string
----@param threshold number   default 1e10
+--- Divergence guard: stop when field residual exceeds threshold.
+---@param field string     Field name or "*".
+---@param threshold? number Residual limit; defaults to 1e10.
+---@return DivCrit
 function M.residual_above(field, threshold)
 	assert(type(field) == "string", "residual_above: field must be a string")
 	return {
@@ -78,9 +111,13 @@ function M.residual_above(field, threshold)
 	}
 end
 
--- Divergence: field norm exceeds threshold (catches blowup before residual diverges).
----@param field     string
----@param threshold number   default 1e10
+--- Divergence guard: stop when field L2 norm exceeds threshold.
+---
+--- Also fires on NaN, so this catches both blowup and breakdown before the
+--- residual has a chance to diverge.
+---@param field string     Field name or "*".
+---@param threshold? number Norm limit; defaults to 1e10.
+---@return DivCrit
 function M.norm_above(field, threshold)
 	assert(type(field) == "string", "norm_above: field must be a string")
 	return {
@@ -91,8 +128,9 @@ function M.norm_above(field, threshold)
 	}
 end
 
--- Divergence: NaN in field. field="*" checks all fields with telemetry.
----@param field string?   default "*"
+--- Divergence guard: stop when a NaN is detected in a field.
+---@param field? string Field name or "*"; defaults to "*" (any field).
+---@return DivCrit
 function M.nan_guard(field)
 	return {
 		kind  = "div_crit",
@@ -105,8 +143,8 @@ end
 -- Metric evaluators
 --
 
-local eval_conv = {}
-local eval_div = {}
+local eval_conv          = {}
+local eval_div           = {}
 
 eval_conv.residual_below = function(sage, field, crit)
 	local h = latest_n(sage, field, "residual", crit.n_consec)
@@ -117,7 +155,7 @@ eval_conv.residual_below = function(sage, field, crit)
 	return true
 end
 
-eval_conv.change_below = function(sage, field, crit)
+eval_conv.change_below   = function(sage, field, crit)
 	local h = latest_n(sage, field, "field_change", crit.n_consec)
 	if #h < crit.n_consec then return false end
 	for _, f in ipairs(h) do
@@ -126,36 +164,33 @@ eval_conv.change_below = function(sage, field, crit)
 	return true
 end
 
-eval_div.nan = function(sage, field, _)
+eval_div.nan             = function(sage, field, _)
 	local h = latest_n(sage, field, "field_norm", 1)
 	if #h == 0 then return false end
 	local v = h[1].value
-	return v ~= v -- NaN check
+	return v ~= v
 end
 
-eval_div.residual_above = function(sage, field, crit)
+eval_div.residual_above  = function(sage, field, crit)
 	local h = latest_n(sage, field, "residual", 1)
 	if #h == 0 then return false end
 	return h[1].value > crit.threshold
 end
 
-eval_div.norm_above = function(sage, field, crit)
+eval_div.norm_above      = function(sage, field, crit)
 	local h = latest_n(sage, field, "field_norm", 1)
 	if #h == 0 then return false end
 	local v = h[1].value
-	return v ~= v or v > crit.threshold -- NaN also trips this
+	return v ~= v or v > crit.threshold
 end
 
 --
 -- Criteria helpers
 --
 
--- Returns the active (latest-by-id) criterion for each (field, op) pair.
--- Posting a new conv_crit for the same (field, op) mid-solve supersedes
--- the old one because it has a higher fact id.
 local function active_criteria(sage, kind)
 	local all    = sage:query({ kind = kind })
-	local latest = {} -- key = field..":"..op -> criterion fact
+	local latest = {}
 	for _, c in ipairs(all) do
 		local key = c.field .. ":" .. (c.op or "")
 		if not latest[key] or c.id > latest[key].id then
@@ -167,8 +202,6 @@ local function active_criteria(sage, kind)
 	return out
 end
 
--- Returns all distinct field names that have produced residual facts.
--- Used to expand wildcard criteria.
 local function fields_with_telemetry(sage)
 	local seen, out = {}, {}
 	for _, f in ipairs(sage:query({ kind = "residual" })) do
@@ -180,11 +213,9 @@ local function fields_with_telemetry(sage)
 	return out
 end
 
--- Expands wildcard field="*" into one criterion per known telemetry field.
 local function expand_criteria(crits, sage)
-	local all_fields = nil -- lazy: only computed if a wildcard exists
+	local all_fields = nil
 	local out = {}
-
 	for _, c in ipairs(crits) do
 		if c.field == "*" then
 			all_fields = all_fields or fields_with_telemetry(sage)
@@ -205,6 +236,12 @@ end
 -- Stopping ruleset
 --
 
+--- Return the standard FVM stopping ruleset.
+---
+--- Registers convergence and divergence checking rules with a Sage instance.
+--- Case adds this ruleset automatically; call it explicitly only when
+--- constructing a Sage outside a Case.
+---@return table ruleset
 function M.stopping_ruleset()
 	return {
 		init = function(sage)
@@ -213,8 +250,7 @@ function M.stopping_ruleset()
 
 		rules = {
 
-			-- Convergence: ALL active conv_crit must be satisfied.
-			-- Fires on iter_end; if all criteria pass, derives "converged".
+			-- ALL active conv_crit must be satisfied for the solver to converge.
 			{
 				name  = "convergence_check",
 				kinds = { iter_end = true },
@@ -244,8 +280,7 @@ function M.stopping_ruleset()
 				end,
 			},
 
-			-- Divergence: ANY active div_crit being satisfied stops the run.
-			-- Reports which field and op triggered the stop.
+			-- ANY active div_crit being satisfied stops the run immediately.
 			{
 				name  = "divergence_check",
 				kinds = { iter_end = true },
@@ -272,7 +307,7 @@ function M.stopping_ruleset()
 								op         = c.op,
 								loop_depth = f.loop_depth or 1,
 							}, { f.id })
-							return -- first divergence wins; no point continuing
+							return
 						end
 
 						::continue::
@@ -280,7 +315,7 @@ function M.stopping_ruleset()
 				end,
 			},
 
-			-- Act on any conclusion by pushing a stop action to Case.
+			-- Push a stop action to Case on any convergence or divergence conclusion.
 			{
 				name  = "stop_on_conclusion",
 				kinds = { converged = true, diverging = true },
@@ -292,7 +327,7 @@ function M.stopping_ruleset()
 						kind   = "stop",
 						reason = f.kind,
 						iter   = f.iter,
-						field  = f.field, -- set on diverging, nil on converged
+						field  = f.field,
 						op     = f.op,
 					})
 				end,
@@ -305,10 +340,12 @@ end
 -- Case integration helpers
 --
 
--- Posts all convergence and divergence criteria from alg as facts.
--- alg.convergence and alg.divergence are flat lists of criterion specs
--- (plain tables produced by the constructors above, stored by alg:converge
--- and alg:guard).
+--- Post all convergence and divergence criteria from an algorithm as Sage facts.
+---
+--- Called automatically by Case:reset(). Invoke directly only when managing
+--- a Sage instance outside a Case.
+---@param sage table Sage instance.
+---@param alg Algorithm Algorithm carrying convergence and divergence criterion lists.
 function M.assert_alg_criteria(sage, alg)
 	for _, spec in ipairs(alg.convergence or {}) do
 		sage:assert(spec)

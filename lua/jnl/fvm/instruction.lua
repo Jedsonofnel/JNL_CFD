@@ -33,7 +33,7 @@ local INST_DEFAULTS = {
 	div       = "uds", -- "uds" | "cds" | "tvd"
 	non_ortho = true,
 	relax     = 1.0,
-	solver    = "BICGSTAB",
+	solver    = "BICGSTAB_DILU",
 	tol       = 1e-6,
 	max_iters = 100,
 }
@@ -559,8 +559,8 @@ end
 
 function concrete_fmt.divergence_c(f, _)
 	local mode = f.integrated and "[i]" or "[v]"
-	return string.format("DIVERGENCE_C %-4s %s  ux=%s  uy=%s",
-		mode, f.field, f.ux, f.uy)
+	return string.format("DIVERGENCE_C %-4s (%s,%s) -> %s",
+		mode, f.ux, f.uy, f.field)
 end
 
 function concrete_fmt.rhie_chow(f, _)

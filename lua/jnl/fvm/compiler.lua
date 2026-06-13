@@ -683,6 +683,12 @@ local function manifest_merge_elab(man, elab)
 	for name, entry in pairs(elab.face_flux) do
 		if entry.kind == "symbol" then
 			man.face[name] = { field = entry.field }
+			-- allocate the cell-centred vector components that face_normal_c reads
+			for _, comp in ipairs(entry.comps or {}) do
+				if not man.cell[comp] then
+					man.cell[comp] = { ghost = true }
+				end
+			end
 		elseif entry.kind == "expr" then
 			man.face[name] = { vec_x = entry.vec_x, vec_y = entry.vec_y }
 		elseif entry.kind == "mwi" then
@@ -929,6 +935,13 @@ walk_scalar.divergence = function(out, node, field, sign, _)
 		emit_su_div_coeff(out, field, node, sign)
 		return
 	end
+
+	-- div(U): face_normal_c was emitted in the pre-pass; just accumulate here.
+	if inner.kind == "symbol" then
+		local facen = mangle_facen_sym(inner.name)
+		out[#out + 1] = Inst.su_fs(field, -sign, facen, false, node)
+		return
+	end
 end
 
 walk_scalar.symbol     = function(out, node, field, sign, _)
@@ -1043,8 +1056,37 @@ end
 -- Solve expansion
 --
 
+-- Recursively collect face_normal_c instructions for any div(symbol) sub-trees.
+-- Called before sys_reset so the interpolated face field is ready before assembly.
+local function collect_symbol_div_interps(node, elab, out, emitted)
+	if not node or not Node.is_node(node) then return end
+	if node.kind == "divergence" then
+		local inner = node.a
+		if inner.kind == "symbol" then
+			local facen = mangle_facen_sym(inner.name)
+			if not emitted[facen] then
+				local fe = elab.face_flux[facen]
+				if fe and fe.kind == "symbol" then
+					out[#out + 1] = Inst.face_normal_c(fe.comps[1], fe.comps[2], facen)
+					emitted[facen] = true
+				end
+			end
+		end
+	end
+	collect_symbol_div_interps(node.a, elab, out, emitted)
+	collect_symbol_div_interps(node.b, elab, out, emitted)
+end
+
+local function emit_symbol_div_interps(out, entry, elab)
+	if not entry.equation then return end
+	local emitted = {}
+	collect_symbol_div_interps(entry.equation.lhs, elab, out, emitted)
+	collect_symbol_div_interps(entry.equation.rhs, elab, out, emitted)
+end
+
 local function expand_solve_scalar(out, field, entry, elab)
 	emit_ghost_fills_scalar(out, field, entry.bcs)
+	emit_symbol_div_interps(out, entry, elab)
 	out[#out + 1] = Inst.sys_reset(field)
 
 	walk_scalar_node(out, entry.equation.lhs, field, 1, elab)

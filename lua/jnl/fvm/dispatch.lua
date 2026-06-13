@@ -1,6 +1,7 @@
 -- jnl/fvm/dispatch.lua
 
 local B = require("jnl.fvm.bindings")
+local Eval = require("jnl.nabla.eval")
 
 --- Dispatch compiled FVM instructions against a runtime case.
 ---@private
@@ -34,12 +35,9 @@ local function coeff_vec(case, c)
 end
 
 -- Evaluate a Nabla expression into a cell scratch vec.
--- Lazy-compiles against case.bindings on first call (result cached on node).
-local function eval_cell(case, expr)
-	if not expr._ud then
-		expr:compile(case.bindings)
-	end
-	return expr:eval(case.cell_pool, case.mesh:n_cells())
+local function eval_cell(case, node)
+	local compiled_ud = Eval.compile(node, case.field_map)
+	return compiled_ud:eval(case.ctx:cell_pool(), case.mesh:n_cells())
 end
 
 --
@@ -156,7 +154,7 @@ D.divergence_c = function(case, inst)
 	fn(case.mesh,
 		field(case, inst.ux),
 		field(case, inst.uy),
-		field(case, inst.out),
+		field(case, inst.field),
 		case.face_pool)
 end
 

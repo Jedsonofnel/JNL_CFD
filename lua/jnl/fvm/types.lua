@@ -177,6 +177,10 @@ function FvmCtx:field(init) end
 ---@return VecUD       n_real_cells cell field (no ghost layer)
 function FvmCtx:real_field(init) end
 
+---@param src VecUD
+---@return VecUD
+function FvmCtx:real_view_of(src) end
+
 ---@param init number?  optional fill value; defaults to 0
 ---@return VecUD       n_faces face field
 function FvmCtx:face_field(init) end

@@ -1,6 +1,7 @@
 -- jnl/fvm/bindings.lua
 local opt = require("jnl.core.optional")
 local I   = opt.require("jnl.fvm_internal")
+local V   = require("jnl.core.validation")
 
 --- Provide low-level Lua bindings and convenience wrappers for the FVM C API.
 ---@private
@@ -279,11 +280,20 @@ M.baffle_v_fill_cont    = I.baffle_v_fill_cont
 ---@type fun(sys: FvSys)
 M.bc_assert_all_closed  = I.bc_assert_all_closed
 
+
 --
 -- Solver dispatch
 --
 
-local solver_ctors      = {
+local SOLVER_ENUM = {
+	CG_JAC        = true,
+	CG_DIC        = true,
+	BICGSTAB_JAC  = true,
+	BICGSTAB_DILU = true,
+	GMRES_DILU    = true,
+}
+
+local solver_ctors = {
 	cg_jac        = function(sys, phi, tol, _) return sys:cg_jac(phi, tol) end,
 	cg_dic        = function(sys, phi, tol, _) return sys:cg_dic(phi, tol) end,
 	bicgstab_jac  = function(sys, phi, tol, _) return sys:bicgstab_jac(phi, tol) end,
@@ -294,14 +304,15 @@ local solver_ctors      = {
 ---@param name string
 ---@return boolean
 function M.valid_solver(name)
-	return solver_ctors[name:lower()] ~= nil
+	if type(name) ~= "string" then return false end
+	return SOLVER_ENUM[name:upper()] ~= nil
 end
 
 ---@class SolverOpts
----@field solver    string?   default "bicgstab_dilu"
----@field tol       number?   default 1e-6
----@field max_iters integer?  default 1000
----@field restart   integer?  GMRES restart dimension, default 20
+---@field solver    string?   Solver name; case-insensitive. Default "bicgstab_dilu".
+---@field tol       number?   Convergence tolerance. Default 1e-6.
+---@field max_iters integer?  Maximum Krylov iterations. Default 1000.
+---@field restart   integer?  GMRES restart dimension. Default 20.
 
 ---@param sys  FvSys
 ---@param phi  VecUD
@@ -309,10 +320,9 @@ end
 ---@return BicgstabDiluSolve | BicgstabJacSolve | CgJacSolve | CgDicSolve | GmresDiluSolve
 function M.make_solver(sys, phi, opts)
 	opts       = opts or {}
-	local name = (opts.solver or "bicgstab_dilu"):lower()
+	local key  = V.in_enum(SOLVER_ENUM, opts.solver or "bicgstab_dilu", "solver")
 	local tol  = opts.tol or 1e-6
-	local ctor = solver_ctors[name]
-	assert(ctor, "bindings.make_solver: unknown solver '" .. name .. "'")
+	local ctor = solver_ctors[key:lower()]
 	return ctor(sys, phi, tol, opts)
 end
 

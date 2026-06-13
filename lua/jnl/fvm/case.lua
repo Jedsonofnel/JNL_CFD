@@ -8,6 +8,50 @@ local Rules    = require("jnl.fvm.rules")
 local Sage     = require("jnl.sage")
 local Mesh2d   = require("jnl.mesh2d")
 
+--- Iteration callback invoked at each outer solver iteration boundary.
+---@alias CaseIterCallback fun(iter: integer, residuals: table<string, number>)
+
+--- Event yielded by Case:step().
+---
+--- The `kind` field identifies the event; all other fields are optional and
+--- present only for the relevant kinds.
+---@class CaseEvent
+---@field kind string          "iteration_end" | "solver_iter" | "inner_end" | "running" | "pseudo_timestep_end" | "done"
+---@field iter integer?        Outer iteration index (iteration_end, done).
+---@field reason string?       Stop reason (done).
+---@field field string?        Field name (solver_iter).
+---@field residual number?     Absolute linear residual (solver_iter).
+---@field rel_residual number? Relative linear residual (solver_iter).
+---@field op string?           Instruction op name (running).
+---@field dt number?           Pseudo-transient time-step size (pseudo_timestep_end).
+
+---@alias CaseMode "steady" | "pseudo_transient"
+
+---@class CaseCompiled
+---@field reg table
+---@field alg table
+
+--- Run a finite-volume simulation case step by step or to completion.
+---
+--- A Case bundles a physics registry, algorithm, mesh, and boundary conditions.
+--- It compiles them once at construction, allocates field storage lazily on the
+--- first step or run, and drives the solver via a coroutine that yields
+--- CaseEvent values at each iteration boundary and linear solve.
+---
+--- Typical workflow:
+---
+---     local case = Case.new(reg, alg, mesh, bcs)
+---     case:run()
+---     local p = case:field("p")
+---
+---@class Case
+---@field iter integer         Current outer iteration count.
+---@field done boolean         True once the solver coroutine has finished.
+---@field stop_reason string?  Populated when done; reason the run stopped.
+---@field warnings string[]    BC default-fill warnings from the last compilation.
+---@field on_iter CaseIterCallback? Called at each outer iteration end. Set to nil to silence.
+---@field mode CaseMode
+---@field compiled CaseCompiled
 local Case     = {}
 Case.__index   = Case
 
@@ -124,7 +168,7 @@ end
 -- unsteady/pseudo-transient mode switches never need to touch the ctx.
 -- Safe to call multiple times: skips fields that already exist.
 local function alloc_prev_fields(self)
-	for _, name in ipairs(self.compiled.reg:prognostics()) do
+	for name in pairs(self.compiled.alg.manifest.system) do
 		local key = "prev_" .. name
 		if not self.field_map[key] then
 			self.field_map[key] = self.ctx:field(0)
@@ -158,36 +202,44 @@ end
 -- Allocation
 --
 
+--- Allocate field storage, face fields, and linear systems from the compiled manifest.
+---
+--- Called automatically by step() and run(). Errors if already allocated; use
+--- reconcile() after a physics change or reallocate() after a mesh change.
 function Case:allocate()
 	assert(not self.allocated, "Case:allocate: already allocated; use reconcile()")
 
-	local man         = self.compiled.alg.manifest
-	local _, _, ns    = count_manifest(man)
+	local man = self.compiled.alg.manifest
+	local _, _, ns = count_manifest(man)
 
-	self.ctx          = Bindings.new_ctx(self.mesh, ns)
+	self.ctx = Bindings.new_ctx(self.mesh, ns)
 	self.ctx_manifest = { n_sys = ns }
 
-	local field_map   = {}
-	local sys_map     = {}
+	local field_map = {}
+	local sys_map = {}
 
 	for name in pairs(man.cell) do field_map[name] = self.ctx:field(0) end
 	for name in pairs(man.face) do field_map[name] = self.ctx:face_field(0) end
 	for name in pairs(man.system) do sys_map[name] = self.ctx:fvsys() end
 
 	self.field_map = field_map
-	self.sys_map   = sys_map
+	self.sys_map = sys_map
 	self.allocated = true
-	self.exec      = build_exec()
+	self.exec = build_exec()
 
 	seed_initial_values(self)
 	alloc_prev_fields(self)
 end
 
--- Diff manifests after a physics change and bring allocation up to date.
+--- Bring allocation up to date after a physics change without discarding field data.
+---
+--- Adds any new fields and systems the revised manifest requires. Rebuilds the
+--- context only when the system count has grown, migrating existing values into
+--- fresh allocations.
 function Case:reconcile()
 	assert(self.allocated, "Case:reconcile: not allocated; use allocate()")
 
-	local man      = self.compiled.alg.manifest
+	local man = self.compiled.alg.manifest
 	local _, _, ns = count_manifest(man)
 
 	if ns > self.ctx_manifest.n_sys then
@@ -242,8 +294,10 @@ function Case:reconcile()
 	alloc_prev_fields(self)
 end
 
--- Full teardown: required when mesh changes since n_cells changes and all
--- existing field data is invalid regardless.
+--- Tear down all field storage and reallocate from scratch.
+---
+--- Required after a mesh change because the cell count may differ and all
+--- existing field data is invalid regardless.
 function Case:reallocate()
 	self.allocated    = false
 	self.field_map    = nil
@@ -255,17 +309,6 @@ end
 
 --
 -- Sage telemetry
---
--- Data flow:
---   emit_solve_telemetry  called by run_krylov after each linear solve;
---                         asserts residual, field_change, field_norm
---   emit_eval_telemetry   called by run_phase after eval_expr / apply_correction;
---                         asserts field_norm only
---   emit_iter_end         called by handle_iteration_end; asserts iter_end
---                         which triggers convergence/divergence rules to fire
---
--- Internal (__) fields are excluded from telemetry: they represent intermediate
--- assembly state rather than physical quantities.
 --
 
 local function is_telemetry_field(name)
@@ -331,6 +374,7 @@ local run_phase -- forward declaration for run_inner <-> run_phase mutual recurs
 local function run_krylov(self, inst, depth)
 	local sys   = self.sys_map[inst.field]
 	local phi   = self.field_map[inst.field]
+	local phi_s = self.ctx:real_view_of(phi)
 	local opts  = {
 		solver    = self.cfg:get(inst.field, "solver"),
 		tol       = self.cfg:get(inst.field, "tol"),
@@ -339,7 +383,7 @@ local function run_krylov(self, inst, depth)
 	}
 
 	local max_k = opts.max_iters or 1000
-	local s     = Bindings.make_solver(sys, phi, opts)
+	local s     = Bindings.make_solver(sys, phi_s, opts)
 	local step
 
 	for _ = 1, max_k do
@@ -355,9 +399,9 @@ local function run_krylov(self, inst, depth)
 		if step.done or step.breakdown then break end
 	end
 
-	local change                       = s:finish_change_into(phi)
+	local change = s:finish_change_into(phi_s)
 
-	self.exec.residuals[inst.field]    = step and step.residual or 0
+	self.exec.residuals[inst.field] = step and step.residual or 0
 	self.exec.krylov_iters[inst.field] = step and step.iter or 0
 	self.exec.field_change[inst.field] = change
 
@@ -463,6 +507,7 @@ end
 -- Coroutine construction and reset
 --
 
+---@private
 function Case:make_coro()
 	if self.mode == "pseudo_transient" then
 		return coroutine.create(pseudo_transient_body(self))
@@ -471,10 +516,11 @@ function Case:make_coro()
 	end
 end
 
--- Rebuilds sage and coroutine. Called at Case.new and before every run.
--- Sage is rebuilt from scratch so convergence criteria always reflect the
--- current alg state; no rule retraction needed.
--- TODO: replace with a more flexible system when sage supports rule retraction
+--- Rebuild the Sage monitor and solver coroutine.
+---
+--- Called by new() and before every run. Sage is rebuilt from scratch so
+--- convergence criteria always reflect the current algorithm state.
+---@private
 function Case:reset()
 	self.sage = Sage.new()
 	self.sage:add_ruleset(Rules.stopping_ruleset())
@@ -536,6 +582,7 @@ action_handler.set_pseudo_dt = function(self, action)
 	self.pseudo_dt = action.dt
 end
 
+---@private
 function Case:handle_action(action)
 	local fn = action_handler[action.kind]
 	if fn then
@@ -565,6 +612,11 @@ end
 -- Step / Run
 --
 
+--- Advance the solver by one coroutine step and return the resulting event.
+---
+--- Allocates field storage on the first call. Returns a CaseEvent with
+--- kind "done" once the coroutine has finished, and on all subsequent calls.
+---@return CaseEvent event
 function Case:step()
 	if self.done then
 		return { kind = "done", iter = self.iter, reason = self.stop_reason }
@@ -592,12 +644,15 @@ function Case:step()
 	return event
 end
 
+--- Run the solver to completion.
 function Case:run()
 	repeat
 		local event = self:step()
 	until event.kind == "done"
 end
 
+--- Return true when the solver coroutine has finished.
+---@return boolean
 function Case:is_done()
 	return self.done
 end
@@ -606,6 +661,11 @@ end
 -- Unsteady lifecycle
 --
 
+--- Prepare for a new time step of size dt.
+---
+--- Snapshots each prognostic field into its prev_* slot, resets the
+--- coroutine, and sets exec.dt. Must be called before each transient step.
+---@param dt number Time-step size; must be positive.
 function Case:begin_timestep(dt)
 	assert(type(dt) == "number" and dt > 0, "begin_timestep: dt must be positive")
 	if not self.allocated then self:allocate() end
@@ -619,9 +679,14 @@ function Case:begin_timestep(dt)
 	self.exec.dt = dt
 end
 
+--- Complete the current time step.
 function Case:end_timestep()
 end
 
+--- Run a transient simulation from t=0 to t_end with a fixed time step.
+---@param t_end number End time.
+---@param dt number Fixed time-step size.
+---@param on_step? fun(t: number, case: Case) Called after each converged step.
 function Case:run_transient(t_end, dt, on_step)
 	if not self.allocated then self:allocate() end
 	local t = 0
@@ -638,12 +703,20 @@ end
 -- Mutation
 --
 
+--- Replace the mesh. Triggers recompilation and full reallocation.
+---@param mesh Mesh2D
 function Case:set_mesh(mesh)
 	self.mesh = mesh
 	do_recompile(self)
 	if self.allocated then self:reallocate() end
 end
 
+--- Replace the physics registry and optionally the algorithm.
+---
+--- Triggers recompilation. Calls reconcile() when already allocated so
+--- existing field data is preserved where possible.
+---@param reg table  New physics registry.
+---@param alg? table New algorithm; defaults to the existing one.
 function Case:set_physics(reg, alg)
 	self.reg = reg
 	self.alg = alg or self.alg
@@ -652,6 +725,8 @@ function Case:set_physics(reg, alg)
 	if self.allocated then self:reconcile() end
 end
 
+--- Replace the boundary conditions and recompile.
+---@param bcs table Field-keyed BC table.
 function Case:set_bcs(bcs)
 	self.bcs = bcs
 	do_recompile(self)
@@ -661,6 +736,11 @@ end
 -- Field access
 --
 
+--- Return the named field vector.
+---
+--- Errors if the case is not yet allocated or the field does not exist.
+---@param name string Field name.
+---@return VecUD
 function Case:field(name)
 	assert(self.allocated,
 		"Case:field: not allocated; call run(), step(), or allocate() first")
@@ -669,17 +749,26 @@ function Case:field(name)
 	return f
 end
 
+--- Return the full field map.
+---
+--- Errors if the case is not yet allocated.
+---@return table<string, VecUD>
 function Case:fields()
 	assert(self.allocated,
 		"Case:fields: not allocated; call run(), step(), or allocate() first")
 	return self.field_map
 end
 
+--- Return the last absolute linear residual for a field, or nil.
+---@param name string Field name.
+---@return number?
 function Case:residual(name)
 	if not self.exec then return nil end
 	return self.exec.residuals[name]
 end
 
+--- Return true when field storage has been allocated.
+---@return boolean
 function Case:is_allocated()
 	return self.allocated
 end
@@ -688,14 +777,17 @@ end
 -- Diagnostics
 --
 
+--- Print a human-readable algorithm listing.
 function Case:print_algorithm()
 	print(self.compiled.alg:listing())
 end
 
+--- Print a flat instruction listing.
 function Case:print_instructions()
 	print(self.compiled.alg:instruction_listing())
 end
 
+--- Print cell field, face field, and system counts from the compiled manifest.
 function Case:print_resources()
 	local man        = self.compiled.alg.manifest
 	local nc, nf, ns = count_manifest(man)
@@ -704,6 +796,7 @@ function Case:print_resources()
 		nc, nf, ns, man.max_cell_scratch or 0))
 end
 
+--- Print BC default-fill warnings from the last compilation.
 function Case:print_warnings()
 	if #self.warnings == 0 then
 		print("(no warnings)")
@@ -732,7 +825,6 @@ end
 -- Constructor
 --
 
--- Default iteration printer. Replace case.on_iter or set to nil to silence.
 local function default_on_iter(iter, residuals)
 	local names = {}
 	for name in pairs(residuals) do names[#names + 1] = name end
@@ -746,6 +838,17 @@ local function default_on_iter(iter, residuals)
 	io.write(table.concat(parts, "  ") .. "\n")
 end
 
+--- Construct a Case from a physics registry, algorithm, mesh, and boundary conditions.
+---
+--- Compiles the physics immediately. The bcs table maps field names to lists of
+--- patch BC entries: `{ U_x = { {patch="inlet", ...} }, ... }`. A `.fields`
+--- wrapper key is also accepted. Patches not covered by bcs default to zero-gradient
+--- Neumann; warnings are written to stderr and stored in `case.warnings`.
+---@param reg  table   Physics registry (from jnl.nabla.registry or jnl.fvm.canned).
+---@param alg  table   Algorithm (from jnl.fvm.algorithm or jnl.fvm.canned).
+---@param mesh Mesh2D  Mesh to solve on.
+---@param bcs? table   Boundary conditions; nil defaults all patches to Neumann zero.
+---@return Case
 function Case.new(reg, alg, mesh, bcs)
 	assert(reg, "Case.new: reg must not be nil")
 	assert(alg, "Case.new: alg must not be nil")

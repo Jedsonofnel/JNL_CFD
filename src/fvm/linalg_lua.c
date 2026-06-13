@@ -141,6 +141,24 @@ static int l_ctx_real_field(lua_State *L)
 	return 1;
 }
 
+static int l_ctx_real_view_of(lua_State *L)
+{
+	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
+	lua_vec *src = check_vec(L, 2);
+	luaL_argcheck(L, src->len >= lc->ctx->n_real_cells, 2,
+	              "real_view_of: source vec shorter than n_real_cells");
+
+	lua_vec *v = lua_newuserdata(L, sizeof(lua_vec));
+	v->data = src->data;
+	v->len = lc->ctx->n_real_cells;
+
+	// keep src alive for the lifetime of this view
+	lua_pushvalue(L, 2);
+	v->ctx_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	luaL_setmetatable(L, VEC_MT);
+	return 1;
+}
+
 static int l_ctx_face_field(lua_State *L)
 {
 	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
@@ -227,6 +245,7 @@ static int l_ctx_gc(lua_State *L)
 
 static const luaL_Reg ctx_mt[] = {{"field", l_ctx_field},
                                   {"real_field", l_ctx_real_field},
+                                  {"real_view_of", l_ctx_real_view_of},
                                   {"face_field", l_ctx_face_field},
                                   {"cell_pool", l_ctx_cell_pool},
                                   {"real_cell_pool", l_ctx_real_cell_pool},

@@ -1243,3 +1243,184 @@ h.describe("lowering: pass-through instructions survive unchanged", function()
 		h.expect(has_any(alg.main, op("clip"))).is_truthy()
 	end)
 end)
+
+--
+-- Fixture for div emission
+--
+
+local function make_div_sym_rhs()
+	local reg     = nb.new_registry("div-sym-rhs")
+	local U       = reg:vector("U")
+	local p_prime = reg:scalar("p_prime")
+	p_prime:governed_by(
+		nb.laplacian(p_prime):equals(nb.div(U)))
+	reg:validate()
+	local alg = Alg.new("div-sym-rhs")
+	alg:loop(function(a) a:solve(p_prime) end, 1)
+	return reg, alg
+end
+
+--
+-- Elaboration: symbol face flux registration
+--
+
+h.describe("elaboration: div(U) symbol registers __facen_U face flux", function()
+	local elab
+
+	h.before_each(function()
+		local reg, alg = make_div_sym_rhs()
+		compile_abstract(alg, reg)
+		elab = alg.elaborated
+	end)
+
+	h.it("__facen_U registered in face_flux with kind=symbol", function()
+		h.expect(elab.face_flux["__facen_U"]).is_not_nil()
+		h.expect(elab.face_flux["__facen_U"].kind).equals("symbol")
+	end)
+
+	h.it("__facen_U components are U_x and U_y", function()
+		local comps = elab.face_flux["__facen_U"].comps or {}
+		local set   = {}
+		for _, c in ipairs(comps) do set[c] = true end
+		h.expect(set["U_x"]).is_truthy()
+		h.expect(set["U_y"]).is_truthy()
+	end)
+
+	h.it("U (vector) invalidates __facen_U", function()
+		h.expect(inv_has(elab, "U", "__facen_U")).is_truthy()
+	end)
+
+	h.it("U_x and U_y both invalidate __facen_U", function()
+		h.expect(inv_has(elab, "U_x", "__facen_U")).is_truthy()
+		h.expect(inv_has(elab, "U_y", "__facen_U")).is_truthy()
+	end)
+
+	h.it("no mwi intermediate registered (plain symbol, not Rhie-Chow)", function()
+		h.expect(elab.fields["mwi_U_p_prime"]).is_nil()
+		for name in pairs(elab.fields) do
+			h.expect(name:find("^mwi_")).is_nil(
+				"unexpected mwi intermediate: " .. name)
+		end
+	end)
+end)
+
+--
+-- Manifest: face and cell field allocation
+--
+
+h.describe("manifest: div(U) symbol face flux and sub-components allocated", function()
+	local man
+
+	h.before_each(function()
+		local reg, alg = make_div_sym_rhs()
+		compile_abstract(alg, reg)
+		man = alg.manifest
+	end)
+
+	h.it("__facen_U present in man.face", function()
+		h.expect(man.face["__facen_U"]).is_not_nil()
+	end)
+
+	h.it("__facen_U records its source vector field", function()
+		h.expect(man.face["__facen_U"].field).equals("U")
+	end)
+
+	h.it("U_x and U_y present in man.cell as vector sub-components", function()
+		h.expect(man.cell["U_x"]).is_not_nil()
+		h.expect(man.cell["U_y"]).is_not_nil()
+	end)
+
+	h.it("no mwi entry in man.face", function()
+		for name in pairs(man.face) do
+			h.expect(name:find("^mwi_")).is_nil(
+				"unexpected mwi face field: " .. name)
+		end
+	end)
+end)
+
+--
+-- Lowering: face_normal_c and divergence source emission
+--
+
+h.describe("lowering: div(U) symbol emits face_normal_c before assembly", function()
+	local main
+
+	h.before_each(function()
+		local reg, alg = make_div_sym_rhs()
+		compile_full(alg, reg)
+		main = alg.main
+	end)
+
+	h.it("face_normal_c emitted for U_x and U_y", function()
+		h.expect(has_any(main, op("face_normal_c"))).is_truthy()
+	end)
+
+	h.it("face_normal_c records U_x and U_y as inputs", function()
+		for _, inst in ipairs(main) do
+			if inst.op == "face_normal_c" then
+				h.expect(inst.ux).equals("U_x")
+				h.expect(inst.uy).equals("U_y")
+				return
+			end
+		end
+		h.expect(false).is_truthy("face_normal_c with U_x/U_y not found")
+	end)
+
+	h.it("face_normal_c output field is __facen_U", function()
+		for _, inst in ipairs(main) do
+			if inst.op == "face_normal_c" then
+				h.expect(inst.out).equals("__facen_U")
+				return
+			end
+		end
+		h.expect(false).is_truthy("face_normal_c not found")
+	end)
+
+	h.it("face_normal_c precedes laplacian assembly", function()
+		local fnc = pos_of(main, op("face_normal_c"))
+		local lap = pos_of(main, op("lap_k"))
+		h.expect(fnc).is_not_nil("face_normal_c missing")
+		h.expect(lap).is_not_nil("lap_k missing")
+		h.expect(fnc).is_less_than(lap)
+	end)
+end)
+
+h.describe("lowering: div(U) symbol assembles divergence as explicit source", function()
+	local main
+
+	h.before_each(function()
+		local reg, alg = make_div_sym_rhs()
+		compile_full(alg, reg)
+		main = alg.main
+	end)
+
+	h.it("su_fs source term emitted after face_normal_c", function()
+		local fnc = pos_of(main, op("face_normal_c"))
+		local su  = pos_of(main, function(inst)
+			return inst.op == "su_fs" and inst.src == "__facen_U"
+		end)
+		h.expect(fnc).is_not_nil()
+		h.expect(su).is_not_nil("su_fs sourcing __facen_U not found")
+		h.expect(fnc).is_less_than(su)
+	end)
+
+	h.it("su_fs is non-volumetric (integrated face flux, not per-unit-volume)", function()
+		for _, inst in ipairs(main) do
+			if inst.op == "su_fs" and inst.src == "__facen_U" then
+				h.expect(inst.volumetric).is_falsy()
+				return
+			end
+		end
+		h.expect(false).is_truthy("su_fs __facen_U not found")
+	end)
+
+	h.it("no mwi flux used for plain div(U)", function()
+		h.expect(has_any(main, function(inst)
+			return (inst.flux or ""):find("mwi") ~= nil
+		end)).is_falsy()
+	end)
+
+	h.it("no eval_coeff emitted (not a coefficient expression)", function()
+		h.expect(has_any(main, op("eval_coeff"))).is_falsy()
+	end)
+end)
