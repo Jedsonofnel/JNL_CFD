@@ -384,8 +384,8 @@ void ui_window_run(int sock_fd)
 			if (ws.view.active_field[0] != '\0' && rs.mesh_loaded) {
 				view_xf xf = make_xf(&ws.view, &cached_bbox);
 				render_draw_field(&rs, (float)xf.scale, (float)xf.ox,
-				                  (float)xf.oy, ws.view.width, ws.view.height,
-				                  active_vmin, active_vmax);
+				                  (float)xf.oy, GetRenderWidth(),
+				                  GetRenderHeight(), active_vmin, active_vmax);
 			}
 			if (ws.view.show_mesh)
 				draw_mesh_wire(&ws.mesh, &ws.view, &cached_bbox);
