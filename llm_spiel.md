@@ -430,255 +430,282 @@ appropriate, and user-facing output.
 
 ## jnl.fvm.algorithm
 
-   (no module description)
+   Configure and drive a finite-volume solution algorithm.
 
-   Functions
+   Typical usage:
 
-      jnl.fvm.algorithm.default_config()
+   local alg = Algorithm.new("simple") :loop(function(b) b:solve("U") b:solve("p")
+   b:correct("U") end, 200) :converge(Rules.residual_below("*", 1e-4))
+   :guard(Rules.nan_guard())
 
-      jnl.fvm.algorithm.new(label)
+   alg:set_cfg("U", "relax", 0.7) alg:set_cfg("p", "relax", 0.3)
 
 
 ## jnl.fvm.bc
 
-   (no module description)
+   Construct boundary condition descriptors for FVM cases.
+
+   There are two usage patterns:
+
+   Direct descriptors — build a plain table per field and attach patch names manually:
+
+   bcs = { p = { { patch = "east", bc.pressure_outlet(0.0) } }, }
+
+   Set builder (recommended) — fluent API that enforces field names and patch strings:
+
+   bcs = bc.new_set() :vector("U") :on("south", bc.no_slip()) :on("north",
+   bc.moving_wall(1.0, 0.0)) :scalar("p") :on("east", bc.pressure_outlet(0.0))
+   :on("south", bc.nograd()) :build()
+
+   Both forms are accepted by Case.new().
 
    Functions
 
-      jnl.fvm.bc.dirichlet(value)
+      jnl.fvm.bc.dirichlet(value: number) -> BCDescriptor
+         Prescribe a fixed scalar value on a boundary face.
+         value               Prescribed value.
 
-      jnl.fvm.bc.dirichlet_v(ux, uy)
+      jnl.fvm.bc.dirichlet_v(ux: number, uy: number) -> BCDescriptor
+         Prescribe fixed x and y velocity components on a boundary face.
+         ux                  x-component value.
+         uy                  y-component value.
 
-      jnl.fvm.bc.fixed(value)
+      jnl.fvm.bc.fixed(value: number) -> BCDescriptor
+         Alias for BC.dirichlet. Clearer intent for fixed temperature or concentration.
+         value               Prescribed value.
 
-      jnl.fvm.bc.free_slip()
+      jnl.fvm.bc.free_slip() -> BCDescriptor
+         Free-slip or symmetry plane: zero normal velocity, zero tangential gradient.
 
-      jnl.fvm.bc.inlet(ux, uy)
+      jnl.fvm.bc.inlet(ux: number, uy: number) -> BCDescriptor
+         Prescribed inlet velocity.
+         ux                  x-component of inlet velocity.
+         uy                  y-component of inlet velocity.
 
-      jnl.fvm.bc.moving_wall(ux, uy)
+      jnl.fvm.bc.moving_wall(ux: number, uy?: number) -> BCDescriptor
+         Moving wall, e.g. the lid in Couette or lid-driven cavity flow.
+         ux                  Wall x-velocity.
+         uy                  Wall y-velocity; defaults to zero.
 
-      jnl.fvm.bc.neumann(grad_n)
+      jnl.fvm.bc.neumann(grad_n?: number) -> BCDescriptor
+         Prescribe the normal gradient of a scalar field on a boundary face.
+         grad_n              Normal gradient; defaults to zero (zero-flux).
 
-      jnl.fvm.bc.neumann_v(ux_gn, uy_gn)
+      jnl.fvm.bc.neumann_v(ux_gn?: number, uy_gn?: number) -> BCDescriptor
+         Prescribe the normal gradients of both velocity components.
+         ux_gn               x-gradient; defaults to zero.
+         uy_gn               y-gradient; defaults to zero.
 
-      jnl.fvm.bc.new_set()
+      jnl.fvm.bc.new_set() -> BCSetBuilder
+         Create a fluent BC set builder.
 
-      jnl.fvm.bc.no_slip()
+         Typical usage:
 
-      jnl.fvm.bc.nograd()
+         local bcs = bc.new_set() :vector("U") :on(E.PATCH.SOUTH, bc.no_slip())
+         :on(E.PATCH.NORTH, bc.moving_wall(1.0, 0.0)) :scalar("p") :on(E.PATCH.EAST,
+         bc.pressure_outlet(0.0)) :on(E.PATCH.WEST, bc.nograd()) :build()
 
-      jnl.fvm.bc.nt(nkind, nval, tkind, tval)
+      jnl.fvm.bc.no_slip() -> BCDescriptor
+         No-slip viscous wall: zero velocity in both components.
 
-      jnl.fvm.bc.outlet()
+      jnl.fvm.bc.nograd() -> BCDescriptor
+         Zero normal gradient. The most common outlet or symmetry scalar condition.
 
-      jnl.fvm.bc.pressure_outlet(value)
+      jnl.fvm.bc.nt(nkind: integer, nval: number, tkind: integer, tval: number) ->
+      BCDescriptor
+         Normal/tangential split condition for a vector field.
 
-      jnl.fvm.bc.robin(a, b, c)
+         Use BC.N / BC.D / BC.R for the kind arguments.
+         nkind               Normal component kind (BC.N | BC.D | BC.R).
+         nval                Normal component value.
+         tkind               Tangential component kind (BC.N | BC.D | BC.R).
+         tval                Tangential component value.
 
+      jnl.fvm.bc.outlet() -> BCDescriptor
+         Zero-gradient advective outlet.
 
-## jnl.fvm.canned
+      jnl.fvm.bc.pressure_outlet(value?: number) -> BCDescriptor
+         Fix the pressure at a boundary face.
+         value               Reference pressure; defaults to zero.
 
-   (no module description)
-
-   Functions
-
-      jnl.fvm.canned.alg_piso(opts)
-
-      jnl.fvm.canned.alg_simple(opts)
-
-      jnl.fvm.canned.alg_simpler(opts)
-
-      jnl.fvm.canned.reg_laminar_ns(props)
-
-      jnl.fvm.canned.reg_passive_scalar(name, props)
-
-      jnl.fvm.canned.reg_stokes(props)
+      jnl.fvm.bc.robin(a: number, b: number, c: number) -> BCDescriptor
+         General Robin condition: a*phi + b*(dphi/dn) = c.
+         a                   Coefficient on phi.
+         b                   Coefficient on dphi/dn.
+         c                   Right-hand side value.
 
 
 ## jnl.fvm.case
 
-   (no module description)
+   Run a finite-volume simulation case step by step or to completion.
 
-   Functions
+   A Case bundles a physics registry, algorithm, mesh, and boundary conditions. It
+   compiles them once at construction, allocates field storage lazily on the first step
+   or run, and drives the solver via a coroutine that yields CaseEvent values at each
+   iteration boundary and linear solve.
 
-      jnl.fvm.case.new(reg, alg, mesh, bcs)
+   Typical workflow:
+
+   local case = Case.new(reg, alg, mesh, bcs) case:run() local p = case:field("p")
 
 
 ## jnl.fvm.compiler
 
+   FVM compilation pipeline.
+
+   The three phases are deliberately exposed so host code (case builders, tests, REPL
+   inspection) can run them individually. Use compile() when you want the full pipeline
+   in one call.
+
+   Functions
+
+      jnl.fvm.compiler.compile(alg: Algorithm, reg: Registry)
+         Run the full compilation pipeline in order.
+
+      jnl.fvm.compiler.elaborate(alg: Algorithm, reg: Registry)
+         Discover intermediate fields and build the resource manifest.
+
+         Must run after expand(). Sets alg.elaborated (intermediate field registry and
+         face-flux map) and alg.manifest (cell, face, system, and scratch allocations).
+
+      jnl.fvm.compiler.expand(alg: Algorithm, reg: Registry)
+         Expand an algorithm into an abstract three-phase schedule.
+
+         Populates alg.pre, alg.main, and alg.post with abstract instructions (fill,
+         evaluate, solve, correct, clip, zero). Abstract ops are not yet expanded to
+         concrete FVM assembly.
+
+      jnl.fvm.compiler.lower(alg: Algorithm, reg: Registry)
+         Lower the abstract schedule to concrete FVM assembly instructions.
+
+         Must run after elaborate(). Replaces abstract solve/evaluate/correct ops in
+         alg.pre, alg.main, and alg.post with concrete instruction sequences.
+
+      jnl.fvm.compiler.lower_equation(field: string, entry: table, elab: table) ->
+      Inst[], table
+         Lower a single registry entry's equation to a concrete instruction list.
+
+         Useful for inspecting what assembly a specific field equation produces without
+         running the full algorithm pipeline. The alg passed here must already have
+         alg.elaborated set (i.e. elaborate() must have run).
+
+         Returns the instruction list and a small info table so callers can make
+         assertions without reimplementing instruction walks.
+         field               Field name being solved.
+         entry               Registry entry (from reg:entry(field)).
+         elab                Elaboration result (alg.elaborated).
+         return 1            instructions
+         return 2            info { has_div_cells, has_ghost_fills, n_instructions }
+
+
+## jnl.fvm.preset
+
    (no module description)
 
    Functions
 
-      jnl.fvm.compiler.compile(alg, reg)
+      jnl.fvm.preset.alg.pimple(opts?: AlgOpts) -> Algorithm
+         PIMPLE (PISO within a SIMPLE outer loop).
 
+         PISO-style inner pressure corrections within a SIMPLE outer convergence loop.
+         More robust than either alone for hard-to-converge flows; also the standard for
+         unsteady cases that need to reach steady state efficiently. max_iters controls
+         outer correctors; n_correctors controls inner sweeps.
 
-## jnl.fvm.instruction
+      jnl.fvm.preset.alg.piso(opts?: AlgOpts) -> Algorithm
+         PISO (Pressure Implicit with Splitting of Operators).
 
-   (no module description)
+         Multiple pressure-correction steps per momentum solve. Suited to unsteady
+         time-accurate flows; no velocity under-relaxation. Pair with
+         Case:run_transient() or begin_timestep() / end_timestep().
+         opts                n_correctors controls inner correction sweeps (default 2).
 
-   Functions
+      jnl.fvm.preset.alg.simple(opts?: AlgOpts) -> Algorithm
+         SIMPLE (Semi-Implicit Method for Pressure-Linked Equations).
 
-      jnl.fvm.instruction.apply_correction(field, node)
-         evaluates correction node expression into delta and does field:axpy(1, delta)
+         One pressure correction per outer iteration. Standard choice for steady laminar
+         flows. Velocity is under-relaxed; pressure is updated explicitly.
 
-      jnl.fvm.instruction.clip(field, lo, hi)
+      jnl.fvm.preset.reg.ns(opts?: RegOpts) -> Registry
+         Laminar incompressible Navier-Stokes with convection.
 
-      jnl.fvm.instruction.comment(text: string?)
+         Uses Rhie-Chow momentum-weighted interpolation for the convective flux.
 
-      jnl.fvm.instruction.correct(field)
+      jnl.fvm.preset.reg.stokes(opts?: RegOpts) -> Registry
+         Stokes (viscous, no convection) incompressible flow.
 
-      jnl.fvm.instruction.ddt_f(field: string, rho: string, expr: Node?)
-         rho                 Name of rho field
-         expr                Optional rho-expr for display
-
-      jnl.fvm.instruction.ddt_k(field: string, rho: number, expr: Node?)
-         expr                Optional rho-expr for display
-
-      jnl.fvm.instruction.diag_snapshot(field, out)
-
-      jnl.fvm.instruction.div_dc(field: string, flux: string, grad_x: string, grad_y:
-      string)
-         Explicit deferred correction RHS contribution. runner no-ops if alg:cfg(field,
-         "div") == "uds"|"cds"
-
-      jnl.fvm.instruction.div_f(field: string, flux: string, coeff: string, expr: Node?)
-         Implicit UDS/CDS convection assembly with named field coefficient.
-
-      jnl.fvm.instruction.div_k(field: string, flux: string, coeff: number)
-         Implicit UDS/CDS convection assembly with constant coefficient (rho)
-
-      jnl.fvm.instruction.divergence(face_normal_field, out)
-
-      jnl.fvm.instruction.divergence_c(field, ux, uy, integrated)
-
-      jnl.fvm.instruction.eval_coeff(node)
-
-      jnl.fvm.instruction.eval_expr(field, node)
-
-      jnl.fvm.instruction.evaluate(field: string, implicit: boolean?)
-
-      jnl.fvm.instruction.face_interp(field, out)
-
-      jnl.fvm.instruction.face_normal(ux_face, uy_face, out)
-
-      jnl.fvm.instruction.face_normal_c(ux, uy, out)
-
-      jnl.fvm.instruction.fill(field: string, value: number)
-
-      jnl.fvm.instruction.grad(field, out_x, out_y)
-
-      jnl.fvm.instruction.lap_f(field: string, gamma: string, expr: Node?)
-
-      jnl.fvm.instruction.lap_k(field: string, gamma: number, expr: Node?)
-         expr                Optional gamma-expr for display
-
-      jnl.fvm.instruction.lap_nonorth_f(field: string, grad_x: string, grad_y: string,
-      coeff: string, expr: Node?)
-
-      jnl.fvm.instruction.lap_nonorth_k(field: string, grad_x: string, grad_y: string,
-      coeff: number, expr: Node?)
-
-      jnl.fvm.instruction.new(op, fields)
-
-      jnl.fvm.instruction.pclose_s_d(field: string, patch: string, value: number)
-
-      jnl.fvm.instruction.pclose_s_n(field: string, patch: string, grad_n: number)
-
-      jnl.fvm.instruction.pclose_s_r(field: string, patch: string, a: number, b: number,
-      c: number)
-
-      jnl.fvm.instruction.pfill_s_d(field: string, patch: string, value: number)
-
-      jnl.fvm.instruction.pfill_s_n(field: string, patch: string, grad_n: number)
-
-      jnl.fvm.instruction.pfill_s_r(field: string, patch: string, a: number, b: number,
-      c: number)
-
-      jnl.fvm.instruction.pfill_v_d(ux: string, uy: string, patch: string, ux_val:
-      number, uy_val: number)
-
-      jnl.fvm.instruction.pfill_v_n(ux: string, uy: string, patch: string, ux_gn:
-      number, uy_gn: number)
-
-      jnl.fvm.instruction.pfill_v_nt(ux: string, uy: string, patch: string, nkind:
-      number, nval: number, tkind: number, tval: number)
-
-      jnl.fvm.instruction.rhie_chow(Ux, Uy, p, grad_px, grad_py, diag_x, diag_y, out)
-
-      jnl.fvm.instruction.solve(field)
-
-      jnl.fvm.instruction.solve_linalg(field)
-
-      jnl.fvm.instruction.sp_f(field: string, coeff: string, volumetric: boolean, expr:
-      Node?)
-
-      jnl.fvm.instruction.sp_fs(field: string, scale: number, src: string, volumetric:
-      boolean, expr: Node?)
-         volumetric          default true
-
-      jnl.fvm.instruction.sp_k(field: string, coeff: number, volumetric: boolean)
-
-      jnl.fvm.instruction.su_f(field: string, coeff: string, volumetric: boolean, expr:
-      Node?)
-
-      jnl.fvm.instruction.su_fs(field: string, scale: number, src: string, volumetric:
-      boolean, expr: Node?)
-         scale               scalar multiplier (negative to subtract)
-         src                 name of source cell field
-         volumetric          default true
-
-      jnl.fvm.instruction.su_k(field: string, coeff: number, volumetric: boolean)
-
-      jnl.fvm.instruction.sys_reset(field)
-
-      jnl.fvm.instruction.under_relax(field)
-
-      jnl.fvm.instruction.zero(field)
+         Exact for plane Couette and Poiseuille flow. Prefer over ns when convective
+         acceleration is negligible: avoids the mwi outer-product assembly.
 
 
 ## jnl.fvm.rules
 
-   (no module description)
+   Convergence and divergence criterion constructors for FVM cases.
+
+   Criterion objects are plain tables passed to Algorithm:converge() and
+   Algorithm:guard() before the Case is constructed:
+
+   alg:converge(Rules.residual_below("*", 1e-4)) alg:guard(Rules.nan_guard())
+   alg:guard(Rules.norm_above("p", 1e8))
+
+   The wildcard field `"*"` expands at runtime to every field that has produced residual
+   telemetry, so `residual_below("*", tol)` is the standard all-fields convergence
+   criterion.
 
    Functions
 
-      jnl.fvm.rules.assert_alg_criteria(sage, alg)
+      jnl.fvm.rules.assert_alg_criteria(sage: table, alg: Algorithm)
+         Post all convergence and divergence criteria from an algorithm as Sage facts.
 
-      jnl.fvm.rules.change_below(field: string, threshold: number, n_consec: integer?)
+         Called automatically by Case:reset(). Invoke directly only when managing a Sage
+         instance outside a Case.
+         sage                Sage instance.
+         alg                 Algorithm carrying convergence and divergence criterion
+                             lists.
 
-      jnl.fvm.rules.nan_guard(field: string?)
-         field               default "*"
+      jnl.fvm.rules.change_below(field: string, threshold: number, n_consec?: integer)
+      -> ConvCrit
+         Convergence criterion: field L2 change below threshold for n_consec consecutive
+         iterations.
+         field               Field name or "*".
+         threshold           Change threshold.
+         n_consec            Consecutive iterations required; defaults to 1.
 
-      jnl.fvm.rules.norm_above(field: string, threshold: number)
-         threshold           default 1e10
+      jnl.fvm.rules.nan_guard(field?: string) -> DivCrit
+         Divergence guard: stop when a NaN is detected in a field.
+         field               Field name or "*"; defaults to "*" (any field).
 
-      jnl.fvm.rules.residual_above(field: string, threshold: number)
-         threshold           default 1e10
+      jnl.fvm.rules.norm_above(field: string, threshold?: number) -> DivCrit
+         Divergence guard: stop when field L2 norm exceeds threshold.
 
-      jnl.fvm.rules.residual_below(field: string, threshold: number, n_consec: integer?)
-         field               field name or "*"
-         n_consec            default 1
+         Also fires on NaN, so this catches both blowup and breakdown before the
+         residual has a chance to diverge.
+         field               Field name or "*".
+         threshold           Norm limit; defaults to 1e10.
 
-      jnl.fvm.rules.stopping_ruleset()
+      jnl.fvm.rules.residual_above(field: string, threshold?: number) -> DivCrit
+         Divergence guard: stop when field residual exceeds threshold.
+         field               Field name or "*".
+         threshold           Residual limit; defaults to 1e10.
 
+      jnl.fvm.rules.residual_below(field: string, threshold: number, n_consec?: integer)
+      -> ConvCrit
+         Convergence criterion: field residual below threshold for n_consec consecutive
+         iterations.
 
-## jnl.fvm.runner
+         Pass `"*"` as the field to require all fields with residual telemetry to
+         converge.
+         field               Field name or "*".
+         threshold           Residual threshold.
+         n_consec            Consecutive iterations required; defaults to 1.
 
-   (no module description)
+      jnl.fvm.rules.stopping_ruleset() -> table
+         Return the standard FVM stopping ruleset.
 
-   Functions
-
-      jnl.fvm.runner.new(compiled, field_map, sys_map, mesh, ctx)
-
-
-## jnl.fvm.sim
-
-   (no module description)
-
-   Functions
-
-      jnl.fvm.sim.new(runner, alg, opts)
+         Registers convergence and divergence checking rules with a Sage instance. Case
+         adds this ruleset automatically; call it explicitly only when constructing a
+         Sage outside a Case.
+         return 1            ruleset
 
 
 ## jnl.fvm.study
@@ -1291,6 +1318,303 @@ appropriate, and user-facing output.
          Expr:scratch_depth() -> integer
 
          Expr:walk(visitor)
+
+
+   jnl.fvm.algorithm.Algorithm
+      Configure and drive a finite-volume solution algorithm.
+
+      Typical usage:
+
+      local alg = Algorithm.new("simple") :loop(function(b) b:solve("U") b:solve("p")
+      b:correct("U") end, 200) :converge(Rules.residual_below("*", 1e-4))
+      :guard(Rules.nan_guard())
+
+      alg:set_cfg("U", "relax", 0.7) alg:set_cfg("p", "relax", 0.3)
+      label: string?                Human-readable algorithm label.
+      op: string                    Execution mode: "linear" or "loop".
+      max_iters: integer            Maximum outer iterations (loop mode only).
+      convergence: AlgCriterion[]   Convergence criteria added via converge().
+      divergence: AlgCriterion[]    Divergence guards added via guard().
+      watches: table[]              Watched fields added via watch().
+      rulesets: table[]             Additional Sage rulesets.
+      steps: table[]                User-specified steps before compilation.
+      pre: table[]                  Compiled pre-loop instructions.
+      main: table[]                 Compiled main-loop instructions.
+      post: table[]                 Compiled post-loop instructions.
+      config: { default: table, fields: table<string, table> }
+         @Solver configuration storage.
+      manifest: table?              Resource manifest populated after compilation.
+      elaborated: table             
+      Constructors
+         jnl.fvm.preset.alg.pimple(opts?: AlgOpts) -> Algorithm
+         jnl.fvm.preset.alg.piso(opts?: AlgOpts) -> Algorithm
+         jnl.fvm.preset.alg.simple(opts?: AlgOpts) -> Algorithm
+      Methods
+
+         Algorithm:add_rule(rule: table) -> Algorithm
+            Add a single Sage rule wrapped in a one-entry ruleset.
+            rule                Sage rule.
+            return 1            self
+
+         Algorithm:add_ruleset(rs: table) -> Algorithm
+            Add a complete Sage ruleset.
+            rs                  Ruleset table.
+            return 1            self
+
+         Algorithm:as_cfg() -> table
+            Return a Cfg view over the current configuration.
+            return 1            cfg
+
+         Algorithm:cfg(field: string, key: string) -> any
+            Return the effective config value for a field and key.
+            field               Field name.
+            key                 Config key.
+
+         Algorithm:compile(reg: Registry) -> Algorithm
+            Compile this algorithm against a registry, populating the instruction lists.
+
+            Equivalent to calling jnl.fvm.compiler.compile(alg, reg) directly.
+            Case.new() triggers compilation automatically; call this explicitly only
+            when inspecting the compiled output outside a Case.
+            reg                 Physics registry.
+            return 1            self
+
+         Algorithm:converge(spec: AlgCriterion) -> Algorithm
+            Add a convergence criterion.
+
+            Accepts a `conv_crit` spec returned by Rules.residual_below(),
+            Rules.change_below(), etc.
+            spec                Convergence spec with kind "conv_crit".
+            return 1            self
+
+         Algorithm:default_config() -> table
+            Return a Cfg view over the current configuration.
+            return 1            cfg
+
+         Algorithm:guard(spec: AlgCriterion) -> Algorithm
+            Add a divergence guard.
+
+            Accepts a `div_crit` spec returned by Rules.nan_guard(), Rules.norm_above(),
+            etc.
+            spec                Divergence spec with kind "div_crit".
+            return 1            self
+
+         Algorithm:instruction_listing() -> string
+            Return a full FVM instruction listing after compilation.
+            return 1            text
+
+         Algorithm:linear(cb: AlgBuilderCb) -> Algorithm
+            Declare a non-iterating linear sequence of steps.
+            cb                  Callback specifying steps.
+            return 1            self
+
+         Algorithm:listing() -> string
+            Return a human-readable abstract algorithm listing (high-level steps only).
+            return 1            text
+
+         Algorithm:loop(cb: AlgBuilderCb, max_iters?: integer) -> Algorithm
+            Declare a looping outer iteration and specify its steps via a builder
+            callback.
+
+            alg:loop(function(b) b:solve("U") b:solve("p") b:correct("U") end, 200)
+            cb                  Callback specifying steps executed each outer iteration.
+            max_iters           Maximum outer iterations; overrides the current value.
+            return 1            self
+
+         Algorithm:new(label?: string) -> Algorithm
+            Create a new algorithm.
+            label               Human-readable label shown in listings.
+
+         Algorithm:print()
+            Print the abstract algorithm listing.
+
+         Algorithm:print_instructions()
+            Print the full FVM instruction listing after compilation.
+
+         Algorithm:set_cfg(field_or_default: string, key: string, value: any) ->
+         Algorithm
+            Set a solver configuration value for a named field or the global default.
+
+            Pass `"default"` as the first argument to set a fallback for all fields:
+
+            alg:set_cfg("default", "tol", 1e-6) alg:set_cfg("U", "relax", 0.7)
+            alg:set_cfg("p", "relax", 0.3)
+            field_or_default    Field name, Node, or "default".
+            key                 Config key (e.g. "relax", "tol", "solver",
+                                "max_krylov_iters").
+            value               Config value.
+            return 1            self
+
+         Algorithm:set_max_iters(n: integer) -> Algorithm
+            Set the maximum number of outer iterations.
+            n                   Maximum iterations.
+            return 1            self
+
+         Algorithm:summary() -> string
+            Return a one-line summary of the algorithm state.
+            return 1            text
+
+         Algorithm:watch(field: string|Node, kind?: string) -> Algorithm
+            Watch a named field quantity for display in convergence monitors.
+            field               Field name or Node.
+            kind                Quantity kind; defaults to "residual".
+            return 1            self
+
+
+   jnl.fvm.bc.BCSetBuilder
+      Fluent builder for assembling a complete BC table.
+      fields: table<string, BCFieldSpec>
+      order: string[]               
+      fallback: BCDescriptor?       
+      Constructors
+         jnl.fvm.bc.new_set() -> BCSetBuilder
+      Methods
+
+         BCSetBuilder:build() -> BCSet
+            Build and return the finished BC table.
+
+         BCSetBuilder:default(spec: BCDescriptor) -> BCSetBuilder
+            Set a fallback descriptor applied to patches not covered by any :on() call.
+            spec                Fallback BC descriptor.
+            return 1            self
+
+         BCSetBuilder:new() -> BCSetBuilder
+            Create a new BCSetBuilder.
+
+         BCSetBuilder:scalar(name: string) -> BCFieldSpec
+            Declare a scalar field and return its field spec for patch assignment.
+            name                Field name matching the registry declaration.
+
+         BCSetBuilder:vector(name: string) -> BCFieldSpec
+            Declare a vector field and return its field spec for patch assignment.
+            name                Field name matching the registry declaration.
+
+
+   jnl.fvm.instruction.Inst
+      op: string                    
+      fields: table                 
+      Constructors
+         jnl.fvm.compiler.lower_equation(field: string, entry: table, elab: table) ->
+         Inst[], table
+      Methods
+
+         Inst:apply_correction(field, node)
+            evaluates correction node expression into delta and does field:axpy(1,
+            delta)
+
+         Inst:clip(field, lo, hi)
+
+         Inst:comment(text: string?)
+
+         Inst:correct(field)
+
+         Inst:ddt_f(field: string, rho: string, expr: Node?)
+            rho                 Name of rho field
+            expr                Optional rho-expr for display
+
+         Inst:ddt_k(field: string, rho: number, expr: Node?)
+            expr                Optional rho-expr for display
+
+         Inst:diag_snapshot(field, out)
+
+         Inst:div_dc(field: string, flux: string, grad_x: string, grad_y: string)
+            Explicit deferred correction RHS contribution. runner no-ops if
+            alg:cfg(field, "div") == "uds"|"cds"
+
+         Inst:div_f(field: string, flux: string, coeff: string, expr: Node?)
+            Implicit UDS/CDS convection assembly with named field coefficient.
+
+         Inst:div_k(field: string, flux: string, coeff: number)
+            Implicit UDS/CDS convection assembly with constant coefficient (rho)
+
+         Inst:divergence(face_normal_field, out)
+
+         Inst:divergence_c(field, ux, uy, integrated)
+
+         Inst:eval_coeff(node)
+
+         Inst:eval_expr(field, node)
+
+         Inst:evaluate(field: string, implicit: boolean?)
+
+         Inst:face_interp(field, out)
+
+         Inst:face_normal(ux_face, uy_face, out)
+
+         Inst:face_normal_c(ux, uy, out)
+
+         Inst:fill(field: string, value: number)
+
+         Inst:grad(field, out_x, out_y)
+
+         Inst:lap_f(field: string, gamma: string, expr: Node?)
+
+         Inst:lap_k(field: string, gamma: number, expr: Node?)
+            expr                Optional gamma-expr for display
+
+         Inst:lap_nonorth_f(field: string, grad_x: string, grad_y: string, coeff:
+         string, expr: Node?)
+
+         Inst:lap_nonorth_k(field: string, grad_x: string, grad_y: string, coeff:
+         number, expr: Node?)
+
+         Inst:new(op, fields)
+
+         Inst:pclose_s_d(field: string, patch: string, value: number)
+
+         Inst:pclose_s_n(field: string, patch: string, grad_n: number)
+
+         Inst:pclose_s_r(field: string, patch: string, a: number, b: number, c: number)
+
+         Inst:pfill_s_d(field: string, patch: string, value: number)
+
+         Inst:pfill_s_n(field: string, patch: string, grad_n: number)
+
+         Inst:pfill_s_r(field: string, patch: string, a: number, b: number, c: number)
+
+         Inst:pfill_v_d(ux: string, uy: string, patch: string, ux_val: number, uy_val:
+         number)
+
+         Inst:pfill_v_n(ux: string, uy: string, patch: string, ux_gn: number, uy_gn:
+         number)
+
+         Inst:pfill_v_nt(ux: string, uy: string, patch: string, nkind: number, nval:
+         number, tkind: number, tval: number)
+
+         Inst:rhie_chow(Ux, Uy, p, grad_px, grad_py, diag_x, diag_y, out)
+
+         Inst:solve(field)
+
+         Inst:solve_linalg(field)
+
+         Inst:sp_f(field: string, coeff: string, volumetric: boolean, expr: Node?)
+
+         Inst:sp_fs(field: string, scale: number, src: string, volumetric: boolean,
+         expr: Node?)
+            volumetric          default true
+
+         Inst:sp_k(field: string, coeff: number, volumetric: boolean)
+
+         Inst:su_f(field: string, coeff: string, volumetric: boolean, expr: Node?)
+
+         Inst:su_fs(field: string, scale: number, src: string, volumetric: boolean,
+         expr: Node?)
+            scale               scalar multiplier (negative to subtract)
+            src                 name of source cell field
+            volumetric          default true
+
+         Inst:su_k(field: string, coeff: number, volumetric: boolean)
+
+         Inst:sys_reset(field)
+
+         Inst:tostring(indent: string?, cfg: table?)
+            cfg                 falls back to INST_DEFAULTS if nil
+
+         Inst:tostring_abstract(indent)
+
+         Inst:under_relax(field)
+
+         Inst:zero(field)
 
 
    jnl.geo2d.domain.MarkerRegistry
@@ -1974,6 +2298,114 @@ appropriate, and user-facing output.
 
          Node:transpose() -> Node
             Transpose of a rank-2 tensor.
+
+
+   jnl.nabla.registry.Registry
+      Declare fields, constants, governing equations, and derived expressions for a
+      symbolic physics model.
+
+      A registry stores named symbolic fields in declaration order. Field declarations
+      return injected `Node` instances with chainable methods such as `governed_by`,
+      `defined_as`, `prescribed`, and `initial`.
+      label: string?                Human-readable registry label.
+      entries: table<string, RegistryEntry>
+         Field entries by name.
+      order: string[]               Declaration order.
+      Constructors
+         jnl.fvm.preset.reg.ns(opts?: RegOpts) -> Registry
+         jnl.fvm.preset.reg.stokes(opts?: RegOpts) -> Registry
+      Methods
+
+         Registry:const(name: string, value: number) -> Node
+            Declare a named scalar constant.
+            name                Constant name.
+            value               Constant value.
+            return 1            node
+
+         Registry:cvec(name: string, ...: number) -> Node
+            Declare a named constant vector.
+            name                Constant vector name.
+            ...                 Vector components.
+            return 1            node
+
+         Registry:dep_listing() -> string
+            Return a multi-line dependency listing.
+            return 1            text
+
+         Registry:deps_of(name: string) -> table
+            Return dependency sets for a field.
+            name                Field name.
+            return 1            deps
+
+         Registry:diagnostics() -> string[]
+            Return names of diagnostic fields defined by expressions.
+            return 1            names
+
+         Registry:each(fn: fun(name: string, entry: RegistryEntry))
+            Iterate over entries in declaration order.
+
+         Registry:entry(name: string) -> RegistryEntry?
+            Return a registry entry by name, or nil if absent.
+            name                Field name.
+            return 1            entry
+
+         Registry:expect(name: string) -> RegistryEntry
+            Return a registry entry by name, raising an error if absent.
+            name                Field name.
+            return 1            entry
+
+         Registry:get(name: string) -> RegistryField
+            Return an injected field node by name.
+            name                Field name.
+            return 1            field
+
+         Registry:listing() -> string
+            Return a multi-line listing of constants, diagnostics, prescribed fields,
+            and prognostics.
+            return 1            text
+
+         Registry:new(label?: string) -> Registry
+            Create a new registry.
+            label               Human-readable label.
+            return 1            registry
+
+         Registry:prescribed_fields() -> string[]
+            Return names of externally prescribed fields.
+            return 1            names
+
+         Registry:prognostics() -> string[]
+            Return names of fields solved from governing equations.
+            return 1            names
+
+         Registry:scalar(name: string) -> RegistryField
+            Declare a scalar field.
+            name                Field name.
+            return 1            field
+
+         Registry:set_clip(name: string, lo: number, hi: number)
+            Set clipping limits for a declared field.
+            name                Field name.
+            lo                  Lower bound.
+            hi                  Upper bound.
+
+         Registry:set_initial(name: string, value: number)
+            Set the initial value for a declared field.
+            name                Field name.
+            value               Initial value.
+
+         Registry:tensor(name: string, rank?: integer) -> RegistryField
+            Declare a tensor field.
+            name                Field name.
+            rank                Tensor rank; defaults to 2.
+            return 1            field
+
+         Registry:validate()
+            Validate declarations, dependencies, and equation ranks.
+
+         Registry:vector(name: string) -> RegistryField
+            Declare a vector field.
+            name                Field name.
+            return 1            field
 
 
    jnl.repl.Repl

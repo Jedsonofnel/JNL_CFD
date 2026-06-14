@@ -157,7 +157,7 @@ end
 function Builder:evaluate(field)
 	field = fname(field)
 	V.identifier(field, "alg:evaluate")
-	return push(self, Inst.evaluate(field))
+	return push(self, Inst.evaluate(field, false))
 end
 
 --- Insert a nested correction loop inside the current phase.

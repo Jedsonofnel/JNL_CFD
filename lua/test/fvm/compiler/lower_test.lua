@@ -78,13 +78,14 @@ local function make_div_coeff_scaled()
 	return reg, alg
 end
 
-local function make_div_sym_rhs()
-	local reg = nb.new_registry("div-sym-rhs")
+local function make_div_sym_rhs_mwi()
+	local reg = nb.new_registry("div-mwi-rhs")
 	local U   = reg:vector("U")
+	local p   = reg:scalar("p")
 	local pp  = reg:scalar("p_prime")
-	pp:governed_by(nb.laplacian(pp):equals(nb.div(U)))
+	pp:governed_by(nb.laplacian(pp):equals(nb.div(nb.mwi(U, p))))
 	reg:validate()
-	local alg = Alg.new("div-sym-rhs")
+	local alg = Alg.new("div-mwi-rhs")
 	alg:loop(function(a) a:solve(pp) end, 1)
 	return reg, alg
 end
@@ -212,48 +213,53 @@ end)
 -- div(U) on RHS as explicit source
 --
 
-h.describe("lower: div(U) symbol on RHS", function()
+h.describe("lower: div(mwi) explicit source on RHS (pressure correction)", function()
 	local main
 
 	h.before_each(function()
-		local reg, alg = make_div_sym_rhs()
+		local reg, alg = make_div_sym_rhs_mwi() -- see fixture below
 		compile(reg, alg)
 		main = alg.main
 	end)
 
-	h.it("face_normal_c emitted for U_x, U_y -> __facen_U", function()
-		local found = false
+	h.it("divergence instruction emitted for mwi face field", function()
+		h.expect(has_any(main, op("divergence"))).is_truthy()
+	end)
+
+	h.it("divergence output is __mwidiv_mwi_U_p", function()
 		for _, inst in ipairs(main) do
-			if inst.op == "face_normal_c"
-				and inst.ux == "U_x" and inst.uy == "U_y"
-				and inst.out == "__facen_U" then
-				found = true
+			if inst.op == "divergence" then
+				h.expect(inst.out).equals("__mwidiv_mwi_U_p")
+				h.expect(inst.flux).equals("mwi_U_p")
+				return
 			end
 		end
-		h.expect(found).is_truthy()
+		h.expect(false).is_truthy("divergence not found")
 	end)
 
-	h.it("face_normal_c precedes laplacian assembly", function()
-		h.expect(pos_of(main, op("face_normal_c")))
-			.is_less_than(pos_of(main, op("lap_k")))
-	end)
-
-	h.it("su_fs sources __facen_U after face_normal_c", function()
-		local fnc = pos_of(main, op("face_normal_c"))
-		local su  = pos_of(main, function(inst)
-			return inst.op == "su_fs" and inst.src == "__facen_U"
-		end)
-		h.expect(fnc).is_less_than(su)
-	end)
-
-	h.it("su_fs for __facen_U is non-volumetric", function()
+	h.it("su_fs sources __mwidiv_mwi_U_p not __coeff", function()
 		for _, inst in ipairs(main) do
-			if inst.op == "su_fs" and inst.src == "__facen_U" then
+			if inst.op == "su_fs" and inst.src == "__mwidiv_mwi_U_p" then
+				h.expect(inst.scale).equals(1.0)
 				h.expect(inst.volumetric).is_falsy()
 				return
 			end
 		end
-		h.expect(false).is_truthy("su_fs __facen_U not found")
+		h.expect(false).is_truthy("su_fs sourcing __mwidiv_mwi_U_p not found")
+	end)
+
+	h.it("divergence precedes su_fs", function()
+		local dv = pos_of(main, op("divergence"))
+		local su = pos_of(main, function(inst)
+			return inst.op == "su_fs" and inst.src == "__mwidiv_mwi_U_p"
+		end)
+		h.expect(dv).is_not_nil()
+		h.expect(su).is_not_nil()
+		h.expect(dv).is_less_than(su)
+	end)
+
+	h.it("no eval_coeff emitted (divergence is not a pointwise expression)", function()
+		h.expect(has_any(main, op("eval_coeff"))).is_falsy()
 	end)
 end)
 
@@ -355,6 +361,21 @@ h.describe("lower: scaled div(U) coefficient (nu * div(U))", function()
 		h.expect(ec).is_less_than(lf)
 		h.expect(lf).is_less_than(rel)
 	end)
+
+	h.it("div_cell substitution uses a real internal Node symbol", function()
+		local reg, alg = make_div_coeff()
+		compile(reg, alg)
+
+		local found = false
+		for _, inst in ipairs(alg.main) do
+			if inst.op == "lap_f" then
+				found = true
+				h.expect(inst.coeff:find("^__divcell_")).is_not_nil()
+			end
+		end
+
+		h.expect(found).is_truthy("lap_f not found")
+	end)
 end)
 
 --
@@ -449,5 +470,75 @@ h.describe("lower_equation: independent of full alg compilation", function()
 		h.expect(dc2).is_not_nil()
 		h.expect(dc1 < rst1).is_truthy()
 		h.expect(dc2 < rst2).is_truthy()
+	end)
+end)
+
+h.describe("lower: vector evaluate resolves to scalar component evals", function()
+	local main
+
+	h.before_each(function()
+		local reg = nb.new_registry("vector-evaluate")
+		local U = reg:vector("U")
+		local V = reg:vector("V"):defined_as(U + nb.const(1.0, 2.0))
+
+		reg:validate()
+
+		local alg = Alg.new("vector-evaluate")
+		alg:loop(function(a)
+			a:evaluate(V)
+		end, 1)
+
+		compile(reg, alg)
+		main = alg.main
+	end)
+
+	h.it("emits eval_expr for V_x and V_y, not V", function()
+		h.expect(has_any(main, op_f("eval_expr", "V_x"))).is_truthy()
+		h.expect(has_any(main, op_f("eval_expr", "V_y"))).is_truthy()
+		h.expect(has_any(main, op_f("eval_expr", "V"))).is_falsy()
+	end)
+
+	h.it("all eval_expr nodes are rank-0", function()
+		for _, inst in ipairs(main) do
+			if inst.op == "eval_expr" then
+				h.expect(inst.node.rank).equals(0)
+			end
+		end
+	end)
+end)
+
+h.describe("lower: zero instruction", function()
+	local main
+	local listing
+
+	h.before_each(function()
+		local reg, alg = make_poisson()
+		alg = Alg.new("zero-poisson")
+			:loop(function(a)
+				a:zero("phi")
+				a:solve("phi")
+			end, 1)
+
+		compile(reg, alg)
+		main = alg.main
+		listing = alg:instruction_listing()
+	end)
+
+	h.it("zero remains in the lowered instruction stream", function()
+		h.expect(has_any(main, op_f("zero", "phi"))).is_truthy()
+	end)
+
+	h.it("zero precedes the following solve assembly", function()
+		local z = pos_of(main, op_f("zero", "phi"))
+		local r = pos_of(main, op_f("sys_reset", "phi"))
+
+		h.expect(z).is_not_nil()
+		h.expect(r).is_not_nil()
+		h.expect(z).is_less_than(r)
+	end)
+
+	h.it("zero has a concrete listing formatter", function()
+		h.expect(listing:find("?zero", 1, true)).is_nil()
+		h.expect(listing:find("ZERO          phi", 1, true)).is_not_nil()
 	end)
 end)

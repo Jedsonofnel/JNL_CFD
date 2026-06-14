@@ -354,6 +354,7 @@ local function manifest_merge_elab(man, elab)
 			man.cell[name] = { ghost = true }
 		elseif entry.kind == "mwi" then
 			man.face[name] = { Uname = entry.U, pname = entry.p }
+			man.cell["__mwidiv_" .. name] = { ghost = false }
 		end
 	end
 

@@ -82,7 +82,10 @@ end
 local function build_explicit_set(steps)
 	local set = {}
 	for _, step in ipairs(steps) do
-		if step.op == "solve" or step.op == "correct" or step.op == "zero" then
+		if step.op == "solve"
+			or step.op == "correct"
+			or step.op == "zero"
+			or step.op == "evaluate" then
 			set[step.field] = true
 		end
 	end
@@ -108,7 +111,7 @@ local function emit_pre_evaluates(reg, pre_names, inserted, fresh, out)
 		if entry.is_prescribed or entry.kind == "const" or not entry.expr then
 			goto continue
 		end
-		out[#out + 1] = Inst.evaluate(name)
+		out[#out + 1] = Inst.evaluate(name, true)
 		fresh_mark(fresh, inserted, name)
 		::continue::
 	end
@@ -123,7 +126,7 @@ local function emit_post_evaluates(reg, post_names, inserted)
 		if entry.solve == true then
 			out[#out + 1] = Inst.solve(name)
 		elseif entry.expr then
-			out[#out + 1] = Inst.evaluate(name)
+			out[#out + 1] = Inst.evaluate(name, true)
 		end
 		::continue::
 	end
@@ -162,7 +165,7 @@ local function emit_deps_for(reg, field, sorted_main, inserted, fresh, out)
 		if entry.solve == true then
 			emit_implicit_solve(reg, name, fresh, inserted, out)
 		else
-			out[#out + 1] = Inst.evaluate(name)
+			out[#out + 1] = Inst.evaluate(name, true)
 			fresh_mark(fresh, inserted, name)
 		end
 		::continue::

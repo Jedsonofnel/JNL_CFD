@@ -164,3 +164,39 @@ h.describe("simplify: leaf nodes unchanged", function()
 		h.expect(s.name).equals("rho")
 	end)
 end)
+
+h.describe("simplify: accessors", function()
+	h.it("nullary accessor simplifies to itself", function()
+		local nb = require("jnl.fvm.nabla")
+
+		local cV = nb.cV()
+		local s = simplify(cV)
+
+		h.expect(s).equals(cV)
+		h.expect(s.kind).equals("cV")
+		h.expect(s.rank).equals(0)
+	end)
+
+	h.it("nullary accessor can appear inside a product", function()
+		local nb = require("jnl.fvm.nabla")
+		local p = Node.scalar("p")
+
+		local n = raw_mul(nb.cV(), p)
+		local s = simplify(n)
+
+		h.expect(Node.is_node(s)).is_truthy()
+		h.expect(s.rank).equals(0)
+	end)
+
+	h.it("nullary accessor can appear inside a division", function()
+		local nb = require("jnl.fvm.nabla")
+		local p = Node.scalar("p")
+
+		local n = raw_div(nb.cV(), p)
+		local s = simplify(n)
+
+		h.expect(Node.is_node(s)).is_truthy()
+		h.expect(s.kind).equals("div")
+		h.expect(s.rank).equals(0)
+	end)
+end)

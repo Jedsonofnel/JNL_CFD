@@ -2,6 +2,7 @@
 
 -- deps
 local Node = require("jnl.nabla.node")
+local Acc = require("jnl.nabla.accessor")
 
 ---@private
 local M = {}
@@ -177,11 +178,19 @@ end
 ---@param node Node
 ---@return Node
 simplify = function(node)
+	assert(node and Node.is_node(node), "simplify: expected Node")
+
 	if node:is_leaf() then return node end
+
+	local k = node.kind
+	local acc = Acc.get(k)
+
+	if acc and not node.a and not node.b then
+		return node
+	end
 
 	local a = simplify(node.a)
 	local b = node.b and simplify(node.b)
-	local k = node.kind
 
 	if k == "add" then
 		return simplify_add(a, b)
@@ -192,7 +201,7 @@ simplify = function(node)
 	else
 		local n = {}
 		for key, v in pairs(node) do n[key] = v end
-		n.a = a
+		if a then n.a = a end
 		if b then n.b = b end
 		return setmetatable(n, Node)
 	end

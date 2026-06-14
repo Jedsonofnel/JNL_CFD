@@ -330,21 +330,44 @@ divide_binary = function(quotient, divisor)
 	if d:is_one() then return q end
 	if q:is_zero() then return q end
 
-	assert(q.rank == 0, string.format("divide quotient: rank must be 0 (scalar), got %d", q.rank))
-	assert(d.rank == 0, string.format("divide diviser: rank must be 0 (scalar), got %d", d.rank))
+	if q.rank == 0 and d.rank ~= 0 then
+		error(rank_mismatch_msg(q, d, "/"))
+	end
+
+	if d.rank ~= 0 and q.rank ~= d.rank then
+		error(rank_mismatch_msg(q, d, "/"))
+	end
 
 	if q:is_anon_const() and d:is_anon_const() then
 		return new_const(q.a / d.a)
 	end
 
-	if q.kind == "div" then
-		return setmetatable({ kind = "div", a = q.a, b = multiply_binary(q.b, d), rank = 0 }, Node)
-	end
-	if d.kind == "div" then
-		return setmetatable({ kind = "div", a = multiply_binary(q, d.b), b = d.a, rank = 0 }, Node)
+	local rank = q.rank
+
+	if q.kind == "div" and d.rank == 0 then
+		return setmetatable({
+			kind = "div",
+			a = q.a,
+			b = multiply_binary(q.b, d),
+			rank = rank,
+		}, Node)
 	end
 
-	return setmetatable({ kind = "div", a = q, b = d, rank = 0 }, Node)
+	if d.kind == "div" and d.rank == 0 then
+		return setmetatable({
+			kind = "div",
+			a = multiply_binary(q, d.b),
+			b = d.a,
+			rank = rank,
+		}, Node)
+	end
+
+	return setmetatable({
+		kind = "div",
+		a = q,
+		b = d,
+		rank = rank,
+	}, Node)
 end
 
 --
@@ -392,7 +415,7 @@ local function multiply(...)
 	return result
 end
 
----Divide this node by another (both must be rank-0).
+---Divide this node by another (both must be same-rank or divisor is scalar).
 ---@param  ... Node|number
 ---@return Node
 local function divide(...)
@@ -488,14 +511,17 @@ function Node:__mul(...)
 end
 
 ---Divide this node by one or more nodes in left-to-right order.
----Both quotient and divisor must be rank-0 (scalar).
+---
+---The divisor must be scalar or have the same rank as the quotient.
 ---@param ... Node|number
 ---@return Node
 function Node:divide(...)
 	return divide(self, ...)
 end
 
----Division operator: node / other. Both operands must be rank-0.
+---Division operator: node / other.
+---
+---The divisor must be scalar or have the same rank as the quotient.
 ---@param ... Node|number
 ---@return Node
 function Node:__div(...)

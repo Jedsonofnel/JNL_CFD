@@ -145,23 +145,30 @@ h.describe("resolve: scale distributes", function()
 	end)
 end)
 
-h.describe("resolve: grad produces grad_i nodes", function()
-	h.it("grad(scalar) resolves to vector of grad_i nodes", function()
+h.describe("resolve: grad resolves to gradient component symbols", function()
+	h.it("grad(scalar) resolves to vector of grad_<field>_<axis> symbols", function()
 		local p  = Node.scalar("p")
 		local gp = ops.grad(p)
+
 		h.expect(gp.rank).equals(1)
+
 		local r = resolve.resolve(gp, 2)
+
 		h.expect(#r).equals(2)
-		h.expect(r[1].kind).equals("grad_i")
-		h.expect(r[2].kind).equals("grad_i")
+		h.expect(r[1].kind).equals("symbol")
+		h.expect(r[2].kind).equals("symbol")
+		h.expect(r[1].name).equals("grad_p_x")
+		h.expect(r[2].name).equals("grad_p_y")
 	end)
 
-	h.it("grad_i index is correct", function()
-		local p  = Node.scalar("p")
-		local gp = ops.grad(p)
-		local r  = resolve.resolve(gp, 2)
-		h.expect(r[1].index).equals(1)
-		h.expect(r[2].index).equals(2)
+	h.it("grad(scalar) resolves to three component symbols in 3D", function()
+		local p = Node.scalar("p")
+		local r = resolve.resolve(ops.grad(p), 3)
+
+		h.expect(#r).equals(3)
+		h.expect(r[1].name).equals("grad_p_x")
+		h.expect(r[2].name).equals("grad_p_y")
+		h.expect(r[3].name).equals("grad_p_z")
 	end)
 end)
 
@@ -200,5 +207,73 @@ h.describe("resolve: ndims validation", function()
 	h.it("ndims=4 errors", function()
 		local p = Node.scalar("p")
 		h.expect(function() resolve.resolve(p, 4) end).throws()
+	end)
+end)
+
+h.describe("resolve: componentwise division", function()
+	h.it("vector / scalar resolves each component over scalar", function()
+		local U = Node.vector("U")
+		local a = Node.scalar("a")
+
+		local r = resolve.resolve(U / a, 2)
+
+		h.expect(#r).equals(2)
+
+		h.expect(r[1].kind).equals("div")
+		h.expect(r[1].rank).equals(0)
+		h.expect(r[1].a.name).equals("U_x")
+		h.expect(r[1].b.name).equals("a")
+
+		h.expect(r[2].kind).equals("div")
+		h.expect(r[2].rank).equals(0)
+		h.expect(r[2].a.name).equals("U_y")
+		h.expect(r[2].b.name).equals("a")
+	end)
+
+	h.it("vector / vector resolves componentwise", function()
+		local U = Node.vector("U")
+		local D = Node.vector("D")
+
+		local r = resolve.resolve(U / D, 2)
+
+		h.expect(#r).equals(2)
+
+		h.expect(r[1].kind).equals("div")
+		h.expect(r[1].rank).equals(0)
+		h.expect(r[1].a.name).equals("U_x")
+		h.expect(r[1].b.name).equals("D_x")
+
+		h.expect(r[2].kind).equals("div")
+		h.expect(r[2].rank).equals(0)
+		h.expect(r[2].a.name).equals("U_y")
+		h.expect(r[2].b.name).equals("D_y")
+	end)
+
+	h.it("3D vector / vector resolves all components", function()
+		local U = Node.vector("U")
+		local D = Node.vector("D")
+
+		local r = resolve.resolve(U / D, 3)
+
+		h.expect(#r).equals(3)
+		h.expect(r[1].b.name).equals("D_x")
+		h.expect(r[2].b.name).equals("D_y")
+		h.expect(r[3].b.name).equals("D_z")
+	end)
+end)
+
+h.describe("resolve: SIMPLE correction expression", function()
+	h.it("resolves cV * grad(p_prime) / U:diag() componentwise", function()
+		local nb      = require("jnl.fvm.nabla")
+
+		local U       = Node.vector("U")
+		local p_prime = Node.scalar("p_prime")
+
+		local expr    = U - nb.cV() * ops.grad(p_prime) / U:diag()
+		local r       = resolve.resolve(expr, 2)
+
+		h.expect(#r).equals(2)
+		h.expect(r[1].rank).equals(0)
+		h.expect(r[2].rank).equals(0)
 	end)
 end)

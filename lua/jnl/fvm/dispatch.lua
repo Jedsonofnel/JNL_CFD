@@ -146,7 +146,7 @@ end
 
 D.divergence = function(case, inst)
 	local fn = inst.integrated == false and B.divergence_v or B.divergence_i
-	fn(case.mesh, field(case, inst.face_normal), field(case, inst.out))
+	fn(case.mesh, field(case, inst.flux), field(case, inst.out))
 end
 
 D.divergence_c = function(case, inst)
@@ -281,8 +281,11 @@ end
 
 D.su_fs = function(case, inst)
 	local src = inst.src == "__coeff" and case.exec.coeff or field(case, inst.src)
-	local fn  = inst.volumetric and B.su_v_fs or B.su_i_fs
-	fn(sys(case, inst.field), case.mesh, inst.scale, src)
+	if inst.volumetric then
+		B.su_v_fs(sys(case, inst.field), case.mesh, inst.scale, src)
+	else
+		B.su_i_fs(sys(case, inst.field), case.mesh, inst.scale, src)
+	end
 end
 
 D.sp_k = function(case, inst)
@@ -297,8 +300,11 @@ end
 
 D.sp_fs = function(case, inst)
 	local src = inst.src == "__coeff" and case.exec.coeff or field(case, inst.src)
-	local fn  = inst.volumetric and B.sp_v_fs or B.sp_i_fs
-	fn(sys(case, inst.field), case.mesh, inst.scale, src)
+	if inst.volumetric then
+		B.sp_v_fs(sys(case, inst.field), case.mesh, inst.scale, src)
+	else
+		B.sp_i_fs(sys(case, inst.field), case.mesh, inst.scale, src)
+	end
 end
 
 --

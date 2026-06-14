@@ -74,6 +74,15 @@ function Inst.comment(text)
 	return new("comment", { text = text or "", level = "abstract" })
 end
 
+---@param text string?
+function Inst.section(text)
+	return new("comment", {
+		text = text or "",
+		section = true,
+		level = "concrete",
+	})
+end
+
 ---@param field string
 ---@param value number
 function Inst.fill(field, value)
@@ -81,9 +90,9 @@ function Inst.fill(field, value)
 end
 
 ---@param field string
----@param implicit boolean?
+---@param implicit boolean? True for compiler-inserted evaluates; false for user-scheduled evaluates.
 function Inst.evaluate(field, implicit)
-	implicit = implicit or true
+	if implicit == nil then implicit = true end
 	return new("evaluate", { field = field, implicit = implicit, level = "abstract" })
 end
 
@@ -141,7 +150,7 @@ end
 
 -- sum a face-normal scalar field over faces -> cell scalar
 function Inst.divergence(face_normal_field, out)
-	return new("divergence", { face_normal = face_normal_field, out = out })
+	return new("divergence", { flux = face_normal_field, out = out })
 end
 
 -- divergence from cell vector components - calls jnl_divergence_i_c / jnl_divergence_v_c
@@ -441,7 +450,8 @@ end
 local abstract_fmt = {}
 
 function abstract_fmt.comment(f)
-	return ";; " .. (f.text or "")
+	local prefix = f.section and "\n;; " or ";; "
+	return prefix .. (f.text or "")
 end
 
 function abstract_fmt.fill(f)
@@ -503,11 +513,16 @@ local concrete_fmt = {}
 -- infrastructure
 
 function concrete_fmt.comment(f)
-	return ";; " .. (f.text or "")
+	local prefix = f.section and "\n;; " or ";; "
+	return prefix .. (f.text or "")
 end
 
 function concrete_fmt.sys_reset(f, _)
 	return string.format("SYS_RESET     %s", f.field)
+end
+
+function concrete_fmt.zero(f, _)
+	return string.format("ZERO          %s", f.field)
 end
 
 function concrete_fmt.fill(f, _)
@@ -557,7 +572,7 @@ end
 function concrete_fmt.divergence(f, _)
 	local mode = f.integrated and "[i]" or "[v]"
 	return string.format("DIVERGENCE %-4s %s -> %s",
-		mode, f.face_normal, f.out)
+		mode, f.flux, f.out)
 end
 
 function concrete_fmt.divergence_c(f, _)

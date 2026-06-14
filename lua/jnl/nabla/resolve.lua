@@ -253,6 +253,16 @@ resolve_component = function(node, i, ndims)
 		})
 	end
 
+	if k == "div" then
+		local q = resolve_component(node.a, i, ndims)
+
+		if node.b.rank == 0 then
+			return Node.divide(q, resolve_scalar(node.b, ndims))
+		end
+
+		return Node.divide(q, resolve_component(node.b, i, ndims))
+	end
+
 	if k == "scale" then
 		-- a is rank-0 coefficient, b is rank-1 field
 		return Node.multiply(resolve_scalar(node.a, ndims),
@@ -297,11 +307,13 @@ resolve_component = function(node, i, ndims)
 		return mk({ kind = "laplacian", a = resolve_component(node.a, i, ndims), rank = 0 })
 	end
 
-	-- grad(scalar)ᵢ = ∂φ/∂xᵢ — explicit source, not an implicit FVM op
+	-- grad(scalar)_i = precomputed gradient component field
 	if k == "grad" then
 		assert(node.a.rank == 0,
 			"resolve_component: grad of vector produces rank-2, use resolve_component_2d")
-		return mk({ kind = "grad_i", a = node.a, b = const(i), index = i, rank = 0 })
+		assert(node.a.kind == "symbol" and node.a.name,
+			"resolve_component: grad source must be a named scalar field")
+		return sym0(Mangle.grad(node.a.name, AXES[i]))
 	end
 
 	-- divergence of rank-2 → rank-1: component i
@@ -359,6 +371,16 @@ resolve_component_2d = function(node, i, j, ndims)
 			b = resolve_component_2d(node.b, i, j, ndims),
 			rank = 0
 		})
+	end
+
+	if k == "div" then
+		local q = resolve_component_2d(node.a, i, j, ndims)
+
+		if node.b.rank == 0 then
+			return Node.divide(q, resolve_scalar(node.b, ndims))
+		end
+
+		return Node.divide(q, resolve_component_2d(node.b, i, j, ndims))
 	end
 
 	if k == "scale" then
@@ -425,11 +447,12 @@ resolve_component_2d = function(node, i, j, ndims)
 	end
 
 	if k == "grad" then
-		-- (∇U)ᵢⱼ = ∂Uᵢ/∂xⱼ  (gradient tensor convention: row=field, col=direction)
 		assert(node.a.rank == 1,
 			"resolve_component_2d: grad of non-vector")
 		local Ui = resolve_component(node.a, i, ndims)
-		return mk({ kind = "grad_i", a = Ui, b = const(j), index = j, rank = 0 })
+		assert(Ui.kind == "symbol" and Ui.name,
+			"resolve_component_2d: grad source must resolve to a named component field")
+		return sym0(Mangle.grad(Ui.name, AXES[j]))
 	end
 
 	if k == "laplacian" then

@@ -224,6 +224,10 @@ end)
 
 h.describe("Node arithmetic: division", function()
 	local s = Node.scalar("p")
+	local q = Node.scalar("q")
+	local v = Node.vector("U")
+	local w = Node.vector("D")
+	local t = Node.tensor("T")
 
 	h.it("x / 1 returns x", function()
 		h.expect(s / Node.const(1)).equals(s)
@@ -245,9 +249,55 @@ h.describe("Node arithmetic: division", function()
 		h.expect(function() return s / Node.const(0) end).throws()
 	end)
 
-	h.it("vector / scalar errors", function()
-		local v = Node.vector("U")
-		h.expect(function() return v / s end).throws()
+	h.it("scalar / scalar creates rank-0 div", function()
+		local n = s / q
+		h.expect(n.kind).equals("div")
+		h.expect(n.rank).equals(0)
+		h.expect(n.a).equals(s)
+		h.expect(n.b).equals(q)
+	end)
+
+	h.it("vector / scalar creates rank-1 div", function()
+		local n = v / s
+		h.expect(n.kind).equals("div")
+		h.expect(n.rank).equals(1)
+		h.expect(n.a).equals(v)
+		h.expect(n.b).equals(s)
+	end)
+
+	h.it("vector / vector creates rank-1 componentwise div", function()
+		local n = v / w
+		h.expect(n.kind).equals("div")
+		h.expect(n.rank).equals(1)
+		h.expect(n.a).equals(v)
+		h.expect(n.b).equals(w)
+	end)
+
+	h.it("tensor / scalar creates rank-2 div", function()
+		local n = t / s
+		h.expect(n.kind).equals("div")
+		h.expect(n.rank).equals(2)
+		h.expect(n.a).equals(t)
+		h.expect(n.b).equals(s)
+	end)
+
+	h.it("scalar / vector errors", function()
+		h.expect(function() return s / v end).throws()
+	end)
+
+	h.it("vector / tensor errors", function()
+		h.expect(function() return v / t end).throws()
+	end)
+
+	h.it("tensor / vector errors", function()
+		h.expect(function() return t / v end).throws()
+	end)
+
+	h.it("chained scalar division combines denominator", function()
+		local n = s / q / Node.const(2)
+		h.expect(n.kind).equals("div")
+		h.expect(n.rank).equals(0)
+		h.expect(n.b.kind).equals("mul")
 	end)
 end)
 

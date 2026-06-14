@@ -64,10 +64,11 @@ end
 --- Run the full compilation pipeline in order.
 ---@param alg Algorithm
 ---@param reg Registry
-function M.compile(alg, reg)
+function M.compile(alg, reg, opts)
+	opts = opts or {}
 	Expand.expand(alg, reg)
 	Elab.elaborate(alg, reg)
-	Lower.lower(alg, reg)
+	Lower.lower(alg, reg, opts.ndims or 2)
 end
 
 return M
