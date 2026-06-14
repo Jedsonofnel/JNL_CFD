@@ -50,16 +50,33 @@ function Cfg.new(fields, default)
 	return setmetatable({ _f = fields or {}, _d = default or {} }, Cfg)
 end
 
----Hierarchical lookup: field-specific → alg-default → INST_DEFAULTS
----@param field string   field name, or "default" to skip per-field lookup
----@param key   string   config key
+local function component_parent(field)
+	if type(field) ~= "string" then return nil end
+
+	local parent, axis = field:match("^(.+)_([xyz])$")
+	if not parent then return nil end
+
+	return parent, axis
+end
+
+---Hierarchical lookup: field-specific -> vector-parent -> alg-default -> INST_DEFAULTS
+---@param field string Field name, or "default" to skip per-field lookup.
+---@param key string Config key.
 function Cfg:get(field, key)
 	if field ~= "default" then
 		local fc = self._f[field]
 		if fc and fc[key] ~= nil then return fc[key] end
+
+		local parent = component_parent(field)
+		if parent then
+			local pc = self._f[parent]
+			if pc and pc[key] ~= nil then return pc[key] end
+		end
 	end
+
 	local dc = self._d[key]
 	if dc ~= nil then return dc end
+
 	return INST_DEFAULTS[key]
 end
 

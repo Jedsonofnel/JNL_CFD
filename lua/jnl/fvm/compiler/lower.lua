@@ -84,6 +84,19 @@ local function emit_section(out, text)
 	out[#out + 1] = Inst.section(text)
 end
 
+local function outer_flux_child(a, b)
+	if a.kind == "mwi" then return a, b end
+	if b.kind == "mwi" then return b, a end
+
+	local a_sym = a.kind == "symbol"
+	local b_sym = b.kind == "symbol"
+
+	if a_sym and not b_sym then return b, a end
+	if b_sym and not a_sym then return a, b end
+
+	return a, b
+end
+
 --
 -- div_cell substitution
 --
@@ -240,6 +253,8 @@ end
 -- eval_expr/apply_correction instruction reads them.
 --
 
+local emit_eval_scalar
+
 local function resolve_eval_scalar(ctx, node)
 	local r = Resolve.resolve(node, ctx.ndims)
 	r = resolve_div_cells(r, ctx)
@@ -309,7 +324,91 @@ local function emit_grad_prereqs(out, node, ctx, emitted)
 	end
 end
 
-local function emit_eval_scalar(out, field, node, ctx, emitted_grad)
+local function find_expr_face_flux(ctx, node)
+	for name, entry in pairs(ctx.elab.face_flux or {}) do
+		if entry.kind == "expr" and entry.node == node then
+			return name, entry
+		end
+	end
+	return nil, nil
+end
+
+local function face_flux_for_node(ctx, node)
+	if node.kind == "mwi" then
+		local name = Mangle.accessor("mwi", node)
+		return name, ctx.elab.face_flux[name]
+	end
+
+	if node.kind == "symbol" then
+		local name = mangle_facen_sym(node.name)
+		return name, ctx.elab.face_flux[name]
+	end
+
+	return find_expr_face_flux(ctx, node)
+end
+
+local function emit_face_flux_fresh(out, flux_name, ctx, fresh)
+	fresh = fresh or {}
+
+	if fresh[flux_name] then return end
+
+	local ff = ctx.elab.face_flux[flux_name]
+	assert(ff, "lower: no face_flux entry for '" .. tostring(flux_name) .. "'")
+
+	if ff.kind == "symbol" then
+		out[#out + 1] = Inst.face_normal_c(ff.comps[1], ff.comps[2], flux_name)
+	elseif ff.kind == "expr" then
+		local nodes = resolve_eval_components(ctx, ff.node)
+		local emitted_grad = {}
+
+		emit_eval_scalar(out, ff.vec_x, nodes[1], ctx, emitted_grad)
+		emit_eval_scalar(out, ff.vec_y, nodes[2], ctx, emitted_grad)
+
+		out[#out + 1] = Inst.face_normal_c(ff.vec_x, ff.vec_y, flux_name)
+	elseif ff.kind == "mwi" then
+		local Uentry = ctx.reg:entry(ff.U)
+		local pentry = ctx.reg:entry(ff.p)
+		local comps  = ff.comps or vec_comps(ctx, ff.U, Uentry)
+		local grads  = ff.grad or grad_names(ctx, ff.p)
+		local diags  = ff.diag or {
+			mangle_diag(comps[1]),
+			mangle_diag(comps[2]),
+		}
+
+		if Uentry then
+			emit_ghost_fills_vector(out, comps, Uentry.bcs)
+		end
+
+		if pentry then
+			emit_ghost_fills_scalar(out, ff.p, pentry.bcs)
+		end
+
+		out[#out + 1] = grad_inst(ctx, ff.p)
+		out[#out + 1] = Inst.rhie_chow(
+			comps[1], comps[2],
+			ff.p,
+			grads[1], grads[2],
+			diags[1], diags[2],
+			flux_name)
+	else
+		error("lower: unsupported face_flux kind '" .. tostring(ff.kind) .. "'")
+	end
+
+	fresh[flux_name] = true
+end
+
+local function emit_div_source(out, field, div_node, sign, ctx, fresh)
+	local flux_name, _ = face_flux_for_node(ctx, div_node.a)
+	assert(flux_name, "lower: no face flux for divergence source " .. tostring(div_node.a))
+
+	emit_face_flux_fresh(out, flux_name, ctx, fresh)
+
+	local tmp_name = Elab.mangle_div_flux(flux_name)
+	out[#out + 1] = Inst.divergence(flux_name, tmp_name)
+	out[#out + 1] = Inst.su_fs(field, -sign, tmp_name, false, div_node)
+end
+
+emit_eval_scalar = function(out, field, node, ctx, emitted_grad)
 	assert(Node.is_node(node),
 		"lower: eval scalar for '" .. tostring(field) .. "' is not a Node")
 	assert(node.rank == 0,
@@ -357,6 +456,10 @@ local function emit_div_cell_inst(out, dname, entry, ctx)
 			flux_entry.vec_x, flux_entry.vec_y, true)
 		if ctx.ndims == 3 then inst.uz = flux_entry.vec_z end
 		out[#out + 1] = inst
+	elseif entry.flux_kind == "mwi" and flux_entry then
+		local fresh = {}
+		emit_face_flux_fresh(out, entry.flux_name, ctx, fresh)
+		out[#out + 1] = Inst.divergence(entry.flux_name, dname)
 	else
 		error(string.format("div_cell: unsupported flux kind '%s' for '%s'",
 			tostring(entry.flux_kind), dname))
@@ -373,41 +476,6 @@ local function emit_div_cell_prereqs(out, ctx)
 	for _, dname in ipairs(names) do
 		emit_div_cell_inst(out, dname, ctx.elab.fields[dname], ctx)
 	end
-end
-
---
--- face_normal_c prereq emission for bare div(symbol) in equations
---
-
-local function collect_symbol_div_interps(node, ctx, out, emitted)
-	if not node or not Node.is_node(node) then return end
-
-	if node.kind == "divergence" then
-		local inner = node.a
-		if inner.kind == "symbol" then
-			local facen = mangle_facen_sym(inner.name)
-			if not emitted[facen] then
-				local fe = ctx.elab.face_flux[facen]
-				if fe and fe.kind == "symbol" then
-					local inst = Inst.face_normal_c(fe.comps[1], fe.comps[2], facen)
-					if ctx.ndims == 3 then inst.uz = fe.comps[3] end
-					out[#out + 1] = inst
-					emitted[facen] = true
-				end
-			end
-		end
-	end
-
-	collect_symbol_div_interps(node.a, ctx, out, emitted)
-	collect_symbol_div_interps(node.b, ctx, out, emitted)
-end
-
-local function emit_symbol_div_interps(out, entry, ctx)
-	if not entry.equation then return end
-
-	local emitted = {}
-	collect_symbol_div_interps(entry.equation.lhs, ctx, out, emitted)
-	collect_symbol_div_interps(entry.equation.rhs, ctx, out, emitted)
 end
 
 --
@@ -485,13 +553,6 @@ local function emit_su_const_comp(out, comp, value, sign)
 	out[#out + 1] = Inst.su_k(comp, -sign * value, true)
 end
 
-local function emit_su_div_coeff(out, comp, div_node, sign)
-	local mwi_name = Mangle.accessor("mwi", div_node.a)
-	local tmp_name = "__mwidiv_" .. mwi_name
-	out[#out + 1] = Inst.divergence(mwi_name, tmp_name)
-	out[#out + 1] = Inst.su_fs(comp, -sign, tmp_name, false, div_node)
-end
-
 --
 -- Equation walkers
 -- Forward declarations needed for mutually recursive add/sub handlers.
@@ -502,18 +563,18 @@ local walk_vector_node
 
 local walk_scalar = {}
 
-walk_scalar.add = function(out, node, field, sign, ctx)
-	walk_scalar_node(out, node.a, field, sign, ctx)
-	walk_scalar_node(out, node.b, field, sign, ctx)
+walk_scalar.add = function(out, node, field, sign, ctx, fresh)
+	walk_scalar_node(out, node.a, field, sign, ctx, fresh)
+	walk_scalar_node(out, node.b, field, sign, ctx, fresh)
 end
 
-walk_scalar.sub = function(out, node, field, sign, ctx)
-	walk_scalar_node(out, node.a, field, sign, ctx)
-	walk_scalar_node(out, node.b, field, -sign, ctx)
+walk_scalar.sub = function(out, node, field, sign, ctx, fresh)
+	walk_scalar_node(out, node.a, field, sign, ctx, fresh)
+	walk_scalar_node(out, node.b, field, -sign, ctx, fresh)
 end
 
-walk_scalar.neg = function(out, node, field, sign, ctx)
-	walk_scalar_node(out, node.a, field, -sign, ctx)
+walk_scalar.neg = function(out, node, field, sign, ctx, fresh)
+	walk_scalar_node(out, node.a, field, -sign, ctx, fresh)
 end
 
 walk_scalar.ddt = function(out, node, field, sign, ctx)
@@ -528,24 +589,17 @@ walk_scalar.laplacian = function(out, node, field, sign, ctx)
 	emit_lap_comp(out, field, coeff, sign, ctx)
 end
 
-walk_scalar.divergence = function(out, node, field, sign, ctx)
+walk_scalar.divergence = function(out, node, field, sign, ctx, fresh)
 	local inner = node.a
 
 	if inner.kind == "scale" and inner.b.kind == "mwi" and inner.a.name == field then
-		emit_div_comp(out, field, Mangle.accessor("mwi", inner.b), nil, sign, ctx)
+		local flux_name = Mangle.accessor("mwi", inner.b)
+		emit_face_flux_fresh(out, flux_name, ctx, fresh.face)
+		emit_div_comp(out, field, flux_name, nil, sign, ctx)
 		return
 	end
 
-	if inner.kind == "mwi" then
-		emit_su_div_coeff(out, field, node, sign)
-		return
-	end
-
-	if inner.kind == "symbol" then
-		local facen = mangle_facen_sym(inner.name)
-		out[#out + 1] = Inst.su_fs(field, -sign, facen, false, node)
-		return
-	end
+	emit_div_source(out, field, node, sign, ctx, fresh.face)
 end
 
 walk_scalar.symbol = function(out, node, field, sign, _)
@@ -563,18 +617,18 @@ walk_scalar.grad = function() end
 
 local walk_vector = {}
 
-walk_vector.add = function(out, node, field, comps, sign, ctx)
-	walk_vector_node(out, node.a, field, comps, sign, ctx)
-	walk_vector_node(out, node.b, field, comps, sign, ctx)
+walk_vector.add = function(out, node, field, comps, sign, ctx, fresh)
+	walk_vector_node(out, node.a, field, comps, sign, ctx, fresh)
+	walk_vector_node(out, node.b, field, comps, sign, ctx, fresh)
 end
 
-walk_vector.sub = function(out, node, field, comps, sign, ctx)
-	walk_vector_node(out, node.a, field, comps, sign, ctx)
-	walk_vector_node(out, node.b, field, comps, -sign, ctx)
+walk_vector.sub = function(out, node, field, comps, sign, ctx, fresh)
+	walk_vector_node(out, node.a, field, comps, sign, ctx, fresh)
+	walk_vector_node(out, node.b, field, comps, -sign, ctx, fresh)
 end
 
-walk_vector.neg = function(out, node, field, comps, sign, ctx)
-	walk_vector_node(out, node.a, field, comps, -sign, ctx)
+walk_vector.neg = function(out, node, field, comps, sign, ctx, fresh)
+	walk_vector_node(out, node.a, field, comps, -sign, ctx, fresh)
 end
 
 walk_vector.ddt = function(out, node, _, comps, sign, ctx)
@@ -591,14 +645,22 @@ walk_vector.laplacian = function(out, node, _, comps, sign, ctx)
 	end
 end
 
-walk_vector.divergence = function(out, node, _, comps, sign, ctx)
+walk_vector.divergence = function(out, node, _, comps, sign, ctx, fresh)
 	local inner = node.a
+
 	if inner.kind == "outer" then
-		local flux_node = inner.a.kind == "mwi" and inner.a or inner.b
-		local flux = Mangle.accessor("mwi", flux_node)
+		local flux_node = outer_flux_child(inner.a, inner.b)
+		local flux_name = face_flux_for_node(ctx, flux_node)
+
+		assert(flux_name,
+			"lower: no face flux for vector divergence " .. tostring(flux_node))
+
+		emit_face_flux_fresh(out, flux_name, ctx, fresh.face)
+
 		for _, comp in ipairs(comps) do
-			emit_div_comp(out, comp, flux, nil, sign, ctx)
+			emit_div_comp(out, comp, flux_name, nil, sign, ctx)
 		end
+
 		return
 	end
 end
@@ -629,24 +691,24 @@ walk_vector.constant = function(out, node, _, comps, sign, _)
 	end
 end
 
-walk_scalar_node = function(out, node, field, sign, ctx)
+walk_scalar_node = function(out, node, field, sign, ctx, fresh)
 	if not node then return end
 
 	local fn = walk_scalar[node.kind]
 	if fn then
-		fn(out, node, field, sign, ctx)
+		fn(out, node, field, sign, ctx, fresh)
 	else
 		out[#out + 1] = Inst.new("comment",
 			{ text = "lower: unhandled scalar node '" .. tostring(node.kind) .. "'" })
 	end
 end
 
-walk_vector_node = function(out, node, field, comps, sign, ctx)
+walk_vector_node = function(out, node, field, comps, sign, ctx, fresh)
 	if not node then return end
 
 	local fn = walk_vector[node.kind]
 	if fn then
-		fn(out, node, field, comps, sign, ctx)
+		fn(out, node, field, comps, sign, ctx, fresh)
 	else
 		out[#out + 1] = Inst.new("comment",
 			{ text = "lower: unhandled vector node '" .. tostring(node.kind) .. "'" })
@@ -659,19 +721,15 @@ end
 
 local function expand_solve_scalar(out, field, entry, ctx)
 	emit_ghost_fills_scalar(out, field, entry.bcs)
-	emit_symbol_div_interps(out, entry, ctx)
 	emit_div_cell_prereqs(out, ctx)
 
 	out[#out + 1] = Inst.sys_reset(field)
 
-	walk_scalar_node(out, entry.equation.lhs, field, 1, ctx)
-	walk_scalar_node(out, entry.equation.rhs, field, -1, ctx)
+	local fresh = { face = {} }
+	walk_scalar_node(out, entry.equation.lhs, field, 1, ctx, fresh)
+	walk_scalar_node(out, entry.equation.rhs, field, -1, ctx, fresh)
 
 	emit_bc_close_scalar(out, field, entry.bcs)
-
-	if ctx.elab.fields[mangle_diag(field)] then
-		out[#out + 1] = Inst.diag_snapshot(field, mangle_diag(field))
-	end
 end
 
 local function expand_solve_vector(out, field, entry, ctx)
@@ -684,25 +742,30 @@ local function expand_solve_vector(out, field, entry, ctx)
 		out[#out + 1] = Inst.sys_reset(comp)
 	end
 
-	walk_vector_node(out, entry.equation.lhs, field, comps, 1, ctx)
-	walk_vector_node(out, entry.equation.rhs, field, comps, -1, ctx)
-
-	for _, comp in ipairs(comps) do
-		if ctx.elab.fields[mangle_diag(comp)] then
-			out[#out + 1] = Inst.diag_snapshot(comp, mangle_diag(comp))
-		end
-	end
+	local fresh = { face = {} }
+	walk_vector_node(out, entry.equation.lhs, field, comps, 1, ctx, fresh)
+	walk_vector_node(out, entry.equation.rhs, field, comps, -1, ctx, fresh)
 end
 
 local function emit_solve_linalg(out, field, entry, ctx)
 	if entry.rank == 0 then
 		out[#out + 1] = Inst.under_relax(field)
+
+		if ctx.elab.fields[mangle_diag(field)] then
+			out[#out + 1] = Inst.diag_snapshot(field, mangle_diag(field))
+		end
+
 		out[#out + 1] = Inst.solve_linalg(field)
 		return
 	end
 
 	for _, comp in ipairs(vec_comps(ctx, field, entry)) do
 		out[#out + 1] = Inst.under_relax(comp)
+
+		if ctx.elab.fields[mangle_diag(comp)] then
+			out[#out + 1] = Inst.diag_snapshot(comp, mangle_diag(comp))
+		end
+
 		out[#out + 1] = Inst.solve_linalg(comp)
 	end
 end

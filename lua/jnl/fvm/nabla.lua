@@ -65,6 +65,9 @@ nb.register_accessor("cV", {
 	pretty = function()
 		return "cV"
 	end,
+	mangle = function()
+		return "cV"
+	end,
 })
 
 nb.register_accessor("diag", {

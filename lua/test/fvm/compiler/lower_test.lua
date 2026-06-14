@@ -90,6 +90,39 @@ local function make_div_sym_rhs_mwi()
 	return reg, alg
 end
 
+local function make_div_sym_rhs_bare()
+	local reg = nb.new_registry("div-bare-rhs")
+	local U   = reg:vector("U")
+	local phi = reg:scalar("phi")
+
+	phi:governed_by(
+		nb.laplacian(phi):equals(nb.div(U)))
+
+	reg:validate()
+
+	local alg = Alg.new("div-bare-rhs")
+	alg:loop(function(a) a:solve(phi) end, 1)
+
+	return reg, alg
+end
+
+local function make_div_expr_rhs()
+	local reg = nb.new_registry("div-expr-rhs")
+	local U   = reg:vector("U")
+	local W   = reg:vector("W")
+	local phi = reg:scalar("phi")
+
+	phi:governed_by(
+		nb.laplacian(phi):equals(nb.div(U + W)))
+
+	reg:validate()
+
+	local alg = Alg.new("div-expr-rhs")
+	alg:loop(function(a) a:solve(phi) end, 1)
+
+	return reg, alg
+end
+
 local function compile(reg, alg)
 	C.compile(alg, reg)
 	return alg
@@ -181,6 +214,15 @@ h.describe("lower: divergence paired with deferred correction", function()
 		end
 		h.expect(found).is_truthy()
 	end)
+
+	h.it("rhie_chow is emitted before div_k uses mwi flux", function()
+		local rc = pos_of(main, op("rhie_chow"))
+		local dk = pos_of(main, op("div_k"))
+
+		h.expect(rc).is_not_nil()
+		h.expect(dk).is_not_nil()
+		h.expect(rc).is_less_than(dk)
+	end)
 end)
 
 --
@@ -260,6 +302,121 @@ h.describe("lower: div(mwi) explicit source on RHS (pressure correction)", funct
 
 	h.it("no eval_coeff emitted (divergence is not a pointwise expression)", function()
 		h.expect(has_any(main, op("eval_coeff"))).is_falsy()
+	end)
+
+	h.it("rhie_chow is emitted before divergence uses mwi face field", function()
+		local rc = pos_of(main, op("rhie_chow"))
+		local dv = pos_of(main, op("divergence"))
+
+		h.expect(rc).is_not_nil()
+		h.expect(dv).is_not_nil()
+		h.expect(rc).is_less_than(dv)
+	end)
+
+	h.it("rhie_chow writes the same mwi face field consumed by divergence", function()
+		local rc_out
+		for _, inst in ipairs(main) do
+			if inst.op == "rhie_chow" then
+				rc_out = inst.out
+				break
+			end
+		end
+
+		for _, inst in ipairs(main) do
+			if inst.op == "divergence" then
+				h.expect(rc_out).equals(inst.flux)
+				h.expect(inst.flux).equals("mwi_U_p")
+				return
+			end
+		end
+
+		h.expect(false).is_truthy("divergence not found")
+	end)
+end)
+
+h.describe("lower: bare div(U) explicit source", function()
+	local main
+
+	h.before_each(function()
+		local reg, alg = make_div_sym_rhs_bare()
+		compile(reg, alg)
+		main = alg.main
+	end)
+
+	h.it("uses face_normal_c, not rhie_chow", function()
+		h.expect(has_any(main, op("face_normal_c"))).is_truthy()
+		h.expect(has_any(main, op("rhie_chow"))).is_falsy()
+	end)
+
+	h.it("face_normal_c precedes divergence", function()
+		local fn = pos_of(main, op("face_normal_c"))
+		local dv = pos_of(main, op("divergence"))
+
+		h.expect(fn).is_not_nil()
+		h.expect(dv).is_not_nil()
+		h.expect(fn).is_less_than(dv)
+	end)
+
+	h.it("divergence output is used as integrated su_fs source", function()
+		local dv_out
+
+		for _, inst in ipairs(main) do
+			if inst.op == "divergence" then
+				dv_out = inst.out
+				h.expect(inst.flux).equals("__facen_U")
+				h.expect(inst.out).equals("__div_U")
+				break
+			end
+		end
+
+		h.expect(dv_out).is_not_nil()
+
+		for _, inst in ipairs(main) do
+			if inst.op == "su_fs" and inst.src == dv_out then
+				h.expect(inst.volumetric).is_falsy()
+				return
+			end
+		end
+
+		h.expect(false).is_truthy("su_fs using div(U) source not found")
+	end)
+
+	h.it("bare div(U) emits exactly one face_normal_c", function()
+		h.expect(count_if(main, op("face_normal_c"))).equals(1)
+	end)
+end)
+
+h.describe("lower: div(U + W) explicit source", function()
+	local main
+
+	h.before_each(function()
+		local reg, alg = make_div_expr_rhs()
+		compile(reg, alg)
+		main = alg.main
+	end)
+
+	h.it("evaluates vector cache components before face_normal_c", function()
+		local ex = pos_of(main, function(inst)
+			return inst.op == "eval_expr" and inst.field:find("^__vec_")
+		end)
+		local fn = pos_of(main, op("face_normal_c"))
+
+		h.expect(ex).is_not_nil()
+		h.expect(fn).is_not_nil()
+		h.expect(ex).is_less_than(fn)
+	end)
+
+	h.it("face_normal_c precedes divergence", function()
+		local fn = pos_of(main, op("face_normal_c"))
+		local dv = pos_of(main, op("divergence"))
+
+		h.expect(fn).is_not_nil()
+		h.expect(dv).is_not_nil()
+		h.expect(fn).is_less_than(dv)
+	end)
+
+	h.it("does not use rhie_chow for ordinary vector expression flux", function()
+		h.expect(has_any(main, op("rhie_chow"))).is_falsy()
 	end)
 end)
 
@@ -540,5 +697,19 @@ h.describe("lower: zero instruction", function()
 	h.it("zero has a concrete listing formatter", function()
 		h.expect(listing:find("?zero", 1, true)).is_nil()
 		h.expect(listing:find("ZERO          phi", 1, true)).is_not_nil()
+	end)
+end)
+
+h.describe("lower: vector config inheritance", function()
+	h.it("under-relaxed vector solve components inherit parent relax value", function()
+		local reg, alg = make_momentum()
+		alg:set_cfg("U", "relax", 0.7)
+
+		compile(reg, alg)
+
+		local listing = alg:instruction_listing()
+
+		h.expect(listing:find("UNDER_RELAX   U_x  alpha=0.7", 1, true)).is_not_nil()
+		h.expect(listing:find("UNDER_RELAX   U_y  alpha=0.7", 1, true)).is_not_nil()
 	end)
 end)

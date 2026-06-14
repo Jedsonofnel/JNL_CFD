@@ -22,13 +22,24 @@ local function make_ns_reg()
 	local U      = reg:vector("U")
 	local p      = reg:scalar("p")
 	local pp     = reg:scalar("p_prime")
+
 	U:governed_by(
-		(nb.ddt(U) + nb.div(nb.outer(nb.mwi(U, p), U))):equals(
+		(nb.ddt(U) + nb.div(nb.outer(U:mwi(p), U))):equals(
 			nb.laplacian(nu_eff, U) - nb.grad(p)))
-	pp:governed_by(nb.laplacian(pp):equals(nb.div(nb.mwi(U, p))))
+
+	pp:governed_by(
+		nb.laplacian(pp):equals(nb.div(U:mwi(p))))
+
 	U:correction(U - nb.grad(pp))
-	k:governed_by((nb.ddt(k) + nb.div(nb.mwi(U, p) * k)):equals(nb.laplacian(nu_eff, k)))
-	omega:governed_by((nb.ddt(omega) + nb.div(nb.mwi(U, p) * omega)):equals(nb.laplacian(nu_eff, omega)))
+
+	k:governed_by(
+		(nb.ddt(k) + nb.div(U:mwi(p) * k)):equals(
+			nb.laplacian(nu_eff, k)))
+
+	omega:governed_by(
+		(nb.ddt(omega) + nb.div(U:mwi(p) * omega)):equals(
+			nb.laplacian(nu_eff, omega)))
+
 	reg:validate()
 	return reg, { U = U, p = p, pp = pp, k = k, omega = omega }
 end
@@ -44,6 +55,13 @@ local function build(reg, f)
 		a:solve(f.k)
 		a:solve(f.omega)
 	end, 100)
+
+	C.expand(alg, reg)
+	C.elaborate(alg, reg)
+	return alg
+end
+
+local function elaborate(reg, alg)
 	C.expand(alg, reg)
 	C.elaborate(alg, reg)
 	return alg
@@ -54,6 +72,25 @@ local function inv_has(elab, field, iname)
 		if v == iname then return true end
 	end
 	return false
+end
+
+local function list_has(list, value)
+	for _, v in ipairs(list or {}) do
+		if v == value then return true end
+	end
+	return false
+end
+
+local function only_div_cell(elab)
+	local found
+	for name, entry in pairs(elab.fields) do
+		if entry.kind == "div_cell" then
+			h.expect(found).is_nil("more than one div_cell found")
+			found = { name = name, entry = entry }
+		end
+	end
+	h.expect(found).is_not_nil("div_cell not found")
+	return found.name, found.entry
 end
 
 --
@@ -68,7 +105,7 @@ h.describe("elab: grad from grad() operator", function()
 		elab = build(reg, f).elaborated
 	end)
 
-	h.it("grad_p_x and grad_p_y registered from -grad(p) in momentum RHS", function()
+	h.it("grad_p_x and grad_p_y registered from -grad(p) and mwi(U,p)", function()
 		h.expect(elab.fields["grad_p_x"]).is_not_nil()
 		h.expect(elab.fields["grad_p_y"]).is_not_nil()
 	end)
@@ -132,14 +169,46 @@ h.describe("elab: MWI face field and diag snapshots", function()
 		h.expect(elab.fields["mwi_U_p"].kind).equals("mwi")
 	end)
 
+	h.it("mwi_U_p is also registered as a face_flux producer", function()
+		h.expect(elab.face_flux["mwi_U_p"]).is_not_nil()
+		h.expect(elab.face_flux["mwi_U_p"].kind).equals("mwi")
+		h.expect(elab.face_flux["mwi_U_p"].name).equals("mwi_U_p")
+	end)
+
 	h.it("mwi_U_p records U and p field names", function()
 		h.expect(elab.fields["mwi_U_p"].U).equals("U")
 		h.expect(elab.fields["mwi_U_p"].p).equals("p")
 	end)
 
-	h.it("__diag_U_x has kind=diag with source=U_x", function()
-		h.expect(elab.fields["__diag_U_x"].kind).equals("diag")
-		h.expect(elab.fields["__diag_U_x"].source).equals("U_x")
+	h.it("mwi_U_p depends on U components, pressure gradient, and momentum diagonals", function()
+		local deps = {}
+		for _, name in ipairs(elab.fields["mwi_U_p"].deps or {}) do
+			deps[name] = true
+		end
+
+		h.expect(deps["U_x"]).is_truthy()
+		h.expect(deps["U_y"]).is_truthy()
+		h.expect(deps["p"]).is_truthy()
+		h.expect(deps["grad_p_x"]).is_truthy()
+		h.expect(deps["grad_p_y"]).is_truthy()
+		h.expect(deps["diag_U_x"]).is_truthy()
+		h.expect(deps["diag_U_y"]).is_truthy()
+	end)
+
+	h.it("diag_U_x has kind=diag with source=U_x", function()
+		h.expect(elab.fields["diag_U_x"].kind).equals("diag")
+		h.expect(elab.fields["diag_U_x"].source).equals("U_x")
+	end)
+
+	h.it("mwi_U_p face_flux carries the same dependency list", function()
+		local ff = elab.face_flux["mwi_U_p"]
+		h.expect(list_has(ff.deps, "U_x")).is_truthy()
+		h.expect(list_has(ff.deps, "U_y")).is_truthy()
+		h.expect(list_has(ff.deps, "p")).is_truthy()
+		h.expect(list_has(ff.deps, "grad_p_x")).is_truthy()
+		h.expect(list_has(ff.deps, "grad_p_y")).is_truthy()
+		h.expect(list_has(ff.deps, "diag_U_x")).is_truthy()
+		h.expect(list_has(ff.deps, "diag_U_y")).is_truthy()
 	end)
 end)
 
@@ -161,6 +230,16 @@ h.describe("elab: invalidation edges", function()
 		h.expect(inv_has(elab, "p", "grad_p_y")).is_truthy()
 	end)
 
+	h.it("pressure gradient fields invalidate mwi_U_p", function()
+		h.expect(inv_has(elab, "grad_p_x", "mwi_U_p")).is_truthy()
+		h.expect(inv_has(elab, "grad_p_y", "mwi_U_p")).is_truthy()
+	end)
+
+	h.it("momentum diagonal fields invalidate mwi_U_p", function()
+		h.expect(inv_has(elab, "diag_U_x", "mwi_U_p")).is_truthy()
+		h.expect(inv_has(elab, "diag_U_y", "mwi_U_p")).is_truthy()
+	end)
+
 	h.it("p does not invalidate grad_p_prime fields", function()
 		h.expect(inv_has(elab, "p", "grad_p_prime_x")).is_falsy()
 		h.expect(inv_has(elab, "p", "grad_p_prime_y")).is_falsy()
@@ -168,8 +247,8 @@ h.describe("elab: invalidation edges", function()
 
 	h.it("U invalidates mwi_U_p and both diag snapshots", function()
 		h.expect(inv_has(elab, "U", "mwi_U_p")).is_truthy()
-		h.expect(inv_has(elab, "U", "__diag_U_x")).is_truthy()
-		h.expect(inv_has(elab, "U", "__diag_U_y")).is_truthy()
+		h.expect(inv_has(elab, "U", "diag_U_x")).is_truthy()
+		h.expect(inv_has(elab, "U", "diag_U_y")).is_truthy()
 	end)
 
 	h.it("k does not invalidate mwi_U_p", function()
@@ -182,63 +261,124 @@ h.describe("elab: invalidation edges", function()
 end)
 
 --
--- div_cell from coefficient position
+-- div_cell from bare vector divergence
 --
 
-h.describe("elab: div(U) in coefficient position registers div_cell", function()
+h.describe("elab: div(U) in coefficient position registers symbol div_cell", function()
 	local elab
 
 	h.before_each(function()
 		local reg = nb.new_registry("dc-elab")
 		local U   = reg:vector("U")
 		local phi = reg:scalar("phi")
-		phi:governed_by(nb.laplacian(nb.div(U) * phi):equals(nb.const(0)))
+
+		phi:governed_by(
+			nb.laplacian(nb.div(U) * phi):equals(nb.const(0)))
+
 		reg:validate()
+
 		local alg = Alg.new("dc-elab")
 		alg:loop(function(a) a:solve(phi) end, 1)
-		C.expand(alg, reg)
-		C.elaborate(alg, reg)
-		elab = alg.elaborated
+
+		elab = elaborate(reg, alg).elaborated
 	end)
 
 	h.it("a div_cell entry is registered", function()
-		local found = false
-		for _, entry in pairs(elab.fields) do
-			if entry.kind == "div_cell" then found = true end
-		end
-		h.expect(found).is_truthy()
+		local _, entry = only_div_cell(elab)
+		h.expect(entry.kind).equals("div_cell")
 	end)
 
 	h.it("div_cell stores a non-nil div_node back-reference", function()
-		for _, entry in pairs(elab.fields) do
-			if entry.kind == "div_cell" then
-				h.expect(entry.div_node).is_not_nil()
-			end
-		end
+		local _, entry = only_div_cell(elab)
+		h.expect(entry.div_node).is_not_nil()
 	end)
 
-	h.it("div_cell flux_kind is symbol (div of a bare vector)", function()
-		for _, entry in pairs(elab.fields) do
-			if entry.kind == "div_cell" then
-				h.expect(entry.flux_kind).equals("symbol")
-			end
-		end
+	h.it("div_cell flux_kind is symbol", function()
+		local _, entry = only_div_cell(elab)
+		h.expect(entry.flux_kind).equals("symbol")
 	end)
 
-	h.it("U_x and U_y components are allocated in man.cell", function()
-		local man  = elab -- retrieve via alg
-		-- rerun to have alg in scope
-		local reg2 = nb.new_registry("dc-elab2")
-		local U2   = reg2:vector("U")
-		local phi2 = reg2:scalar("phi")
-		phi2:governed_by(nb.laplacian(nb.div(U2) * phi2):equals(nb.const(0)))
-		reg2:validate()
-		local alg2 = Alg.new("dc-elab2")
-		alg2:loop(function(a) a:solve(phi2) end, 1)
-		C.expand(alg2, reg2)
-		C.elaborate(alg2, reg2)
-		h.expect(alg2.manifest.cell["U_x"]).is_not_nil()
-		h.expect(alg2.manifest.cell["U_y"]).is_not_nil()
+	h.it("div_cell uses a symbol face flux, not mwi", function()
+		local _, entry = only_div_cell(elab)
+		h.expect(entry.flux_name).equals("__facen_U")
+		h.expect(elab.face_flux["__facen_U"].kind).equals("symbol")
+		h.expect(elab.fields["mwi_U_p"]).is_nil()
+	end)
+end)
+
+--
+-- div_cell from vector expression divergence
+--
+
+h.describe("elab: div(U + W) registers vector cache and expr face flux", function()
+	local alg
+	local elab
+
+	h.before_each(function()
+		local reg = nb.new_registry("expr-div-elab")
+		local U   = reg:vector("U")
+		local W   = reg:vector("W")
+		local phi = reg:scalar("phi")
+
+		phi:governed_by(
+			nb.laplacian(nb.div(U + W) * phi):equals(nb.const(0)))
+
+		reg:validate()
+
+		alg = Alg.new("expr-div-elab")
+		alg:loop(function(a) a:solve(phi) end, 1)
+
+		elab = elaborate(reg, alg).elaborated
+	end)
+
+	h.it("div_cell flux_kind is expr", function()
+		local _, entry = only_div_cell(elab)
+		h.expect(entry.flux_kind).equals("expr")
+	end)
+
+	h.it("expr face flux owns vec_cache component fields", function()
+		local _, entry = only_div_cell(elab)
+		local ff = elab.face_flux[entry.flux_name]
+
+		h.expect(ff.kind).equals("expr")
+		h.expect(ff.vec_x).is_not_nil()
+		h.expect(ff.vec_y).is_not_nil()
+
+		h.expect(elab.fields[ff.vec_x]).is_not_nil()
+		h.expect(elab.fields[ff.vec_y]).is_not_nil()
+
+		h.expect(elab.fields[ff.vec_x].kind).equals("vec_cache")
+		h.expect(elab.fields[ff.vec_y].kind).equals("vec_cache")
+	end)
+
+	h.it("expr face flux depends on U and W components", function()
+		local _, entry = only_div_cell(elab)
+		local ff = elab.face_flux[entry.flux_name]
+
+		h.expect(list_has(ff.deps, "U_x")).is_truthy()
+		h.expect(list_has(ff.deps, "U_y")).is_truthy()
+		h.expect(list_has(ff.deps, "W_x")).is_truthy()
+		h.expect(list_has(ff.deps, "W_y")).is_truthy()
+	end)
+
+	h.it("manifest allocates expr face flux and vec_cache fields", function()
+		local _, entry = only_div_cell(elab)
+		local ff = elab.face_flux[entry.flux_name]
+		local man = alg.manifest
+
+		h.expect(man.face[entry.flux_name]).is_not_nil()
+		h.expect(man.cell[ff.vec_x]).is_not_nil()
+		h.expect(man.cell[ff.vec_y]).is_not_nil()
+	end)
+
+	h.it("U and W invalidate the expr face flux and vec caches", function()
+		local _, entry = only_div_cell(elab)
+		local ff = elab.face_flux[entry.flux_name]
+
+		h.expect(inv_has(elab, "U", entry.flux_name)).is_truthy()
+		h.expect(inv_has(elab, "W", entry.flux_name)).is_truthy()
+		h.expect(inv_has(elab, "U_x", ff.vec_x)).is_truthy()
+		h.expect(inv_has(elab, "W_y", ff.vec_y)).is_truthy()
 	end)
 end)
 
@@ -250,6 +390,7 @@ h.describe("elab: manifest scratch depth", function()
 	h.it("max_cell_scratch is at least 9 (BiCGSTAB minimum)", function()
 		local reg, f = make_ns_reg()
 		local alg    = build(reg, f)
+
 		h.expect(alg.manifest.max_cell_scratch).is_not_nil()
 		h.expect(alg.manifest.max_cell_scratch).is_greater_than(8)
 	end)
@@ -260,14 +401,18 @@ h.describe("elab: manifest scratch depth", function()
 		local phi  = reg:scalar("phi")
 		local psi  = reg:scalar("psi")
 		local expr = (phi * psi + phi * psi) / (phi * psi - phi * psi + a)
+
 		psi:governed_by(nb.laplacian(psi):equals(a))
 		phi:defined_as(expr)
+
 		reg:validate()
-		local alg2 = Alg.new("deep")
-		alg2:loop(function(a2) a2:solve(psi) end, 10)
-		C.expand(alg2, reg)
-		C.elaborate(alg2, reg)
-		h.expect(alg2.manifest.max_cell_scratch).is_greater_than(8)
+
+		local alg = Alg.new("deep")
+		alg:loop(function(a2) a2:solve(psi) end, 10)
+
+		elaborate(reg, alg)
+
+		h.expect(alg.manifest.max_cell_scratch).is_greater_than(8)
 	end)
 end)
 
@@ -276,11 +421,13 @@ end)
 --
 
 h.describe("elab: manifest cell and face allocations", function()
+	local alg
 	local man
 
 	h.before_each(function()
 		local reg, f = make_ns_reg()
-		man = build(reg, f).manifest
+		alg = build(reg, f)
+		man = alg.manifest
 	end)
 
 	h.it("grad fields are in man.cell", function()
@@ -290,8 +437,8 @@ h.describe("elab: manifest cell and face allocations", function()
 	end)
 
 	h.it("diag snapshot fields are in man.cell", function()
-		h.expect(man.cell["__diag_U_x"]).is_not_nil()
-		h.expect(man.cell["__diag_U_y"]).is_not_nil()
+		h.expect(man.cell["diag_U_x"]).is_not_nil()
+		h.expect(man.cell["diag_U_y"]).is_not_nil()
 	end)
 
 	h.it("mwi_U_p appears exactly once in man.face", function()
@@ -300,5 +447,10 @@ h.describe("elab: manifest cell and face allocations", function()
 			if name == "mwi_U_p" then count = count + 1 end
 		end
 		h.expect(count).equals(1)
+	end)
+
+	h.it("__mwidiv_mwi_U_p is allocated as an integrated cell source", function()
+		h.expect(man.cell["__mwidiv_mwi_U_p"]).is_not_nil()
+		h.expect(man.cell["__mwidiv_mwi_U_p"].ghost).is_falsy()
 	end)
 end)

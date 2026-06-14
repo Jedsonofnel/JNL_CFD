@@ -176,6 +176,18 @@ local function alloc_prev_fields(self)
 	end
 end
 
+local function bind_geometry_fields(self)
+	local cV = self.field_map.cV
+
+	if not cV then
+		cV = self.ctx:field()
+		self.field_map.cV = cV
+	end
+
+	self.ctx:real_view_of(cV):copy_from(self.mesh:cell_vol_vec())
+	Bindings.ghost_copy(self.mesh, cV)
+end
+
 local function seed_initial_values(self)
 	for _, name in ipairs(self.compiled.reg:prognostics()) do
 		local entry = self.compiled.reg:entry(name)
@@ -227,6 +239,7 @@ function Case:allocate()
 	self.allocated = true
 	self.exec = build_exec()
 
+	bind_geometry_fields(self)
 	seed_initial_values(self)
 	alloc_prev_fields(self)
 end
@@ -271,6 +284,7 @@ function Case:reconcile()
 		self.ctx_manifest = { n_sys = ns }
 		self.field_map    = new_map
 		self.sys_map      = new_sys
+		bind_geometry_fields(self)
 	else
 		-- common case: just allocate any fields the new manifest needs
 		-- that don't already exist. Existing fields keep their data.
@@ -291,6 +305,7 @@ function Case:reconcile()
 		end
 	end
 
+	bind_geometry_fields(self)
 	alloc_prev_fields(self)
 end
 
@@ -630,18 +645,16 @@ function Case:step()
 		error("case: coroutine error at iter " .. self.iter .. ": " .. tostring(event), 2)
 	end
 
-	if event.kind == "iteration_end" then
+	if event and event.kind == "iteration_end" then
 		handle_iteration_end(self, event)
 	end
 
-	-- check AFTER handle_iteration_end: a mode-switch action may have replaced
-	-- self.coro via reset(); checking self.coro avoids the stale local reference
 	if coroutine.status(self.coro) == "dead" then
 		self.done = true
 		return { kind = "done", iter = self.iter, reason = self.stop_reason }
 	end
 
-	return event
+	return event or { kind = "running" }
 end
 
 --- Run the solver to completion.

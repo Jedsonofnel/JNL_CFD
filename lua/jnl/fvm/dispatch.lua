@@ -34,10 +34,9 @@ local function coeff_vec(case, c)
 	return field(case, c)
 end
 
--- Evaluate a Nabla expression into a cell scratch vec.
 local function eval_cell(case, node)
 	local compiled_ud = Eval.compile(node, case.field_map)
-	return compiled_ud:eval(case.ctx:cell_pool(), case.mesh:n_cells())
+	return compiled_ud:eval(case.ctx:cell_pool(), case.mesh:n_total_cells())
 end
 
 --
@@ -92,6 +91,7 @@ D.eval_expr = function(case, inst)
 		node = entry.expr
 	end
 	if not node then return end
+
 	local result = eval_cell(case, node)
 	local dst = case.field_map[inst.field]
 	if dst then dst:copy_from(result) end
@@ -106,6 +106,7 @@ end
 
 D.apply_correction = function(case, inst)
 	if not inst.node then return end
+
 	local delta = eval_cell(case, inst.node)
 	field(case, inst.field):axpy(1.0, delta)
 end
