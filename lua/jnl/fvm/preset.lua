@@ -80,11 +80,11 @@ function M.reg.stokes(opts)
 	)
 
 	p_prime:governed_by(
-		nb.laplacian(inv_d, p_prime):equals(nb.div(nb.mwi(U, p)))
+		nb.laplacian(inv_d * p_prime):equals(-nb.div(nb.mwi(U, p)))
 	)
 
-	U:correction(U - nb.cV() * nb.grad(p_prime) / U:diag())
-	p:correction(p + alpha_p * p_prime)
+	U:correction(-nb.cV() * nb.grad(p_prime) / U:diag())
+	p:correction(alpha_p * p_prime)
 
 	return reg
 end

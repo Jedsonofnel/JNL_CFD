@@ -556,7 +556,7 @@ function concrete_fmt.eval_coeff(f, _)
 end
 
 function concrete_fmt.apply_correction(f, _)
-	return string.format("CORRECT       %s <- %s", f.field, tostring(f.node))
+	return string.format("CORRECT       %s <- %s + %s", f.field, f.field, tostring(f.node))
 end
 
 function concrete_fmt.diag_snapshot(f, _)
@@ -587,13 +587,13 @@ function concrete_fmt.face_normal_c(f, _)
 end
 
 function concrete_fmt.divergence(f, _)
-	local mode = f.integrated and "[i]" or "[v]"
+	local mode = f.integrated == false and "[v]" or "[i]"
 	return string.format("DIVERGENCE %-4s %s -> %s",
 		mode, f.flux, f.out)
 end
 
 function concrete_fmt.divergence_c(f, _)
-	local mode = f.integrated and "[i]" or "[v]"
+	local mode = f.integrated == false and "[v]" or "[i]"
 	return string.format("DIVERGENCE_C %-4s (%s,%s) -> %s",
 		mode, f.ux, f.uy, f.field)
 end

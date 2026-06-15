@@ -559,7 +559,7 @@ appropriate, and user-facing output.
 
    Functions
 
-      jnl.fvm.compiler.compile(alg: Algorithm, reg: Registry)
+      jnl.fvm.compiler.compile(alg: Algorithm, reg: Registry, opts)
          Run the full compilation pipeline in order.
 
       jnl.fvm.compiler.elaborate(alg: Algorithm, reg: Registry)
@@ -600,28 +600,33 @@ appropriate, and user-facing output.
 
 ## jnl.fvm.preset
 
-   (no module description)
+   Separate reg.* and alg.* namespaces: combine freely.
+
+   local reg = preset.reg.stokes({ nu = 0.01 }) local alg = preset.alg.simple() local c
+   = Case.new(reg, alg, mesh, bcs)
+
+   local reg = preset.reg.ns({ nu = 1e-3 }) local alg = preset.alg.piso({ n_correctors =
+   3 })
+
+   All reg.* presets produce: U (vector), p (scalar), p_prime (scalar), inv_d (scalar).
+   All alg.* presets expect U, p, and p_prime.
 
    Functions
 
       jnl.fvm.preset.alg.pimple(opts?: AlgOpts) -> Algorithm
-         PIMPLE (PISO within a SIMPLE outer loop).
+         PIMPLE.
 
-         PISO-style inner pressure corrections within a SIMPLE outer convergence loop.
-         More robust than either alone for hard-to-converge flows; also the standard for
-         unsteady cases that need to reach steady state efficiently. max_iters controls
-         outer correctors; n_correctors controls inner sweeps.
+         PISO-style inner pressure corrections inside a SIMPLE outer loop. max_iters
+         controls outer correctors; n_correctors controls inner sweeps.
 
       jnl.fvm.preset.alg.piso(opts?: AlgOpts) -> Algorithm
-         PISO (Pressure Implicit with Splitting of Operators).
+         PISO.
 
          Multiple pressure-correction steps per momentum solve. Suited to unsteady
-         time-accurate flows; no velocity under-relaxation. Pair with
-         Case:run_transient() or begin_timestep() / end_timestep().
-         opts                n_correctors controls inner correction sweeps (default 2).
+         time-accurate flows; no velocity under-relaxation.
 
       jnl.fvm.preset.alg.simple(opts?: AlgOpts) -> Algorithm
-         SIMPLE (Semi-Implicit Method for Pressure-Linked Equations).
+         SIMPLE.
 
          One pressure correction per outer iteration. Standard choice for steady laminar
          flows. Velocity is under-relaxed; pressure is updated explicitly.
@@ -632,10 +637,10 @@ appropriate, and user-facing output.
          Uses Rhie-Chow momentum-weighted interpolation for the convective flux.
 
       jnl.fvm.preset.reg.stokes(opts?: RegOpts) -> Registry
-         Stokes (viscous, no convection) incompressible flow.
+         Stokes incompressible flow.
 
          Exact for plane Couette and Poiseuille flow. Prefer over ns when convective
-         acceleration is negligible: avoids the mwi outer-product assembly.
+         acceleration is negligible.
 
 
 ## jnl.fvm.rules
@@ -1536,6 +1541,8 @@ appropriate, and user-facing output.
          Inst:eval_expr(field, node)
 
          Inst:evaluate(field: string, implicit: boolean?)
+            implicit            True for compiler-inserted evaluates; false for
+                                user-scheduled evaluates.
 
          Inst:face_interp(field, out)
 
@@ -1582,6 +1589,8 @@ appropriate, and user-facing output.
          number, tkind: number, tval: number)
 
          Inst:rhie_chow(Ux, Uy, p, grad_px, grad_py, diag_x, diag_y, out)
+
+         Inst:section(text: string?)
 
          Inst:solve(field)
 
@@ -2198,8 +2207,9 @@ appropriate, and user-facing output.
             Divergence of a vector field, producing a scalar.
 
          Node:divide(...: Node|number) -> Node
-            Divide this node by one or more nodes in left-to-right order. Both quotient
-            and divisor must be rank-0 (scalar).
+            Divide this node by one or more nodes in left-to-right order.
+
+            The divisor must be scalar or have the same rank as the quotient.
 
          Node:dot(b: Node) -> Node
             Inner (dot) product of two vectors, producing a scalar.

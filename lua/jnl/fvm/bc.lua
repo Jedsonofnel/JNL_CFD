@@ -251,6 +251,19 @@ function FieldSpec:default(spec) return self.parent:default(spec) end
 ---@return BCSet
 function FieldSpec:build() return self.parent:build() end
 
+-- In FieldSpec:
+
+--- Apply a BC descriptor to all patches not already covered by an :on() call.
+---@param spec BCDescriptor BC descriptor.
+---@return BCFieldSpec self
+function FieldSpec:all(spec)
+	assert(type(spec) == "table", "FieldSpec:all: spec must be a BC descriptor table")
+	local entry = { patch = true }
+	for k, v in pairs(spec) do entry[k] = v end
+	self.list[#self.list + 1] = entry
+	return self
+end
+
 --
 -- BCSetBuilder
 --
@@ -297,6 +310,18 @@ end
 function Set:default(spec)
 	assert(type(spec) == "table", "Set:default: spec must be a BC descriptor table")
 	self.fallback = spec
+	return self
+end
+
+--- Apply a fallback BC to all otherwise-uncovered patches on the most recently
+--- declared field.
+---@param spec BCDescriptor BC descriptor.
+---@return BCSetBuilder self
+function Set:all(spec)
+	assert(type(spec) == "table", "Set:all: spec must be a BC descriptor table")
+	local last = self.order[#self.order]
+	assert(last, "Set:all: no field declared yet")
+	self.fields[last]:all(spec)
 	return self
 end
 
