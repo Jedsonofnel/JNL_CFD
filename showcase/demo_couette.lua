@@ -7,6 +7,7 @@ local E = require("jnl.mesh2d.edges")
 local Case = require("jnl.fvm.case")
 local ui = require("jnl.ui")
 local repl = require("jnl.repl")
+local Alg = require("jnl.fvm.algorithm")
 
 local P = E.PATCH
 local m = cart.build(0.25, 1.0, 4, 32)
@@ -24,17 +25,57 @@ local bcs = bc.new_set()
 	:default(bc.nograd())
 	:build()
 
+local function couette_stokes_only()
+	local Registry = require("jnl.nabla.registry")
+	local nb = require("jnl.fvm.nabla")
+
+	local reg = Registry.new("couette-stokes-only")
+	local nu = reg:const("nu", 1e-3)
+	local U = reg:vector("U")
+	local p = reg:scalar("p")
+
+	U:governed_by(
+		nb.laplacian(nu, U):equals(-nb.grad(p))
+	)
+
+	return reg
+end
+
+local function field_stats(c, name)
+	local f = c:field(name)
+
+	local n = f:norm_l2()
+	print(string.format("%s: norm_l2 = %.12e", name, n))
+
+	if f.min then print(string.format("%s: min     = %.12e", name, f:min())) end
+	if f.max then print(string.format("%s: max     = %.12e", name, f:max())) end
+	if f.mean then print(string.format("%s: mean    = %.12e", name, f:mean())) end
+end
+
 local function run()
-	local reg = preset.reg.stokes()
-	local alg = preset.alg.simple()
+	local reg = couette_stokes_only()
+	local alg = Alg.new("stokes-linear")
+		:loop(function(b)
+			b:solve("U")
+		end, 10)
+
+	alg:set_cfg("default", "solver", "bicgstab_dilu")
+	alg:set_cfg("U", "relax", 1.0)
+
 	local c = Case.new(reg, alg, m, bcs)
 
 	print(c.compiled.alg:instruction_listing())
 
-	ui.display_mesh(m)
-	ui.set_vector("U", "U_x", "U_y")
-	ui.view_field("U_x")
 	c:run()
+
+	ui.display_mesh(m)
+	ui.set_field("U_x", c:field("U_x"))
+	ui.view_field("U_x")
+
+	field_stats(c, "U_x")
+	field_stats(c, "U_y")
+	field_stats(c, "p")
+
 	return c
 end
 

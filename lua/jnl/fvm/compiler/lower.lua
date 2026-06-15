@@ -241,6 +241,27 @@ local function emit_bc_close_scalar(out, field, bcs)
 	end
 end
 
+local function emit_bc_close_vector(out, comps, bcs)
+	if not bcs then return end
+
+	local ux, uy = comps[1], comps[2]
+
+	for _, bc in ipairs(bcs) do
+		local k = bc.kind
+
+		if k == "dirichlet_v" then
+			out[#out + 1] = Inst.pclose_s_d(ux, bc.patch, bc.ux)
+			out[#out + 1] = Inst.pclose_s_d(uy, bc.patch, bc.uy)
+		elseif k == "neumann_v" then
+			out[#out + 1] = Inst.pclose_s_n(ux, bc.patch, bc.ux_gn)
+			out[#out + 1] = Inst.pclose_s_n(uy, bc.patch, bc.uy_gn)
+		elseif k == "nt_v" then
+			-- TODO: proper implicit normal/tangential vector closure.
+			-- Ghost fill is already handled by emit_ghost_fills_vector().
+		end
+	end
+end
+
 --
 -- Explicit eval/correct scalarisation
 --
@@ -745,6 +766,8 @@ local function expand_solve_vector(out, field, entry, ctx)
 	local fresh = { face = {} }
 	walk_vector_node(out, entry.equation.lhs, field, comps, 1, ctx, fresh)
 	walk_vector_node(out, entry.equation.rhs, field, comps, -1, ctx, fresh)
+
+	emit_bc_close_vector(out, comps, entry.bcs)
 end
 
 local function emit_solve_linalg(out, field, entry, ctx)

@@ -80,7 +80,7 @@ function M.reg.stokes(opts)
 	)
 
 	p_prime:governed_by(
-		nb.laplacian(inv_d, p_prime):equals(-nb.div(nb.mwi(U, p)))
+		nb.laplacian(inv_d, p_prime):equals(nb.div(nb.mwi(U, p)))
 	)
 
 	U:correction(U - nb.cV() * nb.grad(p_prime) / U:diag())
@@ -113,7 +113,7 @@ function M.reg.ns(opts)
 	)
 
 	p_prime:governed_by(
-		nb.laplacian(inv_d, p_prime):equals(-nb.div(U:mwi(p)))
+		nb.laplacian(inv_d, p_prime):equals(nb.div(U:mwi(p)))
 	)
 
 	U:correction(U - nb.cV() * nb.grad(p_prime) / U:diag())
@@ -148,7 +148,7 @@ function M.alg.simple(opts)
 			b:correct("U")
 			b:correct("p")
 		end, opts.max_iters)
-		:converge(Rules.residual_below("*", opts.tol))
+		:converge(Rules.change_below("*", opts.tol, 5))
 		:guard(Rules.nan_guard())
 
 	alg:set_cfg("default", "solver", opts.solver)
@@ -176,7 +176,7 @@ function M.alg.piso(opts)
 				ib:correct("p")
 			end, opts.n_correctors)
 		end, opts.max_iters)
-		:converge(Rules.residual_below("*", opts.tol))
+		:converge(Rules.change_below("*", opts.tol, 5))
 		:guard(Rules.nan_guard())
 
 	alg:set_cfg("default", "solver", opts.solver)
@@ -204,7 +204,7 @@ function M.alg.pimple(opts)
 				ib:correct("p")
 			end, opts.n_correctors)
 		end, opts.max_iters)
-		:converge(Rules.residual_below("*", opts.tol))
+		:converge(Rules.change_below("*", opts.tol, 5))
 		:guard(Rules.nan_guard())
 
 	alg:set_cfg("default", "solver", opts.solver)

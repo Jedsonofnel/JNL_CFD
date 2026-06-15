@@ -7,6 +7,7 @@ local Bindings = require("jnl.fvm.bindings")
 local Rules    = require("jnl.fvm.rules")
 local Sage     = require("jnl.sage")
 local Mesh2d   = require("jnl.mesh2d")
+local Node     = require("jnl.nabla.node")
 
 --- Iteration callback invoked at each outer solver iteration boundary.
 ---@alias CaseIterCallback fun(iter: integer, residuals: table<string, number>)
@@ -92,18 +93,94 @@ local function bcs_for(bcs, name)
 	return copy_list(fields[name] or {})
 end
 
-local function inject_bcs(reg, bcs, patch_names, patch_set, warnings)
+local function add_name(set, name)
+	if type(name) == "string" and name ~= "" then
+		set[name] = true
+	end
+end
+
+local function collect_bc_fields_from_node(reg, node, set)
+	if not node or not Node.is_node(node) then return end
+
+	if node.kind == "grad" and node.a and node.a.name then
+		add_name(set, node.a.name)
+	elseif node.kind == "mwi" then
+		if node.a and node.a.name then add_name(set, node.a.name) end
+		if node.b and node.b.name then add_name(set, node.b.name) end
+	end
+
+	collect_bc_fields_from_node(reg, node.a, set)
+	collect_bc_fields_from_node(reg, node.b, set)
+end
+
+local function collect_bc_field_names(reg)
+	local set = {}
+
 	for _, name in ipairs(reg:prognostics()) do
+		add_name(set, name)
+	end
+
+	reg:each(function(name, entry)
+		if entry.correction then
+			add_name(set, name)
+			collect_bc_fields_from_node(reg, entry.correction, set)
+		end
+
+		if entry.equation then
+			collect_bc_fields_from_node(reg, entry.equation.lhs, set)
+			collect_bc_fields_from_node(reg, entry.equation.rhs, set)
+		end
+
+		if entry.expr then
+			collect_bc_fields_from_node(reg, entry.expr, set)
+		end
+	end)
+
+	local names = {}
+	for name in pairs(set) do
 		local entry = reg:entry(name)
-		local raw   = bcs_for(bcs, name)
-		raw         = expand_wildcards(raw, patch_names)
+		if entry and (entry.rank == 0 or entry.rank == 1) then
+			names[#names + 1] = name
+		end
+	end
+
+	table.sort(names)
+	return names
+end
+
+local function default_bc_for(entry, patch)
+	if entry.rank == 1 then
+		return {
+			patch = patch,
+			kind = "neumann_v",
+			ux_gn = 0.0,
+			uy_gn = 0.0,
+		}
+	end
+
+	return {
+		patch = patch,
+		kind = "neumann_s",
+		grad_n = 0.0,
+	}
+end
+
+local function validate_bc_patch(field, i, bc, patch_names, patch_set)
+	if patch_set[bc.patch] then return end
+
+	error(string.format(
+		"case bcs['%s'][%d]: patch '%s' not found. Available: %s",
+		field, i, tostring(bc.patch), table.concat(patch_names, ", ")))
+end
+
+local function inject_bcs(reg, bcs, patch_names, patch_set, warnings)
+	for _, name in ipairs(collect_bc_field_names(reg)) do
+		local entry = reg:entry(name)
+		local raw = bcs_for(bcs, name)
+		raw = expand_wildcards(raw, patch_names)
 
 		for i, bc in ipairs(raw) do
-			if not patch_set[bc.patch] then
-				error(string.format(
-					"case bcs['%s'][%d]: patch '%s' not found. Available: %s",
-					name, i, bc.patch, table.concat(patch_names, ", ")))
-			end
+			validate_bc_patch(name, i, bc, patch_names, patch_set)
 		end
 
 		local covered = {}
@@ -114,7 +191,7 @@ local function inject_bcs(reg, bcs, patch_names, patch_set, warnings)
 				warnings[#warnings + 1] = string.format(
 					"field '%s' patch '%s': no bc specified, defaulting to neumann 0",
 					name, pname)
-				raw[#raw + 1] = { patch = pname, kind = "neumann_s", grad_n = 0.0 }
+				raw[#raw + 1] = default_bc_for(entry, pname)
 			end
 		end
 

@@ -123,6 +123,10 @@ local function make_div_expr_rhs()
 	return reg, alg
 end
 
+--
+-- Helpers
+--
+
 local function compile(reg, alg)
 	C.compile(alg, reg)
 	return alg
@@ -159,6 +163,24 @@ end
 
 local function op(name) return function(i) return i.op == name end end
 local function op_f(name, f) return function(i) return i.op == name and i.field == f end end
+
+local function before(phase, a, b)
+	local ia = pos_of(phase, a)
+	local ib = pos_of(phase, b)
+
+	h.expect(ia).is_not_nil()
+	h.expect(ib).is_not_nil()
+	h.expect(ia).is_less_than(ib)
+end
+
+local function op_field_patch(op_name, field, patch)
+	return function(inst)
+		return inst.op == op_name
+			and inst.field == field
+			and inst.patch == patch
+	end
+end
+
 
 --
 -- Scalar solve structure
@@ -248,6 +270,65 @@ h.describe("lower: vector solve per-component expansion", function()
 	h.it("ddt and div emitted once per component (2 each in 2D)", function()
 		h.expect(count_if(main, op("ddt_k"))).equals(2)
 		h.expect(count_if(main, op("div_k"))).equals(2)
+	end)
+
+	h.it("emits vector BC closes for component systems", function()
+		local reg, alg = make_momentum()
+
+		local Uentry = reg:entry("U")
+		Uentry.bcs = {
+			{ kind = "dirichlet_v", patch = "north", ux = 1.0,    uy = 0.0 },
+			{ kind = "dirichlet_v", patch = "south", ux = 0.0,    uy = 0.0 },
+			{ kind = "neumann_v",   patch = "east",  ux_gn = 0.0, uy_gn = 0.0 },
+			{ kind = "neumann_v",   patch = "west",  ux_gn = 0.0, uy_gn = 0.0 },
+		}
+
+		compile(reg, alg)
+		local main = alg.main
+
+		h.expect(has_any(main, op_field_patch("patch_s_close_d", "U_x", "north"))).is_truthy()
+		h.expect(has_any(main, op_field_patch("patch_s_close_d", "U_y", "north"))).is_truthy()
+		h.expect(has_any(main, op_field_patch("patch_s_close_d", "U_x", "south"))).is_truthy()
+		h.expect(has_any(main, op_field_patch("patch_s_close_d", "U_y", "south"))).is_truthy()
+
+		h.expect(has_any(main, op_field_patch("patch_s_close_n", "U_x", "east"))).is_truthy()
+		h.expect(has_any(main, op_field_patch("patch_s_close_n", "U_y", "east"))).is_truthy()
+	end)
+
+	h.it("vector BC closes precede component under_relax", function()
+		local reg, alg = make_momentum()
+
+		reg:entry("U").bcs = {
+			{ kind = "dirichlet_v", patch = "north", ux = 1.0, uy = 0.0 },
+		}
+
+		compile(reg, alg)
+		local main = alg.main
+
+		before(main,
+			op_field_patch("patch_s_close_d", "U_x", "north"),
+			op_f("under_relax", "U_x"))
+
+		before(main,
+			op_field_patch("patch_s_close_d", "U_y", "north"),
+			op_f("under_relax", "U_y"))
+	end)
+
+	h.it("ghost-fills pressure before grad(p) in momentum solve", function()
+		local reg, alg = make_momentum()
+
+		reg:entry("p").bcs = {
+			{ kind = "neumann_s", patch = "north", grad_n = 0.0 },
+		}
+
+		compile(reg, alg)
+		local main = alg.main
+
+		before(main,
+			op_field_patch("patch_s_fill_n", "p", "north"),
+			function(inst)
+				return inst.op == "grad" and inst.field == "p"
+			end)
 	end)
 end)
 
