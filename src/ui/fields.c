@@ -1,5 +1,7 @@
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "fields.h"
 
 struct jnl_ui_field *field_map_find(struct jnl_ui_field_map *fm,
@@ -39,7 +41,7 @@ static void field_compute_range(struct jnl_ui_field *f)
 }
 
 struct jnl_ui_field *field_map_upsert(struct jnl_ui_field_map *fm,
-                                      const char *name, const double *data,
+                                      const char *name, const f64 *data,
                                       unsigned n)
 {
 	struct jnl_ui_field *f = field_map_find(fm, name);
@@ -60,7 +62,7 @@ struct jnl_ui_field *field_map_upsert(struct jnl_ui_field_map *fm,
 
 	if (f->n != n) {
 		free(f->data);
-		f->data = malloc((size_t)n * sizeof(double));
+		f->data = malloc((size_t)n * sizeof(f64));
 		if (!f->data) {
 			f->n = 0;
 			return NULL;
@@ -68,7 +70,7 @@ struct jnl_ui_field *field_map_upsert(struct jnl_ui_field_map *fm,
 		f->n = n;
 	}
 
-	memcpy(f->data, data, (size_t)n * sizeof(double));
+	memcpy(f->data, data, (size_t)n * sizeof(f64));
 	f->tex_dirty = true;
 	field_compute_range(f);
 	return f;
@@ -100,6 +102,36 @@ int field_map_upsert_vector(struct jnl_ui_field_map *fm, const char *name,
 	strncpy(v->fx, fx, JNL_UI_FIELD_NAME_CAP - 1);
 	strncpy(v->fy, fy, JNL_UI_FIELD_NAME_CAP - 1);
 	return 0;
+}
+
+unsigned field_map_vector_magnitude(const struct jnl_ui_field_map *fm,
+                                    const char *vector_name, f64 *out,
+                                    unsigned cap)
+{
+	const struct jnl_ui_vector *v = NULL;
+
+	for (i32 i = 0; i < fm->n_vectors; i++)
+		if (strncmp(fm->vectors[i].name, vector_name, JNL_UI_FIELD_NAME_CAP) ==
+		    0) {
+			v = &fm->vectors[i];
+			break;
+		}
+
+	if (!v)
+		return 0;
+
+	const struct jnl_ui_field *fx =
+	    field_map_find((struct jnl_ui_field_map *)fm, v->fx);
+	const struct jnl_ui_field *fy =
+	    field_map_find((struct jnl_ui_field_map *)fm, v->fy);
+	if (!fx || !fy || fx->n != fy->n || fx->n > cap)
+		return 0;
+
+	for (unsigned i = 0; i < fx->n; i++) {
+		f64 vx = fx->data[i], vy = fy->data[i];
+		out[i] = sqrt(vx * vx + vy * vy);
+	}
+	return fx->n;
 }
 
 void field_map_free(struct jnl_ui_field_map *fm)

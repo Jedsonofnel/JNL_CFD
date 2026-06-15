@@ -581,8 +581,6 @@ static int recv_set_field(int fd, struct jnl_ui_window_state *ws)
 	if (!f)
 		return -1;
 
-	snprintf(ws->status, sizeof ws->status, "Field '%s': n=%u  [%.4g, %.4g]",
-	         name, n, f->vmin, f->vmax);
 	return JNL_UI_MSG_SET_FIELD;
 }
 

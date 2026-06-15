@@ -41,17 +41,6 @@ local function couette_stokes_only()
 	return reg
 end
 
-local function field_stats(c, name)
-	local f = c:field(name)
-
-	local n = f:norm_l2()
-	print(string.format("%s: norm_l2 = %.12e", name, n))
-
-	if f.min then print(string.format("%s: min     = %.12e", name, f:min())) end
-	if f.max then print(string.format("%s: max     = %.12e", name, f:max())) end
-	if f.mean then print(string.format("%s: mean    = %.12e", name, f:mean())) end
-end
-
 local function run()
 	local reg = couette_stokes_only()
 	local alg = Alg.new("stokes-linear")
@@ -69,12 +58,10 @@ local function run()
 	c:run()
 
 	ui.display_mesh(m)
-	ui.set_field("U_x", c:field("U_x"))
+	ui.set_field("U_x", c:real_field("U_x"))
+	ui.set_field("U_y", c:real_field("U_y"))
+	ui.set_vector("U", "U_x", "U_y")
 	ui.view_field("U_x")
-
-	field_stats(c, "U_x")
-	field_stats(c, "U_y")
-	field_stats(c, "p")
 
 	return c
 end

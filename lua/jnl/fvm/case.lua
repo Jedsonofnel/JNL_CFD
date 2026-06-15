@@ -839,6 +839,17 @@ function Case:field(name)
 	return f
 end
 
+--- Return real view of field (no ghost cells)
+---@param name string Field name.
+---@return VecUD
+function Case:real_field(name)
+	assert(self.allocated,
+		"Case:real_field: not allocated; call run(), step(), or allocate() first")
+	local f = self.field_map[name]
+	assert(f, "Case:real_field: no field named '" .. tostring(name) .. "'")
+	return self.ctx:real_view_of(f)
+end
+
 --- Return the full field map.
 ---
 --- Errors if the case is not yet allocated.

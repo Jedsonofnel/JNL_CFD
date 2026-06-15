@@ -15,6 +15,7 @@
 #include "render.h"
 #include "fields.h"
 #include "colormap.h"
+#include "jnl/common.h"
 
 //
 // Signal
@@ -35,12 +36,12 @@ static void sig_quit(int s)
 //   sy = oy - scale * wy      (y-flip: world up = screen up)
 
 typedef struct {
-	double min_x, max_x, min_y, max_y;
+	f64 min_x, max_x, min_y, max_y;
 } ui_bbox;
 
 static ui_bbox bbox_empty(void) { return (ui_bbox){1e30, -1e30, 1e30, -1e30}; }
 
-static void bbox_expand(ui_bbox *b, double x, double y)
+static void bbox_expand(ui_bbox *b, f64 x, f64 y)
 {
 	if (x < b->min_x)
 		b->min_x = x;
@@ -91,32 +92,32 @@ static ui_bbox mesh_bbox_compute(const struct jnl_ui_mesh *m)
 }
 
 typedef struct {
-	double scale, ox, oy;
+	f64 scale, ox, oy;
 } view_xf;
 
 // Compute transform to fit bbox into the viewport with padding, then apply
 // zoom and pan from view.
 static view_xf make_xf(const struct jnl_ui_view *v, const ui_bbox *b)
 {
-	double pad = 20.0;
-	double vw = (double)v->width - 2.0 * pad;
-	double vh = (double)v->height - 2.0 * pad;
+	f64 pad = 20.0;
+	f64 vw = (f64)v->width - 2.0 * pad;
+	f64 vh = (f64)v->height - 2.0 * pad;
 
-	double bbw = b->max_x - b->min_x;
-	double bbh = b->max_y - b->min_y;
+	f64 bbw = b->max_x - b->min_x;
+	f64 bbh = b->max_y - b->min_y;
 	if (bbw < 1e-12)
 		bbw = 1.0;
 	if (bbh < 1e-12)
 		bbh = 1.0;
 
-	double fit_scale = (vw / bbw < vh / bbh) ? vw / bbw : vh / bbh;
-	double scale = fit_scale * v->zoom;
+	f64 fit_scale = (vw / bbw < vh / bbh) ? vw / bbw : vh / bbh;
+	f64 scale = fit_scale * v->zoom;
 
 	// Centre of bbox in screen space (before pan).
-	double cx_screen = pad + vw * 0.5;
-	double cy_screen = pad + vh * 0.5;
-	double cx_world = (b->min_x + b->max_x) * 0.5;
-	double cy_world = (b->min_y + b->max_y) * 0.5;
+	f64 cx_screen = pad + vw * 0.5;
+	f64 cy_screen = pad + vh * 0.5;
+	f64 cx_world = (b->min_x + b->max_x) * 0.5;
+	f64 cy_world = (b->min_y + b->max_y) * 0.5;
 
 	view_xf xf;
 	xf.scale = scale;
@@ -125,7 +126,7 @@ static view_xf make_xf(const struct jnl_ui_view *v, const ui_bbox *b)
 	return xf;
 }
 
-static Vector2 world_to_screen(view_xf xf, double wx, double wy)
+static Vector2 world_to_screen(view_xf xf, f64 wx, f64 wy)
 {
 	return (Vector2){
 	    (float)(xf.ox + xf.scale * wx),
@@ -141,10 +142,10 @@ static Vector2 world_to_screen(view_xf xf, double wx, double wy)
 
 #define TARGET_PX 2.0
 
-static int adaptive_n(const struct jnl_curve2d *c, double scale)
+static int adaptive_n(const struct jnl_curve2d *c, f64 scale)
 {
-	double len = jnl_curve2d_length(c);
-	double screen = scale * len;
+	f64 len = jnl_curve2d_length(c);
+	f64 screen = scale * len;
 	int n = (int)(screen / TARGET_PX);
 	if (n < 2)
 		n = 2;
@@ -361,14 +362,56 @@ void ui_window_run(int sock_fd)
 
 		if (field_dirty && ws.has_mesh && ws.mesh.has_tris &&
 		    ws.view.active_field[0] != '\0') {
-			struct jnl_ui_field *f =
-			    field_map_find(&ws.fields, ws.view.active_field);
+
+			const char *aname = ws.view.active_field;
+			struct jnl_ui_field *f = field_map_find(&ws.fields, aname);
+
 			if (f) {
 				render_upload_field(&rs, &ws.mesh.tris, f->data, f->n,
 				                    ws.mesh.n_vertices, ws.mesh.n_real_cells);
 				active_vmin = (float)f->vmin;
 				active_vmax = (float)f->vmax;
 				field_dirty = false;
+				snprintf(ws.status, sizeof ws.status, // ← add this
+				         "Field '%s': n=%u  [%.4g, %.4g]", aname, f->n, f->vmin,
+				         f->vmax);
+			} else {
+				// Try as a vector — compute magnitude into scratch
+				unsigned cap = ws.mesh.n_vertices > ws.mesh.n_real_cells
+				                   ? ws.mesh.n_vertices
+				                   : ws.mesh.n_real_cells;
+				double *mag = malloc(cap * sizeof(double));
+				if (mag) {
+					unsigned n =
+					    field_map_vector_magnitude(&ws.fields, aname, mag, cap);
+					if (n > 0) {
+						render_upload_field(&rs, &ws.mesh.tris, mag, n,
+						                    ws.mesh.n_vertices,
+						                    ws.mesh.n_real_cells);
+						// Compute range
+						double lo = mag[0], hi = mag[0];
+						for (unsigned i = 1; i < n; i++) {
+							if (mag[i] < lo)
+								lo = mag[i];
+							if (mag[i] > hi)
+								hi = mag[i];
+						}
+						if (lo == hi)
+							hi = lo + 1.0;
+						active_vmin = (float)lo;
+						active_vmax = (float)hi;
+						snprintf(ws.status, sizeof ws.status,
+						         "Vector '|%s|': n=%u  [%.4g, %.4g]", aname, n,
+						         lo, hi);
+						field_dirty = false;
+					} else {
+						snprintf(
+						    ws.status, sizeof ws.status,
+						    "Vector '%s': component fields not yet received",
+						    aname);
+					}
+					free(mag);
+				}
 			}
 		}
 
