@@ -72,7 +72,8 @@ function M.reg.stokes(opts)
 	local p_prime = reg:scalar("p_prime")
 
 	U:governed_by(
-		nb.laplacian(nu, U):equals(-p:grad())
+		nb.laplacian(nu * U)
+		:equals(nb.grad(-p))
 	)
 
 	local inv_d = reg:scalar("inv_d"):defined_as(

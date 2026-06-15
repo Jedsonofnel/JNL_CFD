@@ -109,6 +109,18 @@ end
 function M.grad(...)
 	local f = Node.multiply(...)
 	assert(f.rank <= 1, "grad only defined for scalar and vector fields")
+
+	-- Linearise: grad(-f) → -grad(f)
+	if f.kind == "neg" then
+		local g = M.grad(f.a)
+		return setmetatable({ kind = "neg", a = g, rank = g.rank }, Node)
+	end
+
+	-- Linearise: grad(c * f) → c * grad(f)  (c scalar, f scalar-or-vector)
+	if f.kind == "scale" or f.kind == "mul" then
+		return Node.multiply(f.a, M.grad(f.b))
+	end
+
 	return setmetatable({ kind = "grad", a = f, rank = f.rank + 1 }, Node)
 end
 

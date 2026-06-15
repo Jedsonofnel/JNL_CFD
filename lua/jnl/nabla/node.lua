@@ -156,6 +156,17 @@ function Node:is_minus_one()
 	return self.kind == "constant" and self.a == -1 and not self.name
 end
 
+---@return boolean, Node
+function Node:is_negative()
+	if self.kind == "neg" then
+		return true, self.a
+	end
+	if self:is_anon_const() and self.a < 0 then
+		return true, new_const(-self.a)
+	end
+	return false, self
+end
+
 ---Return the numeric value of a constant node, errors if different type
 ---@return number
 function Node:to_number()
@@ -288,8 +299,12 @@ multiply_binary = function(a, b)
 	if b:is_zero() then return b end
 	if b:is_one() then return a end
 
-	if a:is_minus_one() then return negate(b) end
-	if b:is_minus_one() then return negate(a) end
+	local a_neg, a_pos = a:is_negative()
+	local b_neg, b_pos = b:is_negative()
+
+	if a_neg and b_neg then return multiply_binary(a_pos, b_pos) end
+	if a_neg then return negate(multiply_binary(a_pos, b)) end
+	if b_neg then return negate(multiply_binary(a, b_pos)) end
 
 	if a:is_anon_const() and b:is_anon_const() then
 		return new_const(a.a * b.a)

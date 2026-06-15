@@ -301,6 +301,63 @@ h.describe("Node arithmetic: division", function()
 	end)
 end)
 
+h.describe("Node multiply: neg normalisation", function()
+	local a = Node.scalar("a")
+	local b = Node.scalar("b")
+	local s = Node.scalar("s")
+	local v = Node.vector("U")
+
+	h.it("(-a) * b wraps product in neg", function()
+		local n = (-a) * b
+		h.expect(n.kind).equals("neg")
+		h.expect(n.a.kind).equals("mul")
+		h.expect(n.a.a).equals(a)
+		h.expect(n.a.b).equals(b)
+	end)
+
+	h.it("a * (-b) wraps product in neg", function()
+		local n = a * (-b)
+		h.expect(n.kind).equals("neg")
+		h.expect(n.a.kind).equals("mul")
+		h.expect(n.a.a).equals(a)
+		h.expect(n.a.b).equals(b)
+	end)
+
+	h.it("(-a) * (-b) cancels to plain product", function()
+		local n = (-a) * (-b)
+		h.expect(n.kind).equals("mul")
+		h.expect(n.a).equals(a)
+		h.expect(n.b).equals(b)
+	end)
+
+	h.it("(-scalar) * vector → neg(scale), rank preserved", function()
+		local n = (-s) * v
+		h.expect(n.kind).equals("neg")
+		h.expect(n.a.kind).equals("scale")
+		h.expect(n.a.rank).equals(1)
+	end)
+
+	h.it("scalar * (-vector) → neg(scale)", function()
+		local n = s * (-v)
+		h.expect(n.kind).equals("neg")
+		h.expect(n.a.kind).equals("scale")
+		h.expect(n.a.rank).equals(1)
+	end)
+
+	h.it("(-scalar) * (-vector) → plain scale", function()
+		local n = (-s) * (-v)
+		h.expect(n.kind).equals("scale")
+		h.expect(n.rank).equals(1)
+	end)
+
+	h.it("anon const folding still fires before neg normalisation", function()
+		-- const(-3) * const(-4) folds immediately, no neg node
+		local n = Node.const(-3) * Node.const(-4)
+		h.expect(n.kind).equals("constant")
+		h.expect(n.a).equals(12)
+	end)
+end)
+
 h.describe("Node component selection", function()
 	local v = Node.vector("U")
 	local t = Node.tensor("T")
