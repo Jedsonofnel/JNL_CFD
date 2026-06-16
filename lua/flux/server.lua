@@ -185,19 +185,15 @@ end
 --- Options:
 ---   host          Bind address. Default "127.0.0.1".
 ---   port          Port number. Default 8080.
----   static        URL prefix for static files. Default "/static/".
----   static_root   Directory to serve static files from. Default "web/static".
 ---@param r FluxRouter
 ---@param opts? table
 function M.serve(r, opts)
 	opts = opts or {}
 	local host = opts.host or "127.0.0.1"
 	local port = opts.port or 8080
-	local static_prefix = opts.static or "/static/"
-	local static_root = opts.static_root or "web/static"
 
 	local srv = assert(socket.bind(host, port))
-	srv:settimeout(1)
+	srv:settimeout(0.2)
 	local cancel_seen = __jnl_repl_cancel_seen or function() return false end
 
 	io.write(string.format("flux: listening on http://%s:%d\n", host, port))
@@ -216,14 +212,9 @@ function M.serve(r, opts)
 			local req = parse(client)
 			if req then
 				local res = make_res(client, req)
-				if req.path:sub(1, #static_prefix) == static_prefix then
-					local rel = req.path:sub(#static_prefix + 1)
-					res.file(static_root .. "/" .. rel)
-				else
-					local matched = r:dispatch(req, res)
-					if not matched then
-						res.not_found()
-					end
+				local matched = r:dispatch(req, res)
+				if not matched then
+					res.not_found()
 				end
 			end
 

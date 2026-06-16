@@ -116,6 +116,7 @@ local function el(tag)
 			if is_void then return "<" .. tag .. " />" end
 			return "<" .. tag .. ">" .. maybe_fmt(first, ...) .. "</" .. tag .. ">"
 		end
+
 		if type(first) == "table" then
 			if not has_attrs(first) then
 				if is_void then return "<" .. tag .. " />" end
@@ -126,6 +127,17 @@ local function el(tag)
 			local open  = "<" .. tag .. a .. ">"
 			local close = "</" .. tag .. ">"
 			local empty = open .. close
+
+			-- Two-argument form: a({href="/"}, "text") or a({href="/"}, {"child"})
+			local nargs = select("#", ...)
+			if nargs > 0 then
+				local children = ...
+				local inner = type(children) == "string"
+					and maybe_fmt(children, select(2, ...))
+					or render(children)
+				return open .. inner .. close
+			end
+
 			return setmetatable({ flux_element = true }, {
 				__tostring = function() return empty end,
 				__call = function(_, children, ...)
@@ -137,6 +149,7 @@ local function el(tag)
 				end,
 			})
 		end
+
 		return "<" .. tag .. ">" .. tostring(first) .. "</" .. tag .. ">"
 	end
 end
@@ -271,6 +284,14 @@ function M.env(extra)
 			return _G[k] or M[k]
 		end
 	})
+end
+
+--- Render a node tree (string, table of nodes, or flux element) to a string.
+--- Use this to convert DSL output to a string before passing to H.raw().
+---@param node any
+---@return string
+M.render = function(node)
+	return render(node)
 end
 
 return M

@@ -19,10 +19,11 @@
 ---   flux.serve(router, { port = 8080 })
 local M  = {}
 
-M.html   = require "flux.html"
-M.router = require "flux.router"
-M.server = require "flux.server"
-M.dev    = require "flux.dev"
+M.html   = require("flux.html")
+M.router = require("flux.router")
+M.server = require("flux.server")
+M.dev    = require("flux.dev")
+M.md     = require("flux.md")
 
 --- Convenience alias for flux.server.serve.
 ---@param router FluxRouter
