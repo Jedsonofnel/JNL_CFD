@@ -108,7 +108,8 @@ D.apply_correction = function(case, inst)
 	if not inst.node then return end
 
 	local delta = eval_cell(case, inst.node)
-	field(case, inst.field):axpy(1.0, delta)
+	local relax = case.cfg:get(inst.field, "relax")
+	field(case, inst.field):axpy(relax, delta)
 end
 
 --

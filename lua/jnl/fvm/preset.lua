@@ -25,18 +25,19 @@ local M = {}
 
 ---@class RegOpts
 ---@field nu? number Kinematic viscosity. Default 1e-3.
----@field alpha_p? number Pressure relaxation in correction expression. Default 0.3.
 
 ---@class AlgOpts
 ---@field alpha_U? number Velocity under-relaxation. Default 0.7.
+---@field alpha_p? number pressure under-relaxation. Default 0.3.
 ---@field tol? number Residual convergence threshold. Default 1e-4.
 ---@field max_iters? integer Outer iteration limit. Default 500.
 ---@field solver? string Linear solver name. Default "bicgstab_dilu".
 ---@field n_correctors? integer PISO/PIMPLE inner pressure corrections. Default 2.
 
-local REG_DEFAULTS = { nu = 1e-3, alpha_p = 0.3 }
+local REG_DEFAULTS = { nu = 1e-3 }
 local ALG_DEFAULTS = {
 	alpha_U      = 0.7,
+	alpha_p      = 0.3,
 	tol          = 1e-4,
 	max_iters    = 500,
 	solver       = "bicgstab_dilu",
@@ -66,7 +67,6 @@ function M.reg.stokes(opts)
 	opts          = merge(REG_DEFAULTS, opts)
 	local reg     = Registry.new("stokes")
 	local nu      = reg:const("nu", opts.nu)
-	local alpha_p = reg:const("alpha_p", opts.alpha_p)
 	local U       = reg:vector("U")
 	local p       = reg:scalar("p")
 	local p_prime = reg:scalar("p_prime")
@@ -85,7 +85,7 @@ function M.reg.stokes(opts)
 	)
 
 	U:correction(-nb.cV() * nb.grad(p_prime) / U:diag())
-	p:correction(alpha_p * p_prime)
+	p:correction(p_prime)
 
 	return reg
 end
@@ -99,7 +99,6 @@ function M.reg.ns(opts)
 	opts          = merge(REG_DEFAULTS, opts)
 	local reg     = Registry.new("ns")
 	local nu      = reg:const("nu", opts.nu)
-	local alpha_p = reg:const("alpha_p", opts.alpha_p)
 	local U       = reg:vector("U")
 	local p       = reg:scalar("p")
 	local p_prime = reg:scalar("p_prime")
@@ -118,7 +117,7 @@ function M.reg.ns(opts)
 	)
 
 	U:correction(-nb.cV() * nb.grad(p_prime) / U:diag())
-	p:correction(alpha_p * p_prime)
+	p:correction(p_prime)
 
 	return reg
 end
@@ -154,6 +153,7 @@ function M.alg.simple(opts)
 
 	alg:set_cfg("default", "solver", opts.solver)
 	alg:set_cfg("U", "relax", opts.alpha_U)
+	alg:set_cfg("p", "relax", opts.alpha_p)
 	alg:set_cfg("p_prime", "relax", 1.0)
 	return alg
 end
@@ -182,6 +182,7 @@ function M.alg.piso(opts)
 
 	alg:set_cfg("default", "solver", opts.solver)
 	alg:set_cfg("U", "relax", 1.0)
+	alg:set_cfg("p", "relax", opts.alpha_p)
 	alg:set_cfg("p_prime", "relax", 1.0)
 	return alg
 end
@@ -210,9 +211,9 @@ function M.alg.pimple(opts)
 
 	alg:set_cfg("default", "solver", opts.solver)
 	alg:set_cfg("U", "relax", opts.alpha_U)
+	alg:set_cfg("p", "relax", opts.alpha_p)
 	alg:set_cfg("p_prime", "relax", 1.0)
 	return alg
 end
 
 return M
-

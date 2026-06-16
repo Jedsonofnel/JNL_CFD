@@ -697,9 +697,6 @@ appropriate, and user-facing output.
       -> ConvCrit
          Convergence criterion: field residual below threshold for n_consec consecutive
          iterations.
-
-         Pass `"*"` as the field to require all fields with residual telemetry to
-         converge.
          field               Field name or "*".
          threshold           Residual threshold.
          n_consec            Consecutive iterations required; defaults to 1.
@@ -1475,6 +1472,12 @@ appropriate, and user-facing output.
          jnl.fvm.bc.new_set() -> BCSetBuilder
       Methods
 
+         BCSetBuilder:all(spec: BCDescriptor) -> BCSetBuilder
+            Apply a fallback BC to all otherwise-uncovered patches on the most recently
+            declared field.
+            spec                BC descriptor.
+            return 1            self
+
          BCSetBuilder:build() -> BCSet
             Build and return the finished BC table.
 
@@ -2237,6 +2240,8 @@ appropriate, and user-facing output.
             Return true if this is a leaf node (symbol, constant, or cvec).
 
          Node:is_minus_one()
+
+         Node:is_negative() -> boolean, Node
 
          Node:is_one()
 
