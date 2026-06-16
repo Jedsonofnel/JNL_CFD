@@ -13,11 +13,5 @@ lua/socket.lua
 *.o
 .DS_STORE
 
-# asset copying for production
-web/assets.go
-web/assets
-web/templates
-web/jnlisp
-
 # production logs
 logs/
