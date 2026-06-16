@@ -116,12 +116,10 @@ end
 -- Builder
 --
 
----@private
 function Builder.new(steps)
 	return setmetatable({ steps = steps, last = nil }, Builder)
 end
 
----@private
 local function push(b, step)
 	b.steps[#b.steps + 1] = step
 	b.last = step

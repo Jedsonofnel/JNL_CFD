@@ -312,7 +312,7 @@ multiply_binary = function(a, b)
 
 	local ra, rb = a.rank, b.rank
 
-	-- rank-0 × anything: scale
+	-- rank-0 * anything: scale
 	if ra == 0 and rb == 0 then
 		return setmetatable({ kind = "mul", a = a, b = b, rank = 0 }, Node)
 	elseif ra == 0 then
@@ -320,9 +320,9 @@ multiply_binary = function(a, b)
 	elseif rb == 0 then
 		return setmetatable({ kind = "scale", a = b, b = a, rank = ra }, Node)
 
-		-- rank-1 * rank-1: dot product -> scalar
+		-- rank-1 * rank-1: outer product -> tensor
 	elseif ra == 1 and rb == 1 then
-		return setmetatable({ kind = "dot", a = a, b = b, rank = 0 }, Node)
+		return setmetatable({ kind = "outer", a = a, b = b, rank = 2 }, Node)
 
 		-- rank-2 * rank-1 or rank-1 * rank-2: matvec -> vector
 	elseif ra == 2 and rb == 1 then
@@ -654,6 +654,13 @@ end
 ---@param b Node
 ---@return Node
 function Node:dot(b)
+	return require("jnl.nabla.ops").dot(self, b)
+end
+
+--- Inner (dot) product of two vectors, producing a scalar.
+---@param b Node
+---@return Node
+function Node:__band(b)
 	return require("jnl.nabla.ops").dot(self, b)
 end
 

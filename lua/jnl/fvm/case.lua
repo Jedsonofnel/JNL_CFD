@@ -417,18 +417,21 @@ local EVAL_TELEMETRY_OPS = {
 
 local function emit_solve_telemetry(self, field, step, change, phi)
 	if not is_telemetry_field(field) then return end
+
 	self.sage:assert({
 		kind  = "residual",
 		field = field,
 		value = step and step.residual or 0,
 		iter  = self.iter,
 	})
+
 	self.sage:assert({
 		kind  = "field_change",
 		field = field,
 		value = change,
 		iter  = self.iter,
 	})
+
 	self.sage:assert({
 		kind  = "field_norm",
 		field = field,
@@ -599,7 +602,6 @@ end
 -- Coroutine construction and reset
 --
 
----@private
 function Case:make_coro()
 	if self.mode == "pseudo_transient" then
 		return coroutine.create(pseudo_transient_body(self))
@@ -608,17 +610,14 @@ function Case:make_coro()
 	end
 end
 
---- Rebuild the Sage monitor and solver coroutine.
----
---- Called by new() and before every run. Sage is rebuilt from scratch so
---- convergence criteria always reflect the current algorithm state.
----@private
 function Case:reset()
 	self.sage = Sage.new()
 	self.sage:add_ruleset(Rules.stopping_ruleset())
+
 	for _, rs in ipairs(self.alg.rulesets or {}) do
 		self.sage:add_ruleset(rs)
 	end
+
 	Rules.assert_alg_criteria(self.sage, self.alg)
 
 	self.coro = self:make_coro()
@@ -626,13 +625,13 @@ function Case:reset()
 	self.done = false
 
 	if self.exec then
-		self.exec.dt                = nil
-		self.exec.stop_requested    = false
-		self.exec.inner_stop        = {}
+		self.exec.dt = nil
+		self.exec.stop_requested = false
+		self.exec.inner_stop = {}
 		self.exec.pseudo_inner_stop = false
-		self.exec.residuals         = {}
-		self.exec.krylov_iters      = {}
-		self.exec.field_change      = {}
+		self.exec.residuals = {}
+		self.exec.krylov_iters = {}
+		self.exec.field_change = {}
 	end
 end
 
@@ -674,7 +673,6 @@ action_handler.set_pseudo_dt = function(self, action)
 	self.pseudo_dt = action.dt
 end
 
----@private
 function Case:handle_action(action)
 	local fn = action_handler[action.kind]
 	if fn then
@@ -802,9 +800,6 @@ function Case:set_mesh(mesh)
 end
 
 --- Replace the physics registry and optionally the algorithm.
----
---- Triggers recompilation. Calls reconcile() when already allocated so
---- existing field data is preserved where possible.
 ---@param reg table  New physics registry.
 ---@param alg? table New algorithm; defaults to the existing one.
 function Case:set_physics(reg, alg)
@@ -930,21 +925,18 @@ local function default_on_iter(iter, residuals)
 	local names = {}
 	for name in pairs(residuals) do names[#names + 1] = name end
 	table.sort(names)
+
 	local parts = { string.format("iter %4d", iter) }
 	for _, name in ipairs(names) do
 		local r = residuals[name]
 		parts[#parts + 1] = string.format("%s=%s", name,
 			r ~= r and "nan" or string.format("%.4e", r))
 	end
+
 	io.write(table.concat(parts, "  ") .. "\n")
 end
 
 --- Construct a Case from a physics registry, algorithm, mesh, and boundary conditions.
----
---- Compiles the physics immediately. The bcs table maps field names to lists of
---- patch BC entries: `{ U_x = { {patch="inlet", ...} }, ... }`. A `.fields`
---- wrapper key is also accepted. Patches not covered by bcs default to zero-gradient
---- Neumann; warnings are written to stderr and stored in `case.warnings`.
 ---@param reg  table   Physics registry (from jnl.nabla.registry or jnl.fvm.canned).
 ---@param alg  table   Algorithm (from jnl.fvm.algorithm or jnl.fvm.canned).
 ---@param mesh Mesh2D  Mesh to solve on.
@@ -980,6 +972,7 @@ function Case.new(reg, alg, mesh, bcs)
 	}, Case)
 
 	do_recompile(self)
+
 	self:reset() -- builds sage, injects rulesets and criteria, builds coro
 
 	return self

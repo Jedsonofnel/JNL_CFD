@@ -62,8 +62,6 @@ end
 --
 
 --- Convergence criterion: field residual below threshold for n_consec consecutive iterations.
----
---- Pass `"*"` as the field to require all fields with residual telemetry to converge.
 ---@param field string     Field name or "*".
 ---@param threshold number Residual threshold.
 ---@param n_consec? integer Consecutive iterations required; defaults to 1.

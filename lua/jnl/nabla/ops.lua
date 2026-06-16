@@ -40,7 +40,10 @@ function M.cross(a, b)
 end
 
 function M.dot(a, b)
-	return Node.multiply(a, b)
+	a, b = Node.from(a), Node.from(b)
+	assert(a.rank == 1 and b.rank == 1,
+		string.format("dot requires two rank-1 fields, got rank-%d and rank-%d", a.rank, b.rank))
+	return setmetatable({ kind = "dot", a = a, b = b, rank = 0 }, Node)
 end
 
 function M.ddot(a, b)

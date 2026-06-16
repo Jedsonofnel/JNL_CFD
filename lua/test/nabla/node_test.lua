@@ -145,10 +145,31 @@ h.describe("Node arithmetic: rank dispatch", function()
 		h.expect(n.rank).equals(1)
 	end)
 
-	h.it("vector * vector → dot rank-0", function()
+	h.it("vector * vector → outer rank-2", function()
 		local n = v * v
+		h.expect(n.kind).equals("outer")
+		h.expect(n.rank).equals(2)
+	end)
+
+	h.it("vector & vector → dot rank-0", function()
+		local n = v & v
 		h.expect(n.kind).equals("dot")
 		h.expect(n.rank).equals(0)
+	end)
+
+	h.it("v:dot(v) → dot rank-0", function()
+		local n = v:dot(v)
+		h.expect(n.kind).equals("dot")
+		h.expect(n.rank).equals(0)
+	end)
+
+	h.it("(-U) * V → neg(outer)", function()
+		local u = Node.vector("U")
+		local vv = Node.vector("V")
+		local n = (-u) * vv
+		h.expect(n.kind).equals("neg")
+		h.expect(n.a.kind).equals("outer")
+		h.expect(n.a.rank).equals(2)
 	end)
 
 	h.it("tensor * vector → matvec rank-1", function()

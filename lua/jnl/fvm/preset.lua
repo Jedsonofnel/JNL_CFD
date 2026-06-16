@@ -105,7 +105,7 @@ function M.reg.ns(opts)
 	local p_prime = reg:scalar("p_prime")
 
 	U:governed_by(
-		nb.div(nb.outer(U:mwi(p), U)):equals(
+		nb.div(U:mwi(p) * U):equals(
 			nb.laplacian(nu, U) - nb.grad(p))
 	)
 
@@ -117,8 +117,8 @@ function M.reg.ns(opts)
 		nb.laplacian(inv_d, p_prime):equals(nb.div(U:mwi(p)))
 	)
 
-	U:correction(U - nb.cV() * nb.grad(p_prime) / U:diag())
-	p:correction(p + alpha_p * p_prime)
+	U:correction(-nb.cV() * nb.grad(p_prime) / U:diag())
+	p:correction(alpha_p * p_prime)
 
 	return reg
 end
@@ -215,3 +215,4 @@ function M.alg.pimple(opts)
 end
 
 return M
+
