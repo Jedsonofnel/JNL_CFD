@@ -335,9 +335,9 @@ end
 ---@param name string Field name.
 ---@return table deps
 function Registry:deps_of(name)
-	local e                     = self:expect(name)
+	local e = self:expect(name)
 
-	local eq_value, eq_matrix   = {}, {}
+	local eq_value, eq_matrix = {}, {}
 	local cor_value, cor_matrix = {}, {}
 
 	if e.equation then
@@ -351,7 +351,7 @@ function Registry:deps_of(name)
 	end
 
 	return {
-		equation   = { value = eq_value, matrix = eq_matrix },
+		equation = { value = eq_value, matrix = eq_matrix },
 		correction = { value = cor_value, matrix = cor_matrix },
 	}
 end
