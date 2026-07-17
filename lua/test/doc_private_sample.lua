@@ -8,7 +8,7 @@ local M = {}
 --- Return a fixture value.
 ---@return boolean value
 function M.hidden()
-	return true
+    return true
 end
 
 return M

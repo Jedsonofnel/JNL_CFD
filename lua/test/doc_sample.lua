@@ -17,18 +17,18 @@ Builder.__index = Builder
 ---@param name string Human-readable builder name.
 ---@return Builder builder
 function M.builder(name)
-	return setmetatable({
-		name = name,
-		scheme = "uds",
-	}, Builder)
+    return setmetatable({
+        name = name,
+        scheme = "uds",
+    }, Builder)
 end
 
 --- Set the meshing scheme.
 ---@param scheme Scheme New scheme.
 ---@return Builder self
 function Builder:with_scheme(scheme)
-	self.scheme = scheme
-	return self
+    self.scheme = scheme
+    return self
 end
 
 --- Build a named result.
@@ -36,19 +36,19 @@ end
 ---@return string result
 ---@return integer generated
 function Builder:build(count)
-	return self.name, count or 1
+    return self.name, count or 1
 end
 
 --- Return the default scheme.
 ---@return Scheme scheme
 function M.default_scheme()
-	return "uds"
+    return "uds"
 end
 
 --- Internal implementation detail.
 ---@private
 local function hidden_helper()
-	return true
+    return true
 end
 
 return M

@@ -359,7 +359,8 @@ int main(void)
 		jnl_diag_snapshot(mesh, ux_sys, ap_x);
 		jnl_fvsys_under_relax(ux_sys, Ux, ALPHA_U);
 
-		jnl_fvsys_solve_bicgstab_dilu_into(ux_sys, pool, Ux, MOM_TOL, MOM_LIN_ITERS);
+		jnl_fvsys_solve_bicgstab_dilu_into(ux_sys, pool, Ux, MOM_TOL,
+		                                   MOM_LIN_ITERS);
 
 		f64 res_Ux = jnl_fvsys_residual_norm(ux_sys, pool, Ux);
 
@@ -380,7 +381,8 @@ int main(void)
 		jnl_diag_snapshot(mesh, uy_sys, ap_y);
 		jnl_fvsys_under_relax(uy_sys, Uy, ALPHA_U);
 
-		jnl_fvsys_solve_bicgstab_dilu_into(uy_sys, pool, Uy, MOM_TOL, MOM_LIN_ITERS);
+		jnl_fvsys_solve_bicgstab_dilu_into(uy_sys, pool, Uy, MOM_TOL,
+		                                   MOM_LIN_ITERS);
 
 		f64 res_Uy = jnl_fvsys_residual_norm(uy_sys, pool, Uy);
 

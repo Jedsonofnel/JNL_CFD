@@ -45,17 +45,17 @@ BC.R = 2
 ---@param value number Prescribed value.
 ---@return BCDescriptor
 function BC.dirichlet(value)
-	assert(type(value) == "number", "BC.dirichlet: value must be a number")
-	return { kind = "dirichlet_s", value = value }
+    assert(type(value) == "number", "BC.dirichlet: value must be a number")
+    return { kind = "dirichlet_s", value = value }
 end
 
 --- Prescribe the normal gradient of a scalar field on a boundary face.
 ---@param grad_n? number Normal gradient; defaults to zero (zero-flux).
 ---@return BCDescriptor
 function BC.neumann(grad_n)
-	grad_n = grad_n or 0.0
-	assert(type(grad_n) == "number", "BC.neumann: grad_n must be a number")
-	return { kind = "neumann_s", grad_n = grad_n }
+    grad_n = grad_n or 0.0
+    assert(type(grad_n) == "number", "BC.neumann: grad_n must be a number")
+    return { kind = "neumann_s", grad_n = grad_n }
 end
 
 --- General Robin condition: a*phi + b*(dphi/dn) = c.
@@ -64,9 +64,11 @@ end
 ---@param c number Right-hand side value.
 ---@return BCDescriptor
 function BC.robin(a, b, c)
-	assert(type(a) == "number" and type(b) == "number" and type(c) == "number",
-		"BC.robin: a, b, c must be numbers")
-	return { kind = "robin_s", a = a, b = b, c = c }
+    assert(
+        type(a) == "number" and type(b) == "number" and type(c) == "number",
+        "BC.robin: a, b, c must be numbers"
+    )
+    return { kind = "robin_s", a = a, b = b, c = c }
 end
 
 --
@@ -78,9 +80,11 @@ end
 ---@param uy number y-component value.
 ---@return BCDescriptor
 function BC.dirichlet_v(ux, uy)
-	assert(type(ux) == "number" and type(uy) == "number",
-		"BC.dirichlet_v: ux and uy must be numbers")
-	return { kind = "dirichlet_v", ux = ux, uy = uy }
+    assert(
+        type(ux) == "number" and type(uy) == "number",
+        "BC.dirichlet_v: ux and uy must be numbers"
+    )
+    return { kind = "dirichlet_v", ux = ux, uy = uy }
 end
 
 --- Prescribe the normal gradients of both velocity components.
@@ -88,11 +92,13 @@ end
 ---@param uy_gn? number y-gradient; defaults to zero.
 ---@return BCDescriptor
 function BC.neumann_v(ux_gn, uy_gn)
-	ux_gn = ux_gn or 0.0
-	uy_gn = uy_gn or 0.0
-	assert(type(ux_gn) == "number" and type(uy_gn) == "number",
-		"BC.neumann_v: ux_gn and uy_gn must be numbers")
-	return { kind = "neumann_v", ux_gn = ux_gn, uy_gn = uy_gn }
+    ux_gn = ux_gn or 0.0
+    uy_gn = uy_gn or 0.0
+    assert(
+        type(ux_gn) == "number" and type(uy_gn) == "number",
+        "BC.neumann_v: ux_gn and uy_gn must be numbers"
+    )
+    return { kind = "neumann_v", ux_gn = ux_gn, uy_gn = uy_gn }
 end
 
 --- Normal/tangential split condition for a vector field.
@@ -104,9 +110,17 @@ end
 ---@param tval number   Tangential component value.
 ---@return BCDescriptor
 function BC.nt(nkind, nval, tkind, tval)
-	assert(type(nval) == "number" and type(tval) == "number",
-		"BC.nt: nval and tval must be numbers")
-	return { kind = "nt_v", nkind = nkind, nval = nval, tkind = tkind, tval = tval }
+    assert(
+        type(nval) == "number" and type(tval) == "number",
+        "BC.nt: nval and tval must be numbers"
+    )
+    return {
+        kind = "nt_v",
+        nkind = nkind,
+        nval = nval,
+        tkind = tkind,
+        tval = tval,
+    }
 end
 
 --
@@ -117,20 +131,20 @@ end
 ---@param value number Prescribed value.
 ---@return BCDescriptor
 function BC.fixed(value)
-	return BC.dirichlet(value)
+    return BC.dirichlet(value)
 end
 
 --- Zero normal gradient. The most common outlet or symmetry scalar condition.
 ---@return BCDescriptor
 function BC.nograd()
-	return BC.neumann(0.0)
+    return BC.neumann(0.0)
 end
 
 --- Fix the pressure at a boundary face.
 ---@param value? number Reference pressure; defaults to zero.
 ---@return BCDescriptor
 function BC.pressure_outlet(value)
-	return BC.dirichlet(value or 0.0)
+    return BC.dirichlet(value or 0.0)
 end
 
 --
@@ -140,7 +154,7 @@ end
 --- No-slip viscous wall: zero velocity in both components.
 ---@return BCDescriptor
 function BC.no_slip()
-	return BC.dirichlet_v(0.0, 0.0)
+    return BC.dirichlet_v(0.0, 0.0)
 end
 
 --- Alias for no_slip.
@@ -149,7 +163,7 @@ BC.wall = BC.no_slip
 --- Free-slip or symmetry plane: zero normal velocity, zero tangential gradient.
 ---@return BCDescriptor
 function BC.free_slip()
-	return BC.nt(BC.D, 0.0, BC.N, 0.0)
+    return BC.nt(BC.D, 0.0, BC.N, 0.0)
 end
 
 --- Alias for free_slip.
@@ -162,15 +176,17 @@ BC.symmetry = BC.free_slip
 ---@param uy number y-component of inlet velocity.
 ---@return BCDescriptor
 function BC.inlet(ux, uy)
-	assert(type(ux) == "number" and type(uy) == "number",
-		"BC.inlet: ux and uy must be numbers")
-	return BC.dirichlet_v(ux, uy)
+    assert(
+        type(ux) == "number" and type(uy) == "number",
+        "BC.inlet: ux and uy must be numbers"
+    )
+    return BC.dirichlet_v(ux, uy)
 end
 
 --- Zero-gradient advective outlet.
 ---@return BCDescriptor
 function BC.outlet()
-	return BC.neumann_v(0.0, 0.0)
+    return BC.neumann_v(0.0, 0.0)
 end
 
 --- Moving wall, e.g. the lid in Couette or lid-driven cavity flow.
@@ -178,10 +194,12 @@ end
 ---@param uy? number Wall y-velocity; defaults to zero.
 ---@return BCDescriptor
 function BC.moving_wall(ux, uy)
-	uy = uy or 0.0
-	assert(type(ux) == "number" and type(uy) == "number",
-		"BC.moving_wall: ux and uy must be numbers")
-	return BC.dirichlet_v(ux, uy)
+    uy = uy or 0.0
+    assert(
+        type(ux) == "number" and type(uy) == "number",
+        "BC.moving_wall: ux and uy must be numbers"
+    )
+    return BC.dirichlet_v(ux, uy)
 end
 
 --
@@ -213,14 +231,14 @@ FieldSpec.__index = FieldSpec
 
 ---@private
 local function new_field_spec(parent_set, name, rank)
-	local fs = setmetatable({
-		parent = parent_set,
-		name   = name,
-		rank   = rank,
-		list   = {},
-	}, FieldSpec)
-	parent_set.fields[name] = fs
-	return fs
+    local fs = setmetatable({
+        parent = parent_set,
+        name = name,
+        rank = rank,
+        list = {},
+    }, FieldSpec)
+    parent_set.fields[name] = fs
+    return fs
 end
 
 --- Add a patch BC to this field.
@@ -228,28 +246,38 @@ end
 ---@param spec BCDescriptor BC descriptor returned by a BC constructor.
 ---@return BCFieldSpec self
 function FieldSpec:on(patch, spec)
-	assert(type(patch) == "string", "Set:on: patch must be a string")
-	assert(type(spec) == "table", "Set:on: spec must be a BC descriptor table")
-	local entry = { patch = patch }
-	for k, v in pairs(spec) do entry[k] = v end
-	self.list[#self.list + 1] = entry
-	return self
+    assert(type(patch) == "string", "Set:on: patch must be a string")
+    assert(type(spec) == "table", "Set:on: spec must be a BC descriptor table")
+    local entry = { patch = patch }
+    for k, v in pairs(spec) do
+        entry[k] = v
+    end
+    self.list[#self.list + 1] = entry
+    return self
 end
 
 -- Delegation methods: allow continued chaining on the parent builder
 -- without requiring the caller to break out of the fluent expression.
 
 ---@return BCFieldSpec
-function FieldSpec:scalar(name) return self.parent:scalar(name) end
+function FieldSpec:scalar(name)
+    return self.parent:scalar(name)
+end
 
 ---@return BCFieldSpec
-function FieldSpec:vector(name) return self.parent:vector(name) end
+function FieldSpec:vector(name)
+    return self.parent:vector(name)
+end
 
 ---@return BCSetBuilder
-function FieldSpec:default(spec) return self.parent:default(spec) end
+function FieldSpec:default(spec)
+    return self.parent:default(spec)
+end
 
 ---@return BCSet
-function FieldSpec:build() return self.parent:build() end
+function FieldSpec:build()
+    return self.parent:build()
+end
 
 -- In FieldSpec:
 
@@ -257,11 +285,16 @@ function FieldSpec:build() return self.parent:build() end
 ---@param spec BCDescriptor BC descriptor.
 ---@return BCFieldSpec self
 function FieldSpec:all(spec)
-	assert(type(spec) == "table", "FieldSpec:all: spec must be a BC descriptor table")
-	local entry = { patch = true }
-	for k, v in pairs(spec) do entry[k] = v end
-	self.list[#self.list + 1] = entry
-	return self
+    assert(
+        type(spec) == "table",
+        "FieldSpec:all: spec must be a BC descriptor table"
+    )
+    local entry = { patch = true }
+    for k, v in pairs(spec) do
+        entry[k] = v
+    end
+    self.list[#self.list + 1] = entry
+    return self
 end
 
 --
@@ -279,38 +312,41 @@ Set.__index = Set
 --- Create a new BCSetBuilder.
 ---@return BCSetBuilder
 function Set.new()
-	return setmetatable({
-		fields   = {},
-		order    = {},
-		fallback = nil,
-	}, Set)
+    return setmetatable({
+        fields = {},
+        order = {},
+        fallback = nil,
+    }, Set)
 end
 
 --- Declare a scalar field and return its field spec for patch assignment.
 ---@param name string Field name matching the registry declaration.
 ---@return BCFieldSpec
 function Set:scalar(name)
-	assert(type(name) == "string", "Set:scalar: name must be a string")
-	self.order[#self.order + 1] = name
-	return new_field_spec(self, name, 0)
+    assert(type(name) == "string", "Set:scalar: name must be a string")
+    self.order[#self.order + 1] = name
+    return new_field_spec(self, name, 0)
 end
 
 --- Declare a vector field and return its field spec for patch assignment.
 ---@param name string Field name matching the registry declaration.
 ---@return BCFieldSpec
 function Set:vector(name)
-	assert(type(name) == "string", "Set:vector: name must be a string")
-	self.order[#self.order + 1] = name
-	return new_field_spec(self, name, 1)
+    assert(type(name) == "string", "Set:vector: name must be a string")
+    self.order[#self.order + 1] = name
+    return new_field_spec(self, name, 1)
 end
 
 --- Set a fallback descriptor applied to patches not covered by any :on() call.
 ---@param spec BCDescriptor Fallback BC descriptor.
 ---@return BCSetBuilder self
 function Set:default(spec)
-	assert(type(spec) == "table", "Set:default: spec must be a BC descriptor table")
-	self.fallback = spec
-	return self
+    assert(
+        type(spec) == "table",
+        "Set:default: spec must be a BC descriptor table"
+    )
+    self.fallback = spec
+    return self
 end
 
 --- Apply a fallback BC to all otherwise-uncovered patches on the most recently
@@ -318,27 +354,29 @@ end
 ---@param spec BCDescriptor BC descriptor.
 ---@return BCSetBuilder self
 function Set:all(spec)
-	assert(type(spec) == "table", "Set:all: spec must be a BC descriptor table")
-	local last = self.order[#self.order]
-	assert(last, "Set:all: no field declared yet")
-	self.fields[last]:all(spec)
-	return self
+    assert(type(spec) == "table", "Set:all: spec must be a BC descriptor table")
+    local last = self.order[#self.order]
+    assert(last, "Set:all: no field declared yet")
+    self.fields[last]:all(spec)
+    return self
 end
 
 --- Build and return the finished BC table.
 ---@return BCSet
 function Set:build()
-	local out   = {}
-	local ranks = {}
-	for _, name in ipairs(self.order) do
-		local fs    = self.fields[name]
-		out[name]   = fs.list
-		ranks[name] = fs.rank
-	end
-	return { fields = out, ranks = ranks, default = self.fallback }
+    local out = {}
+    local ranks = {}
+    for _, name in ipairs(self.order) do
+        local fs = self.fields[name]
+        out[name] = fs.list
+        ranks[name] = fs.rank
+    end
+    return { fields = out, ranks = ranks, default = self.fallback }
 end
 
-Set.__call = function(self) return self:build() end
+Set.__call = function(self)
+    return self:build()
+end
 
 --- Create a fluent BC set builder.
 ---
@@ -355,7 +393,7 @@ Set.__call = function(self) return self:build() end
 ---
 ---@return BCSetBuilder
 function BC.new_set()
-	return Set.new()
+    return Set.new()
 end
 
 return BC

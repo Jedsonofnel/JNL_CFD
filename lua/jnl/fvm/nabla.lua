@@ -30,7 +30,7 @@
 ---     U:correction(U - nb.cV() * nb.grad(p_prime) / U:diag())
 
 local nb = require("jnl.nabla")
-local G  = require("jnl.core.glyphs")
+local G = require("jnl.core.glyphs")
 
 --- FVM constructors added to the nabla module by loading jnl.fvm.nabla.
 ---@class Nabla
@@ -59,53 +59,71 @@ local G  = require("jnl.core.glyphs")
 ---@field mwi fun(self: Node, phi: Node): Node
 
 nb.register_accessor("cV", {
-	rank = function()
-		return 0
-	end,
-	pretty = function()
-		return "cV"
-	end,
-	mangle = function()
-		return "cV"
-	end,
+    rank = function()
+        return 0
+    end,
+    pretty = function()
+        return "cV"
+    end,
+    mangle = function()
+        return "cV"
+    end,
 })
 
 nb.register_accessor("diag", {
-	field  = true,
-	rank   = function(a) return a.rank end,
-	pretty = function(node)
-		return "diag(" .. (node.a and node.a.name or "?") .. ")"
-	end,
+    field = true,
+    rank = function(a)
+        return a.rank
+    end,
+    pretty = function(node)
+        return "diag(" .. (node.a and node.a.name or "?") .. ")"
+    end,
 })
 
 nb.register_accessor("prev", {
-	field  = true,
-	rank   = function(a) return a.rank end,
-	pretty = function(node)
-		return (node.a and node.a.name or "?") .. (G.prev or "^-")
-	end,
+    field = true,
+    rank = function(a)
+        return a.rank
+    end,
+    pretty = function(node)
+        return (node.a and node.a.name or "?") .. (G.prev or "^-")
+    end,
 })
 
 nb.register_accessor("expl", {
-	field  = true,
-	rank   = function(a) return a.rank end,
-	pretty = function(node)
-		return (node.a and node.a.name or "?") .. (G.expl or "^l")
-	end,
+    field = true,
+    rank = function(a)
+        return a.rank
+    end,
+    pretty = function(node)
+        return (node.a and node.a.name or "?") .. (G.expl or "^l")
+    end,
 })
 
 nb.register_accessor("mwi", {
-	binary = true,
-	rank   = function(a, b)
-		assert(a.rank == 1,
-			"mwi: first argument '" .. (a.name or "?") .. "' must be a vector (rank 1)")
-		assert(b.rank == 0,
-			"mwi: second argument '" .. (b.name or "?") .. "' must be a scalar (rank 0)")
-		return 1
-	end,
-	pretty = function(node)
-		return "mwi(" .. (node.a.name or "?") .. "," .. (node.b.name or "?") .. ")"
-	end,
+    binary = true,
+    rank = function(a, b)
+        assert(
+            a.rank == 1,
+            "mwi: first argument '"
+                .. (a.name or "?")
+                .. "' must be a vector (rank 1)"
+        )
+        assert(
+            b.rank == 0,
+            "mwi: second argument '"
+                .. (b.name or "?")
+                .. "' must be a scalar (rank 0)"
+        )
+        return 1
+    end,
+    pretty = function(node)
+        return "mwi("
+            .. (node.a.name or "?")
+            .. ","
+            .. (node.b.name or "?")
+            .. ")"
+    end,
 })
 
 return nb

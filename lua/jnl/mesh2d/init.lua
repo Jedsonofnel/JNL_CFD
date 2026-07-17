@@ -27,15 +27,15 @@ M.grid = B.grid
 ---@param mesh Mesh2D
 ---@return PatchInfo[]
 function M.patch_list(mesh)
-	local result = {}
-	for _, p in ipairs(mesh:patches()) do
-		result[#result + 1] = {
-			id      = p.marker,
-			name    = p.name,
-			n_faces = p.n_faces,
-		}
-	end
-	return result
+    local result = {}
+    for _, p in ipairs(mesh:patches()) do
+        result[#result + 1] = {
+            id = p.marker,
+            name = p.name,
+            n_faces = p.n_faces,
+        }
+    end
+    return result
 end
 
 --- Return a table indexed by both integer marker and name string.
@@ -44,34 +44,34 @@ end
 ---@param mesh Mesh2D
 ---@return table<integer|string, PatchInfo>
 function M.patch_lookup(mesh)
-	local t = {}
-	for _, p in ipairs(M.patch_list(mesh)) do
-		t[p.id]   = p
-		t[p.name] = p
-	end
-	return t
+    local t = {}
+    for _, p in ipairs(M.patch_list(mesh)) do
+        t[p.id] = p
+        t[p.name] = p
+    end
+    return t
 end
 
 --- Return a set of patch name strings present in the mesh.
 ---@param mesh Mesh2D
 ---@return table<string, true>
 function M.patch_name_set(mesh)
-	local s = {}
-	for _, p in ipairs(mesh:patches()) do
-		s[p.name] = true
-	end
-	return s
+    local s = {}
+    for _, p in ipairs(mesh:patches()) do
+        s[p.name] = true
+    end
+    return s
 end
 
 --- Return an ordered list of patch name strings.
 ---@param mesh Mesh2D
 ---@return string[]
 function M.patch_name_list(mesh)
-	local names = {}
-	for _, p in ipairs(mesh:patches()) do
-		names[#names + 1] = p.name
-	end
-	return names
+    local names = {}
+    for _, p in ipairs(mesh:patches()) do
+        names[#names + 1] = p.name
+    end
+    return names
 end
 
 return M

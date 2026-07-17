@@ -9,9 +9,9 @@ local M = {}
 
 local DEFAULT_FONT = "Arial,18"
 local DEFAULT_RASTER_SIZE = { 1000, 625 } -- pixels
-local DEFAULT_VECTOR_SIZE = { 16, 10 }    -- cm
+local DEFAULT_VECTOR_SIZE = { 16, 10 } -- cm
 
-local DEFAULT_LIVE_TERMINAL = "qt"        -- or "wxt" but "qt" might be more stable
+local DEFAULT_LIVE_TERMINAL = "qt" -- or "wxt" but "qt" might be more stable
 local DEFAULT_LIVE_PERSIST = true
 
 --
@@ -19,21 +19,21 @@ local DEFAULT_LIVE_PERSIST = true
 --
 
 local function gp_open()
-	local pipe = io.popen("gnuplot 2>/dev/null", "w")
-	if not pipe then
-		io.stderr:write([[
+    local pipe = io.popen("gnuplot 2>/dev/null", "w")
+    if not pipe then
+        io.stderr:write([[
 [jnl.gp] gnuplot not found. Install with:
   Arch/EndeavourOS:  sudo pacman -S gnuplot
   Debian/Ubuntu:     sudo apt install gnuplot
   macOS:             brew install gnuplot
 ]])
-		error("[jnl.gp] gnuplot not found", 2)
-	end
-	return pipe
+        error("[jnl.gp] gnuplot not found", 2)
+    end
+    return pipe
 end
 
 local function gp_send(pipe, fmt, ...)
-	pipe:write(string.format(fmt .. "\n", ...))
+    pipe:write(string.format(fmt .. "\n", ...))
 end
 
 --
@@ -41,41 +41,41 @@ end
 --
 
 local image_extensions = {
-	png = true,
-	svg = true,
-	pdf = true,
-	eps = true,
+    png = true,
+    svg = true,
+    pdf = true,
+    eps = true,
 }
 
 local function path_extension(path)
-	return (path:match("%.([A-Za-z0-9]+)$") or ""):lower()
+    return (path:match("%.([A-Za-z0-9]+)$") or ""):lower()
 end
 
 local function is_image_extension(ext)
-	return image_extensions[ext] == true
+    return image_extensions[ext] == true
 end
 
 local function shallow_copy(t)
-	local out = {}
+    local out = {}
 
-	for k, v in pairs(t or {}) do
-		out[k] = v
-	end
+    for k, v in pairs(t or {}) do
+        out[k] = v
+    end
 
-	return out
+    return out
 end
 
 local function numeric_range(values)
-	local lo, hi
+    local lo, hi
 
-	for _, v in ipairs(values or {}) do
-		if type(v) == "number" then
-			lo = lo and math.min(lo, v) or v
-			hi = hi and math.max(hi, v) or v
-		end
-	end
+    for _, v in ipairs(values or {}) do
+        if type(v) == "number" then
+            lo = lo and math.min(lo, v) or v
+            hi = hi and math.max(hi, v) or v
+        end
+    end
 
-	return lo, hi
+    return lo, hi
 end
 
 --
@@ -83,26 +83,26 @@ end
 --
 
 local function is_finite_number(x)
-	return type(x) == "number" and x == x and x ~= math.huge and x ~= -math.huge
+    return type(x) == "number" and x == x and x ~= math.huge and x ~= -math.huge
 end
 
 local function write_xy(pipe, xs, ys)
-	assert(#xs == #ys, "xs and ys must be the same length")
+    assert(#xs == #ys, "xs and ys must be the same length")
 
-	for i = 1, #xs do
-		local x = xs[i]
-		local y = ys[i]
+    for i = 1, #xs do
+        local x = xs[i]
+        local y = ys[i]
 
-		if is_finite_number(x) and is_finite_number(y) then
-			pipe:write(string.format("%.10g %.10g\n", x, y))
-		else
-			-- Gnuplot treats '?' as missing data.
-			-- This avoids feeding it nan/inf from unstable CFD runs.
-			pipe:write("? ?\n")
-		end
-	end
+        if is_finite_number(x) and is_finite_number(y) then
+            pipe:write(string.format("%.10g %.10g\n", x, y))
+        else
+            -- Gnuplot treats '?' as missing data.
+            -- This avoids feeding it nan/inf from unstable CFD runs.
+            pipe:write("? ?\n")
+        end
+    end
 
-	pipe:write("e\n")
+    pipe:write("e\n")
 end
 
 --
@@ -110,23 +110,41 @@ end
 --
 
 local function series_len(s)
-	if not s then return 0 end
-	if not s.xs or not s.ys then return 0 end
-	return math.min(#s.xs, #s.ys)
+    if not s then
+        return 0
+    end
+    if not s.xs or not s.ys then
+        return 0
+    end
+    return math.min(#s.xs, #s.ys)
 end
 
 local function validate_series(s, i)
-	assert(type(s) == "table", string.format("[jnl.gp] series %d is not a table", i))
-	assert(type(s.xs) == "table", string.format("[jnl.gp] series %d has no xs table", i))
-	assert(type(s.ys) == "table", string.format("[jnl.gp] series %d has no ys table", i))
-	assert(#s.xs == #s.ys, string.format(
-		"[jnl.gp] series %d has mismatched xs/ys lengths: %d vs %d",
-		i, #s.xs, #s.ys
-	))
-	assert(#s.xs > 0, string.format(
-		"[jnl.gp] no data passed: series %d has zero points",
-		i
-	))
+    assert(
+        type(s) == "table",
+        string.format("[jnl.gp] series %d is not a table", i)
+    )
+    assert(
+        type(s.xs) == "table",
+        string.format("[jnl.gp] series %d has no xs table", i)
+    )
+    assert(
+        type(s.ys) == "table",
+        string.format("[jnl.gp] series %d has no ys table", i)
+    )
+    assert(
+        #s.xs == #s.ys,
+        string.format(
+            "[jnl.gp] series %d has mismatched xs/ys lengths: %d vs %d",
+            i,
+            #s.xs,
+            #s.ys
+        )
+    )
+    assert(
+        #s.xs > 0,
+        string.format("[jnl.gp] no data passed: series %d has zero points", i)
+    )
 end
 
 --
@@ -137,59 +155,59 @@ local Series = {}
 Series.__index = Series
 
 local function fmt_number(x)
-	if type(x) ~= "number" then
-		return tostring(x)
-	end
+    if type(x) ~= "number" then
+        return tostring(x)
+    end
 
-	return string.format("%.3g", x)
+    return string.format("%.3g", x)
 end
 
 local function fmt_range(xs)
-	if not xs or #xs == 0 then
-		return "empty"
-	end
+    if not xs or #xs == 0 then
+        return "empty"
+    end
 
-	local lo, hi = numeric_range(xs)
+    local lo, hi = numeric_range(xs)
 
-	if lo == nil then
-		return "non-numeric"
-	end
+    if lo == nil then
+        return "non-numeric"
+    end
 
-	return string.format("[%s, %s]", fmt_number(lo), fmt_number(hi))
+    return string.format("[%s, %s]", fmt_number(lo), fmt_number(hi))
 end
 
 local function series_label(s)
-	if s.title then
-		return string.format("%q", s.title)
-	end
+    if s.title then
+        return string.format("%q", s.title)
+    end
 
-	return "untitled"
+    return "untitled"
 end
 
 function Series:__tostring()
-	local kind = self.kind or "xy"
-	local n = series_len(self)
-	local label = series_label(self)
+    local kind = self.kind or "xy"
+    local n = series_len(self)
+    local label = series_label(self)
 
-	if kind == "histogram" then
-		return string.format(
-			"Series(%s, %s, bins=%d, xrange=%s)",
-			kind,
-			label,
-			n,
-			fmt_range(self.xs)
-		)
-	end
+    if kind == "histogram" then
+        return string.format(
+            "Series(%s, %s, bins=%d, xrange=%s)",
+            kind,
+            label,
+            n,
+            fmt_range(self.xs)
+        )
+    end
 
-	return string.format(
-		"Series(%s, %s, n=%d, style=%s, xrange=%s, yrange=%s)",
-		kind,
-		label,
-		n,
-		tostring(self.style or "linespoints"),
-		fmt_range(self.xs),
-		fmt_range(self.ys)
-	)
+    return string.format(
+        "Series(%s, %s, n=%d, style=%s, xrange=%s, yrange=%s)",
+        kind,
+        label,
+        n,
+        tostring(self.style or "linespoints"),
+        fmt_range(self.xs),
+        fmt_range(self.ys)
+    )
 end
 
 --
@@ -197,117 +215,131 @@ end
 --
 
 function M.series(xs, ys, opts)
-	opts = opts or {}
+    opts = opts or {}
 
-	return setmetatable({
-		kind   = opts.kind or "xy",
-		xs     = xs,
-		ys     = ys,
-		title  = opts.title,
-		style  = opts.style or "linespoints",
-		colour = opts.colour,
-		lw     = opts.lw,
-		pt     = opts.pt,
-		ps     = opts.ps,
-		dt     = opts.dt,
-		width  = opts.width,
-		fill   = opts.fill,
-	}, Series)
+    return setmetatable({
+        kind = opts.kind or "xy",
+        xs = xs,
+        ys = ys,
+        title = opts.title,
+        style = opts.style or "linespoints",
+        colour = opts.colour,
+        lw = opts.lw,
+        pt = opts.pt,
+        ps = opts.ps,
+        dt = opts.dt,
+        width = opts.width,
+        fill = opts.fill,
+    }, Series)
 end
 
 function M.scatter(xs, ys, opts)
-	opts = shallow_copy(opts)
-	opts.style = opts.style or "points"
-	opts.pt = opts.pt or 7
-	opts.ps = opts.ps or 0.8
+    opts = shallow_copy(opts)
+    opts.style = opts.style or "points"
+    opts.pt = opts.pt or 7
+    opts.ps = opts.ps or 0.8
 
-	return M.series(xs, ys, opts)
+    return M.series(xs, ys, opts)
 end
 
 function M.histogram(values, opts)
-	opts = opts or {}
+    opts = opts or {}
 
-	local bins = opts.bins or 10
-	if bins < 1 then
-		error("histogram: bins must be at least 1")
-	end
+    local bins = opts.bins or 10
+    if bins < 1 then
+        error("histogram: bins must be at least 1")
+    end
 
-	local lo = opts.lo
-	local hi = opts.hi
+    local lo = opts.lo
+    local hi = opts.hi
 
-	if lo == nil or hi == nil then
-		local data_lo, data_hi = numeric_range(values)
-		lo = lo or data_lo
-		hi = hi or data_hi
-	end
+    if lo == nil or hi == nil then
+        local data_lo, data_hi = numeric_range(values)
+        lo = lo or data_lo
+        hi = hi or data_hi
+    end
 
-	if lo == nil or hi == nil then
-		error("histogram: expected at least one numeric value")
-	end
+    if lo == nil or hi == nil then
+        error("histogram: expected at least one numeric value")
+    end
 
-	if hi < lo then
-		error("histogram: hi must be greater than or equal to lo")
-	end
+    if hi < lo then
+        error("histogram: hi must be greater than or equal to lo")
+    end
 
-	if hi == lo then
-		lo = lo - 0.5
-		hi = hi + 0.5
-	end
+    if hi == lo then
+        lo = lo - 0.5
+        hi = hi + 0.5
+    end
 
-	local width = (hi - lo) / bins
-	local centres = {}
-	local counts = {}
+    local width = (hi - lo) / bins
+    local centres = {}
+    local counts = {}
 
-	for i = 1, bins do
-		centres[i] = lo + (i - 0.5) * width
-		counts[i] = 0
-	end
+    for i = 1, bins do
+        centres[i] = lo + (i - 0.5) * width
+        counts[i] = 0
+    end
 
-	for _, v in ipairs(values or {}) do
-		if type(v) == "number" then
-			local i = math.floor((v - lo) / width) + 1
+    for _, v in ipairs(values or {}) do
+        if type(v) == "number" then
+            local i = math.floor((v - lo) / width) + 1
 
-			if i < 1 then i = 1 end
-			if i > bins then i = bins end
+            if i < 1 then
+                i = 1
+            end
+            if i > bins then
+                i = bins
+            end
 
-			counts[i] = counts[i] + 1
-		end
-	end
+            counts[i] = counts[i] + 1
+        end
+    end
 
-	return setmetatable({
-		kind   = "histogram",
-		xs     = centres,
-		ys     = counts,
-		title  = opts.title,
-		style  = "boxes",
-		colour = opts.colour,
-		width  = opts.width or width * 0.9,
-		fill   = opts.fill,
-	}, Series)
+    return setmetatable({
+        kind = "histogram",
+        xs = centres,
+        ys = counts,
+        title = opts.title,
+        style = "boxes",
+        colour = opts.colour,
+        width = opts.width or width * 0.9,
+        fill = opts.fill,
+    }, Series)
 end
 
 local function series_cmd(s)
-	local t = { "'-'" }
+    local t = { "'-'" }
 
-	if s.kind == "histogram" then
-		table.insert(t, "using 1:2 with boxes")
-	else
-		table.insert(t, "with " .. (s.style or "linespoints"))
-	end
+    if s.kind == "histogram" then
+        table.insert(t, "using 1:2 with boxes")
+    else
+        table.insert(t, "with " .. (s.style or "linespoints"))
+    end
 
-	if s.title then
-		table.insert(t, string.format("title %q", s.title))
-	else
-		table.insert(t, "notitle")
-	end
+    if s.title then
+        table.insert(t, string.format("title %q", s.title))
+    else
+        table.insert(t, "notitle")
+    end
 
-	if s.colour then table.insert(t, string.format("lc rgb %q", s.colour)) end
-	if s.lw then table.insert(t, "lw " .. s.lw) end
-	if s.pt then table.insert(t, "pt " .. s.pt) end
-	if s.ps then table.insert(t, "ps " .. s.ps) end
-	if s.dt then table.insert(t, "dt " .. s.dt) end
+    if s.colour then
+        table.insert(t, string.format("lc rgb %q", s.colour))
+    end
+    if s.lw then
+        table.insert(t, "lw " .. s.lw)
+    end
+    if s.pt then
+        table.insert(t, "pt " .. s.pt)
+    end
+    if s.ps then
+        table.insert(t, "ps " .. s.ps)
+    end
+    if s.dt then
+        table.insert(t, "dt " .. s.dt)
+    end
 
-	return table.concat(t, " ")
+    return table.concat(t, " ")
 end
 
 --
@@ -315,79 +347,83 @@ end
 --
 
 local function csv_escape(value)
-	if value == nil then
-		return ""
-	end
+    if value == nil then
+        return ""
+    end
 
-	local s = tostring(value)
+    local s = tostring(value)
 
-	if s:find('[,"\n]') then
-		s = '"' .. s:gsub('"', '""') .. '"'
-	end
+    if s:find('[,"\n]') then
+        s = '"' .. s:gsub('"', '""') .. '"'
+    end
 
-	return s
+    return s
 end
 
 local function csv_cell(value)
-	if type(value) == "number" then
-		return string.format("%.10g", value)
-	end
+    if type(value) == "number" then
+        return string.format("%.10g", value)
+    end
 
-	return csv_escape(value)
+    return csv_escape(value)
 end
 
 ---Write one or more series to a CSV.
 --- - M.write_csv(path, series_list)
 --- - M.write_csv(path, xs, ys, header?)
 function M.write_csv(path, xs_or_series, ys, header)
-	local f = io.open(path, "w")
-	if not f then
-		error(string.format("[jnl.gp] cannot open %q for writing", path))
-	end
+    local f = io.open(path, "w")
+    if not f then
+        error(string.format("[jnl.gp] cannot open %q for writing", path))
+    end
 
-	if type(xs_or_series) == "table" and xs_or_series[1] and xs_or_series[1].xs then
-		local series_list = xs_or_series
-		local heads = {}
+    if
+        type(xs_or_series) == "table"
+        and xs_or_series[1]
+        and xs_or_series[1].xs
+    then
+        local series_list = xs_or_series
+        local heads = {}
 
-		for i, s in ipairs(series_list) do
-			local title = s.title or tostring(i)
-			table.insert(heads, "x_" .. title)
-			table.insert(heads, "y_" .. title)
-		end
+        for i, s in ipairs(series_list) do
+            local title = s.title or tostring(i)
+            table.insert(heads, "x_" .. title)
+            table.insert(heads, "y_" .. title)
+        end
 
-		f:write(table.concat(heads, ",") .. "\n")
+        f:write(table.concat(heads, ",") .. "\n")
 
-		local nrows = 0
-		for _, s in ipairs(series_list) do
-			if series_len(s) > nrows then
-				nrows = series_len(s)
-			end
-		end
+        local nrows = 0
+        for _, s in ipairs(series_list) do
+            if series_len(s) > nrows then
+                nrows = series_len(s)
+            end
+        end
 
-		for i = 1, nrows do
-			local row = {}
+        for i = 1, nrows do
+            local row = {}
 
-			for _, s in ipairs(series_list) do
-				table.insert(row, s.xs[i] and csv_cell(s.xs[i]) or "")
-				table.insert(row, s.ys[i] and csv_cell(s.ys[i]) or "")
-			end
+            for _, s in ipairs(series_list) do
+                table.insert(row, s.xs[i] and csv_cell(s.xs[i]) or "")
+                table.insert(row, s.ys[i] and csv_cell(s.ys[i]) or "")
+            end
 
-			f:write(table.concat(row, ",") .. "\n")
-		end
-	else
-		local xs = xs_or_series
+            f:write(table.concat(row, ",") .. "\n")
+        end
+    else
+        local xs = xs_or_series
 
-		assert(#xs == #ys, "xs and ys must be the same length")
+        assert(#xs == #ys, "xs and ys must be the same length")
 
-		f:write((header or "x,y") .. "\n")
+        f:write((header or "x,y") .. "\n")
 
-		for i = 1, #xs do
-			f:write(csv_cell(xs[i]) .. "," .. csv_cell(ys[i]) .. "\n")
-		end
-	end
+        for i = 1, #xs do
+            f:write(csv_cell(xs[i]) .. "," .. csv_cell(ys[i]) .. "\n")
+        end
+    end
 
-	f:close()
-	io.write(string.format("[jnl.gp] csv  -> %s\n", path))
+    f:close()
+    io.write(string.format("[jnl.gp] csv  -> %s\n", path))
 end
 
 --
@@ -398,151 +434,163 @@ local Figure = {}
 Figure.__index = Figure
 
 function M.figure(opts)
-	opts = opts or {}
+    opts = opts or {}
 
-	return setmetatable({
-		_series = {},
-		_csv_fn = opts.csv,
-		_opts = {
-			font          = opts.font or DEFAULT_FONT,
-			raster_size   = opts.raster_size or opts.size or DEFAULT_RASTER_SIZE,
-			vector_size   = opts.vector_size or DEFAULT_VECTOR_SIZE,
+    return setmetatable({
+        _series = {},
+        _csv_fn = opts.csv,
+        _opts = {
+            font = opts.font or DEFAULT_FONT,
+            raster_size = opts.raster_size or opts.size or DEFAULT_RASTER_SIZE,
+            vector_size = opts.vector_size or DEFAULT_VECTOR_SIZE,
 
-			live_terminal = opts.live_terminal,
+            live_terminal = opts.live_terminal,
 
-			grid          = opts.grid ~= nil and opts.grid or true,
-			title         = opts.title,
-			xlabel        = opts.xlabel,
-			ylabel        = opts.ylabel,
-			xrange        = opts.xrange,
-			yrange        = opts.yrange,
-			key           = opts.key,
-			logx          = opts.logx,
-			logy          = opts.logy,
-			xformat       = opts.xformat,
-			yformat       = opts.yformat,
-		},
-	}, Figure)
+            grid = opts.grid ~= nil and opts.grid or true,
+            title = opts.title,
+            xlabel = opts.xlabel,
+            ylabel = opts.ylabel,
+            xrange = opts.xrange,
+            yrange = opts.yrange,
+            key = opts.key,
+            logx = opts.logx,
+            logy = opts.logy,
+            xformat = opts.xformat,
+            yformat = opts.yformat,
+        },
+    }, Figure)
 end
 
 function Figure:validate()
-	assert(#self._series > 0, "[jnl.gp] no data passed: figure has no series")
+    assert(#self._series > 0, "[jnl.gp] no data passed: figure has no series")
 
-	for i, s in ipairs(self._series) do
-		validate_series(s, i)
-	end
+    for i, s in ipairs(self._series) do
+        validate_series(s, i)
+    end
 
-	return self
+    return self
 end
 
 function Figure:add(xs_or_series, ys, opts)
-	if type(xs_or_series) == "table" and xs_or_series.xs then
-		table.insert(self._series, xs_or_series)
-	else
-		table.insert(self._series, M.series(xs_or_series, ys, opts))
-	end
+    if type(xs_or_series) == "table" and xs_or_series.xs then
+        table.insert(self._series, xs_or_series)
+    else
+        table.insert(self._series, M.series(xs_or_series, ys, opts))
+    end
 
-	return self
+    return self
 end
 
 function Figure:add_scatter(xs, ys, opts)
-	return self:add(M.scatter(xs, ys, opts))
+    return self:add(M.scatter(xs, ys, opts))
 end
 
 function Figure:add_histogram(values, opts)
-	return self:add(M.histogram(values, opts))
+    return self:add(M.histogram(values, opts))
 end
 
 function Figure:hline(y, opts)
-	opts = opts or {}
+    opts = opts or {}
 
-	return self:add(
-		{ -1e30, 1e30 },
-		{ y, y },
-		{
-			style = "lines",
-			lw = opts.lw or 1,
-			colour = opts.colour or "#888888",
-			dt = opts.dt or 2,
-			title = opts.title,
-		}
-	)
+    return self:add({ -1e30, 1e30 }, { y, y }, {
+        style = "lines",
+        lw = opts.lw or 1,
+        colour = opts.colour or "#888888",
+        dt = opts.dt or 2,
+        title = opts.title,
+    })
 end
 
 function Figure:vline(x, opts)
-	opts = opts or {}
+    opts = opts or {}
 
-	return self:add(
-		{ x, x },
-		{ -1e30, 1e30 },
-		{
-			style = "lines",
-			lw = opts.lw or 1,
-			colour = opts.colour or "#888888",
-			dt = opts.dt or 2,
-			title = opts.title,
-		}
-	)
+    return self:add({ x, x }, { -1e30, 1e30 }, {
+        style = "lines",
+        lw = opts.lw or 1,
+        colour = opts.colour or "#888888",
+        dt = opts.dt or 2,
+        title = opts.title,
+    })
 end
 
 function Figure:series()
-	return self._series
+    return self._series
 end
 
 local function emit_global_series_options(pipe, series_list)
-	local histogram_seen = false
+    local histogram_seen = false
 
-	for _, s in ipairs(series_list or {}) do
-		if s.kind == "histogram" then
-			histogram_seen = true
+    for _, s in ipairs(series_list or {}) do
+        if s.kind == "histogram" then
+            histogram_seen = true
 
-			if s.width then
-				gp_send(pipe, "set boxwidth %g", s.width)
-			end
-		end
-	end
+            if s.width then
+                gp_send(pipe, "set boxwidth %g", s.width)
+            end
+        end
+    end
 
-	if histogram_seen then
-		pipe:write("set style fill solid 0.6 border\n")
-	end
+    if histogram_seen then
+        pipe:write("set style fill solid 0.6 border\n")
+    end
 end
 
 function Figure:_emit(pipe)
-	local o = self._opts
+    local o = self._opts
 
-	gp_send(pipe, "set termoption enhanced")
+    gp_send(pipe, "set termoption enhanced")
 
-	if o.title then gp_send(pipe, "set title \"{/:Bold %s}\" enhanced", o.title) end
-	if o.xlabel then gp_send(pipe, "set xlabel %q", o.xlabel) end
-	if o.ylabel then gp_send(pipe, "set ylabel %q", o.ylabel) end
-	if o.xrange then gp_send(pipe, "set xrange [%g:%g]", o.xrange[1], o.xrange[2]) end
-	if o.yrange then gp_send(pipe, "set yrange [%g:%g]", o.yrange[1], o.yrange[2]) end
-	if o.grid then pipe:write("set grid\n") end
-	if o.logx then pipe:write("set logscale x\n") end
-	if o.logy then pipe:write("set logscale y\n") end
-	if o.xformat then gp_send(pipe, "set format x %q", o.xformat) end
-	if o.yformat then gp_send(pipe, "set format y %q", o.yformat) end
+    if o.title then
+        gp_send(pipe, 'set title "{/:Bold %s}" enhanced', o.title)
+    end
+    if o.xlabel then
+        gp_send(pipe, "set xlabel %q", o.xlabel)
+    end
+    if o.ylabel then
+        gp_send(pipe, "set ylabel %q", o.ylabel)
+    end
+    if o.xrange then
+        gp_send(pipe, "set xrange [%g:%g]", o.xrange[1], o.xrange[2])
+    end
+    if o.yrange then
+        gp_send(pipe, "set yrange [%g:%g]", o.yrange[1], o.yrange[2])
+    end
+    if o.grid then
+        pipe:write("set grid\n")
+    end
+    if o.logx then
+        pipe:write("set logscale x\n")
+    end
+    if o.logy then
+        pipe:write("set logscale y\n")
+    end
+    if o.xformat then
+        gp_send(pipe, "set format x %q", o.xformat)
+    end
+    if o.yformat then
+        gp_send(pipe, "set format y %q", o.yformat)
+    end
 
-	if o.key == false then
-		pipe:write("unset key\n")
-	elseif type(o.key) == "string" then
-		gp_send(pipe, "set key %s", o.key)
-	end
+    if o.key == false then
+        pipe:write("unset key\n")
+    elseif type(o.key) == "string" then
+        gp_send(pipe, "set key %s", o.key)
+    end
 
-	self:validate()
-	emit_global_series_options(pipe, self._series)
+    self:validate()
+    emit_global_series_options(pipe, self._series)
 
-	local cmds = {}
+    local cmds = {}
 
-	for _, s in ipairs(self._series) do
-		table.insert(cmds, series_cmd(s))
-	end
+    for _, s in ipairs(self._series) do
+        table.insert(cmds, series_cmd(s))
+    end
 
-	pipe:write("plot " .. table.concat(cmds, ", \\\n     ") .. "\n")
+    pipe:write("plot " .. table.concat(cmds, ", \\\n     ") .. "\n")
 
-	for _, s in ipairs(self._series) do
-		write_xy(pipe, s.xs, s.ys)
-	end
+    for _, s in ipairs(self._series) do
+        write_xy(pipe, s.xs, s.ys)
+    end
 end
 
 --
@@ -550,195 +598,192 @@ end
 --
 
 function Figure:show(opts)
-	opts = opts or {}
+    opts = opts or {}
 
-	local pipe = gp_open()
+    local pipe = gp_open()
 
-	local font = opts.font or self._opts.font or DEFAULT_FONT
+    local font = opts.font or self._opts.font or DEFAULT_FONT
 
-	local raster_size =
-		opts.raster_size or
-		opts.size or
-		self._opts.raster_size or
-		self._opts.size or
-		DEFAULT_RASTER_SIZE
+    local raster_size = opts.raster_size
+        or opts.size
+        or self._opts.raster_size
+        or self._opts.size
+        or DEFAULT_RASTER_SIZE
 
-	local live_terminal =
-		opts.terminal or
-		self._opts.live_terminal or
-		DEFAULT_LIVE_TERMINAL
+    local live_terminal = opts.terminal
+        or self._opts.live_terminal
+        or DEFAULT_LIVE_TERMINAL
 
-	local persist =
-		opts.persist
-	if persist == nil then
-		persist = DEFAULT_LIVE_PERSIST
-	end
+    local persist = opts.persist
+    if persist == nil then
+        persist = DEFAULT_LIVE_PERSIST
+    end
 
-	local persist_str = persist and " persist" or ""
+    local persist_str = persist and " persist" or ""
 
-	local term = string.format(
-		"%s%s size %d,%d font %q",
-		live_terminal,
-		persist_str,
-		raster_size[1],
-		raster_size[2],
-		font
-	)
+    local term = string.format(
+        "%s%s size %d,%d font %q",
+        live_terminal,
+        persist_str,
+        raster_size[1],
+        raster_size[2],
+        font
+    )
 
-	gp_send(pipe, "set terminal %s", term)
+    gp_send(pipe, "set terminal %s", term)
 
-	local ok, err = pcall(function()
-		self:_emit(pipe)
-	end)
+    local ok, err = pcall(function()
+        self:_emit(pipe)
+    end)
 
-	pipe:close()
+    pipe:close()
 
-	if not ok then
-		error(err, 2)
-	end
+    if not ok then
+        error(err, 2)
+    end
 
-	return self
+    return self
 end
 
 function Figure:save(path, opts)
-	opts = opts or {}
+    opts = opts or {}
 
-	local pipe = gp_open()
-	local font = opts.font or self._opts.font or DEFAULT_FONT
-	local ext = path_extension(path)
+    local pipe = gp_open()
+    local font = opts.font or self._opts.font or DEFAULT_FONT
+    local ext = path_extension(path)
 
-	local raster_size =
-		opts.raster_size or
-		opts.size or
-		self._opts.raster_size or
-		self._opts.size or
-		DEFAULT_RASTER_SIZE
+    local raster_size = opts.raster_size
+        or opts.size
+        or self._opts.raster_size
+        or self._opts.size
+        or DEFAULT_RASTER_SIZE
 
-	local vector_size =
-		opts.vector_size or
-		self._opts.vector_size or
-		DEFAULT_VECTOR_SIZE
+    local vector_size = opts.vector_size
+        or self._opts.vector_size
+        or DEFAULT_VECTOR_SIZE
 
-	local term
+    local term
 
-	if opts.terminal then
-		term = opts.terminal
-	elseif ext == "png" then
-		term = string.format(
-			"pngcairo size %d,%d font %q",
-			raster_size[1],
-			raster_size[2],
-			font
-		)
-	elseif ext == "svg" then
-		term = string.format(
-			"svg size %d,%d font %q",
-			raster_size[1],
-			raster_size[2],
-			font
-		)
-	elseif ext == "pdf" then
-		term = string.format(
-			"pdfcairo size %gcm,%gcm font %q",
-			vector_size[1],
-			vector_size[2],
-			font
-		)
-	elseif ext == "eps" then
-		term = string.format(
-			"epscairo size %gcm,%gcm font %q",
-			vector_size[1],
-			vector_size[2],
-			font
-		)
-	else
-		term = string.format(
-			"pngcairo size %d,%d font %q",
-			raster_size[1],
-			raster_size[2],
-			font
-		)
-	end
+    if opts.terminal then
+        term = opts.terminal
+    elseif ext == "png" then
+        term = string.format(
+            "pngcairo size %d,%d font %q",
+            raster_size[1],
+            raster_size[2],
+            font
+        )
+    elseif ext == "svg" then
+        term = string.format(
+            "svg size %d,%d font %q",
+            raster_size[1],
+            raster_size[2],
+            font
+        )
+    elseif ext == "pdf" then
+        term = string.format(
+            "pdfcairo size %gcm,%gcm font %q",
+            vector_size[1],
+            vector_size[2],
+            font
+        )
+    elseif ext == "eps" then
+        term = string.format(
+            "epscairo size %gcm,%gcm font %q",
+            vector_size[1],
+            vector_size[2],
+            font
+        )
+    else
+        term = string.format(
+            "pngcairo size %d,%d font %q",
+            raster_size[1],
+            raster_size[2],
+            font
+        )
+    end
 
-	gp_send(pipe, "set terminal %s", term)
-	gp_send(pipe, "set output %q", path)
+    gp_send(pipe, "set terminal %s", term)
+    gp_send(pipe, "set output %q", path)
 
-	local ok, err = pcall(function()
-		self:_emit(pipe)
-		gp_send(pipe, "unset output")
-	end)
+    local ok, err = pcall(function()
+        self:_emit(pipe)
+        gp_send(pipe, "unset output")
+    end)
 
-	pipe:close()
+    pipe:close()
 
-	if not ok then
-		error(err, 2)
-	end
+    if not ok then
+        error(err, 2)
+    end
 
-	io.write(string.format("[jnl.gp] saved -> %s\n", path))
-	return self
+    io.write(string.format("[jnl.gp] saved -> %s\n", path))
+    return self
 end
 
 function Figure:write(path, opts)
-	local ext = path_extension(path)
+    local ext = path_extension(path)
 
-	if ext == "csv" then
-		return self:write_csv(path)
-	end
+    if ext == "csv" then
+        return self:write_csv(path)
+    end
 
-	if is_image_extension(ext) then
-		return self:save(path, opts)
-	end
+    if is_image_extension(ext) then
+        return self:save(path, opts)
+    end
 
-	error(string.format(
-		"[jnl.gp] unsupported output extension %q for %s; expected .csv, .png, .svg, .pdf, or .eps",
-		ext ~= "" and ("." .. ext) or "(none)",
-		path
-	))
+    error(
+        string.format(
+            "[jnl.gp] unsupported output extension %q for %s; expected .csv, .png, .svg, .pdf, or .eps",
+            ext ~= "" and ("." .. ext) or "(none)",
+            path
+        )
+    )
 end
 
 function Figure:write_csv(path)
-	if self._csv_fn then
-		return self._csv_fn(path, self)
-	end
+    if self._csv_fn then
+        return self._csv_fn(path, self)
+    end
 
-	self:validate()
-	M.write_csv(path, self._series)
-	return self
+    self:validate()
+    M.write_csv(path, self._series)
+    return self
 end
 
 local function figure_title(fig)
-	local title = fig._opts and fig._opts.title
-	if title then
-		return string.format("%q", title)
-	end
+    local title = fig._opts and fig._opts.title
+    if title then
+        return string.format("%q", title)
+    end
 
-	return "untitled"
+    return "untitled"
 end
 
 function Figure:__tostring()
-	local opts = self._opts or {}
-	local parts = {}
+    local opts = self._opts or {}
+    local parts = {}
 
-	parts[#parts + 1] = string.format("Figure(%s", figure_title(self))
-	parts[#parts + 1] = string.format("series=%d", #(self._series or {}))
+    parts[#parts + 1] = string.format("Figure(%s", figure_title(self))
+    parts[#parts + 1] = string.format("series=%d", #(self._series or {}))
 
-	if opts.xlabel then
-		parts[#parts + 1] = "xlabel=" .. string.format("%q", opts.xlabel)
-	end
+    if opts.xlabel then
+        parts[#parts + 1] = "xlabel=" .. string.format("%q", opts.xlabel)
+    end
 
-	if opts.ylabel then
-		parts[#parts + 1] = "ylabel=" .. string.format("%q", opts.ylabel)
-	end
+    if opts.ylabel then
+        parts[#parts + 1] = "ylabel=" .. string.format("%q", opts.ylabel)
+    end
 
-	if opts.logx then
-		parts[#parts + 1] = "logx"
-	end
+    if opts.logx then
+        parts[#parts + 1] = "logx"
+    end
 
-	if opts.logy then
-		parts[#parts + 1] = "logy"
-	end
+    if opts.logy then
+        parts[#parts + 1] = "logy"
+    end
 
-	return table.concat(parts, ", ") .. ")"
+    return table.concat(parts, ", ") .. ")"
 end
 
 --
@@ -746,17 +791,17 @@ end
 --
 
 function M.sample(fn, x0, x1, n)
-	n = n or 200
+    n = n or 200
 
-	local xs, ys = {}, {}
+    local xs, ys = {}, {}
 
-	for i = 0, n do
-		local x = x0 + (x1 - x0) * i / n
-		xs[i + 1] = x
-		ys[i + 1] = fn(x)
-	end
+    for i = 0, n do
+        local x = x0 + (x1 - x0) * i / n
+        xs[i + 1] = x
+        ys[i + 1] = fn(x)
+    end
 
-	return xs, ys
+    return xs, ys
 end
 
 --
@@ -764,243 +809,238 @@ end
 --
 
 M.sym = {
-	alpha = "{/Symbol a}",
-	beta = "{/Symbol b}",
-	gamma = "{/Symbol g}",
-	delta = "{/Symbol d}",
-	mu = "{/Symbol m}",
-	nu = "{/Symbol n}",
-	rho = "{/Symbol r}",
-	sigma = "{/Symbol s}",
-	omega = "{/Symbol w}",
-	Omega = "{/Symbol W}",
-	phi = "{/Symbol f}",
-	psi = "{/Symbol y}",
-	eta = "{/Symbol h}",
-	tau = "{/Symbol t}",
-	pi = "{/Symbol p}",
-	Pi = "{/Symbol P}",
-	theta = "{/Symbol q}",
-	Theta = "{/Symbol Q}",
+    alpha = "{/Symbol a}",
+    beta = "{/Symbol b}",
+    gamma = "{/Symbol g}",
+    delta = "{/Symbol d}",
+    mu = "{/Symbol m}",
+    nu = "{/Symbol n}",
+    rho = "{/Symbol r}",
+    sigma = "{/Symbol s}",
+    omega = "{/Symbol w}",
+    Omega = "{/Symbol W}",
+    phi = "{/Symbol f}",
+    psi = "{/Symbol y}",
+    eta = "{/Symbol h}",
+    tau = "{/Symbol t}",
+    pi = "{/Symbol p}",
+    Pi = "{/Symbol P}",
+    theta = "{/Symbol q}",
+    Theta = "{/Symbol Q}",
 }
 
 M.colour = {
-	blue   = "#0077bb",
-	red    = "#ee3333",
-	green  = "#22aa55",
-	orange = "#ff8800",
-	purple = "#aa33cc",
-	teal   = "#009988",
-	pink   = "#cc6677",
-	grey   = "#888888",
-	black  = "#111111",
+    blue = "#0077bb",
+    red = "#ee3333",
+    green = "#22aa55",
+    orange = "#ff8800",
+    purple = "#aa33cc",
+    teal = "#009988",
+    pink = "#cc6677",
+    grey = "#888888",
+    black = "#111111",
 }
 
 M.palette = {
-	M.colour.blue,
-	M.colour.red,
-	M.colour.green,
-	M.colour.orange,
-	M.colour.purple,
-	M.colour.teal,
-	M.colour.pink,
-	M.colour.grey,
+    M.colour.blue,
+    M.colour.red,
+    M.colour.green,
+    M.colour.orange,
+    M.colour.purple,
+    M.colour.teal,
+    M.colour.pink,
+    M.colour.grey,
 }
 
 function M.cycler()
-	local i = 0
+    local i = 0
 
-	return function()
-		i = (i % #M.palette) + 1
-		return M.palette[i]
-	end
+    return function()
+        i = (i % #M.palette) + 1
+        return M.palette[i]
+    end
 end
 
 --
 -- API
 --
 
-M._doc = "Gnuplot driver via popen; supports interactive display, file output, and CSV export."
+M._doc =
+    "Gnuplot driver via popen; supports interactive display, file output, and CSV export."
 
-M._doc_subsection =
-	"Build a Figure with M.figure(opts), chain :add(xs, ys, opts) calls, then call " ..
-	":show() for an interactive window or :write(path) for file output. Extension on " ..
-	"the write path selects CSV or image output automatically (.csv .png .svg .pdf .eps). " ..
-	"Use M.scatter(xs, ys, opts) and M.histogram(values, opts) for common plotted series."
+M._doc_subsection = "Build a Figure with M.figure(opts), chain :add(xs, ys, opts) calls, then call "
+    .. ":show() for an interactive window or :write(path) for file output. Extension on "
+    .. "the write path selects CSV or image output automatically (.csv .png .svg .pdf .eps). "
+    .. "Use M.scatter(xs, ys, opts) and M.histogram(values, opts) for common plotted series."
 
 M._api = {
-	figure = {
-		args = "opts?",
-		ret = "Figure",
-		doc =
-			"Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key, " ..
-			"logx, logy, font, size, xformat, yformat, csv }. If opts.csv is supplied, " ..
-			"Figure:write_csv(path) delegates to opts.csv(path, figure).",
-	},
-	series = {
-		args = "xs, ys, opts?",
-		ret = "Series",
-		doc =
-		"Build a printable series struct; opts: { kind, title, style, colour, lw, pt, ps, dt, width, fill }",
-	},
-	scatter = {
-		args = "xs, ys, opts?",
-		ret = "Series",
-		doc = "Build a printable point series; opts are series opts with defaults { style='points', pt=7, ps=0.8 }",
-	},
-	histogram = {
-		args = "values, opts?",
-		ret = "Series",
-		doc = "Build a printable histogram series; opts: { bins, lo, hi, title, colour, width, fill }",
-	},
-	sample = {
-		args = "fn, x0, x1, n?",
-		ret = "xs, ys",
-		doc = "Sample fn over [x0,x1] at n+1 points, default 200; returns two arrays",
-	},
-	write_csv = {
-		args = "path, xs_or_series, ys?, header?",
-		ret = "nil",
-		doc = "Write xs/ys or a list of Series structs to a CSV file",
-	},
-	cycler = {
-		args = "",
-		ret = "fn:()->string",
-		doc = "Return a stateful function that cycles through M.palette colours on each call",
-	},
+    figure = {
+        args = "opts?",
+        ret = "Figure",
+        doc = "Create a figure; opts: { title, xlabel, ylabel, xrange, yrange, grid, key, "
+            .. "logx, logy, font, size, xformat, yformat, csv }. If opts.csv is supplied, "
+            .. "Figure:write_csv(path) delegates to opts.csv(path, figure).",
+    },
+    series = {
+        args = "xs, ys, opts?",
+        ret = "Series",
+        doc = "Build a printable series struct; opts: { kind, title, style, colour, lw, pt, ps, dt, width, fill }",
+    },
+    scatter = {
+        args = "xs, ys, opts?",
+        ret = "Series",
+        doc = "Build a printable point series; opts are series opts with defaults { style='points', pt=7, ps=0.8 }",
+    },
+    histogram = {
+        args = "values, opts?",
+        ret = "Series",
+        doc = "Build a printable histogram series; opts: { bins, lo, hi, title, colour, width, fill }",
+    },
+    sample = {
+        args = "fn, x0, x1, n?",
+        ret = "xs, ys",
+        doc = "Sample fn over [x0,x1] at n+1 points, default 200; returns two arrays",
+    },
+    write_csv = {
+        args = "path, xs_or_series, ys?, header?",
+        ret = "nil",
+        doc = "Write xs/ys or a list of Series structs to a CSV file",
+    },
+    cycler = {
+        args = "",
+        ret = "fn:()->string",
+        doc = "Return a stateful function that cycles through M.palette colours on each call",
+    },
 }
 
 M._constants = {
-	sym = {
-		doc = "Gnuplot enhanced-mode greek letter strings; use inside title/xlabel/ylabel strings",
-		values = {
-			alpha = { value = '"{/Symbol a}"', doc = "lowercase alpha" },
-			beta = { value = '"{/Symbol b}"', doc = "lowercase beta" },
-			gamma = { value = '"{/Symbol g}"', doc = "lowercase gamma" },
-			delta = { value = '"{/Symbol d}"', doc = "lowercase delta" },
-			mu = { value = '"{/Symbol m}"', doc = "lowercase mu" },
-			nu = { value = '"{/Symbol n}"', doc = "lowercase nu" },
-			rho = { value = '"{/Symbol r}"', doc = "lowercase rho" },
-			sigma = { value = '"{/Symbol s}"', doc = "lowercase sigma" },
-			omega = { value = '"{/Symbol w}"', doc = "lowercase omega" },
-			Omega = { value = '"{/Symbol W}"', doc = "uppercase Omega" },
-			phi = { value = '"{/Symbol f}"', doc = "lowercase phi" },
-			psi = { value = '"{/Symbol y}"', doc = "lowercase psi" },
-			eta = { value = '"{/Symbol h}"', doc = "lowercase eta" },
-			tau = { value = '"{/Symbol t}"', doc = "lowercase tau" },
-			pi = { value = '"{/Symbol p}"', doc = "lowercase pi" },
-			Pi = { value = '"{/Symbol P}"', doc = "uppercase Pi" },
-			theta = { value = '"{/Symbol q}"', doc = "lowercase theta" },
-			Theta = { value = '"{/Symbol Q}"', doc = "uppercase Theta" },
-		},
-	},
-	colour = {
-		doc = "Named hex colour strings for explicit series colouring",
-		values = {
-			blue = { value = '"#0077bb"', doc = "Primary blue" },
-			red = { value = '"#ee3333"', doc = "Primary red" },
-			green = { value = '"#22aa55"', doc = "Primary green" },
-			orange = { value = '"#ff8800"', doc = "Warm orange" },
-			purple = { value = '"#aa33cc"', doc = "Mid purple" },
-			teal = { value = '"#009988"', doc = "Cool teal" },
-			pink = { value = '"#cc6677"', doc = "Soft pink" },
-			grey = { value = '"#888888"', doc = "Mid grey" },
-			black = { value = '"#111111"', doc = "Near black" },
-		},
-	},
-	palette = {
-		doc = "Ordered colour cycle used by cycler(); blue-first, excludes black",
-		values = {
-			{ value = '"#0077bb"', doc = "1 blue" },
-			{ value = '"#ee3333"', doc = "2 red" },
-			{ value = '"#22aa55"', doc = "3 green" },
-			{ value = '"#ff8800"', doc = "4 orange" },
-			{ value = '"#aa33cc"', doc = "5 purple" },
-			{ value = '"#009988"', doc = "6 teal" },
-			{ value = '"#cc6677"', doc = "7 pink" },
-			{ value = '"#888888"', doc = "8 grey" },
-		},
-	},
+    sym = {
+        doc = "Gnuplot enhanced-mode greek letter strings; use inside title/xlabel/ylabel strings",
+        values = {
+            alpha = { value = '"{/Symbol a}"', doc = "lowercase alpha" },
+            beta = { value = '"{/Symbol b}"', doc = "lowercase beta" },
+            gamma = { value = '"{/Symbol g}"', doc = "lowercase gamma" },
+            delta = { value = '"{/Symbol d}"', doc = "lowercase delta" },
+            mu = { value = '"{/Symbol m}"', doc = "lowercase mu" },
+            nu = { value = '"{/Symbol n}"', doc = "lowercase nu" },
+            rho = { value = '"{/Symbol r}"', doc = "lowercase rho" },
+            sigma = { value = '"{/Symbol s}"', doc = "lowercase sigma" },
+            omega = { value = '"{/Symbol w}"', doc = "lowercase omega" },
+            Omega = { value = '"{/Symbol W}"', doc = "uppercase Omega" },
+            phi = { value = '"{/Symbol f}"', doc = "lowercase phi" },
+            psi = { value = '"{/Symbol y}"', doc = "lowercase psi" },
+            eta = { value = '"{/Symbol h}"', doc = "lowercase eta" },
+            tau = { value = '"{/Symbol t}"', doc = "lowercase tau" },
+            pi = { value = '"{/Symbol p}"', doc = "lowercase pi" },
+            Pi = { value = '"{/Symbol P}"', doc = "uppercase Pi" },
+            theta = { value = '"{/Symbol q}"', doc = "lowercase theta" },
+            Theta = { value = '"{/Symbol Q}"', doc = "uppercase Theta" },
+        },
+    },
+    colour = {
+        doc = "Named hex colour strings for explicit series colouring",
+        values = {
+            blue = { value = '"#0077bb"', doc = "Primary blue" },
+            red = { value = '"#ee3333"', doc = "Primary red" },
+            green = { value = '"#22aa55"', doc = "Primary green" },
+            orange = { value = '"#ff8800"', doc = "Warm orange" },
+            purple = { value = '"#aa33cc"', doc = "Mid purple" },
+            teal = { value = '"#009988"', doc = "Cool teal" },
+            pink = { value = '"#cc6677"', doc = "Soft pink" },
+            grey = { value = '"#888888"', doc = "Mid grey" },
+            black = { value = '"#111111"', doc = "Near black" },
+        },
+    },
+    palette = {
+        doc = "Ordered colour cycle used by cycler(); blue-first, excludes black",
+        values = {
+            { value = '"#0077bb"', doc = "1 blue" },
+            { value = '"#ee3333"', doc = "2 red" },
+            { value = '"#22aa55"', doc = "3 green" },
+            { value = '"#ff8800"', doc = "4 orange" },
+            { value = '"#aa33cc"', doc = "5 purple" },
+            { value = '"#009988"', doc = "6 teal" },
+            { value = '"#cc6677"', doc = "7 pink" },
+            { value = '"#888888"', doc = "8 grey" },
+        },
+    },
 }
 
 M._types = {
-	Figure = {
-		doc = "Chainable figure builder; holds series list and display options",
-		constructor = "M.figure(opts?)",
-		kind = "table",
-		methods = {
-			add = {
-				args = "xs, ys, opts? | series:Series",
-				ret = "Figure",
-				doc = "Append a data series; accepts raw arrays or a Series struct; chainable",
-			},
-			add_scatter = {
-				args = "xs, ys, opts?",
-				ret = "Figure",
-				doc = "Append a scatter series; chainable",
-			},
-			add_histogram = {
-				args = "values, opts?",
-				ret = "Figure",
-				doc = "Append a histogram series; chainable",
-			},
-			show = {
-				args = "opts?",
-				ret = "Figure",
-				doc = "Open a persistent interactive gnuplot window; opts: { raster_size, size, font }",
-			},
-			write = {
-				args = "path:string, opts?",
-				ret = "Figure",
-				doc =
-				".png/.svg/.pdf/.eps save image output; image opts: { raster_size, vector_size, size, font, terminal }",
-			},
-			save = {
-				args = "path:string, opts?",
-				ret = "Figure",
-				doc =
-				"Save image output; terminal inferred from extension; opts: { raster_size, vector_size, size, font, terminal }",
-			},
-			write_csv = {
-				args = "path:string",
-				ret = "Figure",
-				doc = "Dump all series to CSV; chainable",
-			},
-			hline = {
-				args = "y:number, opts?",
-				ret = "Figure",
-				doc = "Add a horizontal reference line; opts: { lw, colour, dt, title }",
-			},
-			vline = {
-				args = "x:number, opts?",
-				ret = "Figure",
-				doc = "Add a vertical reference line; opts: { lw, colour, dt, title }",
-			},
-			series = {
-				args = "",
-				ret = "Series[]",
-				doc = "Return the figure series list",
-			},
-			__tostring = {
-				args = "self",
-				ret = "string",
-				doc = "Return a compact REPL summary with title, series count, axis labels, and log-axis flags.",
-			},
-		},
-	},
-	Series = {
-		doc =
-		"Data series descriptor table. Series may represent ordinary xy data, scatter points, or histogram bins.",
-		constructor = "M.series(xs, ys, opts?), M.scatter(xs, ys, opts?), or M.histogram(values, opts?)",
-		kind = "table",
-		methods = {
-			__tostring = {
-				args = "self",
-				ret = "string",
-				doc = "Return a compact REPL summary with kind, title, point count, style, and numeric ranges.",
-			},
-		},
-	},
+    Figure = {
+        doc = "Chainable figure builder; holds series list and display options",
+        constructor = "M.figure(opts?)",
+        kind = "table",
+        methods = {
+            add = {
+                args = "xs, ys, opts? | series:Series",
+                ret = "Figure",
+                doc = "Append a data series; accepts raw arrays or a Series struct; chainable",
+            },
+            add_scatter = {
+                args = "xs, ys, opts?",
+                ret = "Figure",
+                doc = "Append a scatter series; chainable",
+            },
+            add_histogram = {
+                args = "values, opts?",
+                ret = "Figure",
+                doc = "Append a histogram series; chainable",
+            },
+            show = {
+                args = "opts?",
+                ret = "Figure",
+                doc = "Open a persistent interactive gnuplot window; opts: { raster_size, size, font }",
+            },
+            write = {
+                args = "path:string, opts?",
+                ret = "Figure",
+                doc = ".png/.svg/.pdf/.eps save image output; image opts: { raster_size, vector_size, size, font, terminal }",
+            },
+            save = {
+                args = "path:string, opts?",
+                ret = "Figure",
+                doc = "Save image output; terminal inferred from extension; opts: { raster_size, vector_size, size, font, terminal }",
+            },
+            write_csv = {
+                args = "path:string",
+                ret = "Figure",
+                doc = "Dump all series to CSV; chainable",
+            },
+            hline = {
+                args = "y:number, opts?",
+                ret = "Figure",
+                doc = "Add a horizontal reference line; opts: { lw, colour, dt, title }",
+            },
+            vline = {
+                args = "x:number, opts?",
+                ret = "Figure",
+                doc = "Add a vertical reference line; opts: { lw, colour, dt, title }",
+            },
+            series = {
+                args = "",
+                ret = "Series[]",
+                doc = "Return the figure series list",
+            },
+            __tostring = {
+                args = "self",
+                ret = "string",
+                doc = "Return a compact REPL summary with title, series count, axis labels, and log-axis flags.",
+            },
+        },
+    },
+    Series = {
+        doc = "Data series descriptor table. Series may represent ordinary xy data, scatter points, or histogram bins.",
+        constructor = "M.series(xs, ys, opts?), M.scatter(xs, ys, opts?), or M.histogram(values, opts?)",
+        kind = "table",
+        methods = {
+            __tostring = {
+                args = "self",
+                ret = "string",
+                doc = "Return a compact REPL summary with kind, title, point count, style, and numeric ranges.",
+            },
+        },
+    },
 }
 
 return M

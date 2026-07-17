@@ -7,20 +7,20 @@
 --- Integer direction constants (S/E/N/W) are used by the block and grid
 --- builders.  String patch names (PATCH.*) are used as BC identifiers on
 --- any mesh type.
-local M   = {}
+local M = {}
 
 local opt = require("jnl.core.optional")
-local I   = opt.require("jnl.strucmesh2d_internal")
+local I = opt.require("jnl.strucmesh2d_internal")
 
 --- Integer edge direction constants for block/grid builders.
-M.S       = I.SOUTH
-M.E       = I.EAST
-M.N       = I.NORTH
-M.W       = I.WEST
-M.SOUTH   = I.SOUTH
-M.EAST    = I.EAST
-M.NORTH   = I.NORTH
-M.WEST    = I.WEST
+M.S = I.SOUTH
+M.E = I.EAST
+M.N = I.NORTH
+M.W = I.WEST
+M.SOUTH = I.SOUTH
+M.EAST = I.EAST
+M.NORTH = I.NORTH
+M.WEST = I.WEST
 
 --- Canonical patch name strings.  Consistent across cartesian, structured,
 --- and triangulated meshes so BC tables are mesh-generator-independent.
@@ -29,11 +29,11 @@ M.WEST    = I.WEST
 ---@field EAST  string
 ---@field NORTH string
 ---@field WEST  string
-M.PATCH   = {
-	SOUTH = "south",
-	EAST  = "east",
-	NORTH = "north",
-	WEST  = "west",
+M.PATCH = {
+    SOUTH = "south",
+    EAST = "east",
+    NORTH = "north",
+    WEST = "west",
 }
 
 return M

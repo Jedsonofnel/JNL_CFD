@@ -36,19 +36,23 @@ local M = {}
 
 local REG_DEFAULTS = { nu = 1e-3 }
 local ALG_DEFAULTS = {
-	alpha_U      = 0.7,
-	alpha_p      = 0.3,
-	tol          = 1e-4,
-	max_iters    = 500,
-	solver       = "bicgstab_dilu",
-	n_correctors = 2,
+    alpha_U = 0.7,
+    alpha_p = 0.3,
+    tol = 1e-4,
+    max_iters = 500,
+    solver = "bicgstab_dilu",
+    n_correctors = 2,
 }
 
 local function merge(defaults, opts)
-	local t = {}
-	for k, v in pairs(defaults) do t[k] = v end
-	for k, v in pairs(opts or {}) do t[k] = v end
-	return t
+    local t = {}
+    for k, v in pairs(defaults) do
+        t[k] = v
+    end
+    for k, v in pairs(opts or {}) do
+        t[k] = v
+    end
+    return t
 end
 
 --
@@ -64,30 +68,26 @@ M.reg = {}
 ---@param opts? RegOpts
 ---@return Registry
 function M.reg.stokes(opts)
-	opts          = merge(REG_DEFAULTS, opts)
-	local reg     = Registry.new("stokes")
-	local nu      = reg:const("nu", opts.nu)
-	local U       = reg:vector("U")
-	local p       = reg:scalar("p")
-	local p_prime = reg:scalar("p_prime")
+    opts = merge(REG_DEFAULTS, opts)
+    local reg = Registry.new("stokes")
+    local nu = reg:const("nu", opts.nu)
+    local U = reg:vector("U")
+    local p = reg:scalar("p")
+    local p_prime = reg:scalar("p_prime")
 
-	U:governed_by(
-		nb.laplacian(nu * U)
-		:equals(nb.grad(-p))
-	)
+    U:governed_by(nb.laplacian(nu * U):equals(nb.grad(-p)))
 
-	local inv_d = reg:scalar("inv_d"):defined_as(
-		nb.cV() * 2 / (U:diag().x + U:diag().y)
-	)
+    local inv_d = reg:scalar("inv_d")
+        :defined_as(nb.cV() * 2 / (U:diag().x + U:diag().y))
 
-	p_prime:governed_by(
-		nb.laplacian(inv_d * p_prime):equals(-nb.div(nb.mwi(U, p)))
-	)
+    p_prime:governed_by(
+        nb.laplacian(inv_d * p_prime):equals(-nb.div(nb.mwi(U, p)))
+    )
 
-	U:correction(-nb.cV() * nb.grad(p_prime) / U:diag())
-	p:correction(p_prime)
+    U:correction(-nb.cV() * nb.grad(p_prime) / U:diag())
+    p:correction(p_prime)
 
-	return reg
+    return reg
 end
 
 --- Laminar incompressible Navier-Stokes with convection.
@@ -96,30 +96,24 @@ end
 ---@param opts? RegOpts
 ---@return Registry
 function M.reg.ns(opts)
-	opts          = merge(REG_DEFAULTS, opts)
-	local reg     = Registry.new("ns")
-	local nu      = reg:const("nu", opts.nu)
-	local U       = reg:vector("U")
-	local p       = reg:scalar("p")
-	local p_prime = reg:scalar("p_prime")
+    opts = merge(REG_DEFAULTS, opts)
+    local reg = Registry.new("ns")
+    local nu = reg:const("nu", opts.nu)
+    local U = reg:vector("U")
+    local p = reg:scalar("p")
+    local p_prime = reg:scalar("p_prime")
 
-	U:governed_by(
-		nb.div(U:mwi(p) * U):equals(
-			nb.laplacian(nu, U) - nb.grad(p))
-	)
+    U:governed_by(nb.div(U:mwi(p) * U):equals(nb.laplacian(nu, U) - nb.grad(p)))
 
-	local inv_d = reg:scalar("inv_d"):defined_as(
-		nb.cV() * 2 / (U:diag().x + U:diag().y)
-	)
+    local inv_d = reg:scalar("inv_d")
+        :defined_as(nb.cV() * 2 / (U:diag().x + U:diag().y))
 
-	p_prime:governed_by(
-		nb.laplacian(inv_d, p_prime):equals(nb.div(U:mwi(p)))
-	)
+    p_prime:governed_by(nb.laplacian(inv_d, p_prime):equals(nb.div(U:mwi(p))))
 
-	U:correction(-nb.cV() * nb.grad(p_prime) / U:diag())
-	p:correction(p_prime)
+    U:correction(-nb.cV() * nb.grad(p_prime) / U:diag())
+    p:correction(p_prime)
 
-	return reg
+    return reg
 end
 
 M.reg.laminar = M.reg.ns
@@ -138,24 +132,24 @@ M.alg = {}
 ---@param opts? AlgOpts
 ---@return Algorithm
 function M.alg.simple(opts)
-	opts = merge(ALG_DEFAULTS, opts)
+    opts = merge(ALG_DEFAULTS, opts)
 
-	local alg = Algorithm.new("simple")
-		:loop(function(b)
-			b:solve("U")
-			b:zero("p_prime")
-			b:solve("p_prime")
-			b:correct("U")
-			b:correct("p")
-		end, opts.max_iters)
-		:converge(Rules.change_below("*", opts.tol, 5))
-		:guard(Rules.nan_guard())
+    local alg = Algorithm.new("simple")
+        :loop(function(b)
+            b:solve("U")
+            b:zero("p_prime")
+            b:solve("p_prime")
+            b:correct("U")
+            b:correct("p")
+        end, opts.max_iters)
+        :converge(Rules.change_below("*", opts.tol, 5))
+        :guard(Rules.nan_guard())
 
-	alg:set_cfg("default", "solver", opts.solver)
-	alg:set_cfg("U", "relax", opts.alpha_U)
-	alg:set_cfg("p", "relax", opts.alpha_p)
-	alg:set_cfg("p_prime", "relax", 1.0)
-	return alg
+    alg:set_cfg("default", "solver", opts.solver)
+    alg:set_cfg("U", "relax", opts.alpha_U)
+    alg:set_cfg("p", "relax", opts.alpha_p)
+    alg:set_cfg("p_prime", "relax", 1.0)
+    return alg
 end
 
 --- PISO.
@@ -165,26 +159,26 @@ end
 ---@param opts? AlgOpts
 ---@return Algorithm
 function M.alg.piso(opts)
-	opts = merge(ALG_DEFAULTS, opts)
+    opts = merge(ALG_DEFAULTS, opts)
 
-	local alg = Algorithm.new("piso")
-		:loop(function(b)
-			b:solve("U")
-			b:inner(function(ib)
-				ib:zero("p_prime")
-				ib:solve("p_prime")
-				ib:correct("U")
-				ib:correct("p")
-			end, opts.n_correctors)
-		end, opts.max_iters)
-		:converge(Rules.change_below("*", opts.tol, 5))
-		:guard(Rules.nan_guard())
+    local alg = Algorithm.new("piso")
+        :loop(function(b)
+            b:solve("U")
+            b:inner(function(ib)
+                ib:zero("p_prime")
+                ib:solve("p_prime")
+                ib:correct("U")
+                ib:correct("p")
+            end, opts.n_correctors)
+        end, opts.max_iters)
+        :converge(Rules.change_below("*", opts.tol, 5))
+        :guard(Rules.nan_guard())
 
-	alg:set_cfg("default", "solver", opts.solver)
-	alg:set_cfg("U", "relax", 1.0)
-	alg:set_cfg("p", "relax", opts.alpha_p)
-	alg:set_cfg("p_prime", "relax", 1.0)
-	return alg
+    alg:set_cfg("default", "solver", opts.solver)
+    alg:set_cfg("U", "relax", 1.0)
+    alg:set_cfg("p", "relax", opts.alpha_p)
+    alg:set_cfg("p_prime", "relax", 1.0)
+    return alg
 end
 
 --- PIMPLE.
@@ -194,26 +188,26 @@ end
 ---@param opts? AlgOpts
 ---@return Algorithm
 function M.alg.pimple(opts)
-	opts = merge(ALG_DEFAULTS, opts)
+    opts = merge(ALG_DEFAULTS, opts)
 
-	local alg = Algorithm.new("pimple")
-		:loop(function(b)
-			b:solve("U")
-			b:inner(function(ib)
-				ib:zero("p_prime")
-				ib:solve("p_prime")
-				ib:correct("U")
-				ib:correct("p")
-			end, opts.n_correctors)
-		end, opts.max_iters)
-		:converge(Rules.change_below("*", opts.tol, 5))
-		:guard(Rules.nan_guard())
+    local alg = Algorithm.new("pimple")
+        :loop(function(b)
+            b:solve("U")
+            b:inner(function(ib)
+                ib:zero("p_prime")
+                ib:solve("p_prime")
+                ib:correct("U")
+                ib:correct("p")
+            end, opts.n_correctors)
+        end, opts.max_iters)
+        :converge(Rules.change_below("*", opts.tol, 5))
+        :guard(Rules.nan_guard())
 
-	alg:set_cfg("default", "solver", opts.solver)
-	alg:set_cfg("U", "relax", opts.alpha_U)
-	alg:set_cfg("p", "relax", opts.alpha_p)
-	alg:set_cfg("p_prime", "relax", 1.0)
-	return alg
+    alg:set_cfg("default", "solver", opts.solver)
+    alg:set_cfg("U", "relax", opts.alpha_U)
+    alg:set_cfg("p", "relax", opts.alpha_p)
+    alg:set_cfg("p_prime", "relax", 1.0)
+    return alg
 end
 
 return M

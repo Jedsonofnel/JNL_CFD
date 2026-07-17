@@ -77,7 +77,8 @@ void render_state_init(jnl_render_state *r, struct jnl_ui_colormap cm)
 	r->loc_colormap = GetShaderLocation(r->shader, "u_colormap");
 	r->shader_loaded = true;
 
-	/* Bake colormap into a 256×1 RGBA8 texture via raylib Image -> Texture2D. */
+	/* Bake colormap into a 256×1 RGBA8 texture via raylib Image -> Texture2D.
+	 */
 	unsigned char *baked = malloc(256 * 4);
 	if (!baked) {
 		TraceLog(LOG_WARNING, "RENDER: colormap alloc failed");

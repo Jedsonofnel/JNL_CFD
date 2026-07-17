@@ -4,6 +4,7 @@
 local V = require("jnl.core.validation")
 
 -- TODO: consider adding max/min nodes for clamping - with a ternary helper clamp(lo,hi,node)?
+-- TODO: consider adding sqrt() and ln() and other bits
 
 --
 -- Node: node of expression graph
@@ -34,57 +35,70 @@ Node.__index = Node
 ---Create a named or anonymous scalar constant node.
 ---@return Node node rank-0 constant node
 local function new_const(...)
-	local args = { ... }
+    local args = { ... }
 
-	local name
-	if type(args[1]) == "string" then
-		name = table.remove(args, 1)
-		V.identifier(name, "new_const name")
-	end
+    local name
+    if type(args[1]) == "string" then
+        name = table.remove(args, 1)
+        V.identifier(name, "new_const name")
+    end
 
-	-- all args are numbers
-	for i, v in ipairs(args) do
-		assert(type(v) == "number",
-			string.format("new_const: arg %d must be a number, got %s", i, type(v)))
-	end
+    -- all args are numbers
+    for i, v in ipairs(args) do
+        assert(
+            type(v) == "number",
+            string.format(
+                "new_const: arg %d must be a number, got %s",
+                i,
+                type(v)
+            )
+        )
+    end
 
-	if #args == 1 then -- scalar
-		return setmetatable({ kind = "constant", name = name, a = args[1], rank = 0 }, Node)
-	elseif #args == 2 or #args == 3 then
-		return setmetatable({
-			kind = "cvec",
-			name = name,
-			a    = { args[1], args[2], args[3] or 0 },
-			rank = 1,
-		}, Node)
-	else
-		error(string.format("new_const: expected 1-3 numbers, got %d numbers", #args))
-	end
+    if #args == 1 then -- scalar
+        return setmetatable(
+            { kind = "constant", name = name, a = args[1], rank = 0 },
+            Node
+        )
+    elseif #args == 2 or #args == 3 then
+        return setmetatable({
+            kind = "cvec",
+            name = name,
+            a = { args[1], args[2], args[3] or 0 },
+            rank = 1,
+        }, Node)
+    else
+        error(
+            string.format(
+                "new_const: expected 1-3 numbers, got %d numbers",
+                #args
+            )
+        )
+    end
 end
 
 ---Create a scalar symbol node.
 ---@param name string
 ---@return Node node rank-0 symbol node.
 local function new_scalar(name)
-	V.identifier(name, "new_scalar name")
-	return setmetatable({
-		kind = "symbol",
-		name = name,
-		rank = 0,
-	}, Node)
+    V.identifier(name, "new_scalar name")
+    return setmetatable({
+        kind = "symbol",
+        name = name,
+        rank = 0,
+    }, Node)
 end
-
 
 ---Create a vector symbol node.
 ---@param name string
 ---@return Node node rank-1 symbol node.
 local function new_vector(name)
-	V.identifier(name, "new_vector name")
-	return setmetatable({
-		kind = "symbol",
-		name = name,
-		rank = 1,
-	}, Node)
+    V.identifier(name, "new_vector name")
+    return setmetatable({
+        kind = "symbol",
+        name = name,
+        rank = 1,
+    }, Node)
 end
 
 ---Create a tensor symbol node.
@@ -92,37 +106,39 @@ end
 ---@param rank? integer  Default 2.
 ---@return Node
 local function new_tensor(name, rank)
-	rank = rank or 2
-	V.identifier(name, "new_tensor name")
-	return setmetatable({
-		kind = "symbol",
-		name = name,
-		rank = rank
-	}, Node)
+    rank = rank or 2
+    V.identifier(name, "new_tensor name")
+    return setmetatable({
+        kind = "symbol",
+        name = name,
+        rank = rank,
+    }, Node)
 end
 
 ---Return true iff value is a Node.
 ---@param value any
 ---@return boolean
 local function is_node(value)
-	return getmetatable(value) == Node
+    return getmetatable(value) == Node
 end
 
 ---Coerce a number or existing Node to a Node.
 ---Raises an error for any other type.
 ---@return Node
 local function to_node(value)
-	if is_node(value) then return value end
+    if is_node(value) then
+        return value
+    end
 
-	if type(value) == "number" then
-		return new_const(value)
-	end
+    if type(value) == "number" then
+        return new_const(value)
+    end
 
-	-- to add string we must add auto-symbol that if is the
-	-- same as anohter symbol with known tensor rank in node then
-	-- shares that OTHERWISE it complains
+    -- to add string we must add auto-symbol that if is the
+    -- same as anohter symbol with known tensor rank in node then
+    -- shares that OTHERWISE it complains
 
-	error("to_node: cannot coerece to nabla node: " .. tostring(value), 3)
+    error("to_node: cannot coerece to nabla node: " .. tostring(value), 3)
 end
 
 -- Constructors namespaced
@@ -137,76 +153,85 @@ Node.is_node = is_node
 -- Helper methods
 --
 
-
 ---Return true if this is a leaf node (symbol, constant, or cvec).
 ---@return boolean
 function Node:is_leaf()
-	return self.kind == "symbol" or self.kind == "constant" or self.kind == "cvec"
+    return self.kind == "symbol"
+        or self.kind == "constant"
+        or self.kind == "cvec"
 end
 
 function Node:is_zero()
-	return self.kind == "constant" and self.a == 0 and not self.name
+    return self.kind == "constant" and self.a == 0 and not self.name
 end
 
 function Node:is_one()
-	return self.kind == "constant" and self.a == 1 and not self.name
+    return self.kind == "constant" and self.a == 1 and not self.name
 end
 
 function Node:is_minus_one()
-	return self.kind == "constant" and self.a == -1 and not self.name
+    return self.kind == "constant" and self.a == -1 and not self.name
 end
 
 ---@return boolean, Node
 function Node:is_negative()
-	if self.kind == "neg" then
-		return true, self.a
-	end
-	if self:is_anon_const() and self.a < 0 then
-		return true, new_const(-self.a)
-	end
-	return false, self
+    if self.kind == "neg" then
+        return true, self.a
+    end
+    if self:is_anon_const() and self.a < 0 then
+        return true, new_const(-self.a)
+    end
+    return false, self
 end
 
 ---Return the numeric value of a constant node, errors if different type
 ---@return number
 function Node:to_number()
-	assert(self.kind == "constant",
-		"Node:to_number: expected constant, got '" .. self.kind .. "'")
-	return self.a --[[@as number]]
+    assert(
+        self.kind == "constant",
+        "Node:to_number: expected constant, got '" .. self.kind .. "'"
+    )
+    return self.a --[[@as number]]
 end
 
 function Node:is_anon_const()
-	return self.kind == "constant" and not self.name
+    return self.kind == "constant" and not self.name
 end
 
 ---Return true if this node's tensor rank equals n.
 ---@param n integer
 ---@return boolean
 function Node:is_rank(n)
-	return self.rank == n
+    return self.rank == n
 end
 
 function Node:is_scalar()
-	return self.rank == 0
+    return self.rank == 0
 end
 
 function Node:is_vector()
-	return self.rank == 1
+    return self.rank == 1
 end
 
 function Node:is_tensor()
-	return self.rank == 2
+    return self.rank == 2
 end
 
 local function flatten(node, kind)
-	if node:is_leaf() then return { node } end
-	if node.kind ~= kind then return { node } end
+    if node:is_leaf() then
+        return { node }
+    end
+    if node.kind ~= kind then
+        return { node }
+    end
 
-	local terms = flatten(node.a, kind)
-	local b_terms = flatten(node.b, kind)
-	for _, t in ipairs(b_terms) do terms[#terms + 1] = t end
+    local terms = flatten(node.a, kind)
+    local b_terms = flatten(node.b, kind)
+    for _, t in ipairs(b_terms) do
+        terms[#terms + 1] = t
+    end
 
-	return terms
+    return terms
 end
 
 ---Flatten all child nodes of the given kind into a flat list.
@@ -214,8 +239,8 @@ end
 ---@param kind string
 ---@return Node[]
 function Node:flatten(kind)
-	kind = kind or self.kind
-	return flatten(self, kind)
+    kind = kind or self.kind
+    return flatten(self, kind)
 end
 
 --
@@ -223,10 +248,16 @@ end
 --
 
 local function rank_mismatch_msg(a, b, op)
-	local a_name = a.name and "(" .. a.name .. ")" or ""
-	local b_name = b.name and "(" .. b.name .. ")" or ""
-	return string.format("rank mismatch: rank-%d %s %s rank-%d %s",
-		a.rank, a_name, op, b.rank, b_name)
+    local a_name = a.name and "(" .. a.name .. ")" or ""
+    local b_name = b.name and "(" .. b.name .. ")" or ""
+    return string.format(
+        "rank mismatch: rank-%d %s %s rank-%d %s",
+        a.rank,
+        a_name,
+        op,
+        b.rank,
+        b_name
+    )
 end
 
 -- forward declaration required
@@ -235,154 +266,201 @@ local negate, exponentiate, add_binary, subtract_binary, multiply_binary, divide
 ---Negate this node. Equivalent to -node.
 ---@return Node
 negate = function(node)
-	node = to_node(node)
-	if node:is_zero() then return node end
-	return setmetatable({ kind = "neg", a = node, rank = node.rank }, Node)
+    node = to_node(node)
+    if node:is_zero() then
+        return node
+    end
+    return setmetatable({ kind = "neg", a = node, rank = node.rank }, Node)
 end
 
 ---Raise this rank-0 node to a power.
 ---@param pow Node|number
 ---@return Node
 exponentiate = function(base, pow)
-	base = to_node(base)
-	pow = to_node(pow)
-	assert(base.rank == 0, "exponentiate base: rank must be 0")
-	assert(pow.rank == 0, "exponentiate pow: rank must be 0")
+    base = to_node(base)
+    pow = to_node(pow)
+    assert(base.rank == 0, "exponentiate base: rank must be 0")
+    assert(pow.rank == 0, "exponentiate pow: rank must be 0")
 
-	if base:is_zero() or base:is_one() then return base end
-	if pow:is_zero() then return new_const(1) end
-	if pow:is_one() then return base end
+    if base:is_zero() or base:is_one() then
+        return base
+    end
+    if pow:is_zero() then
+        return new_const(1)
+    end
+    if pow:is_one() then
+        return base
+    end
 
-	return setmetatable({ kind = "pow", a = base, b = pow, rank = 0 }, Node)
+    return setmetatable({ kind = "pow", a = base, b = pow, rank = 0 }, Node)
 end
 
 add_binary = function(a, b)
-	a, b = to_node(a), to_node(b)
-	if a:is_zero() then return b end
-	if b:is_zero() then return a end
+    a, b = to_node(a), to_node(b)
+    if a:is_zero() then
+        return b
+    end
+    if b:is_zero() then
+        return a
+    end
 
-	assert(a.rank == b.rank, rank_mismatch_msg(a, b, "+"))
+    assert(a.rank == b.rank, rank_mismatch_msg(a, b, "+"))
 
-	if a.kind == "neg" then return subtract_binary(b, a.a) end
-	if b.kind == "neg" then return subtract_binary(a, b.a) end
+    if a.kind == "neg" then
+        return subtract_binary(b, a.a)
+    end
+    if b.kind == "neg" then
+        return subtract_binary(a, b.a)
+    end
 
-	if a:is_anon_const() and b:is_anon_const() then
-		return new_const(a.a + b.a)
-	end
-	return setmetatable({ kind = "add", a = a, b = b, rank = a.rank }, Node)
+    if a:is_anon_const() and b:is_anon_const() then
+        return new_const(a.a + b.a)
+    end
+    return setmetatable({ kind = "add", a = a, b = b, rank = a.rank }, Node)
 end
 
 subtract_binary = function(a, b)
-	a, b = to_node(a), to_node(b)
-	if a:is_zero() then return negate(b) end
-	if b:is_zero() then return a end
+    a, b = to_node(a), to_node(b)
+    if a:is_zero() then
+        return negate(b)
+    end
+    if b:is_zero() then
+        return a
+    end
 
-	assert(a.rank == b.rank, rank_mismatch_msg(a, b, "-"))
+    assert(a.rank == b.rank, rank_mismatch_msg(a, b, "-"))
 
-	if a.kind == "neg" then return negate(add_binary(a.a, b)) end
-	if b.kind == "neg" then return add_binary(a, b.a) end
-	if a.kind == "sub" then
-		return setmetatable({ kind = "sub", a = a.a, b = add_binary(a.b, b), rank = a.rank }, Node)
-	end
+    if a.kind == "neg" then
+        return negate(add_binary(a.a, b))
+    end
+    if b.kind == "neg" then
+        return add_binary(a, b.a)
+    end
+    if a.kind == "sub" then
+        return setmetatable(
+            { kind = "sub", a = a.a, b = add_binary(a.b, b), rank = a.rank },
+            Node
+        )
+    end
 
-	if a:is_anon_const() and b:is_anon_const() then
-		return new_const(a.a - b.a)
-	end
-	return setmetatable({ kind = "sub", a = a, b = b, rank = a.rank }, Node)
+    if a:is_anon_const() and b:is_anon_const() then
+        return new_const(a.a - b.a)
+    end
+    return setmetatable({ kind = "sub", a = a, b = b, rank = a.rank }, Node)
 end
 
 multiply_binary = function(a, b)
-	a, b = to_node(a), to_node(b)
+    a, b = to_node(a), to_node(b)
 
-	if a:is_zero() then return a end
-	if a:is_one() then return b end
-	if b:is_zero() then return b end
-	if b:is_one() then return a end
+    if a:is_zero() then
+        return a
+    end
+    if a:is_one() then
+        return b
+    end
+    if b:is_zero() then
+        return b
+    end
+    if b:is_one() then
+        return a
+    end
 
-	local a_neg, a_pos = a:is_negative()
-	local b_neg, b_pos = b:is_negative()
+    local a_neg, a_pos = a:is_negative()
+    local b_neg, b_pos = b:is_negative()
 
-	if a_neg and b_neg then return multiply_binary(a_pos, b_pos) end
-	if a_neg then return negate(multiply_binary(a_pos, b)) end
-	if b_neg then return negate(multiply_binary(a, b_pos)) end
+    if a_neg and b_neg then
+        return multiply_binary(a_pos, b_pos)
+    end
+    if a_neg then
+        return negate(multiply_binary(a_pos, b))
+    end
+    if b_neg then
+        return negate(multiply_binary(a, b_pos))
+    end
 
-	if a:is_anon_const() and b:is_anon_const() then
-		return new_const(a.a * b.a)
-	end
+    if a:is_anon_const() and b:is_anon_const() then
+        return new_const(a.a * b.a)
+    end
 
-	local ra, rb = a.rank, b.rank
+    local ra, rb = a.rank, b.rank
 
-	-- rank-0 * anything: scale
-	if ra == 0 and rb == 0 then
-		return setmetatable({ kind = "mul", a = a, b = b, rank = 0 }, Node)
-	elseif ra == 0 then
-		return setmetatable({ kind = "scale", a = a, b = b, rank = rb }, Node)
-	elseif rb == 0 then
-		return setmetatable({ kind = "scale", a = b, b = a, rank = ra }, Node)
+    -- rank-0 * anything: scale
+    if ra == 0 and rb == 0 then
+        return setmetatable({ kind = "mul", a = a, b = b, rank = 0 }, Node)
+    elseif ra == 0 then
+        return setmetatable({ kind = "scale", a = a, b = b, rank = rb }, Node)
+    elseif rb == 0 then
+        return setmetatable({ kind = "scale", a = b, b = a, rank = ra }, Node)
 
-		-- rank-1 * rank-1: outer product -> tensor
-	elseif ra == 1 and rb == 1 then
-		return setmetatable({ kind = "outer", a = a, b = b, rank = 2 }, Node)
+        -- rank-1 * rank-1: outer product -> tensor
+    elseif ra == 1 and rb == 1 then
+        return setmetatable({ kind = "outer", a = a, b = b, rank = 2 }, Node)
 
-		-- rank-2 * rank-1 or rank-1 * rank-2: matvec -> vector
-	elseif ra == 2 and rb == 1 then
-		return setmetatable({ kind = "matvec", a = a, b = b, rank = 1 }, Node)
-	elseif ra == 1 and rb == 2 then
-		return setmetatable({ kind = "matvec", a = b, b = a, rank = 1 }, Node)
+        -- rank-2 * rank-1 or rank-1 * rank-2: matvec -> vector
+    elseif ra == 2 and rb == 1 then
+        return setmetatable({ kind = "matvec", a = a, b = b, rank = 1 }, Node)
+    elseif ra == 1 and rb == 2 then
+        return setmetatable({ kind = "matvec", a = b, b = a, rank = 1 }, Node)
 
-		-- rank-2 * rank-2: matmul -> tensor
-	elseif ra == 2 and rb == 2 then
-		return setmetatable({ kind = "matmul", a = a, b = b, rank = 2 }, Node)
-	else
-		error(rank_mismatch_msg(a, b, "*"))
-	end
+        -- rank-2 * rank-2: matmul -> tensor
+    elseif ra == 2 and rb == 2 then
+        return setmetatable({ kind = "matmul", a = a, b = b, rank = 2 }, Node)
+    else
+        error(rank_mismatch_msg(a, b, "*"))
+    end
 end
 
 divide_binary = function(quotient, divisor)
-	local q, d = to_node(quotient), to_node(divisor)
+    local q, d = to_node(quotient), to_node(divisor)
 
-	if d:is_zero() then error("cannot divide by zero") end
-	if d:is_one() then return q end
-	if q:is_zero() then return q end
+    if d:is_zero() then
+        error("cannot divide by zero")
+    end
+    if d:is_one() then
+        return q
+    end
+    if q:is_zero() then
+        return q
+    end
 
-	if q.rank == 0 and d.rank ~= 0 then
-		error(rank_mismatch_msg(q, d, "/"))
-	end
+    if q.rank == 0 and d.rank ~= 0 then
+        error(rank_mismatch_msg(q, d, "/"))
+    end
 
-	if d.rank ~= 0 and q.rank ~= d.rank then
-		error(rank_mismatch_msg(q, d, "/"))
-	end
+    if d.rank ~= 0 and q.rank ~= d.rank then
+        error(rank_mismatch_msg(q, d, "/"))
+    end
 
-	if q:is_anon_const() and d:is_anon_const() then
-		return new_const(q.a / d.a)
-	end
+    if q:is_anon_const() and d:is_anon_const() then
+        return new_const(q.a / d.a)
+    end
 
-	local rank = q.rank
+    local rank = q.rank
 
-	if q.kind == "div" and d.rank == 0 then
-		return setmetatable({
-			kind = "div",
-			a = q.a,
-			b = multiply_binary(q.b, d),
-			rank = rank,
-		}, Node)
-	end
+    if q.kind == "div" and d.rank == 0 then
+        return setmetatable({
+            kind = "div",
+            a = q.a,
+            b = multiply_binary(q.b, d),
+            rank = rank,
+        }, Node)
+    end
 
-	if d.kind == "div" and d.rank == 0 then
-		return setmetatable({
-			kind = "div",
-			a = multiply_binary(q, d.b),
-			b = d.a,
-			rank = rank,
-		}, Node)
-	end
+    if d.kind == "div" and d.rank == 0 then
+        return setmetatable({
+            kind = "div",
+            a = multiply_binary(q, d.b),
+            b = d.a,
+            rank = rank,
+        }, Node)
+    end
 
-	return setmetatable({
-		kind = "div",
-		a = q,
-		b = d,
-		rank = rank,
-	}, Node)
+    return setmetatable({
+        kind = "div",
+        a = q,
+        b = d,
+        rank = rank,
+    }, Node)
 end
 
 --
@@ -393,26 +471,38 @@ end
 ---@param  ... Node|number
 ---@return Node
 local function add(...)
-	local args = { ... }
-	if #args == 0 then return new_const(0) end
-	if #args == 1 then return to_node(args[1]) end
+    local args = { ... }
+    if #args == 0 then
+        return new_const(0)
+    end
+    if #args == 1 then
+        return to_node(args[1])
+    end
 
-	local result = add_binary(args[1], args[2])
-	for i = 3, #args do result = add_binary(result, args[i]) end
-	return result
+    local result = add_binary(args[1], args[2])
+    for i = 3, #args do
+        result = add_binary(result, args[i])
+    end
+    return result
 end
 
 ---Subtract one or more nodes from this node.
 ---@param  ... Node|number
 ---@return Node
 local function subtract(...)
-	local args = { ... }
-	if #args == 0 then return new_const(0) end
-	if #args == 1 then return negate(args[1]) end
+    local args = { ... }
+    if #args == 0 then
+        return new_const(0)
+    end
+    if #args == 1 then
+        return negate(args[1])
+    end
 
-	local result = subtract_binary(args[1], args[2])
-	for i = 3, #args do result = subtract_binary(result, args[i]) end
-	return result
+    local result = subtract_binary(args[1], args[2])
+    for i = 3, #args do
+        result = subtract_binary(result, args[i])
+    end
+    return result
 end
 
 ---Multiply this node by one or more nodes.
@@ -421,26 +511,38 @@ end
 ---@param  ... Node|number
 ---@return Node
 local function multiply(...)
-	local args = { ... }
-	if #args == 0 then return new_const(1) end
-	if #args == 1 then return to_node(args[1]) end
+    local args = { ... }
+    if #args == 0 then
+        return new_const(1)
+    end
+    if #args == 1 then
+        return to_node(args[1])
+    end
 
-	local result = multiply_binary(args[1], args[2])
-	for i = 3, #args do result = multiply_binary(result, args[i]) end
-	return result
+    local result = multiply_binary(args[1], args[2])
+    for i = 3, #args do
+        result = multiply_binary(result, args[i])
+    end
+    return result
 end
 
 ---Divide this node by another (both must be same-rank or divisor is scalar).
 ---@param  ... Node|number
 ---@return Node
 local function divide(...)
-	local args = { ... }
-	if #args == 0 then return new_const(1) end
-	if #args == 1 then return divide_binary(1, args[1]) end
+    local args = { ... }
+    if #args == 0 then
+        return new_const(1)
+    end
+    if #args == 1 then
+        return divide_binary(1, args[1])
+    end
 
-	local result = divide_binary(args[1], args[2])
-	for i = 3, #args do result = divide_binary(result, args[i]) end
-	return result
+    local result = divide_binary(args[1], args[2])
+    for i = 3, #args do
+        result = divide_binary(result, args[i])
+    end
+    return result
 end
 
 --
@@ -450,19 +552,19 @@ end
 ---Negate this node: returns -self.
 ---@return Node
 function Node:neg()
-	return negate(self)
+    return negate(self)
 end
 
 ---Negate this node: returns -self.
 ---@return Node
 function Node:negate()
-	return negate(self)
+    return negate(self)
 end
 
 ---Unary minus operator: -node.
 ---@return Node
 function Node:__unm()
-	return negate(self)
+    return negate(self)
 end
 
 ---Add one or more nodes to this node.
@@ -470,14 +572,14 @@ end
 ---@param ... Node|number
 ---@return Node
 function Node:add(...)
-	return add(self, ...)
+    return add(self, ...)
 end
 
 ---Addition operator: node + other.
 ---@param ... Node|number
 ---@return Node
 function Node:__add(...)
-	return add(self, ...)
+    return add(self, ...)
 end
 
 ---Subtract one or more nodes from this node in left-to-right order.
@@ -485,21 +587,21 @@ end
 ---@param ... Node|number
 ---@return Node
 function Node:subtract(...)
-	return subtract(self, ...)
+    return subtract(self, ...)
 end
 
 ---Alias for subtract.
 ---@param ... Node|number
 ---@return Node
 function Node:sub(...)
-	return subtract(self, ...)
+    return subtract(self, ...)
 end
 
 ---Subtraction operator: node - other.
 ---@param ... Node|number
 ---@return Node
 function Node:__sub(...)
-	return subtract(self, ...)
+    return subtract(self, ...)
 end
 
 ---Multiply this node by one or more nodes.
@@ -508,21 +610,21 @@ end
 ---@param ... Node|number
 ---@return Node
 function Node:multiply(...)
-	return multiply(self, ...)
+    return multiply(self, ...)
 end
 
 ---Alias for multiply.
 ---@param ... Node|number
 ---@return Node
 function Node:mul(...)
-	return multiply(self, ...)
+    return multiply(self, ...)
 end
 
 ---Multiplication operator: node * other.
 ---@param ... Node|number
 ---@return Node
 function Node:__mul(...)
-	return multiply(self, ...)
+    return multiply(self, ...)
 end
 
 ---Divide this node by one or more nodes in left-to-right order.
@@ -531,7 +633,7 @@ end
 ---@param ... Node|number
 ---@return Node
 function Node:divide(...)
-	return divide(self, ...)
+    return divide(self, ...)
 end
 
 ---Division operator: node / other.
@@ -540,52 +642,56 @@ end
 ---@param ... Node|number
 ---@return Node
 function Node:__div(...)
-	return divide(self, ...)
+    return divide(self, ...)
 end
 
 ---Raise this rank-0 node to a scalar power.
 ---@param pow Node|number
 ---@return Node
 function Node:exponentiate(pow)
-	return exponentiate(self, pow)
+    return exponentiate(self, pow)
 end
 
 ---Alias for exponentiate.
 ---@param pow Node|number
 ---@return Node
 function Node:pow(pow)
-	return exponentiate(self, pow)
+    return exponentiate(self, pow)
 end
 
 --
 -- Component selection for nodes
 --
 
-Node.AXES       = { "x", "y", "z" }
+Node.AXES = { "x", "y", "z" }
 Node.AXIS_INDEX = { x = 1, y = 2, z = 3 }
 
 local function component(node, axis)
-	local idx = Node.AXIS_INDEX[axis]
-	assert(idx, string.format("unknown axis '%s': expected x, y or z", axis))
-	assert(node.rank >= 1, string.format(
-		":%s() requires rank >= 1, got rank-%d", axis, node.rank))
-	return setmetatable({
-		kind = "component",
-		a    = node,
-		b    = Node.const(idx), -- axis stored as 1/2/3 constant
-		rank = node.rank - 1,
-	}, Node)
+    local idx = Node.AXIS_INDEX[axis]
+    assert(idx, string.format("unknown axis '%s': expected x, y or z", axis))
+    assert(
+        node.rank >= 1,
+        string.format(":%s() requires rank >= 1, got rank-%d", axis, node.rank)
+    )
+    return setmetatable({
+        kind = "component",
+        a = node,
+        b = Node.const(idx), -- axis stored as 1/2/3 constant
+        rank = node.rank - 1,
+    }, Node)
 end
 
 -- so that U.x works
 Node.__index = function(self, key)
-	if key == "x" or key == "y" or key == "z" then
-		local rank = rawget(self, "rank")
-		assert(rank and rank >= 1,
-			string.format(".%s requires rank >= 1, got rank-%d", key, rank or 0))
-		return component(self, key)
-	end
-	return rawget(Node, key)
+    if key == "x" or key == "y" or key == "z" then
+        local rank = rawget(self, "rank")
+        assert(
+            rank and rank >= 1,
+            string.format(".%s requires rank >= 1, got rank-%d", key, rank or 0)
+        )
+        return component(self, key)
+    end
+    return rawget(Node, key)
 end
 
 --
@@ -593,41 +699,58 @@ end
 --
 
 local function scratch_depth(node)
-	if not node or not Node.is_node(node) then return 0 end
-	local k = node.kind
+    if not node or not Node.is_node(node) then
+        return 0
+    end
+    local k = node.kind
 
-	-- leaves and accessor nodes (unknown kinds): array reference, zero scratch
-	if node:is_leaf() then return 0 end
+    -- leaves and accessor nodes (unknown kinds): array reference, zero scratch
+    if node:is_leaf() then
+        return 0
+    end
 
-	-- unary
-	if k == "neg" then return scratch_depth(node.a) end
+    -- unary
+    if k == "neg" then
+        return scratch_depth(node.a)
+    end
 
-	-- binary scalar / mixed-rank ops that produce a scalar result
-	if k == "add" or k == "sub" or k == "mul" or k == "div"
-		or k == "scale" or k == "pow" or k == "dot" then
-		local da, db = scratch_depth(node.a), scratch_depth(node.b)
-		if da >= db then
-			return math.max(da, db + 1) + 1
-		else
-			return math.max(db, da + 1) + 1
-		end
-	end
+    -- binary scalar / mixed-rank ops that produce a scalar result
+    if
+        k == "add"
+        or k == "sub"
+        or k == "mul"
+        or k == "div"
+        or k == "scale"
+        or k == "pow"
+        or k == "dot"
+    then
+        local da, db = scratch_depth(node.a), scratch_depth(node.b)
+        if da >= db then
+            return math.max(da, db + 1) + 1
+        else
+            return math.max(db, da + 1) + 1
+        end
+    end
 
-	if k == "component" then return scratch_depth(node.a) end
+    if k == "component" then
+        return scratch_depth(node.a)
+    end
 
-	if k == "matvec" or k == "matmul" or k == "outer" then
-		return math.max(scratch_depth(node.a), scratch_depth(node.b)) + 1
-	end
+    if k == "matvec" or k == "matmul" or k == "outer" then
+        return math.max(scratch_depth(node.a), scratch_depth(node.b)) + 1
+    end
 
-	if node._scratch_depth ~= nil then return node._scratch_depth end
-	return 0
+    if node._scratch_depth ~= nil then
+        return node._scratch_depth
+    end
+    return 0
 end
 
 ---Return the number of scratch buffers needed to evaluate this node,
 ---using the Sethi-Ullman register allocation algorithm.
 ---@return integer
 function Node:scratch_depth()
-	return scratch_depth(self)
+    return scratch_depth(self)
 end
 
 --
@@ -640,83 +763,83 @@ end
 ---@param b Node
 ---@return Node
 function Node:outer(b)
-	return require("jnl.nabla.ops").outer(self, b)
+    return require("jnl.nabla.ops").outer(self, b)
 end
 
 ---Cross product of two rank-1 vectors, producing a rank-1 vector.
 ---@param b Node
 ---@return Node
 function Node:cross(b)
-	return require("jnl.nabla.ops").cross(self, b)
+    return require("jnl.nabla.ops").cross(self, b)
 end
 
 ---Inner (dot) product of two vectors, producing a scalar.
 ---@param b Node
 ---@return Node
 function Node:dot(b)
-	return require("jnl.nabla.ops").dot(self, b)
+    return require("jnl.nabla.ops").dot(self, b)
 end
 
 --- Inner (dot) product of two vectors, producing a scalar.
 ---@param b Node
 ---@return Node
 function Node:__band(b)
-	return require("jnl.nabla.ops").dot(self, b)
+    return require("jnl.nabla.ops").dot(self, b)
 end
 
 ---Double contraction of two rank-2 tensors, producing a scalar.
 ---@param b Node
 ---@return Node
 function Node:ddot(b)
-	return require("jnl.nabla.ops").ddot(self, b)
+    return require("jnl.nabla.ops").ddot(self, b)
 end
 
 ---Symmetric part of a rank-2 tensor: (A + A^T) / 2.
 ---@return Node
 function Node:symm()
-	return require("jnl.nabla.ops").symm(self)
+    return require("jnl.nabla.ops").symm(self)
 end
 
 ---Skew-symmetric (anti-symmetric) part of a rank-2 tensor: (A - A^T) / 2.
 ---@return Node
 function Node:skew()
-	return require("jnl.nabla.ops").skew(self)
+    return require("jnl.nabla.ops").skew(self)
 end
 
 ---Deviatoric part of a rank-2 tensor: A - (tr(A)/3) I.
 ---@return Node
 function Node:dev()
-	return require("jnl.nabla.ops").dev(self)
+    return require("jnl.nabla.ops").dev(self)
 end
 
 ---Trace of a rank-2 tensor, producing a scalar.
 ---@return Node
 function Node:trace()
-	return require("jnl.nabla.ops").trace(self)
+    return require("jnl.nabla.ops").trace(self)
 end
 
 ---Transpose of a rank-2 tensor.
 ---@return Node
 function Node:transpose()
-	return require("jnl.nabla.ops").transpose(self)
+    return require("jnl.nabla.ops").transpose(self)
 end
 
 ---Alias for transpose.
 ---@return Node
 function Node:T()
-	return require("jnl.nabla.ops").transpose(self)
+    return require("jnl.nabla.ops").transpose(self)
 end
 
 ---Euclidean magnitude of a vector, producing a scalar.
 ---@return Node
 function Node:mag()
-	return require("jnl.nabla.ops").mag(self)
+    return require("jnl.nabla.ops").mag(self)
 end
 
 ---Inverse of a rank-2 tensor.
 ---@return Node
 function Node:inv()
-	return require("jnl.nabla.ops").inv(self)
+    return require("jnl.nabla.ops").inv(self)
 end
 
 -- differential operators
@@ -724,58 +847,53 @@ end
 ---Gradient of a scalar field, producing a vector; or gradient of a vector, producing a tensor.
 ---@return Node
 function Node:grad(...)
-	return require("jnl.nabla.ops").grad(self, ...)
+    return require("jnl.nabla.ops").grad(self, ...)
 end
 
 ---Divergence of a vector field, producing a scalar.
 ---@return Node
 function Node:div(...)
-	return require("jnl.nabla.ops").div(self, ...)
+    return require("jnl.nabla.ops").div(self, ...)
 end
 
 ---Laplacian operator, optionally with a diffusivity coefficient.
 ---@return Node
 function Node:laplacian(...)
-	return require("jnl.nabla.ops").laplacian(self, ...)
+    return require("jnl.nabla.ops").laplacian(self, ...)
 end
 
 ---Alias for laplacian.
 ---@return Node
 function Node:lap(...)
-	return require("jnl.nabla.ops").laplacian(self, ...)
+    return require("jnl.nabla.ops").laplacian(self, ...)
 end
 
 ---Time derivative operator ∂/∂t applied to this field.
 ---@return Node
 function Node:ddt(...)
-	return require("jnl.nabla.ops").ddt(self, ...)
+    return require("jnl.nabla.ops").ddt(self, ...)
 end
 
 ---Curl of a vector field, producing a vector (or pseudoscalar in 2D).
 ---@return Node
 function Node:curl(...)
-	return require("jnl.nabla.ops").curl(self, ...)
+    return require("jnl.nabla.ops").curl(self, ...)
 end
 
--- cross-module
-
----Construct an equation asserting this node equals rhs.
----@param rhs Node
----@return Equation
-function Node:equals(rhs)
-	return require("jnl.nabla.equation").new(self, rhs)
-end
+--
+-- Cross-module integrations
+--
 
 ---Return a simplified form of this expression tree.
 ---@return Node
 function Node:simplify()
-	return require("jnl.nabla.simplify").simplify(self)
+    return require("jnl.nabla.simplify").simplify(self)
 end
 
 ---Render this node as a human-readable string.
 ---@return string
 function Node:__tostring()
-	return require("jnl.nabla.pretty").node_pretty(self)
+    return require("jnl.nabla.pretty").node_pretty(self)
 end
 
 ---Double contraction via the .. operator: a .. b = a:ddot(b).
@@ -783,7 +901,7 @@ end
 ---@param b Node
 ---@return Node
 Node.__concat = function(a, b)
-	return require("jnl.nabla.ops").ddot(a, b)
+    return require("jnl.nabla.ops").ddot(a, b)
 end
 
 ---Exponentiation via the ^ operator; dispatches on rank for scalar pow vs matrix functions.
@@ -791,7 +909,7 @@ end
 ---@param b Node
 ---@return Node
 Node.__pow = function(a, b)
-	return require("jnl.nabla.ops").pow_dispatch(a, b)
+    return require("jnl.nabla.ops").pow_dispatch(a, b)
 end
 
 return Node

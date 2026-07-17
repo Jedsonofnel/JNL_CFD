@@ -5,30 +5,30 @@
 local M = {}
 
 local EXAMPLES = {
-	-- {
-	-- 	title = "FVM validation study (conv_diff.lua)",
-	-- 	source = require("jnl.doc.examples.conv_diff"),
-	-- },
-	-- {
-	-- 	title = "FVM Couette validation (couette.lua)",
-	-- 	source = require("jnl.doc.examples.couette"),
-	-- },
-	-- {
-	-- 	title = "FVM Poiseuille validation (poiseuille.lua)",
-	-- 	source = require("jnl.doc.examples.poiseuille"),
-	-- },
+    -- {
+    -- 	title = "FVM validation study (conv_diff.lua)",
+    -- 	source = require("jnl.doc.examples.conv_diff"),
+    -- },
+    -- {
+    -- 	title = "FVM Couette validation (couette.lua)",
+    -- 	source = require("jnl.doc.examples.couette"),
+    -- },
+    -- {
+    -- 	title = "FVM Poiseuille validation (poiseuille.lua)",
+    -- 	source = require("jnl.doc.examples.poiseuille"),
+    -- },
 }
 
 --- Return registered LLM examples in display order.
 ---@return table[] examples
 function M.all()
-	local examples = {}
+    local examples = {}
 
-	for _, example in ipairs(EXAMPLES) do
-		examples[#examples + 1] = example
-	end
+    for _, example in ipairs(EXAMPLES) do
+        examples[#examples + 1] = example
+    end
 
-	return examples
+    return examples
 end
 
 return M

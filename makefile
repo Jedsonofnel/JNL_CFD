@@ -218,6 +218,10 @@ else
 	LOG_CMAKE :=
 endif
 
+# Formatting
+FORMAT_C_SRCS   := $(shell find $(SRCDIR) $(HDIR) $(CMDDIR) $(TESTDIR) -name '*.[ch]')
+FORMAT_LUA_SRCS := $(shell find $(LUADIR) -name '*.lua')
+
 #
 # Top-level targets
 #
@@ -231,7 +235,8 @@ endif
 	release \
 	debug \
 	triangle \
-	llm
+	llm \
+	format
 
 all: $(FENNEL_DST) $(OBJDIR)/vendor/luasocket.stamp $(CMD_BINS)
 
@@ -402,6 +407,16 @@ $(OUTDIR):
 #
 
 -include $(DEPS)
+
+#
+# Format target
+#
+
+format:
+	@printf "  FMT   (C/H)\n"
+	$(Q)clang-format -i $(FORMAT_C_SRCS)
+	@printf "  FMT   (Lua)\n"
+	$(Q)stylua $(FORMAT_LUA_SRCS)
 
 #
 # Cleanup

@@ -4,10 +4,8 @@
 local Node = require("jnl.nabla.node")
 local ops = require("jnl.nabla.ops")
 local resolve = require("jnl.nabla.resolve")
-local Equation = require("jnl.nabla.equation")
-local Registry = require("jnl.nabla.registry")
 
-resolve.install(Node, Equation)
+resolve.install(Node)
 
 --- Build symbolic tensor expressions, equations, and field registries.
 ---
@@ -28,21 +26,21 @@ local Nabla = {}
 ---@param ... string|number Name followed by numeric values, or numeric values only.
 ---@return Node node
 function Nabla.const(...)
-	return Node.const(...)
+    return Node.const(...)
 end
 
 --- Create a scalar symbol.
 ---@param name string Symbol name.
 ---@return Node node
 function Nabla.scalar(name)
-	return Node.scalar(name)
+    return Node.scalar(name)
 end
 
 --- Create a vector symbol.
 ---@param name string Symbol name.
 ---@return Node node
 function Nabla.vector(name)
-	return Node.vector(name)
+    return Node.vector(name)
 end
 
 --- Create a tensor symbol.
@@ -50,15 +48,7 @@ end
 ---@param rank? integer Tensor rank; defaults to 2.
 ---@return Node node
 function Nabla.tensor(name, rank)
-	return Node.tensor(name, rank)
-end
-
---- Construct an equation asserting `lhs = rhs`.
----@param lhs Node|number Left-hand side expression.
----@param rhs Node|number Right-hand side expression.
----@return Equation equation
-function Nabla.eq(lhs, rhs)
-	return Equation.new(lhs, rhs)
+    return Node.tensor(name, rank)
 end
 
 --
@@ -72,7 +62,7 @@ end
 ---@param ... Node|number Expression factors.
 ---@return Node node
 function Nabla.grad(...)
-	return ops.grad(...)
+    return ops.grad(...)
 end
 
 --- Return the divergence of a vector or tensor expression.
@@ -81,14 +71,14 @@ end
 ---@param ... Node|number Expression factors.
 ---@return Node node
 function Nabla.div(...)
-	return ops.div(...)
+    return ops.div(...)
 end
 
 --- Return the curl of a vector expression.
 ---@param ... Node|number Expression factors.
 ---@return Node node
 function Nabla.curl(...)
-	return ops.curl(...)
+    return ops.curl(...)
 end
 
 --- Return the Laplacian of an expression.
@@ -98,25 +88,25 @@ end
 ---@param ... Node|number Expression factors.
 ---@return Node node
 function Nabla.laplacian(...)
-	return ops.laplacian(...)
+    return ops.laplacian(...)
 end
 
 --- Alias for `laplacian`.
 ---@param ... Node|number Expression factors.
 ---@return Node node
 function Nabla.lap(...)
-	return ops.laplacian(...)
+    return ops.laplacian(...)
 end
 
 --- Return the time derivative of an expression.
 ---@param ... Node|number Expression factors.
 ---@return Node node
 function Nabla.ddt(...)
-	return ops.ddt(...)
+    return ops.ddt(...)
 end
 
 --
--- Tensor operators
+-- Tensorial operators
 --
 
 --- Return the outer product of two vectors.
@@ -124,7 +114,7 @@ end
 ---@param b Node|number Right vector expression.
 ---@return Node node
 function Nabla.outer(a, b)
-	return ops.outer(a, b)
+    return ops.outer(a, b)
 end
 
 --- Return the cross product of two vectors.
@@ -132,7 +122,7 @@ end
 ---@param b Node|number Right vector expression.
 ---@return Node node
 function Nabla.cross(a, b)
-	return ops.cross(a, b)
+    return ops.cross(a, b)
 end
 
 --- Return the inner product using Nabla rank dispatch.
@@ -140,7 +130,7 @@ end
 ---@param b Node|number Right expression.
 ---@return Node node
 function Nabla.dot(a, b)
-	return ops.dot(a, b)
+    return ops.dot(a, b)
 end
 
 --- Return the double contraction of two rank-2 tensors.
@@ -148,67 +138,56 @@ end
 ---@param b Node|number Right tensor expression.
 ---@return Node node
 function Nabla.ddot(a, b)
-	return ops.ddot(a, b)
+    return ops.ddot(a, b)
 end
 
 --- Return the symmetric part of a rank-2 tensor.
 ---@param a Node|number Tensor expression.
 ---@return Node node
 function Nabla.symm(a)
-	return ops.symm(a)
+    return ops.symm(a)
 end
 
 --- Return the skew-symmetric part of a rank-2 tensor.
 ---@param a Node|number Tensor expression.
 ---@return Node node
 function Nabla.skew(a)
-	return ops.skew(a)
+    return ops.skew(a)
 end
 
 --- Return the deviatoric part of a rank-2 tensor.
 ---@param a Node|number Tensor expression.
 ---@return Node node
 function Nabla.dev(a)
-	return ops.dev(a)
+    return ops.dev(a)
 end
 
 --- Return the trace of a rank-2 tensor.
 ---@param a Node|number Tensor expression.
 ---@return Node node
 function Nabla.trace(a)
-	return ops.trace(a)
+    return ops.trace(a)
 end
 
 --- Return the transpose of a rank-2 tensor.
 ---@param a Node|number Tensor expression.
 ---@return Node node
 function Nabla.transpose(a)
-	return ops.transpose(a)
+    return ops.transpose(a)
 end
 
 --- Return the magnitude of a vector or tensor expression.
 ---@param a Node|number Expression.
 ---@return Node node
 function Nabla.mag(a)
-	return ops.mag(a)
+    return ops.mag(a)
 end
 
 --- Return the inverse of a scalar or rank-2 tensor expression.
 ---@param a Node|number Expression.
 ---@return Node node
 function Nabla.inv(a)
-	return ops.inv(a)
-end
-
---
--- Registry
---
-
---- Create a new field registry.
----@param label? string Human-readable registry label.
----@return Registry registry
-function Nabla.new_registry(label)
-	return Registry.new(label)
+    return ops.inv(a)
 end
 
 --- Register an accessor constructor on the public Nabla table.
@@ -218,10 +197,10 @@ end
 ---@param name string Accessor name.
 ---@param spec table Accessor specification.
 function Nabla.register_accessor(name, spec)
-	local accessor = require("jnl.nabla.accessor")
+    local accessor = require("jnl.nabla.accessor")
 
-	accessor.register(name, spec)
-	Nabla[name] = accessor[name]
+    accessor.register(name, spec)
+    Nabla[name] = accessor[name]
 end
 
 --
@@ -229,11 +208,10 @@ end
 --
 
 Nabla.Node = Node
-Nabla.Equation = Equation
-Nabla.Registry = Registry
 
+-- Silly thing that nabla(phi) = grad(phi) because that's how maths notation works
 return setmetatable(Nabla, {
-	__call = function(_, ...)
-		return ops.grad(...)
-	end,
+    __call = function(_, ...)
+        return ops.grad(...)
+    end,
 })

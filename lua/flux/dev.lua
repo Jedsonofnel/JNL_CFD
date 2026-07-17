@@ -25,17 +25,17 @@ M.v = M.enabled and ("?v=" .. M.boot_time) or ""
 --- The browser script polls this and reloads when it changes.
 ---@param router FluxRouter
 function M.add_route(router)
-	local boot = M.boot_time
-	router:get("/__livereload", function(_, res)
-		res.json(boot)
-		return true
-	end)
+    local boot = M.boot_time
+    router:get("/__livereload", function(_, res)
+        res.json(boot)
+        return true
+    end)
 end
 
 --- Inline <script> that polls /__livereload and reloads on change.
 ---@return string
 function M.livereload_script()
-	return [[<script>
+    return [[<script>
 (function () {
 	var last = null;
 	setInterval(function () {

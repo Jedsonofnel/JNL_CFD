@@ -1,5 +1,6 @@
 -- demo_couette.lua - Plane Couette flow
 -- <jed@nelson.ac> // 2026-06-13
+
 local preset = require("jnl.fvm.preset")
 local cart = require("jnl.mesh2d.cartesian")
 local bc = require("jnl.fvm.bc")

@@ -60,21 +60,23 @@ local default_ui = nil
 ---@param handle jnl.ui.Handle|nil
 ---@return boolean
 local function handle_closed(handle)
-	if not handle then return true end
-	return handle:closed()
+    if not handle then
+        return true
+    end
+    return handle:closed()
 end
 
 ---@param handle jnl.ui.Handle|nil
 local function clear_default_if(handle)
-	if handle and handle == default_ui then
-		default_ui = nil
-	end
+    if handle and handle == default_ui then
+        default_ui = nil
+    end
 end
 
 ---@return jnl.ui.Handle
 local function fresh_default()
-	default_ui = I.spawn()
-	return default_ui
+    default_ui = I.spawn()
+    return default_ui
 end
 
 -- Try one send; focus first so the window comes to the front.
@@ -82,9 +84,13 @@ end
 ---@param send   fun(h: jnl.ui.Handle): boolean
 ---@return boolean
 local function try_display(handle, send)
-	if handle_closed(handle) then return false end
-	if not handle:focus() then return false end
-	return send(handle)
+    if handle_closed(handle) then
+        return false
+    end
+    if not handle:focus() then
+        return false
+    end
+    return send(handle)
 end
 
 -- For setup-time display calls (domain, mesh): if the handle is dead and no
@@ -94,14 +100,18 @@ end
 ---@param send   fun(h: jnl.ui.Handle): boolean
 ---@return boolean
 local function display_with_recovery(handle, send)
-	local h = handle or M.default()
-	if try_display(h, send) then return true end
-	-- Only recover for the implicit default — explicit handles are the
-	-- caller's responsibility.
-	if handle then return false end
-	clear_default_if(h)
-	h = fresh_default()
-	return try_display(h, send)
+    local h = handle or M.default()
+    if try_display(h, send) then
+        return true
+    end
+    -- Only recover for the implicit default — explicit handles are the
+    -- caller's responsibility.
+    if handle then
+        return false
+    end
+    clear_default_if(h)
+    h = fresh_default()
+    return try_display(h, send)
 end
 
 --
@@ -111,20 +121,20 @@ end
 --- Spawn a new visualiser window.  The first call also sets it as the default.
 ---@return jnl.ui.Handle
 function M.spawn()
-	local h = I.spawn()
-	if not default_ui or handle_closed(default_ui) then
-		default_ui = h
-	end
-	return h
+    local h = I.spawn()
+    if not default_ui or handle_closed(default_ui) then
+        default_ui = h
+    end
+    return h
 end
 
 --- Return (or lazily spawn) the process-wide default handle.
 ---@return jnl.ui.Handle
 function M.default()
-	if not default_ui or default_ui:closed() then
-		return fresh_default()
-	end
-	return default_ui
+    if not default_ui or default_ui:closed() then
+        return fresh_default()
+    end
+    return default_ui
 end
 
 --- Send a domain2d object for boundary display.
@@ -133,9 +143,9 @@ end
 ---@param handle? jnl.ui.Handle
 ---@return boolean
 function M.display_domain(domain, handle)
-	return display_with_recovery(handle, function(h)
-		return h:send_domain(domain)
-	end)
+    return display_with_recovery(handle, function(h)
+        return h:send_domain(domain)
+    end)
 end
 
 --- Send mesh topology.
@@ -144,9 +154,9 @@ end
 ---@param handle? jnl.ui.Handle
 ---@return boolean
 function M.display_mesh(mesh, handle)
-	return display_with_recovery(handle, function(h)
-		return h:send_mesh(mesh)
-	end)
+    return display_with_recovery(handle, function(h)
+        return h:send_mesh(mesh)
+    end)
 end
 
 --- Push a scalar field update.  No recovery — call during a live solve loop
@@ -157,9 +167,11 @@ end
 ---@param handle? jnl.ui.Handle
 ---@return boolean
 function M.set_field(name, data, handle)
-	local h = handle or default_ui
-	if not h or h:closed() then return false end
-	return h:set_field(name, data)
+    local h = handle or default_ui
+    if not h or h:closed() then
+        return false
+    end
+    return h:set_field(name, data)
 end
 
 --- Associate two scalar fields as a named vector (for magnitude rendering).
@@ -169,9 +181,11 @@ end
 ---@param handle? jnl.ui.Handle
 ---@return boolean
 function M.set_vector(name, fx, fy, handle)
-	local h = handle or default_ui
-	if not h or h:closed() then return false end
-	return h:set_vector(name, fx, fy)
+    local h = handle or default_ui
+    if not h or h:closed() then
+        return false
+    end
+    return h:set_vector(name, fx, fy)
 end
 
 --- Switch the active field overlay.  Pass nil or "" for wireframe-only.
@@ -179,9 +193,11 @@ end
 ---@param handle? jnl.ui.Handle
 ---@return boolean
 function M.view_field(name, handle)
-	local h = handle or default_ui
-	if not h or h:closed() then return false end
-	return h:view_field(name)
+    local h = handle or default_ui
+    if not h or h:closed() then
+        return false
+    end
+    return h:view_field(name)
 end
 
 --- Show or hide the mesh wireframe overlay.
@@ -189,18 +205,22 @@ end
 ---@param handle? jnl.ui.Handle
 ---@return boolean
 function M.view_mesh(show, handle)
-	local h = handle or default_ui
-	if not h or h:closed() then return false end
-	return h:view_mesh(show)
+    local h = handle or default_ui
+    if not h or h:closed() then
+        return false
+    end
+    return h:view_mesh(show)
 end
 
 --- Close the given handle (or the default), removing it from the default slot.
 ---@param handle? jnl.ui.Handle
 function M.close(handle)
-	local h = handle or default_ui
-	if not h then return end
-	h:close()
-	clear_default_if(h)
+    local h = handle or default_ui
+    if not h then
+        return
+    end
+    h:close()
+    clear_default_if(h)
 end
 
 return M

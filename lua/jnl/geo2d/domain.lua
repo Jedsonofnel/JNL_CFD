@@ -31,15 +31,15 @@ Registry.__index = Registry
 ---@param name string
 ---@return integer
 function Registry:get(name)
-	if not self.map[name] then
-		self.map[name] = self.next
-		self.next = self.next + 1
-	end
-	return self.map[name]
+    if not self.map[name] then
+        self.map[name] = self.next
+        self.next = self.next + 1
+    end
+    return self.map[name]
 end
 
 local function new_registry()
-	return setmetatable({ next = 1, map = {} }, Registry)
+    return setmetatable({ next = 1, map = {} }, Registry)
 end
 
 --
@@ -54,30 +54,30 @@ end
 ---@param  opts Domain2DOpts?
 ---@return Domain2D, MarkerRegistry
 function M.from_pen(p, opts)
-	opts = opts or {}
-	local reg = new_registry()
-	local default = opts.default or "wall"
-	local outer = p:build()
-	local d = I.new(outer)
-	d.reg = reg
-	d:set_default_marker(reg:get(default))
+    opts = opts or {}
+    local reg = new_registry()
+    local default = opts.default or "wall"
+    local outer = p:build()
+    local d = I.new(outer)
+    d.reg = reg
+    d:set_default_marker(reg:get(default))
 
-	-- Iterate segs (not tags) so we preserve order and pick up hints.
-	-- Tags are unique so there's no double-registration risk.
-	local hints = {}
-	for _, seg in ipairs(p.segs) do
-		if seg.tag then
-			d:add_patch(seg.tag, seg.curve)
-			if seg.hint then
-				hints[seg.tag] = seg.hint
-			end
-		end
-	end
+    -- Iterate segs (not tags) so we preserve order and pick up hints.
+    -- Tags are unique so there's no double-registration risk.
+    local hints = {}
+    for _, seg in ipairs(p.segs) do
+        if seg.tag then
+            d:add_patch(seg.tag, seg.curve)
+            if seg.hint then
+                hints[seg.tag] = seg.hint
+            end
+        end
+    end
 
-	-- Attached for the PSLG lowering step (geo2d/domain2d_pslg commit).
-	d.reg = reg
-	d.hints = hints
-	return d, reg
+    -- Attached for the PSLG lowering step (geo2d/domain2d_pslg commit).
+    d.reg = reg
+    d.hints = hints
+    return d, reg
 end
 
 --
@@ -87,15 +87,15 @@ end
 local mt = I.metatable()
 
 function mt:add_patch(name, curve)
-	return self:_add_patch(name, self.reg:get(name), curve)
+    return self:_add_patch(name, self.reg:get(name), curve)
 end
 
 function mt:add_hole(name, boundary, seed)
-	return self:_add_hole(name, self.reg:get(name), boundary, seed)
+    return self:_add_hole(name, self.reg:get(name), boundary, seed)
 end
 
 function mt:add_region(name, seed, max_area)
-	return self:_add_region(name, self.reg:get(name), seed, max_area)
+    return self:_add_region(name, self.reg:get(name), seed, max_area)
 end
 
 return M
