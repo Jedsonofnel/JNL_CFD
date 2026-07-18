@@ -2,95 +2,104 @@
 #include <lua.h>
 
 #include "lua_bindings.h"
-#include "fvm/ctx.h"
 #include "fvm/linalg.h"
 
 //
 // FVSys userdata
 //
 
-static int l_fvsys_tostring(lua_State *L)
+static int l_fvsys_new(lua_State *L)
 {
-	lua_fvsys *s = check_fvsys(L, 1);
-	lua_pushfstring(L, "fvsys(n_cells=%d, n_coupled_faces=%d)",
-	                s->sys->matrix.n_cells, s->sys->matrix.n_coupled_faces);
-	return 1;
-}
-
-static int l_fvsys_reset(lua_State *L)
-{
-	jnl_fvsys_reset(check_fvsys(L, 1)->sys);
-	return 0;
-}
-
-static int l_fvsys_reset_singularity(lua_State *L)
-{
-	jnl_fvsys_reset_singularity(check_fvsys(L, 1)->sys);
-	return 0;
-}
-
-static int l_fvsys_under_relax(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	lua_vec *v = check_vec(L, 2);
-	f64 alpha = luaL_checknumber(L, 3);
-
-	jnl_fvsys_under_relax(s->sys, v->data, alpha);
-	return 0;
-}
-
-static int l_fvsys_pin_cell(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	i32 cell = (i32)luaL_checkinteger(L, 2) - 1;
-	f64 val = luaL_checknumber(L, 3);
-
-	jnl_fvsys_pin_cell(s->sys, cell, val);
-	return 0;
-}
-
-static int l_fvsys_residual_norm(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	lua_vec *x = check_vec(L, 2);
-
-	lua_pushnumber(L, jnl_fvsys_residual_norm(s->sys, s->pool, x->data));
-	return 1;
-}
-
-static int l_fvsys_diag_vec(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	push_owned_vec(L, s->sys->matrix.diag, s->sys->matrix.n_cells, 1);
-	return 1;
-}
-
-static int l_fvsys_diagonal_dominance(lua_State *L)
-{
-	lua_fvsys *s = check_fvsys(L, 1);
-	lua_pushnumber(L, jnl_fvsys_diagonal_dominance(s->sys, s->pool));
-	return 1;
-}
-
-static int l_fvsys_all_diagonals_positive(lua_State *L)
-{
-	lua_pushboolean(L,
-	                jnl_fvsys_all_diagonals_positive(check_fvsys(L, 1)->sys));
-	return 1;
-}
-
-static int l_fvsys_max_asymmetry(lua_State *L)
-{
-	lua_pushnumber(L, jnl_fvsys_max_asymmetry(check_fvsys(L, 1)->sys));
+	pmsh2d *mesh = check_pmsh2d(L, 1);
+	struct jnl_fvsys **pp = lua_newuserdata(L, sizeof(void *));
+	*pp = jnl_fvsys_new(mesh);
+	if (!*pp)
+		return luaL_error(L, "fvsys allocation failed");
+	luaL_setmetatable(L, FVSYS_MT);
 	return 1;
 }
 
 static int l_fvsys_gc(lua_State *L)
 {
-	lua_fvsys *s = check_fvsys(L, 1);
-	luaL_unref(L, LUA_REGISTRYINDEX, s->ctx_ref);
-	s->ctx_ref = LUA_NOREF;
+	jnl_fvsys_free(check_fvsys(L, 1));
 	return 0;
+}
+
+static int l_fvsys_tostring(lua_State *L)
+{
+	fvsys *s = check_fvsys(L, 1);
+	lua_pushfstring(L, "fvsys(n_cells=%d, n_coupled_faces=%d)",
+	                s->matrix.n_cells, s->matrix.n_coupled_faces);
+	return 1;
+}
+
+static int l_fvsys_reset(lua_State *L)
+{
+	jnl_fvsys_reset(check_fvsys(L, 1));
+	return 0;
+}
+
+static int l_fvsys_reset_singularity(lua_State *L)
+{
+	jnl_fvsys_reset_singularity(check_fvsys(L, 1));
+	return 0;
+}
+
+static int l_fvsys_under_relax(lua_State *L)
+{
+	fvsys *s = check_fvsys(L, 1);
+	lua_vec *v = check_vec(L, 2);
+	f64 alpha = luaL_checknumber(L, 3);
+
+	jnl_fvsys_under_relax(s, v->data, alpha);
+	return 0;
+}
+
+static int l_fvsys_pin_cell(lua_State *L)
+{
+	fvsys *s = check_fvsys(L, 1);
+	i32 cell = (i32)luaL_checkinteger(L, 2) - 1;
+	f64 val = luaL_checknumber(L, 3);
+
+	jnl_fvsys_pin_cell(s, cell, val);
+	return 0;
+}
+
+static int l_fvsys_residual_norm(lua_State *L)
+{
+	fvsys *s = check_fvsys(L, 1);
+	lua_vec *x = check_vec(L, 2);
+	lua_pool *pool = check_pool(L, 3);
+
+	lua_pushnumber(L, jnl_fvsys_residual_norm(s, pool, x->data));
+	return 1;
+}
+
+static int l_fvsys_diag_vec(lua_State *L)
+{
+	fvsys *s = check_fvsys(L, 1);
+	push_view_vec(L, s->matrix.diag, s->matrix.n_cells, 1);
+	return 1;
+}
+
+static int l_fvsys_diagonal_dominance(lua_State *L)
+{
+	fvsys *s = check_fvsys(L, 1);
+	lua_pool *pool = check_pool(L, 2);
+	lua_pushnumber(L, jnl_fvsys_diagonal_dominance(s, pool));
+	return 1;
+}
+
+static int l_fvsys_all_diagonals_positive(lua_State *L)
+{
+	lua_pushboolean(L, jnl_fvsys_all_diagonals_positive(check_fvsys(L, 1)));
+	return 1;
+}
+
+static int l_fvsys_max_asymmetry(lua_State *L)
+{
+	lua_pushnumber(L, jnl_fvsys_max_asymmetry(check_fvsys(L, 1)));
+	return 1;
 }
 
 static const luaL_Reg fvsys_mt[] = {
@@ -108,187 +117,11 @@ static const luaL_Reg fvsys_mt[] = {
     {NULL, NULL}};
 
 //
-// Ctx userdata
+// Registration
 //
-
-static int l_ctx_field(lua_State *L)
-{
-	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-
-	int has_init = !lua_isnoneornil(L, 2);
-	f64 init = has_init ? luaL_checknumber(L, 2) : 0.0;
-
-	f64 *data = jnl_fvm_ctx_field(lc->ctx);
-
-	if (has_init) {
-		for (i32 i = 0; i < lc->ctx->n_cells; i++)
-			data[i] = init;
-	}
-
-	push_owned_vec(L, data, lc->ctx->n_cells, 1);
-	return 1;
-}
-
-static int l_ctx_real_field(lua_State *L)
-{
-	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-
-	int has_init = !lua_isnoneornil(L, 2);
-	f64 init = has_init ? luaL_checknumber(L, 2) : 0.0;
-
-	f64 *data = jnl_fvm_ctx_real_field(lc->ctx);
-
-	if (has_init) {
-		for (i32 i = 0; i < lc->ctx->n_real_cells; i++)
-			data[i] = init;
-	}
-
-	push_owned_vec(L, data, lc->ctx->n_real_cells, 1);
-	return 1;
-}
-
-static int l_ctx_real_view_of(lua_State *L)
-{
-	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	lua_vec *src = check_vec(L, 2);
-	luaL_argcheck(L, src->len >= lc->ctx->n_real_cells, 2,
-	              "real_view_of: source vec shorter than n_real_cells");
-
-	lua_vec *v = lua_newuserdata(L, sizeof(lua_vec));
-	v->data = src->data;
-	v->len = lc->ctx->n_real_cells;
-
-	// keep src alive for the lifetime of this view
-	lua_pushvalue(L, 2);
-	v->ctx_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-	luaL_setmetatable(L, VEC_MT);
-	return 1;
-}
-
-static int l_ctx_face_field(lua_State *L)
-{
-	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-
-	int has_init = !lua_isnoneornil(L, 2);
-	f64 init = has_init ? luaL_checknumber(L, 2) : 0.0;
-
-	f64 *data = jnl_fvm_ctx_face_field(lc->ctx);
-
-	if (has_init) {
-		for (i32 i = 0; i < lc->ctx->n_faces; i++)
-			data[i] = init;
-	}
-
-	push_owned_vec(L, data, lc->ctx->n_faces, 1);
-	return 1;
-}
-
-static int l_ctx_fvsys(lua_State *L)
-{
-	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-
-	lua_fvsys *ls = lua_newuserdata(L, sizeof(lua_fvsys));
-	ls->sys = jnl_fvm_ctx_fvsys(lc->ctx);
-	ls->pool = lc->ctx->real_scratch;
-	ls->ctx = lc->ctx;
-
-	lua_pushvalue(L, 1);
-	ls->ctx_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-
-	luaL_setmetatable(L, FVSYS_MT);
-	return 1;
-}
-
-static int l_ctx_cell_pool(lua_State *L)
-{
-	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_borrowed_pool(L, lc->ctx->cell_scratch, 1);
-	return 1;
-}
-
-static int l_ctx_real_cell_pool(lua_State *L)
-{
-	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_borrowed_pool(L, lc->ctx->real_scratch, 1);
-	return 1;
-}
-
-static int l_ctx_face_pool(lua_State *L)
-{
-	lua_fvm_ctx_ud *lc = check_fvm_ctx(L, 1);
-	push_borrowed_pool(L, lc->ctx->face_scratch, 1);
-	return 1;
-}
-
-static int l_ctx_n_cells(lua_State *L)
-{
-	lua_pushinteger(L, check_fvm_ctx(L, 1)->ctx->n_cells);
-	return 1;
-}
-
-static int l_ctx_n_real_cells(lua_State *L)
-{
-	lua_pushinteger(L, check_fvm_ctx(L, 1)->ctx->n_real_cells);
-	return 1;
-}
-
-static int l_ctx_n_faces(lua_State *L)
-{
-	lua_pushinteger(L, check_fvm_ctx(L, 1)->ctx->n_faces);
-	return 1;
-}
-
-static int l_ctx_tostring(lua_State *L)
-{
-	struct jnl_fvm_ctx *c = check_fvm_ctx(L, 1)->ctx;
-	lua_pushfstring(L, "fvm_ctx(n_cells=%d, n_real_cells=%d, n_faces=%d)",
-	                c->n_cells, c->n_real_cells, c->n_faces);
-	return 1;
-}
-
-static int l_ctx_gc(lua_State *L)
-{
-	jnl_fvm_ctx_free(check_fvm_ctx(L, 1)->ctx);
-	return 0;
-}
-
-static const luaL_Reg ctx_mt[] = {{"field", l_ctx_field},
-                                  {"real_field", l_ctx_real_field},
-                                  {"real_view_of", l_ctx_real_view_of},
-                                  {"face_field", l_ctx_face_field},
-                                  {"cell_pool", l_ctx_cell_pool},
-                                  {"real_cell_pool", l_ctx_real_cell_pool},
-                                  {"face_pool", l_ctx_face_pool},
-                                  {"n_cells", l_ctx_n_cells},
-                                  {"n_real_cells", l_ctx_n_real_cells},
-                                  {"n_faces", l_ctx_n_faces},
-                                  {"fvsys", l_ctx_fvsys},
-                                  {"__tostring", l_ctx_tostring},
-                                  {"__gc", l_ctx_gc},
-                                  {NULL, NULL}};
-
-//
-// Module-level ctx constructor
-//
-
-static int l_ctx_new(lua_State *L)
-{
-	pmsh2d *mesh = check_pmsh2d(L, 1);
-	i32 n_systems = (i32)luaL_checkinteger(L, 2);
-
-	lua_fvm_ctx_ud *lc = lua_newuserdata(L, sizeof(lua_fvm_ctx_ud));
-
-	lc->ctx = jnl_fvm_ctx_new(mesh, n_systems);
-
-	if (!lc->ctx)
-		return luaL_error(L, "fvm_ctx allocation failed");
-
-	luaL_setmetatable(L, CTX_MT);
-	return 1;
-}
 
 static const luaL_Reg fvm_base_funcs[] = {
-    {"ctx_new", l_ctx_new},
+    {"fvsys_new", l_fvsys_new},
     {NULL, NULL},
 };
 
@@ -302,12 +135,6 @@ int luaopen_fvm_internal(lua_State *L)
 
 	luaL_newmetatable(L, FVSYS_MT);
 	luaL_setfuncs(L, fvsys_mt, 0);
-	lua_pushvalue(L, -1);
-	lua_setfield(L, -2, "__index");
-	lua_pop(L, 1);
-
-	luaL_newmetatable(L, CTX_MT);
-	luaL_setfuncs(L, ctx_mt, 0);
 	lua_pushvalue(L, -1);
 	lua_setfield(L, -2, "__index");
 	lua_pop(L, 1);

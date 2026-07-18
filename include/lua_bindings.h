@@ -18,7 +18,6 @@
 #define MESH_MT "jnl.mesh2d.mesh"
 #define POOL_MT "jnl.scratch_pool"
 
-#define CTX_MT "jnl.fvm.ctx"
 #define FVSYS_MT "jnl.fvm.fvsys"
 
 #define CG_JAC_SOLVE_MT "jnl.fvm.cg_jac_solve"
@@ -35,7 +34,8 @@
 typedef struct {
 	f64 *data;
 	i32 len;
-	int ctx_ref; // LUA_NOREF = unowned scratch, else luaL_ref anchor
+	bool owned;     // true -> free(data) on __gc
+	int anchor_ref; // LUA_NOREF, or ref keeping source alive for views
 } lua_vec;
 
 static inline lua_vec *check_vec(lua_State *L, int idx)
@@ -43,25 +43,37 @@ static inline lua_vec *check_vec(lua_State *L, int idx)
 	return (lua_vec *)luaL_checkudata(L, idx, VEC_MT);
 }
 
-// Push an unowned scratch vec (data borrowed, no GC cleanup)
+// owned: vec malloc'd this data, frees it on GC
+static inline void push_owned_vec(lua_State *L, f64 *data, i32 len)
+{
+	lua_vec *v = (lua_vec *)lua_newuserdata(L, sizeof(lua_vec));
+	v->data = data;
+	v->len = len;
+	v->owned = true;
+	v->anchor_ref = LUA_NOREF;
+	luaL_setmetatable(L, VEC_MT);
+}
+
+// view: borrows data from another object, anchors it to prevent GC
+static inline void push_view_vec(lua_State *L, f64 *data, i32 len, int src_idx)
+{
+	lua_vec *v = (lua_vec *)lua_newuserdata(L, sizeof(lua_vec));
+	v->data = data;
+	v->len = len;
+	v->owned = false;
+	lua_pushvalue(L, src_idx);
+	v->anchor_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	luaL_setmetatable(L, VEC_MT);
+}
+
+// scratch: borrowed from pool, pool owns it, no GC action needed
 static inline void push_scratch_vec(lua_State *L, f64 *data, i32 len)
 {
 	lua_vec *v = (lua_vec *)lua_newuserdata(L, sizeof(lua_vec));
 	v->data = data;
 	v->len = len;
-	v->ctx_ref = LUA_NOREF;
-	luaL_setmetatable(L, VEC_MT);
-}
-
-// Push an owned vec with a GC anchor keeping parent alive
-static inline void push_owned_vec(lua_State *L, f64 *data, i32 len,
-                                  int parent_idx)
-{
-	lua_vec *v = (lua_vec *)lua_newuserdata(L, sizeof(lua_vec));
-	v->data = data;
-	v->len = len;
-	lua_pushvalue(L, parent_idx);
-	v->ctx_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	v->owned = false;
+	v->anchor_ref = LUA_NOREF;
 	luaL_setmetatable(L, VEC_MT);
 }
 
@@ -99,25 +111,9 @@ push_borrowed_pool(lua_State *L, struct jnl_scratch_pool *pool, int parent_idx)
 // FVM userdata shared across split files
 //
 
-typedef struct {
-	struct jnl_fvsys *sys;
-	struct jnl_scratch_pool *pool; // real-cell solver pool, borrowed from ctx
-	struct jnl_fvm_ctx *ctx;
-	int ctx_ref;
-} lua_fvsys;
-
-typedef struct {
-	struct jnl_fvm_ctx *ctx;
-} lua_fvm_ctx_ud;
-
-static inline lua_fvsys *check_fvsys(lua_State *L, int idx)
+static inline struct jnl_fvsys *check_fvsys(lua_State *L, int idx)
 {
-	return (lua_fvsys *)luaL_checkudata(L, idx, FVSYS_MT);
-}
-
-static inline lua_fvm_ctx_ud *check_fvm_ctx(lua_State *L, int idx)
-{
-	return (lua_fvm_ctx_ud *)luaL_checkudata(L, idx, CTX_MT);
+	return *(struct jnl_fvsys **)luaL_checkudata(L, idx, FVSYS_MT);
 }
 
 //

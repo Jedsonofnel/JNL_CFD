@@ -1,9 +1,33 @@
+#include <stdlib.h>
 #include <assert.h>
 #include <math.h>
 #include <string.h>
 
 #include "jnl/common.h"
 #include "vec.h"
+
+/*
+ * Lifecycle
+ */
+
+f64 *jnl_vec_new(i32 n) { return calloc(n, sizeof(f64)); }
+
+f64 *jnl_vec_new_fill(i32 n, f64 value)
+{
+	if (value == 0.0)
+		return jnl_vec_new(n);
+
+	f64 *vec = malloc(n * sizeof(f64));
+	if (!vec)
+		return NULL;
+
+	for (i32 i = 0; i < n; i++)
+		vec[i] = value;
+
+	return vec;
+}
+
+void jnl_vec_free(f64 *v) { free(v); }
 
 //
 // Utility

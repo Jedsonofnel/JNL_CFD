@@ -128,15 +128,12 @@ local function simplify_add(a, b)
     end
 
     if sum ~= 0 then
-        result = setmetatable(
-            {
-                kind = "add",
-                a = result,
-                b = Node.const(sum),
-                rank = result.rank,
-            },
-            Node
-        )
+        result = setmetatable({
+            kind = "add",
+            a = result,
+            b = Node.const(sum),
+            rank = result.rank,
+        }, Node)
     end
     return result
 end

@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 
 #include "lua_bindings.h"
@@ -41,16 +42,24 @@ static int l_vec_len(lua_State *L)
 static int l_vec_tostring(lua_State *L)
 {
 	lua_vec *v = check_vec(L, 1);
-	lua_pushfstring(L, "vec(len=%d, data=%p, %s)", v->len, v->data,
-	                v->ctx_ref == LUA_NOREF ? "scratch" : "owned");
+	const char *kind = v->owned                     ? "owned"
+	                   : v->anchor_ref != LUA_NOREF ? "view"
+	                                                : "scratch";
+	lua_pushfstring(L, "vec(len=%d, data=%p, %s)", v->len, v->data, kind);
 	return 1;
 }
 
 static int l_vec_gc(lua_State *L)
 {
 	lua_vec *v = check_vec(L, 1);
-	if (v->ctx_ref != LUA_NOREF)
-		luaL_unref(L, LUA_REGISTRYINDEX, v->ctx_ref);
+	if (v->owned) {
+		free(v->data);
+		v->data = NULL;
+	}
+	if (v->anchor_ref != LUA_NOREF) {
+		luaL_unref(L, LUA_REGISTRYINDEX, v->anchor_ref);
+		v->anchor_ref = LUA_NOREF;
+	}
 	return 0;
 }
 
@@ -198,6 +207,33 @@ static int l_vec_norm_l2_weighted(lua_State *L)
 }
 
 //
+// Functions
+//
+
+static int l_vec_new(lua_State *L)
+{
+	i32 n = (i32)luaL_checkinteger(L, 1);
+	f64 init = luaL_optnumber(L, 2, 0.0);
+	luaL_argcheck(L, n > 0, 1, "vec length must be positive");
+	f64 *data = jnl_vec_new_fill(n, init);
+	if (!data)
+		return luaL_error(L, "vec allocation failed");
+	push_owned_vec(L, data, n);
+	return 1;
+}
+
+static int l_vec_view(lua_State *L)
+{
+	lua_vec *src = check_vec(L, 1);
+	i32 offset = (i32)luaL_optinteger(L, 2, 1) - 1; // 1-indexed
+	i32 len = (i32)luaL_optinteger(L, 3, src->len - offset);
+	luaL_argcheck(L, offset >= 0 && offset + len <= src->len, 2,
+	              "view range out of bounds");
+	push_view_vec(L, src->data + offset, len, 1);
+	return 1;
+}
+
+//
 // Registration
 //
 
@@ -232,5 +268,9 @@ int luaopen_vec_internal(lua_State *L)
 	lua_pop(L, 1);
 
 	lua_newtable(L);
+	lua_pushcfunction(L, l_vec_new);
+	lua_setfield(L, -2, "new");
+	lua_pushcfunction(L, l_vec_view);
+	lua_setfield(L, -2, "view");
 	return 1;
 }

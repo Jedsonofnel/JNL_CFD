@@ -246,23 +246,21 @@ static int l_mesh_face_area0(lua_State *L)
 static int l_mesh_cell_cx_vec(lua_State *L)
 {
 	pmsh2d *m = check_pmsh2d(L, 1);
-	push_owned_vec(L, m->geom.cell_cx, m->topo.n_real_cells, 1);
+	push_view_vec(L, m->geom.cell_cx, m->topo.n_real_cells, 1);
 	return 1;
 }
 
 static int l_mesh_cell_cy_vec(lua_State *L)
 {
 	pmsh2d *m = check_pmsh2d(L, 1);
-	push_owned_vec(L, m->geom.cell_cy, m->topo.n_real_cells,
-	               1); /* was cell_cx — bug fixed */
+	push_view_vec(L, m->geom.cell_cy, m->topo.n_real_cells, 1);
 	return 1;
 }
 
 static int l_mesh_cell_vol_vec(lua_State *L)
 {
 	pmsh2d *m = check_pmsh2d(L, 1);
-	push_owned_vec(L, m->geom.cell_vol, m->topo.n_real_cells,
-	               1); /* was cell_cx — bug fixed */
+	push_view_vec(L, m->geom.cell_vol, m->topo.n_real_cells, 1);
 	return 1;
 }
 

@@ -2,7 +2,6 @@
 #define JNL_FVM_LINALG_H
 
 #include "jnl/common.h"
-#include "jnl/arena.h"
 #include "scratch.h"
 #include "mesh2d.h"
 
@@ -68,7 +67,9 @@ struct jnl_fvsys {
 	enum jnl_singularity singularity;
 };
 
-fvsys *jnl_fvsys_new(const pmsh2d *mesh, jnl_arena *arena);
+// Lifecycle
+fvsys *jnl_fvsys_new(const pmsh2d *mesh);
+void jnl_fvsys_free(fvsys *sys);
 
 void jnl_fvsys_reset(fvsys *sys);
 void jnl_fvsys_reset_singularity(fvsys *sys);

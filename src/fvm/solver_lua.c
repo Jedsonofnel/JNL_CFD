@@ -4,6 +4,13 @@
 #include "lua_bindings.h"
 #include "fvm/solver.h"
 
+#define CG_JAC_SOLVE_MT "jnl.fvm.cg_jac_solve"
+#define CG_DIC_SOLVE_MT "jnl.fvm.cg_dic_solve"
+#define BICGSTAB_JAC_SOLVE_MT "jnl.fvm.bicgstab_jac_solve"
+#define BICGSTAB_DILU_SOLVE_MT "jnl.fvm.bicgstab_dilu_solve"
+#define GMRES_DILU_SOLVE_MT "jnl.fvm.gmres_dilu_solve"
+#define JACOBI_SMOOTHER_MT "jnl.fvm.jacobi_smoother"
+
 //
 // Helpers
 //
@@ -42,10 +49,10 @@ static void push_smoother_step(lua_State *L, struct jnl_smoother_step r)
 	lua_setfield(L, -2, "breakdown");
 }
 
-static void check_initial_vec_len(lua_State *L, const char *name, lua_fvsys *s,
+static void check_initial_vec_len(lua_State *L, const char *name, fvsys *s,
                                   lua_vec *x)
 {
-	if (x->len != s->sys->matrix.n_cells) {
+	if (x->len != s->matrix.n_cells) {
 		luaL_error(L, "%s: initial vector length mismatch", name);
 	}
 }
@@ -66,6 +73,7 @@ typedef struct {
 	struct jnl_cg_jac solve;
 	i32 n_cells;
 	int fvsys_ref;
+	int pool_ref;
 } lua_cg_jac_solve;
 
 static lua_cg_jac_solve *check_cg_jac_solve(lua_State *L, int idx)
@@ -75,19 +83,21 @@ static lua_cg_jac_solve *check_cg_jac_solve(lua_State *L, int idx)
 
 static int l_fvsys_cg_jac(lua_State *L)
 {
-	lua_fvsys *s = check_fvsys(L, 1);
+	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
 	f64 tol = luaL_checknumber(L, 3);
+	lua_pool *pool = check_pool(L, 4);
 
 	check_initial_vec_len(L, "cg_jac", s, x);
 
 	lua_cg_jac_solve *ls = lua_newuserdata(L, sizeof(lua_cg_jac_solve));
-	ls->n_cells = s->sys->matrix.n_cells;
-
-	ls->solve = jnl_fvsys_cg_jac_begin(s->sys, s->pool, x->data, tol);
+	ls->n_cells = s->matrix.n_cells;
+	ls->solve = jnl_fvsys_cg_jac_begin(s, pool, x->data, tol);
 
 	lua_pushvalue(L, 1);
 	ls->fvsys_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	lua_pushvalue(L, 4);
+	ls->pool_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	luaL_setmetatable(L, CG_JAC_SOLVE_MT);
 	return 1;
@@ -134,7 +144,9 @@ static int l_cg_jac_gc(lua_State *L)
 {
 	lua_cg_jac_solve *s = check_cg_jac_solve(L, 1);
 	luaL_unref(L, LUA_REGISTRYINDEX, s->fvsys_ref);
+	luaL_unref(L, LUA_REGISTRYINDEX, s->pool_ref);
 	s->fvsys_ref = LUA_NOREF;
+	s->pool_ref = LUA_NOREF;
 	return 0;
 }
 
@@ -154,6 +166,7 @@ typedef struct {
 	struct jnl_cg_dic solve;
 	i32 n_cells;
 	int fvsys_ref;
+	int pool_ref;
 } lua_cg_dic_solve;
 
 static lua_cg_dic_solve *check_cg_dic_solve(lua_State *L, int idx)
@@ -163,19 +176,22 @@ static lua_cg_dic_solve *check_cg_dic_solve(lua_State *L, int idx)
 
 static int l_fvsys_cg_dic(lua_State *L)
 {
-	lua_fvsys *s = check_fvsys(L, 1);
+	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
 	f64 tol = luaL_checknumber(L, 3);
+	lua_pool *pool = check_pool(L, 4);
 
 	check_initial_vec_len(L, "cg_dic", s, x);
 
 	lua_cg_dic_solve *ls = lua_newuserdata(L, sizeof(lua_cg_dic_solve));
-	ls->n_cells = s->sys->matrix.n_cells;
+	ls->n_cells = s->matrix.n_cells;
 
-	ls->solve = jnl_fvsys_cg_dic_begin(s->sys, s->pool, x->data, tol);
+	ls->solve = jnl_fvsys_cg_dic_begin(s, pool, x->data, tol);
 
 	lua_pushvalue(L, 1);
 	ls->fvsys_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	lua_pushvalue(L, 4);
+	ls->pool_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	luaL_setmetatable(L, CG_DIC_SOLVE_MT);
 	return 1;
@@ -222,7 +238,9 @@ static int l_cg_dic_gc(lua_State *L)
 {
 	lua_cg_dic_solve *s = check_cg_dic_solve(L, 1);
 	luaL_unref(L, LUA_REGISTRYINDEX, s->fvsys_ref);
+	luaL_unref(L, LUA_REGISTRYINDEX, s->pool_ref);
 	s->fvsys_ref = LUA_NOREF;
+	s->pool_ref = LUA_NOREF;
 	return 0;
 }
 
@@ -242,6 +260,7 @@ typedef struct {
 	struct jnl_bicgstab_jac solve;
 	i32 n_cells;
 	int fvsys_ref;
+	int pool_ref;
 } lua_bicgstab_jac_solve;
 
 static lua_bicgstab_jac_solve *check_bicgstab_jac_solve(lua_State *L, int idx)
@@ -252,20 +271,23 @@ static lua_bicgstab_jac_solve *check_bicgstab_jac_solve(lua_State *L, int idx)
 
 static int l_fvsys_bicgstab_jac(lua_State *L)
 {
-	lua_fvsys *s = check_fvsys(L, 1);
+	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
 	f64 tol = luaL_checknumber(L, 3);
+	lua_pool *pool = check_pool(L, 4);
 
 	check_initial_vec_len(L, "bicgstab_jac", s, x);
 
 	lua_bicgstab_jac_solve *ls =
 	    lua_newuserdata(L, sizeof(lua_bicgstab_jac_solve));
 
-	ls->n_cells = s->sys->matrix.n_cells;
-	ls->solve = jnl_fvsys_bicgstab_jac_begin(s->sys, s->pool, x->data, tol);
+	ls->n_cells = s->matrix.n_cells;
+	ls->solve = jnl_fvsys_bicgstab_jac_begin(s, pool, x->data, tol);
 
 	lua_pushvalue(L, 1);
 	ls->fvsys_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	lua_pushvalue(L, 4);
+	ls->pool_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	luaL_setmetatable(L, BICGSTAB_JAC_SOLVE_MT);
 	return 1;
@@ -313,7 +335,9 @@ static int l_bicgstab_jac_gc(lua_State *L)
 {
 	lua_bicgstab_jac_solve *s = check_bicgstab_jac_solve(L, 1);
 	luaL_unref(L, LUA_REGISTRYINDEX, s->fvsys_ref);
+	luaL_unref(L, LUA_REGISTRYINDEX, s->pool_ref);
 	s->fvsys_ref = LUA_NOREF;
+	s->pool_ref = LUA_NOREF;
 	return 0;
 }
 
@@ -333,6 +357,7 @@ typedef struct {
 	struct jnl_bicgstab_dilu solve;
 	i32 n_cells;
 	int fvsys_ref;
+	int pool_ref;
 } lua_bicgstab_dilu_solve;
 
 static lua_bicgstab_dilu_solve *check_bicgstab_dilu_solve(lua_State *L, int idx)
@@ -343,20 +368,23 @@ static lua_bicgstab_dilu_solve *check_bicgstab_dilu_solve(lua_State *L, int idx)
 
 static int l_fvsys_bicgstab_dilu(lua_State *L)
 {
-	lua_fvsys *s = check_fvsys(L, 1);
+	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
 	f64 tol = luaL_checknumber(L, 3);
+	lua_pool *pool = check_pool(L, 4);
 
 	check_initial_vec_len(L, "bicgstab_dilu", s, x);
 
 	lua_bicgstab_dilu_solve *ls =
 	    lua_newuserdata(L, sizeof(lua_bicgstab_dilu_solve));
 
-	ls->n_cells = s->sys->matrix.n_cells;
-	ls->solve = jnl_fvsys_bicgstab_dilu_begin(s->sys, s->pool, x->data, tol);
+	ls->n_cells = s->matrix.n_cells;
+	ls->solve = jnl_fvsys_bicgstab_dilu_begin(s, pool, x->data, tol);
 
 	lua_pushvalue(L, 1);
 	ls->fvsys_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	lua_pushvalue(L, 4);
+	ls->pool_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	luaL_setmetatable(L, BICGSTAB_DILU_SOLVE_MT);
 	return 1;
@@ -404,7 +432,9 @@ static int l_bicgstab_dilu_gc(lua_State *L)
 {
 	lua_bicgstab_dilu_solve *s = check_bicgstab_dilu_solve(L, 1);
 	luaL_unref(L, LUA_REGISTRYINDEX, s->fvsys_ref);
+	luaL_unref(L, LUA_REGISTRYINDEX, s->pool_ref);
 	s->fvsys_ref = LUA_NOREF;
+	s->pool_ref = LUA_NOREF;
 	return 0;
 }
 
@@ -424,6 +454,7 @@ typedef struct {
 	struct jnl_gmres_dilu solve;
 	i32 n_cells;
 	int fvsys_ref;
+	int pool_ref;
 } lua_gmres_dilu_solve;
 
 static lua_gmres_dilu_solve *check_gmres_dilu_solve(lua_State *L, int idx)
@@ -433,21 +464,23 @@ static lua_gmres_dilu_solve *check_gmres_dilu_solve(lua_State *L, int idx)
 
 static int l_fvsys_gmres_dilu(lua_State *L)
 {
-	lua_fvsys *s = check_fvsys(L, 1);
+	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
 	f64 tol = luaL_checknumber(L, 3);
 	i32 restart = (i32)luaL_checkinteger(L, 4);
+	lua_pool *pool = check_pool(L, 5);
 
 	check_initial_vec_len(L, "gmres_dilu", s, x);
 
 	lua_gmres_dilu_solve *ls = lua_newuserdata(L, sizeof(lua_gmres_dilu_solve));
 
-	ls->n_cells = s->sys->matrix.n_cells;
-	ls->solve =
-	    jnl_fvsys_gmres_dilu_begin(s->sys, s->pool, x->data, tol, restart);
+	ls->n_cells = s->matrix.n_cells;
+	ls->solve = jnl_fvsys_gmres_dilu_begin(s, pool, x->data, tol, restart);
 
 	lua_pushvalue(L, 1);
 	ls->fvsys_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	lua_pushvalue(L, 5);
+	ls->pool_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	luaL_setmetatable(L, GMRES_DILU_SOLVE_MT);
 	return 1;
@@ -505,7 +538,9 @@ static int l_gmres_dilu_gc(lua_State *L)
 	jnl_gmres_dilu_destroy(&s->solve);
 
 	luaL_unref(L, LUA_REGISTRYINDEX, s->fvsys_ref);
+	luaL_unref(L, LUA_REGISTRYINDEX, s->pool_ref);
 	s->fvsys_ref = LUA_NOREF;
+	s->pool_ref = LUA_NOREF;
 
 	return 0;
 }
@@ -527,6 +562,7 @@ typedef struct {
 	struct jnl_jacobi_smoother smooth;
 	i32 n_cells;
 	int fvsys_ref;
+	int pool_ref;
 } lua_jacobi_smoother;
 
 static lua_jacobi_smoother *check_jacobi_smoother(lua_State *L, int idx)
@@ -536,20 +572,23 @@ static lua_jacobi_smoother *check_jacobi_smoother(lua_State *L, int idx)
 
 static int l_fvsys_jacobi_smoother(lua_State *L)
 {
-	lua_fvsys *s = check_fvsys(L, 1);
+	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
 	f64 omega = luaL_checknumber(L, 3);
+	lua_pool *pool = check_pool(L, 4);
 
 	check_initial_vec_len(L, "jacobi_smoother", s, x);
 
 	lua_jacobi_smoother *ls = lua_newuserdata(L, sizeof(lua_jacobi_smoother));
 
-	ls->n_cells = s->sys->matrix.n_cells;
+	ls->n_cells = s->matrix.n_cells;
 	ls->smooth =
-	    jnl_fvsys_jacobi_smoother_begin(s->sys, s->pool, x->data, omega);
+	    jnl_fvsys_jacobi_smoother_begin(s, pool, x->data, omega);
 
 	lua_pushvalue(L, 1);
 	ls->fvsys_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	lua_pushvalue(L, 4);
+	ls->pool_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	luaL_setmetatable(L, JACOBI_SMOOTHER_MT);
 	return 1;
@@ -598,7 +637,9 @@ static int l_jacobi_smoother_gc(lua_State *L)
 {
 	lua_jacobi_smoother *s = check_jacobi_smoother(L, 1);
 	luaL_unref(L, LUA_REGISTRYINDEX, s->fvsys_ref);
+	luaL_unref(L, LUA_REGISTRYINDEX, s->pool_ref);
 	s->fvsys_ref = LUA_NOREF;
+	s->pool_ref = LUA_NOREF;
 	return 0;
 }
 

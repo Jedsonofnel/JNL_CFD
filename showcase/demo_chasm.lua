@@ -2,12 +2,12 @@
 -- <jed@nelson.ac> // 2026-07-17
 
 local cart = require("jnl.mesh2d.cartmesh2d")
-local CHASM = require("jnl.fvm.chasm")
+local FVM = require("jnl.fvm")
 
 local mesh = cart.build(1, 1, 20, 20)
 assert(mesh)
 
-local asm = CHASM.new("laplace")
+local asm = FVM.new_chasm("laplace")
 
 local phi = asm:scalar("phi"):sys()
 

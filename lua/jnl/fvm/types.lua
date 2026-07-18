@@ -1,99 +1,90 @@
--- fvm/types.lua
+-- jnl/fvm/types.lua
 ---@meta
 
+-- Pull in core types so LuaLS resolves Vec and ScratchPool
+-- in return types and parameters below.
+---@type Vec
+---@type ScratchPool
+
 --
--- Solver step results (plain tables from C)
+-- Solver step results
 --
 
 ---@class SolverStep
----@field residual     number   absolute residual norm
----@field rel_residual number   residual relative to initial
----@field iter         integer  iteration index at this step
----@field done         boolean  converged within tolerance
----@field breakdown    boolean  numerical breakdown detected
+---@field residual     number
+---@field rel_residual number
+---@field iter         integer
+---@field done         boolean
+---@field breakdown    boolean
 
 ---@class SmootherStep
----@field change    number   L2 change from this sweep
----@field sweeps    integer  sweep count at this step
----@field breakdown boolean  breakdown detected
+---@field change    number
+---@field sweeps    integer
+---@field breakdown boolean
 
 --
 -- Krylov solver objects
--- All expose iter() and finish_change_into(); GMRES also has destroy().
 --
 
 ---@class CgJacSolve
 local CgJacSolve = {}
 ---@return SolverStep
 function CgJacSolve:iter() end
-
----@param x VecUD
+---@param x Vec
 function CgJacSolve:finish_into(x) end
-
----@param x VecUD
----@return number change
+---@param x Vec
+---@return number
 function CgJacSolve:finish_change_into(x) end
 
 ---@class CgDicSolve
 local CgDicSolve = {}
 ---@return SolverStep
 function CgDicSolve:iter() end
-
----@param x VecUD
+---@param x Vec
 function CgDicSolve:finish_into(x) end
-
----@param x VecUD
----@return number change
+---@param x Vec
+---@return number
 function CgDicSolve:finish_change_into(x) end
 
 ---@class BicgstabJacSolve
 local BicgstabJacSolve = {}
 ---@return SolverStep
 function BicgstabJacSolve:iter() end
-
----@param x VecUD
+---@param x Vec
 function BicgstabJacSolve:finish_into(x) end
-
----@param x VecUD
----@return number change
+---@param x Vec
+---@return number
 function BicgstabJacSolve:finish_change_into(x) end
 
 ---@class BicgstabDiluSolve
 local BicgstabDiluSolve = {}
 ---@return SolverStep
 function BicgstabDiluSolve:iter() end
-
----@param x VecUD
+---@param x Vec
 function BicgstabDiluSolve:finish_into(x) end
-
----@param x VecUD
----@return number change
+---@param x Vec
+---@return number
 function BicgstabDiluSolve:finish_change_into(x) end
 
 ---@class GmresDiluSolve
 local GmresDiluSolve = {}
 ---@return SolverStep
 function GmresDiluSolve:iter() end
-
----@param x VecUD
+---@param x Vec
 function GmresDiluSolve:finish_into(x) end
-
----@param x VecUD
----@return number change
+---@param x Vec
+---@return number
 function GmresDiluSolve:finish_change_into(x) end
-
 function GmresDiluSolve:destroy() end
 
 ---@class JacobiSmoother
 local JacobiSmoother = {}
 ---@return SmootherStep
 function JacobiSmoother:sweep() end
-
----@param x VecUD
+---@param x Vec
 function JacobiSmoother:finish_into(x) end
-
----@param x VecUD
----@return number change
+---@param x Vec
+---@return number
 function JacobiSmoother:finish_change_into(x) end
 
 --
@@ -104,10 +95,9 @@ function JacobiSmoother:finish_change_into(x) end
 local FvSys = {}
 
 function FvSys:reset() end
-
 function FvSys:reset_singularity() end
 
----@param phi VecUD
+---@param phi   Vec
 ---@param alpha number
 function FvSys:under_relax(phi, alpha) end
 
@@ -115,15 +105,18 @@ function FvSys:under_relax(phi, alpha) end
 ---@param val  number
 function FvSys:pin_cell(cell, val) end
 
----@param phi VecUD
+---@param phi  Vec
+---@param pool ScratchPool
 ---@return number
-function FvSys:residual_norm(phi) end
+function FvSys:residual_norm(phi, pool) end
 
----@return VecUD  view into the system diagonal (not a copy)
+---View into the diagonal array; anchors sys alive.
+---@return Vec
 function FvSys:diag_vec() end
 
+---@param pool ScratchPool
 ---@return number
-function FvSys:diagonal_dominance() end
+function FvSys:diagonal_dominance(pool) end
 
 ---@return boolean
 function FvSys:all_diagonals_positive() end
@@ -131,80 +124,44 @@ function FvSys:all_diagonals_positive() end
 ---@return number
 function FvSys:max_asymmetry() end
 
----@param phi VecUD
----@param tol number
+-- Solver constructors: pool is explicit so the caller controls
+-- which partition pool is used during the solve.
+
+---@param phi  Vec
+---@param tol  number
+---@param pool ScratchPool
 ---@return CgJacSolve
-function FvSys:cg_jac(phi, tol) end
+function FvSys:cg_jac(phi, tol, pool) end
 
----@param phi VecUD
----@param tol number
+---@param phi  Vec
+---@param tol  number
+---@param pool ScratchPool
 ---@return CgDicSolve
-function FvSys:cg_dic(phi, tol) end
+function FvSys:cg_dic(phi, tol, pool) end
 
----@param phi VecUD
----@param tol number
+---@param phi  Vec
+---@param tol  number
+---@param pool ScratchPool
 ---@return BicgstabJacSolve
-function FvSys:bicgstab_jac(phi, tol) end
+function FvSys:bicgstab_jac(phi, tol, pool) end
 
----@param phi VecUD
----@param tol number
+---@param phi  Vec
+---@param tol  number
+---@param pool ScratchPool
 ---@return BicgstabDiluSolve
-function FvSys:bicgstab_dilu(phi, tol) end
+function FvSys:bicgstab_dilu(phi, tol, pool) end
 
----@param phi    VecUD
----@param tol    number
+---@param phi     Vec
+---@param tol     number
 ---@param restart integer
+---@param pool    ScratchPool
 ---@return GmresDiluSolve
-function FvSys:gmres_dilu(phi, tol, restart) end
+function FvSys:gmres_dilu(phi, tol, restart, pool) end
 
----@param phi   VecUD
+---@param phi   Vec
 ---@param omega number
+---@param pool  ScratchPool
 ---@return JacobiSmoother
-function FvSys:jacobi_smoother(phi, omega) end
+function FvSys:jacobi_smoother(phi, omega, pool) end
 
---
--- Ctx
---
-
----@class FvmCtx
-local FvmCtx = {}
-
----@param init number?  optional fill value; defaults to 0
----@return VecUD       n_cells (real + ghost) cell field
-function FvmCtx:field(init) end
-
----@param init number?  optional fill value; defaults to 0
----@return VecUD       n_real_cells cell field (no ghost layer)
-function FvmCtx:real_field(init) end
-
----@param src VecUD
----@return VecUD
-function FvmCtx:real_view_of(src) end
-
----@param init number?  optional fill value; defaults to 0
----@return VecUD       n_faces face field
-function FvmCtx:face_field(init) end
-
----@param init number?  optional fill value; borrowed scratch, may be dirty
----@return VecUD       cell scratch pool slot
-function FvmCtx:cell_pool(init) end
-
----@param init number?  optional fill value; borrowed scratch, may be dirty
----@return VecUD       real-cell scratch pool slot
-function FvmCtx:real_cell_pool(init) end
-
----@param init number?  optional fill value; borrowed scratch, may be dirty
----@return VecUD       face scratch pool slot
-function FvmCtx:face_pool(init) end
-
----@return FvSys     new linear system backed by this context
-function FvmCtx:fvsys() end
-
----@return integer
-function FvmCtx:n_cells() end
-
----@return integer
-function FvmCtx:n_real_cells() end
-
----@return integer
-function FvmCtx:n_faces() end
+return {}

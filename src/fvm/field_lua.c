@@ -157,7 +157,7 @@ static int l_ghost_k(lua_State *L)
 
 static int l_diag_snapshot(lua_State *L)
 {
-	jnl_diag_snapshot(check_pmsh2d(L, 1), check_fvsys(L, 2)->sys,
+	jnl_diag_snapshot(check_pmsh2d(L, 1), check_fvsys(L, 2),
 	                  check_vec(L, 3)->data);
 	return 0;
 }

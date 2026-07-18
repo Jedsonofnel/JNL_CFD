@@ -36,21 +36,21 @@ static int l_patch_s_fill_r(lua_State *L)
 
 static int l_patch_s_close_d(lua_State *L)
 {
-	jnl_patch_s_close_d(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_patch_s_close_d(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                    luaL_checkstring(L, 3), luaL_checknumber(L, 4));
 	return 0;
 }
 
 static int l_patch_s_close_n(lua_State *L)
 {
-	jnl_patch_s_close_n(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_patch_s_close_n(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                    luaL_checkstring(L, 3), luaL_checknumber(L, 4));
 	return 0;
 }
 
 static int l_patch_s_close_r(lua_State *L)
 {
-	jnl_patch_s_close_r(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_patch_s_close_r(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                    luaL_checkstring(L, 3), luaL_checknumber(L, 4),
 	                    luaL_checknumber(L, 5), luaL_checknumber(L, 6));
 	return 0;
@@ -121,7 +121,7 @@ static int l_bregion_s_fill_r(lua_State *L)
 
 static int l_bregion_s_close_d(lua_State *L)
 {
-	jnl_bregion_s_close_d(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_bregion_s_close_d(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                      luaL_checkstring(L, 3), (i32)luaL_checkinteger(L, 4),
 	                      luaL_checknumber(L, 5));
 	return 0;
@@ -129,7 +129,7 @@ static int l_bregion_s_close_d(lua_State *L)
 
 static int l_bregion_s_close_n(lua_State *L)
 {
-	jnl_bregion_s_close_n(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_bregion_s_close_n(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                      luaL_checkstring(L, 3), (i32)luaL_checkinteger(L, 4),
 	                      luaL_checknumber(L, 5));
 	return 0;
@@ -137,7 +137,7 @@ static int l_bregion_s_close_n(lua_State *L)
 
 static int l_bregion_s_close_r(lua_State *L)
 {
-	jnl_bregion_s_close_r(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_bregion_s_close_r(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                      luaL_checkstring(L, 3), (i32)luaL_checkinteger(L, 4),
 	                      luaL_checknumber(L, 5), luaL_checknumber(L, 6),
 	                      luaL_checknumber(L, 7));
@@ -189,7 +189,7 @@ static int l_baffle_s_fill_insul(lua_State *L)
 
 static int l_baffle_s_close_insul(lua_State *L)
 {
-	jnl_baffle_s_close_insul(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_baffle_s_close_insul(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                         luaL_checkstring(L, 3));
 	return 0;
 }
@@ -203,21 +203,21 @@ static int l_baffle_s_fill_cont(lua_State *L)
 
 static int l_baffle_s_close_cont(lua_State *L)
 {
-	jnl_baffle_s_close_cont(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_baffle_s_close_cont(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                        luaL_checkstring(L, 3));
 	return 0;
 }
 
 static int l_baffle_s_close_cc(lua_State *L)
 {
-	jnl_baffle_s_close_cc(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_baffle_s_close_cc(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                      luaL_checkstring(L, 3), luaL_checknumber(L, 4));
 	return 0;
 }
 
 static int l_baffle_s_close_cr(lua_State *L)
 {
-	jnl_baffle_s_close_cr(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2),
+	jnl_baffle_s_close_cr(check_fvsys(L, 1), check_pmsh2d(L, 2),
 	                      luaL_checkstring(L, 3), luaL_checknumber(L, 4));
 	return 0;
 }
@@ -234,7 +234,7 @@ static int l_baffles_s_fill_insul(lua_State *L)
 
 static int l_baffles_s_close_insul(lua_State *L)
 {
-	jnl_baffles_s_close_insul(check_fvsys(L, 1)->sys, check_pmsh2d(L, 2));
+	jnl_baffles_s_close_insul(check_fvsys(L, 1), check_pmsh2d(L, 2));
 	return 0;
 }
 
@@ -255,7 +255,7 @@ static int l_baffle_v_fill_cont(lua_State *L)
 
 static int l_bc_assert_all_closed(lua_State *L)
 {
-	jnl_bc_assert_all_closed(check_fvsys(L, 1)->sys);
+	jnl_bc_assert_all_closed(check_fvsys(L, 1));
 	return 0;
 }
 

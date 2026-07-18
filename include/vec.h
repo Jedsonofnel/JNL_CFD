@@ -3,9 +3,17 @@
 
 #include "jnl/common.h"
 
-//
-// Util
-//
+/*
+ * Lifecycle
+ */
+
+f64 *jnl_vec_new(i32 n);
+f64 *jnl_vec_new_fill(i32 n, f64 value);
+void jnl_vec_free(f64 *v);
+
+/*
+ *  Util
+ */
 
 f64 jnl_vec_max(const f64 *v, i32 n);
 f64 jnl_vec_min(const f64 *v, i32 n);

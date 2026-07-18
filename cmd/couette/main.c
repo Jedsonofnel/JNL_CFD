@@ -174,15 +174,9 @@ int main(void)
 	// Linear systems
 	//
 
-	const u64 sys_sz = jnl_fvsys_arena_size(mesh);
-
-	jnl_arena *ux_arena = arena_create(sys_sz);
-	jnl_arena *uy_arena = arena_create(sys_sz);
-	jnl_arena *pp_arena = arena_create(sys_sz);
-
-	struct jnl_fvsys *ux_sys = jnl_fvsys_new(mesh, ux_arena);
-	struct jnl_fvsys *uy_sys = jnl_fvsys_new(mesh, uy_arena);
-	struct jnl_fvsys *pp_sys = jnl_fvsys_new(mesh, pp_arena);
+	struct jnl_fvsys *ux_sys = jnl_fvsys_new(mesh);
+	struct jnl_fvsys *uy_sys = jnl_fvsys_new(mesh);
+	struct jnl_fvsys *pp_sys = jnl_fvsys_new(mesh);
 
 	//
 	// Full-cell fields: [n_cells]
@@ -403,9 +397,9 @@ int main(void)
 
 	jnl_polymesh2d_free(mesh);
 
-	arena_destroy(ux_arena);
-	arena_destroy(uy_arena);
-	arena_destroy(pp_arena);
+	free(ux_sys);
+	free(uy_sys);
+	free(pp_sys);
 
 	free(Ux);
 	free(Uy);
