@@ -3,9 +3,6 @@
 
 local Node = require("jnl.nabla.node")
 local ops = require("jnl.nabla.ops")
-local resolve = require("jnl.nabla.resolve")
-
-resolve.install(Node)
 
 --- Build symbolic tensor expressions, equations, and field registries.
 ---
@@ -49,6 +46,76 @@ end
 ---@return Node node
 function Nabla.tensor(name, rank)
     return Node.tensor(name, rank)
+end
+
+---Coerce a number or existing Node to a Node.
+---Raises an error for any other type.
+---@param value any
+---@return Node
+function Nabla.node_from(value)
+    return Node.from(value)
+end
+
+---Return true if value is a Node.
+---@param value any
+---@return boolean
+function Nabla.is_node(value)
+    return getmetatable(value) == Node
+end
+
+--
+-- Arithmetic operators
+--
+
+--- Negate a node
+---@param node Node
+---@return Node
+function Nabla.negate(node)
+    return ops.negate(node)
+end
+
+--- Raise a rank-0 node to a power
+---@param base Node|number
+---@param pow Node|number
+---@return Node
+function Nabla.exponentiate(base, pow)
+    return ops.exponentiate(base, pow)
+end
+
+--- Raise a rank-0 node to a power
+---@param base Node|number
+---@param pow Node|number
+---@return Node
+function Nabla.pow(base, pow)
+    return ops.exponentiate(base, pow)
+end
+
+--- Add nodes together
+---@param ... Node|number
+---@return Node
+function Nabla.add(...)
+    return ops.add(...)
+end
+
+--- Subtract nodes
+---@param ... Node|number
+---@return Node
+function Nabla.subtract(...)
+    return ops.subtract(...)
+end
+
+--- Multiply nodes together
+---@param ... Node|number
+---@return Node
+function Nabla.multiply(...)
+    return ops.multiply(...)
+end
+
+--- Divide nodes
+---@param ... Node|number
+---@return Node
+function Nabla.divide(...)
+    return ops.divide(...)
 end
 
 --
@@ -96,13 +163,6 @@ end
 ---@return Node node
 function Nabla.lap(...)
     return ops.laplacian(...)
-end
-
---- Return the time derivative of an expression.
----@param ... Node|number Expression factors.
----@return Node node
-function Nabla.ddt(...)
-    return ops.ddt(...)
 end
 
 --
@@ -203,15 +263,4 @@ function Nabla.register_accessor(name, spec)
     Nabla[name] = accessor[name]
 end
 
---
--- Public types
---
-
-Nabla.Node = Node
-
--- Silly thing that nabla(phi) = grad(phi) because that's how maths notation works
-return setmetatable(Nabla, {
-    __call = function(_, ...)
-        return ops.grad(...)
-    end,
-})
+return Nabla

@@ -4,6 +4,9 @@
 -- deps
 local nb = require("jnl.nabla")
 local terms = require("jnl.fvm.terms")
+local P = require("jnl.fvm.plan")
+
+local V = require("jnl.core.validation")
 
 --
 -- Physics object constructor
@@ -12,6 +15,7 @@ local terms = require("jnl.fvm.terms")
 ---@class FVPhysics
 ---@field label string
 ---@field fields RegistryField[]
+---@field algorithm table
 local Physics = {}
 Physics.__index = Physics
 
@@ -19,6 +23,7 @@ local function new_physics(label)
     return setmetatable({
         label = label,
         fields = {},
+        algorithm = {},
     }, Physics)
 end
 
@@ -37,8 +42,7 @@ end
 ---@return RegistryField
 function Physics:scalar(name)
     local node = nb.scalar(name) --[[@as RegistryField]]
-    local entry =
-        { name = name, kind = "scalar", node = node, defined = false, rank = 0 }
+    local entry = { name = name, node = node, defined = false }
     self.fields[name] = entry
 
     function node:governed_by(lhs, rhs)
@@ -77,7 +81,7 @@ function Physics:scalar(name)
     end
 
     function node:initial(value)
-        -- TODO: typecheck value as number
+        V.typeof(value, "number", name .. ":initial")
         entry.initial = value
         return self
     end
@@ -93,7 +97,7 @@ local function validate_fields(fields)
     local errors = {}
     local warnings = {}
 
-    for _, field in ipairs(fields) do
+    for _, field in pairs(fields) do
         if not field.defined then
             errors[#errors + 1] =
                 string.format("field %s: undefined", field.name)
@@ -101,7 +105,8 @@ local function validate_fields(fields)
 
         if not field.initial then
             warnings[#warnings + 1] = string.format(
-                "field %s: no initial value given, defaulting to 0"
+                "field %s: no initial value given, defaulting to 0",
+                field.name
             )
         end
     end
@@ -109,19 +114,32 @@ local function validate_fields(fields)
     return errors, warnings
 end
 
-local function validate_algorithm(fields, algorithm) 
-    -- TODO
-end
-
----@return string[]
-function Physics:validate()
+function Physics:compile()
     local errors, warnings = validate_fields(self.fields)
-
     if #errors > 0 then
-        error("Some physics errors found - TODO: make this more informative")
+        error("Field errors found, TODO: make this more informative")
     end
 
-    return warnings
+    if #warnings > 0 then
+        print("Warnings: TODO make this more informatinve")
+    end
+
+    local num_fields = 0
+    local field_name
+    for name, field in pairs(self.fields) do
+        num_fields = num_fields + 1
+
+        if num_fields > 1 then
+            error(
+                "more than one field declared in physics, not setup for that yet"
+            )
+        end
+        field_name = name
+    end
+
+    local plan = P.linear(P.solve(self.fields[field_name]))
+
+    return plan
 end
 
 return {

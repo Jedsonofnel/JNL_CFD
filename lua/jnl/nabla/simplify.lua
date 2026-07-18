@@ -119,20 +119,22 @@ local function simplify_add(a, b)
 
     local result = non_const[1]
     for i = 2, #non_const do
-        result = setmetatable(
-            {
-                kind = "add",
-                a = result,
-                b = non_const[i],
-                rank = non_const[i].rank,
-            },
-            Node
-        )
+        result = setmetatable({
+            kind = "add",
+            a = result,
+            b = non_const[i],
+            rank = non_const[i].rank,
+        }, Node)
     end
 
     if sum ~= 0 then
         result = setmetatable(
-            { kind = "add", a = result, b = Node.const(sum), rank = result.rank },
+            {
+                kind = "add",
+                a = result,
+                b = Node.const(sum),
+                rank = result.rank,
+            },
             Node
         )
     end

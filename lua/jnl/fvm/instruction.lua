@@ -273,16 +273,13 @@ end
 ---@param coeff number
 ---@param expr Node?
 function Inst.lap_nonorth_k(field, grad_x, grad_y, coeff, expr)
-    return new(
-        "lap_nonorth_k",
-        {
-            field = field,
-            grad_x = grad_x,
-            grad_y = grad_y,
-            coeff = coeff,
-            node = expr,
-        }
-    )
+    return new("lap_nonorth_k", {
+        field = field,
+        grad_x = grad_x,
+        grad_y = grad_y,
+        coeff = coeff,
+        node = expr,
+    })
 end
 
 ---@param field string
@@ -291,16 +288,13 @@ end
 ---@param coeff string
 ---@param expr Node?
 function Inst.lap_nonorth_f(field, grad_x, grad_y, coeff, expr)
-    return new(
-        "lap_nonorth_f",
-        {
-            field = field,
-            grad_x = grad_x,
-            grad_y = grad_y,
-            coeff = coeff,
-            node = expr,
-        }
-    )
+    return new("lap_nonorth_f", {
+        field = field,
+        grad_x = grad_x,
+        grad_y = grad_y,
+        coeff = coeff,
+        node = expr,
+    })
 end
 
 ---Implicit UDS/CDS convection assembly with constant coefficient (rho)

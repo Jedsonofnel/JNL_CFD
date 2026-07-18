@@ -5,11 +5,10 @@ local terms = require("jnl.fvm.terms")
 
 return {
     physics = require("jnl.fvm.physics"),
+    BC = require("jnl.fvm.bc"),
+    case = require("jnl.fvm.case"),
 
     terms = terms,
     laplacian = terms.laplacian,
     -- etc
-
-    BC = require("jnl.fvm.bc"),
-    Case = require("jnl.fvm.case"),
 }

@@ -856,14 +856,11 @@ walk_scalar_node = function(out, node, field, sign, ctx, fresh)
     if fn then
         fn(out, node, field, sign, ctx, fresh)
     else
-        out[#out + 1] = Inst.new(
-            "comment",
-            {
-                text = "lower: unhandled scalar node '"
-                    .. tostring(node.kind)
-                    .. "'",
-            }
-        )
+        out[#out + 1] = Inst.new("comment", {
+            text = "lower: unhandled scalar node '"
+                .. tostring(node.kind)
+                .. "'",
+        })
     end
 end
 
@@ -876,14 +873,11 @@ walk_vector_node = function(out, node, field, comps, sign, ctx, fresh)
     if fn then
         fn(out, node, field, comps, sign, ctx, fresh)
     else
-        out[#out + 1] = Inst.new(
-            "comment",
-            {
-                text = "lower: unhandled vector node '"
-                    .. tostring(node.kind)
-                    .. "'",
-            }
-        )
+        out[#out + 1] = Inst.new("comment", {
+            text = "lower: unhandled vector node '"
+                .. tostring(node.kind)
+                .. "'",
+        })
     end
 end
 

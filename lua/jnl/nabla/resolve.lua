@@ -6,11 +6,6 @@ local Node = require("jnl.nabla.node")
 local Mangle = require("jnl.nabla.mangle")
 local Acc = require("jnl.nabla.accessor")
 
--- jnl/nabla/resolve.lua
---- Install cross-module methods and operator dispatch hooks for Nabla nodes.
----@private
-local M = {}
-
 local AXES = Node.AXES -- { "x", "y", "z" }
 
 --
@@ -604,7 +599,7 @@ end
 --
 
 -- Resolve a Node to scalar form
-function M.resolve(node, ndims)
+local function resolve(node, ndims)
     assert(
         ndims == 2 or ndims == 3,
         string.format("resolve: ndims must be 2 or 3, got %s", tostring(ndims))
@@ -642,11 +637,6 @@ function M.resolve(node, ndims)
     end
 end
 
--- Install :resolve() on Node (called from init.lua)
-function M.install(Node_class)
-    function Node_class:resolve(ndims)
-        return M.resolve(self, ndims)
-    end
-end
-
-return M
+return {
+    resolve = resolve,
+}

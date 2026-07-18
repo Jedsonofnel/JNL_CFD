@@ -141,14 +141,6 @@ local function to_node(value)
     error("to_node: cannot coerece to nabla node: " .. tostring(value), 3)
 end
 
--- Constructors namespaced
-Node.const = new_const
-Node.scalar = new_scalar
-Node.vector = new_vector
-Node.tensor = new_tensor
-Node.from = to_node
-Node.is_node = is_node
-
 --
 -- Helper methods
 --
@@ -244,430 +236,14 @@ function Node:flatten(kind)
 end
 
 --
--- General node mathematics (binary tree construction)
---
-
-local function rank_mismatch_msg(a, b, op)
-    local a_name = a.name and "(" .. a.name .. ")" or ""
-    local b_name = b.name and "(" .. b.name .. ")" or ""
-    return string.format(
-        "rank mismatch: rank-%d %s %s rank-%d %s",
-        a.rank,
-        a_name,
-        op,
-        b.rank,
-        b_name
-    )
-end
-
--- forward declaration required
-local negate, exponentiate, add_binary, subtract_binary, multiply_binary, divide_binary
-
----Negate this node. Equivalent to -node.
----@return Node
-negate = function(node)
-    node = to_node(node)
-    if node:is_zero() then
-        return node
-    end
-    return setmetatable({ kind = "neg", a = node, rank = node.rank }, Node)
-end
-
----Raise this rank-0 node to a power.
----@param pow Node|number
----@return Node
-exponentiate = function(base, pow)
-    base = to_node(base)
-    pow = to_node(pow)
-    assert(base.rank == 0, "exponentiate base: rank must be 0")
-    assert(pow.rank == 0, "exponentiate pow: rank must be 0")
-
-    if base:is_zero() or base:is_one() then
-        return base
-    end
-    if pow:is_zero() then
-        return new_const(1)
-    end
-    if pow:is_one() then
-        return base
-    end
-
-    return setmetatable({ kind = "pow", a = base, b = pow, rank = 0 }, Node)
-end
-
-add_binary = function(a, b)
-    a, b = to_node(a), to_node(b)
-    if a:is_zero() then
-        return b
-    end
-    if b:is_zero() then
-        return a
-    end
-
-    assert(a.rank == b.rank, rank_mismatch_msg(a, b, "+"))
-
-    if a.kind == "neg" then
-        return subtract_binary(b, a.a)
-    end
-    if b.kind == "neg" then
-        return subtract_binary(a, b.a)
-    end
-
-    if a:is_anon_const() and b:is_anon_const() then
-        return new_const(a.a + b.a)
-    end
-    return setmetatable({ kind = "add", a = a, b = b, rank = a.rank }, Node)
-end
-
-subtract_binary = function(a, b)
-    a, b = to_node(a), to_node(b)
-    if a:is_zero() then
-        return negate(b)
-    end
-    if b:is_zero() then
-        return a
-    end
-
-    assert(a.rank == b.rank, rank_mismatch_msg(a, b, "-"))
-
-    if a.kind == "neg" then
-        return negate(add_binary(a.a, b))
-    end
-    if b.kind == "neg" then
-        return add_binary(a, b.a)
-    end
-    if a.kind == "sub" then
-        return setmetatable(
-            { kind = "sub", a = a.a, b = add_binary(a.b, b), rank = a.rank },
-            Node
-        )
-    end
-
-    if a:is_anon_const() and b:is_anon_const() then
-        return new_const(a.a - b.a)
-    end
-    return setmetatable({ kind = "sub", a = a, b = b, rank = a.rank }, Node)
-end
-
-multiply_binary = function(a, b)
-    a, b = to_node(a), to_node(b)
-
-    if a:is_zero() then
-        return a
-    end
-    if a:is_one() then
-        return b
-    end
-    if b:is_zero() then
-        return b
-    end
-    if b:is_one() then
-        return a
-    end
-
-    local a_neg, a_pos = a:is_negative()
-    local b_neg, b_pos = b:is_negative()
-
-    if a_neg and b_neg then
-        return multiply_binary(a_pos, b_pos)
-    end
-    if a_neg then
-        return negate(multiply_binary(a_pos, b))
-    end
-    if b_neg then
-        return negate(multiply_binary(a, b_pos))
-    end
-
-    if a:is_anon_const() and b:is_anon_const() then
-        return new_const(a.a * b.a)
-    end
-
-    local ra, rb = a.rank, b.rank
-
-    -- rank-0 * anything: scale
-    if ra == 0 and rb == 0 then
-        return setmetatable({ kind = "mul", a = a, b = b, rank = 0 }, Node)
-    elseif ra == 0 then
-        return setmetatable({ kind = "scale", a = a, b = b, rank = rb }, Node)
-    elseif rb == 0 then
-        return setmetatable({ kind = "scale", a = b, b = a, rank = ra }, Node)
-
-        -- rank-1 * rank-1: outer product -> tensor
-    elseif ra == 1 and rb == 1 then
-        return setmetatable({ kind = "outer", a = a, b = b, rank = 2 }, Node)
-
-        -- rank-2 * rank-1 or rank-1 * rank-2: matvec -> vector
-    elseif ra == 2 and rb == 1 then
-        return setmetatable({ kind = "matvec", a = a, b = b, rank = 1 }, Node)
-    elseif ra == 1 and rb == 2 then
-        return setmetatable({ kind = "matvec", a = b, b = a, rank = 1 }, Node)
-
-        -- rank-2 * rank-2: matmul -> tensor
-    elseif ra == 2 and rb == 2 then
-        return setmetatable({ kind = "matmul", a = a, b = b, rank = 2 }, Node)
-    else
-        error(rank_mismatch_msg(a, b, "*"))
-    end
-end
-
-divide_binary = function(quotient, divisor)
-    local q, d = to_node(quotient), to_node(divisor)
-
-    if d:is_zero() then
-        error("cannot divide by zero")
-    end
-    if d:is_one() then
-        return q
-    end
-    if q:is_zero() then
-        return q
-    end
-
-    if q.rank == 0 and d.rank ~= 0 then
-        error(rank_mismatch_msg(q, d, "/"))
-    end
-
-    if d.rank ~= 0 and q.rank ~= d.rank then
-        error(rank_mismatch_msg(q, d, "/"))
-    end
-
-    if q:is_anon_const() and d:is_anon_const() then
-        return new_const(q.a / d.a)
-    end
-
-    local rank = q.rank
-
-    if q.kind == "div" and d.rank == 0 then
-        return setmetatable({
-            kind = "div",
-            a = q.a,
-            b = multiply_binary(q.b, d),
-            rank = rank,
-        }, Node)
-    end
-
-    if d.kind == "div" and d.rank == 0 then
-        return setmetatable({
-            kind = "div",
-            a = multiply_binary(q, d.b),
-            b = d.a,
-            rank = rank,
-        }, Node)
-    end
-
-    return setmetatable({
-        kind = "div",
-        a = q,
-        b = d,
-        rank = rank,
-    }, Node)
-end
-
---
--- Variadic wrappers
---
-
----Add one or more nodes to this node.
----@param  ... Node|number
----@return Node
-local function add(...)
-    local args = { ... }
-    if #args == 0 then
-        return new_const(0)
-    end
-    if #args == 1 then
-        return to_node(args[1])
-    end
-
-    local result = add_binary(args[1], args[2])
-    for i = 3, #args do
-        result = add_binary(result, args[i])
-    end
-    return result
-end
-
----Subtract one or more nodes from this node.
----@param  ... Node|number
----@return Node
-local function subtract(...)
-    local args = { ... }
-    if #args == 0 then
-        return new_const(0)
-    end
-    if #args == 1 then
-        return negate(args[1])
-    end
-
-    local result = subtract_binary(args[1], args[2])
-    for i = 3, #args do
-        result = subtract_binary(result, args[i])
-    end
-    return result
-end
-
----Multiply this node by one or more nodes.
----Rank rules: scalar×scalar→scalar, scalar×vector→scale (vector),
----vector×vector→dot (scalar), tensor×vector→matvec (vector).
----@param  ... Node|number
----@return Node
-local function multiply(...)
-    local args = { ... }
-    if #args == 0 then
-        return new_const(1)
-    end
-    if #args == 1 then
-        return to_node(args[1])
-    end
-
-    local result = multiply_binary(args[1], args[2])
-    for i = 3, #args do
-        result = multiply_binary(result, args[i])
-    end
-    return result
-end
-
----Divide this node by another (both must be same-rank or divisor is scalar).
----@param  ... Node|number
----@return Node
-local function divide(...)
-    local args = { ... }
-    if #args == 0 then
-        return new_const(1)
-    end
-    if #args == 1 then
-        return divide_binary(1, args[1])
-    end
-
-    local result = divide_binary(args[1], args[2])
-    for i = 3, #args do
-        result = divide_binary(result, args[i])
-    end
-    return result
-end
-
---
--- Methods for maths
---
-
----Negate this node: returns -self.
----@return Node
-function Node:neg()
-    return negate(self)
-end
-
----Negate this node: returns -self.
----@return Node
-function Node:negate()
-    return negate(self)
-end
-
----Unary minus operator: -node.
----@return Node
-function Node:__unm()
-    return negate(self)
-end
-
----Add one or more nodes to this node.
----Rank must match across all operands.
----@param ... Node|number
----@return Node
-function Node:add(...)
-    return add(self, ...)
-end
-
----Addition operator: node + other.
----@param ... Node|number
----@return Node
-function Node:__add(...)
-    return add(self, ...)
-end
-
----Subtract one or more nodes from this node in left-to-right order.
----Rank must match across all operands.
----@param ... Node|number
----@return Node
-function Node:subtract(...)
-    return subtract(self, ...)
-end
-
----Alias for subtract.
----@param ... Node|number
----@return Node
-function Node:sub(...)
-    return subtract(self, ...)
-end
-
----Subtraction operator: node - other.
----@param ... Node|number
----@return Node
-function Node:__sub(...)
-    return subtract(self, ...)
-end
-
----Multiply this node by one or more nodes.
----Rank dispatch: scalar*scalar->mul, scalar*vector->scale, vector*vector->dot,
----tensor*vector->matvec, tensor*tensor->matmul.
----@param ... Node|number
----@return Node
-function Node:multiply(...)
-    return multiply(self, ...)
-end
-
----Alias for multiply.
----@param ... Node|number
----@return Node
-function Node:mul(...)
-    return multiply(self, ...)
-end
-
----Multiplication operator: node * other.
----@param ... Node|number
----@return Node
-function Node:__mul(...)
-    return multiply(self, ...)
-end
-
----Divide this node by one or more nodes in left-to-right order.
----
----The divisor must be scalar or have the same rank as the quotient.
----@param ... Node|number
----@return Node
-function Node:divide(...)
-    return divide(self, ...)
-end
-
----Division operator: node / other.
----
----The divisor must be scalar or have the same rank as the quotient.
----@param ... Node|number
----@return Node
-function Node:__div(...)
-    return divide(self, ...)
-end
-
----Raise this rank-0 node to a scalar power.
----@param pow Node|number
----@return Node
-function Node:exponentiate(pow)
-    return exponentiate(self, pow)
-end
-
----Alias for exponentiate.
----@param pow Node|number
----@return Node
-function Node:pow(pow)
-    return exponentiate(self, pow)
-end
-
---
 -- Component selection for nodes
 --
 
-Node.AXES = { "x", "y", "z" }
-Node.AXIS_INDEX = { x = 1, y = 2, z = 3 }
+AXES = { "x", "y", "z" }
+AXIS_INDEX = { x = 1, y = 2, z = 3 }
 
 local function component(node, axis)
-    local idx = Node.AXIS_INDEX[axis]
+    local idx = AXIS_INDEX[axis]
     assert(idx, string.format("unknown axis '%s': expected x, y or z", axis))
     assert(
         node.rank >= 1,
@@ -676,7 +252,7 @@ local function component(node, axis)
     return setmetatable({
         kind = "component",
         a = node,
-        b = Node.const(idx), -- axis stored as 1/2/3 constant
+        b = new_const(idx), -- axis stored as 1/2/3 constant
         rank = node.rank - 1,
     }, Node)
 end
@@ -699,7 +275,7 @@ end
 --
 
 local function scratch_depth(node)
-    if not node or not Node.is_node(node) then
+    if not node or not is_node(node) then
         return 0
     end
     local k = node.kind
@@ -756,6 +332,118 @@ end
 --
 -- Ops installation
 --
+
+-- Arithmetic operators
+
+---Negate this node: returns -self.
+---@return Node
+function Node:neg()
+    return require("jnl.nabla.ops").negate(self)
+end
+
+---Negate this node: returns -self.
+---@return Node
+function Node:negate()
+    return require("jnl.nabla.ops").negate(self)
+end
+
+---Unary minus operator: -node.
+---@return Node
+function Node:__unm()
+    return require("jnl.nabla.ops").negate(self)
+end
+
+---Add one or more nodes to this node.
+---Rank must match across all operands.
+---@param ... Node|number
+---@return Node
+function Node:add(...)
+    return require("jnl.nabla.ops").add(self, ...)
+end
+
+---Addition operator: node + other.
+---@param ... Node|number
+---@return Node
+function Node:__add(...)
+    return require("jnl.nabla.ops").add(self, ...)
+end
+
+---Subtract one or more nodes from this node in left-to-right order.
+---Rank must match across all operands.
+---@param ... Node|number
+---@return Node
+function Node:subtract(...)
+    return require("jnl.nabla.ops").subtract(self, ...)
+end
+
+---Alias for subtract.
+---@param ... Node|number
+---@return Node
+function Node:sub(...)
+    return require("jnl.nabla.ops").subtract(self, ...)
+end
+
+---Subtraction operator: node - other.
+---@param ... Node|number
+---@return Node
+function Node:__sub(...)
+    return require("jnl.nabla.ops").subtract(self, ...)
+end
+
+---Multiply this node by one or more nodes.
+---Rank dispatch: scalar*scalar->mul, scalar*vector->scale, vector*vector->dot,
+---tensor*vector->matvec, tensor*tensor->matmul.
+---@param ... Node|number
+---@return Node
+function Node:multiply(...)
+    return require("jnl.nabla.ops").multiply(self, ...)
+end
+
+---Alias for multiply.
+---@param ... Node|number
+---@return Node
+function Node:mul(...)
+    return require("jnl.nabla.ops").multiply(self, ...)
+end
+
+---Multiplication operator: node * other.
+---@param ... Node|number
+---@return Node
+function Node:__mul(...)
+    return require("jnl.nabla.ops").multiply(self, ...)
+end
+
+---Divide this node by one or more nodes in left-to-right order.
+---
+---The divisor must be scalar or have the same rank as the quotient.
+---@param ... Node|number
+---@return Node
+function Node:divide(...)
+    return require("jnl.nabla.ops").divide(self, ...)
+end
+
+---Division operator: node / other.
+---
+---The divisor must be scalar or have the same rank as the quotient.
+---@param ... Node|number
+---@return Node
+function Node:__div(...)
+    return require("jnl.nabla.ops").divide(self, ...)
+end
+
+---Raise this rank-0 node to a scalar power.
+---@param pow Node|number
+---@return Node
+function Node:exponentiate(pow)
+    return require("jnl.nabla.ops").exponentiate(self, pow)
+end
+
+---Alias for exponentiate.
+---@param pow Node|number
+---@return Node
+function Node:pow(pow)
+    return require("jnl.nabla.ops").exponentiate(self, pow)
+end
 
 -- tensorial operators
 
@@ -868,12 +556,6 @@ function Node:lap(...)
     return require("jnl.nabla.ops").laplacian(self, ...)
 end
 
----Time derivative operator ∂/∂t applied to this field.
----@return Node
-function Node:ddt(...)
-    return require("jnl.nabla.ops").ddt(self, ...)
-end
-
 ---Curl of a vector field, producing a vector (or pseudoscalar in 2D).
 ---@return Node
 function Node:curl(...)
@@ -888,6 +570,12 @@ end
 ---@return Node
 function Node:simplify()
     return require("jnl.nabla.simplify").simplify(self)
+end
+
+--- Resolve a Node to scalar form
+function Node:resolve(ndims)
+    ndims = ndims or 2
+    return require("jnl.nabla.resolve").resolve(self, ndims)
 end
 
 ---Render this node as a human-readable string.
@@ -912,4 +600,15 @@ Node.__pow = function(a, b)
     return require("jnl.nabla.ops").pow_dispatch(a, b)
 end
 
-return Node
+return {
+    const = new_const,
+    scalar = new_scalar,
+    vector = new_vector,
+    tensor = new_tensor,
+    from = to_node,
+    is_node = is_node,
+
+    -- constants
+    AXES = AXES,
+    AXIS_INDEX = AXIS_INDEX,
+}
