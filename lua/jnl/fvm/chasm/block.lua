@@ -11,20 +11,34 @@
 local Block = {}
 
 Block.__index = function(self, key)
-    if rawget(self, key) then
-        return rawget(self, key)
+    local v = rawget(self, key)
+    if v ~= nil then
+        return v
     end
 
-    if self.prog.ISA[key] then
-        return self.prog.ISA[key].build
+    local prog = rawget(self, "prog")
+    if prog and prog.ISA then
+        local isa_entry = prog.ISA[key]
+        if isa_entry then
+            return function(block, ...)
+                local instr = isa_entry.build(block, ...)
+                instr.op = key
+                block:add_instr(instr)
+                return block
+            end
+        end
     end
+
+    return rawget(Block, key)
 end
 
-local function new_chasm_block(asm, name, iters, depth)
+local function new_chasm_block(prog, name, iters, depth)
+    assert(prog, "new_chasm_block: prog is nil, required")
     depth = depth or 1
 
+    ---@type CHASMblock
     local block = setmetatable({
-        asm = asm,
+        prog = prog,
         name = name,
         iters = iters,
         depth = depth,
@@ -137,7 +151,7 @@ local function asm_block_str(block, indent_level)
                 "  %s%s:%s",
                 indent_prefix,
                 inner_builder_name,
-                instr
+                block.prog.ISA[instr.op].str(instr)
             )
         end
     end

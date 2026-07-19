@@ -4,8 +4,9 @@
 local terms = require("jnl.fvm.terms")
 
 return {
-    physics = require("jnl.fvm.physics"),
     BC = require("jnl.fvm.bc"),
+    chasm = require("jnl.fvm.chasm"),
+    physics = require("jnl.fvm.physics"),
     case = require("jnl.fvm.case"),
 
     terms = terms,
