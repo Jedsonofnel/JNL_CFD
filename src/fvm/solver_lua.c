@@ -582,8 +582,7 @@ static int l_fvsys_jacobi_smoother(lua_State *L)
 	lua_jacobi_smoother *ls = lua_newuserdata(L, sizeof(lua_jacobi_smoother));
 
 	ls->n_cells = s->matrix.n_cells;
-	ls->smooth =
-	    jnl_fvsys_jacobi_smoother_begin(s, pool, x->data, omega);
+	ls->smooth = jnl_fvsys_jacobi_smoother_begin(s, pool, x->data, omega);
 
 	lua_pushvalue(L, 1);
 	ls->fvsys_ref = luaL_ref(L, LUA_REGISTRYINDEX);
