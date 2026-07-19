@@ -91,8 +91,17 @@ function Domain:scalar(name, init)
 end
 
 ---@param mesh Mesh2D
+---@param bcs BCSet
 function Domain:bind(mesh, bcs)
-    -- TODO validate bcs
+    assert(mesh, "mesh required for binding")
+    assert(bcs, "bcs required for binding")
+    local warnings, errors = bcs:validate(mesh)
+    if #errors > 0 then
+        error(string.format("BC errors:\n%s", table.concat(errors, "\n  ")))
+    end
+    if #warnings > 0 then
+        print(string.format("BC warnings:\n%s", table.concat(warnings, "\n  ")))
+    end
     self.mesh = mesh
     self.bcs = bcs
     return self
@@ -148,7 +157,20 @@ function Program:bind(mesh, bcs)
             2
         )
     end
-    -- TODO some mesh/bcs validation
+
+    assert(mesh, "mesh required for binding")
+    assert(bcs, "bcs required for binding")
+
+    local warnings, errors = bcs:validate(mesh)
+    if #errors > 0 then
+        error(string.format("BC errors:\n  %s", table.concat(errors, "\n  ")))
+    end
+    if #warnings > 0 then
+        print(
+            string.format("BC warnings:\n  %s", table.concat(warnings, "\n  "))
+        )
+    end
+
     default.mesh = mesh
     default.bcs = bcs
     return self

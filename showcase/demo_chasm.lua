@@ -3,6 +3,7 @@
 
 local cart = require("jnl.mesh2d.cartmesh2d")
 local FVM = require("jnl.fvm")
+local BC = FVM.BC
 
 local mesh = cart.build(1, 1, 20, 20)
 assert(mesh)
@@ -18,7 +19,11 @@ asm:main(1, function(b)
     b:krylov(phi, { max_iters = 1000, tol = 1e-6, solver = "bicgstab_dilu" })
 end)
 
-print(asm)
+local bcs = BC.new_set()
 
--- TODO work out VM API and how to get it to run?
-asm:bind(mesh)
+bcs:scalar("phi")
+    :on(cart.EAST, BC.dirichlet(0))
+    :on(cart.WEST, BC.dirichlet(1))
+    :rest(BC.nograd())
+
+asm:bind(mesh, bcs)

@@ -113,15 +113,15 @@ function Mesh2D:face_normal0(f) end
 function Mesh2D:face_area0(f) end
 
 --- Borrowed slice of real-cell x-coordinates.  The mesh must remain alive.
----@return VecUD
+---@return Vec
 function Mesh2D:cell_cx_vec() end
 
 --- Borrowed slice of real-cell y-coordinates.  The mesh must remain alive.
----@return VecUD
+---@return Vec
 function Mesh2D:cell_cy_vec() end
 
 --- Borrowed slice of real-cell volumes.  The mesh must remain alive.
----@return VecUD
+---@return Vec
 function Mesh2D:cell_vol_vec() end
 
 --
