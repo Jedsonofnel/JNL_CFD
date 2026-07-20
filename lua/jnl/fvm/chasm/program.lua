@@ -3,6 +3,10 @@
 
 -- deps
 local V = require("jnl.core.validation")
+local Vec = require("jnl.core.vec")
+local Pool = require("jnl.core.scratch_pool")
+local B = require("jnl.fvm.bindings")
+local VM = require("jnl.fvm.chasm.vm")
 
 --
 -- Vars
@@ -12,6 +16,8 @@ local V = require("jnl.core.validation")
 ---@field name string
 ---@field rank integer
 ---@field has_sys boolean
+---@field fvsys FvSys?
+---@field vec Vec?
 ---@field domain_name string
 ---@field init number?
 local Var = {}
@@ -102,9 +108,29 @@ function Domain:bind(mesh, bcs)
     if #warnings > 0 then
         print(string.format("BC warnings:\n%s", table.concat(warnings, "\n  ")))
     end
+
     self.mesh = mesh
     self.bcs = bcs
+
+    -- TODO validate BCS are defined for every field
+
+    self.lengths = {
+        cell = mesh:n_cells(),
+        face = mesh:n_faces(),
+    }
+    self.pools = {
+        cell = Pool.new(self.lengths.cell),
+        face = Pool.new(self.lengths.face),
+    }
+
     return self
+end
+
+function Domain:allocate_var(var)
+    var.vec = Vec.new(self.lengths.cell, var.init)
+    if var.has_sys then
+        var.fvsys = B.new_fvsys(self.mesh)
+    end
 end
 
 --
@@ -149,33 +175,6 @@ function Program:scalar(name, init)
     return var
 end
 
-function Program:bind(mesh, bcs)
-    local default = self.domains["default"]
-    if not default then
-        error(
-            "cannot bind to default domain as no variables declared onto it",
-            2
-        )
-    end
-
-    assert(mesh, "mesh required for binding")
-    assert(bcs, "bcs required for binding")
-
-    local warnings, errors = bcs:validate(mesh)
-    if #errors > 0 then
-        error(string.format("BC errors:\n  %s", table.concat(errors, "\n  ")))
-    end
-    if #warnings > 0 then
-        print(
-            string.format("BC warnings:\n  %s", table.concat(warnings, "\n  "))
-        )
-    end
-
-    default.mesh = mesh
-    default.bcs = bcs
-    return self
-end
-
 ---@param v string|CHASMvar
 ---@return CHASMvar
 function Program:get_var(v)
@@ -192,19 +191,29 @@ function Program:get_var(v)
     )
 end
 
---
--- Program part constructors
---
+function Program:bind(mesh, bcs)
+    local default = self.domains["default"]
+    if not default then
+        error(
+            "cannot bind to default domain as no variables declared onto it",
+            2
+        )
+    end
 
-function Program:init(cb)
-    local name = self.name .. ":init"
-    local block = require("jnl.fvm.chasm.block").new(self, name, 1)
-    cb(block)
-    self.init_block = block
+    default:bind(mesh, bcs)
     return self
 end
 
-function Program:main(iters, cb)
+function Program:allocate()
+    -- allocate vars in their domains
+    for _, var in pairs(self.vars) do
+        local domain = self.domains[var.domain_name]
+        domain:allocate_var(var)
+    end
+end
+
+function Program:main(cb, iters)
+    iters = iters or 1
     local name = self.name .. ":main"
     local block = require("jnl.fvm.chasm.block").new(self, name, iters)
     cb(block)
@@ -212,12 +221,9 @@ function Program:main(iters, cb)
     return self
 end
 
-function Program:post(cb)
-    local name = self.name .. ":post"
-    local block = require("jnl.fvm.chasm.block").new(self, name, 1)
-    cb(block)
-    self.post_block = block
-    return self
+function Program:start()
+    local vm = VM.new(self)
+    return vm:start()
 end
 
 --

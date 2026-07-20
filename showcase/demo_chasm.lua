@@ -4,6 +4,8 @@
 local cart = require("jnl.mesh2d.cartmesh2d")
 local FVM = require("jnl.fvm")
 local BC = FVM.BC
+local ui = require("jnl.ui")
+local repl = require("jnl.repl")
 
 local mesh = cart.build(1, 1, 20, 20)
 assert(mesh)
@@ -12,7 +14,7 @@ local asm = FVM.chasm.new("laplace")
 
 local phi = asm:scalar("phi"):sys()
 
-asm:main(1, function(b)
+asm:main(function(b)
     b:sys_reset(phi)
     b:laplacian_k(phi)
     b:bc_close(phi)
@@ -27,3 +29,17 @@ bcs:scalar("phi")
     :rest(BC.nograd())
 
 asm:bind(mesh, bcs)
+
+local function run()
+    local vm = asm:start()
+    vm:run_all()
+
+    ui.display_mesh(mesh)
+    ui.set_field("phi", phi.vec)
+    ui.view_field("phi")
+end
+
+local r = repl.new()
+r:register("run", run, "execute CHASM program")
+
+return r:run()

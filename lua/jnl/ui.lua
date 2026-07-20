@@ -39,7 +39,7 @@ local M = {}
 ---@field closed    fun(self: jnl.ui.Handle): boolean
 ---@field send_domain fun(self: jnl.ui.Handle, domain: Domain2D): boolean
 ---@field send_mesh   fun(self: jnl.ui.Handle, mesh: Mesh2D): boolean
----@field set_field   fun(self: jnl.ui.Handle, name: string, data: VecUD): boolean
+---@field set_field   fun(self: jnl.ui.Handle, name: string, data: Vec): boolean
 ---@field set_vector  fun(self: jnl.ui.Handle, name: string, fx: string, fy: string): boolean
 ---@field view_field  fun(self: jnl.ui.Handle, name?: string): boolean   -- nil/"" = wireframe
 ---@field view_mesh   fun(self: jnl.ui.Handle, show?: boolean): boolean
@@ -163,7 +163,7 @@ end
 --- after display_mesh has already succeeded.  Returns false silently if the
 --- window has been closed (e.g. user dismissed it mid-run).
 ---@param name    string    field name, e.g. "p" or "U_x"
----@param data    VecUD   values; length must match mesh vertex or cell count
+---@param data    Vec   values; length must match mesh vertex or cell count
 ---@param handle? jnl.ui.Handle
 ---@return boolean
 function M.set_field(name, data, handle)

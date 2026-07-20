@@ -149,14 +149,11 @@ end
 -- Set
 --
 
---- A patch entry accumulated by FieldSpec:on() or FieldSpec:rest().
----@class BCEntry: BCDescriptor
----@field patch string|true Patch name, or true for the :rest() catch-all entry.
-
 ---@class BCFieldSpec
 ---@field name string Field name.
 ---@field rank integer Tensor rank: 0 = scalar, 1 = vector.
----@field list BCEntry[]
+---@field map table<string, BCDescriptor> Per-patch BC descriptors keyed by patch name.
+---@field default BCDescriptor? Fallback for patches not explicitly covered by :on().
 local FieldSpec = {}
 FieldSpec.__index = FieldSpec
 
@@ -187,15 +184,19 @@ function FieldSpec:on(patch, spec)
         self.rank,
         ("FieldSpec:on [field '%s', patch '%s']"):format(self.name, patch)
     )
-    local entry = { patch = patch }
-    for k, v in pairs(spec) do
-        entry[k] = v
+    if self.map[patch] then
+        -- warn rather than error; user may be overriding a template set
+        io.stderr:write(
+            ("BCSet warning: field '%s': patch '%s' assigned more than once\n"):format(
+                self.name,
+                patch
+            )
+        )
     end
-    self.list[#self.list + 1] = entry
+    self.map[patch] = spec
     return self
 end
 
---- Apply a BC to all patches not explicitly covered by :on().
 ---@param spec BCDescriptor
 ---@return BCFieldSpec self
 function FieldSpec:rest(spec)
@@ -205,11 +206,7 @@ function FieldSpec:rest(spec)
         self.rank,
         ("FieldSpec:rest [field '%s']"):format(self.name)
     )
-    local entry = { patch = true }
-    for k, v in pairs(spec) do
-        entry[k] = v
-    end
-    self.list[#self.list + 1] = entry
+    self.default = spec
     return self
 end
 
@@ -232,7 +229,7 @@ local function add_field(set, name, rank)
     if set.fields[name] then
         error(("BCSet: field '%s' already declared"):format(name), 3)
     end
-    local fs = setmetatable({ name = name, rank = rank, list = {} }, FieldSpec)
+    local fs = setmetatable({ name = name, rank = rank, map = {} }, FieldSpec)
     set.fields[name] = fs
     return fs
 end
@@ -249,8 +246,9 @@ function Set:vector(name)
     return add_field(self, name, 1)
 end
 
---- Validate the set against a mesh. Errors on unknown patches; warns on uncovered or duplicate patches.
 ---@param mesh Mesh2D
+---@return string[] warnings
+---@return string[] errors
 function Set:validate(mesh)
     local warnings = {}
     local errors = {}
@@ -261,31 +259,18 @@ function Set:validate(mesh)
     end
 
     for fname, fs in pairs(self.fields) do
-        local covered = {}
-        local has_rest = false
-
-        for _, entry in ipairs(fs.list) do
-            if entry.patch == true then
-                has_rest = true
-            elseif not mesh_patches[entry.patch] then
+        for pname in pairs(fs.map) do
+            if not mesh_patches[pname] then
                 errors[#errors + 1] = ("field '%s': patch '%s' does not exist on mesh"):format(
                     fname,
-                    entry.patch
+                    pname
                 )
-            else
-                if covered[entry.patch] then
-                    warnings[#warnings + 1] = ("field '%s': patch '%s' assigned more than once"):format(
-                        fname,
-                        entry.patch
-                    )
-                end
-                covered[entry.patch] = true
             end
         end
 
-        if not has_rest then
+        if not fs.default then
             for pname in pairs(mesh_patches) do
-                if not covered[pname] then
+                if not fs.map[pname] then
                     warnings[#warnings + 1] = ("field '%s': patch '%s' has no BC (implicit nograd)"):format(
                         fname,
                         pname
