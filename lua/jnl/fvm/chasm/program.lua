@@ -62,6 +62,30 @@ end
 -- TODO add norm and delta predicates too
 
 --
+-- Constants - like vars but constant and not scoped to domain
+--
+
+---@class CHASMconst
+---@field value number
+---@field name string
+local Const = {}
+Const.__index = Const
+
+function Const:__tostring()
+    return string.format("%s<%g>", self.name, self.value)
+end
+
+---@param name string
+---@param value number
+---@return CHASMconst
+local function new_constant(name, value)
+    return setmetatable({
+        name = name,
+        value = value,
+    }, Const)
+end
+
+--
 -- Domains
 --
 
@@ -141,6 +165,7 @@ end
 ---@field name string
 ---@field domains CHASMdomain[]
 ---@field vars CHASMvar[]
+---@field consts CHASMconst[]
 ---@field blocks CHASMblock[]
 ---@field ISA table<string, table>
 local Program = {}
@@ -151,6 +176,7 @@ local function new_chasm_program(name)
         name = name,
         domains = {},
         vars = {},
+        consts = {},
         ISA = require("jnl.fvm.chasm.isa"),
     }, Program)
 end
@@ -161,6 +187,9 @@ function Program:domain(name)
     return domain
 end
 
+---@param name string
+---@param init number?
+---@return CHASMvar
 function Program:scalar(name, init)
     local default = self.domains["default"]
     if not default then
@@ -175,6 +204,18 @@ function Program:scalar(name, init)
     return var
 end
 
+---@param name string
+---@param value number
+---@return CHASMconst
+function Program:const(name, value)
+    V.identifier(name, "CHASM const name")
+    local k = new_constant(name, value)
+    if self.consts[k.name] then
+        error(string.format("const '%s' already exists", name), 2)
+    end
+    return k
+end
+
 ---@param v string|CHASMvar
 ---@return CHASMvar
 function Program:get_var(v)
@@ -187,7 +228,8 @@ function Program:get_var(v)
     end
 
     error(
-        string.format("could not find var '%s' in program '%s'", v, self.name)
+        string.format("could not find var '%s' in program '%s'", v, self.name),
+        2
     )
 end
 

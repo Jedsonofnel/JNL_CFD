@@ -12,11 +12,13 @@ assert(mesh)
 
 local asm = FVM.chasm.new("laplace")
 
+local su = asm:const("su", 3)
 local phi = asm:scalar("phi"):sys()
 
 asm:main(function(b)
     b:sys_reset(phi)
     b:laplacian_k(phi)
+    b:su_k(phi, su)
     b:bc_close(phi)
     b:krylov(phi, { max_iters = 1000, tol = 1e-6, solver = "bicgstab_dilu" })
 end)

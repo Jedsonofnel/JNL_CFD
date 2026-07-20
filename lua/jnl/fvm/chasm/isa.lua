@@ -5,7 +5,7 @@ local B = require("jnl.fvm.bindings")
 local VM = require("jnl.fvm.chasm.vm")
 
 --
--- FVM Implicit terms
+-- FVM terms (system decorators)
 --
 
 local laplacian_k = {}
@@ -16,14 +16,51 @@ laplacian_k.build = function(block, field, gamma)
     return { field = field, gamma = gamma }
 end
 
-laplacian_k.str = function(inst, _)
+laplacian_k.str = function(inst)
     return string.format("laplacian_k(%s, %s)", inst.field, inst.gamma)
 end
 
 laplacian_k.dispatch = function(prog, _, inst)
-    local field = inst.field
+    local field = prog:get_var(inst.field)
     local domain = prog.domains[field.domain_name]
     B.laplacian_k(field.fvsys, domain.mesh, inst.gamma)
+end
+
+local su_k = {}
+
+su_k.build = function(block, field, const, opts)
+    opts = opts or {}
+    field = block:get_var(field)
+    return {
+        field = field,
+        su = const,
+        volumetric = opts.volumetric or true,
+    }
+end
+
+su_k.str = function(inst)
+    return string.format(
+        "su_k(%s, %s, {volumetric = %s})",
+        inst.field,
+        inst.su,
+        inst.volumetric
+    )
+end
+
+su_k.dispatch = function(prog, _, inst)
+    local field = prog:get_var(inst.field)
+    local domain = prog.domains[field.domain_name]
+
+    local k = inst.su
+    if type(inst.su) == "table" and inst.su.value then
+        k = inst.su.value
+    end
+
+    if inst.volumetric then
+        B.su_v_k(field.fvsys, domain.mesh, k)
+    else
+        B.su_i_k(field.fvsys, domain.mesh, k)
+    end
 end
 
 --
@@ -163,8 +200,12 @@ bc_close.dispatch = function(prog, exec, inst)
 end
 
 return {
+    -- system decorators
     laplacian_k = laplacian_k,
+    su_k = su_k,
+    -- linear algebra
     sys_reset = sys_reset,
     krylov = krylov,
+    -- boundary conditions
     bc_close = bc_close,
 }
