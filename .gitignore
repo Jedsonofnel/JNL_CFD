@@ -5,7 +5,6 @@ build/
 /out/
 
 # vendored Lua
-lua/fennel.lua
 lua/ltn12.lua
 lua/socket.lua
 
@@ -15,3 +14,25 @@ lua/socket.lua
 
 # production logs
 logs/
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml

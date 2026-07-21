@@ -16,7 +16,7 @@ static struct jnl_domain2d *check_domain2d(lua_State *L, int idx)
 static struct jnl_domain2d *push_domain2d(lua_State *L)
 {
 	struct jnl_domain2d *d =
-	    (struct jnl_domain2d *)lua_newuserdatauv(L, sizeof(*d), 1);
+	    (struct jnl_domain2d *)lua_newuserdata(L, sizeof(*d));
 	memset(d, 0, sizeof(*d));
 	luaL_setmetatable(L, DOMAIN2D_MT);
 	return d;
@@ -26,12 +26,12 @@ static struct jnl_domain2d *push_domain2d(lua_State *L)
 // TODO: extract to geo2d/lua_helpers.h when there are three users.
 static jnl_vec2d check_point(lua_State *L, int idx)
 {
-	idx = lua_absindex(L, idx);
+	idx = jnl_absindex(L, idx);
 	luaL_checktype(L, idx, LUA_TTABLE);
-	lua_geti(L, idx, 1);
+	jnl_rawgeti(L, idx, 1);
 	f64 x = luaL_checknumber(L, -1);
 	lua_pop(L, 1);
-	lua_geti(L, idx, 2);
+	jnl_rawgeti(L, idx, 2);
 	f64 y = luaL_checknumber(L, -1);
 	lua_pop(L, 1);
 	return (jnl_vec2d){.x = x, .y = y};
@@ -41,9 +41,9 @@ static void push_point(lua_State *L, jnl_vec2d p)
 {
 	lua_createtable(L, 2, 0);
 	lua_pushnumber(L, p.x);
-	lua_seti(L, -2, 1);
+	jnl_rawgeti(L, -2, 1);
 	lua_pushnumber(L, p.y);
-	lua_seti(L, -2, 2);
+	jnl_rawseti(L, -2, 2);
 }
 
 static void push_points(lua_State *L, const jnl_vec2d *pts, i32 n)
@@ -51,7 +51,7 @@ static void push_points(lua_State *L, const jnl_vec2d *pts, i32 n)
 	lua_createtable(L, n, 0);
 	for (i32 i = 0; i < n; i++) {
 		push_point(L, pts[i]);
-		lua_seti(L, -2, i + 1);
+		jnl_rawseti(L, -2, i + 1);
 	}
 }
 
@@ -349,7 +349,7 @@ static int l_domain_sample_all(lua_State *L)
 		lua_pushstring(L, results[i].name);
 		lua_setfield(L, -2, "name");
 
-		lua_seti(L, -2, i + 1);
+		jnl_rawseti(L, -2, i + 1);
 	}
 
 	jnl_domain2d_sample_results_free(results, count);
@@ -363,11 +363,12 @@ static int l_domain_sample_all(lua_State *L)
 static int l_domain_newindex(lua_State *L)
 {
 	// store in a per-instance table kept as the first uservalue
-	if (lua_getiuservalue(L, 1, 1) != LUA_TTABLE) {
+	lua_getfenv(L, 1);
+	if (lua_type(L, -1) != LUA_TTABLE) {
 		lua_pop(L, 1);
 		lua_newtable(L);
 		lua_pushvalue(L, -1);
-		lua_setiuservalue(L, 1, 1);
+		lua_setfenv(L, 1);
 	}
 	lua_pushvalue(L, 2);
 	lua_pushvalue(L, 3);
@@ -381,7 +382,8 @@ static int l_domain_index(lua_State *L)
 	if (luaL_getmetafield(L, 1, lua_tostring(L, 2)) != LUA_TNIL)
 		return 1;
 	// then per-instance table
-	if (lua_getiuservalue(L, 1, 1) == LUA_TTABLE) {
+	lua_getfenv(L, 1);
+	if (lua_type(L, -1) == LUA_TTABLE) {
 		lua_pushvalue(L, 2);
 		lua_rawget(L, -2);
 		return 1;

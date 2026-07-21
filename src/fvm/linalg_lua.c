@@ -127,11 +127,9 @@ static const luaL_Reg fvm_base_funcs[] = {
 
 int luaopen_fvm_internal(lua_State *L)
 {
-	luaL_requiref(L, "jnl.vec_internal", luaopen_vec_internal, 0);
-	lua_pop(L, 1);
+	require_module(L, "jnl.vec_internal", luaopen_vec_internal);
 
-	luaL_requiref(L, "jnl.scratch_internal", luaopen_scratch_internal, 0);
-	lua_pop(L, 1);
+	require_module(L, "jnl.scratch_internal", luaopen_scratch_internal);
 
 	luaL_newmetatable(L, FVSYS_MT);
 	luaL_setfuncs(L, fvsys_mt, 0);

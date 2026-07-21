@@ -209,7 +209,7 @@ static int l_block_to_domain(lua_State *L)
 	struct jnl_struc2d_block *b = check_block(L, 1);
 
 	struct jnl_domain2d *dp =
-	    (struct jnl_domain2d *)lua_newuserdatauv(L, sizeof(*dp), 1);
+	    (struct jnl_domain2d *)lua_newuserdata(L, sizeof(*dp));
 	memset(dp, 0, sizeof(*dp));
 	luaL_setmetatable(L, DOMAIN2D_MT);
 
@@ -331,7 +331,7 @@ static int l_grid_to_domain(lua_State *L)
 	struct jnl_struc2d_grid *g = check_grid(L, 1);
 
 	struct jnl_domain2d *dp =
-	    (struct jnl_domain2d *)lua_newuserdatauv(L, sizeof(*dp), 1);
+	    (struct jnl_domain2d *)lua_newuserdata(L, sizeof(*dp));
 	memset(dp, 0, sizeof(*dp));
 	luaL_setmetatable(L, DOMAIN2D_MT);
 
@@ -380,11 +380,9 @@ static void register_mt(lua_State *L, const char *name, const luaL_Reg *methods)
 int luaopen_strucmesh2d_internal(lua_State *L)
 {
 	// Ensure MESH_MT is registered before we start producing meshes.
-	luaL_requiref(L, "jnl.mesh2d_internal", luaopen_mesh2d_internal, 0);
-	lua_pop(L, 1);
+	require_module(L, "jnl.mesh2d_internal", luaopen_mesh2d_internal);
 
-	luaL_requiref(L, "jnl.domain2d_internal", luaopen_domain2d_internal, 0);
-	lua_pop(L, 1);
+	require_module(L, "jnl.domain2d_internal", luaopen_domain2d_internal);
 
 	register_mt(L, BLOCK_MT, block_methods);
 	register_mt(L, GRID_MT, grid_methods);

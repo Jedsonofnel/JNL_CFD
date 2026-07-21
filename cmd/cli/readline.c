@@ -14,6 +14,7 @@
 #include <readline/readline.h>
 
 #include "host.h"
+#include "lua_bindings.h"
 #include "readline.h"
 
 #define JNL_HISTORY_LIMIT 2000
@@ -186,9 +187,11 @@ static void set_context_integer(lua_State *L, const char *name,
 
 static int copy_lua_candidates(lua_State *L, int table_index)
 {
-	table_index = lua_absindex(L, table_index);
+	table_index = (table_index > 0 || table_index <= LUA_REGISTRYINDEX)
+	                  ? table_index
+	                  : lua_gettop(L) + 1 + table_index;
 
-	size_t count = lua_rawlen(L, table_index);
+	size_t count = lua_objlen(L, table_index);
 
 	if (count == 0) {
 		return 0;
@@ -203,7 +206,8 @@ static int copy_lua_candidates(lua_State *L, int table_index)
 	size_t copied = 0;
 
 	for (size_t i = 1; i <= count; i++) {
-		lua_geti(L, table_index, (lua_Integer)i);
+		lua_pushinteger(L, (lua_Integer)i);
+		lua_rawget(L, table_index);
 
 		const char *candidate = lua_tostring(L, -1);
 
@@ -633,9 +637,7 @@ int jnl_cli_readline_init(lua_State *L)
 
 	rl_attempted_completion_function = attempt_completion;
 
-	luaL_requiref(L, "jnl.repl.host", luaopen_repl_host, 0);
-
-	lua_pop(L, 1);
+	require_module(L, "jnl.repl.host", luaopen_repl_host);
 
 	return 0;
 }

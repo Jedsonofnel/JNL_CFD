@@ -168,8 +168,7 @@ static const luaL_Reg vtk_funcs[] = {
 int luaopen_vtk_internal(lua_State *L)
 {
 	// Ensure vec metatable exists for check_vec.
-	luaL_requiref(L, "jnl.vec_internal", luaopen_vec_internal, 0);
-	lua_pop(L, 1);
+	require_module(L, "jnl.vec_internal", luaopen_vec_internal);
 
 	luaL_newmetatable(L, VTK_WRITER_MT);
 	luaL_setfuncs(L, writer_methods, 0);

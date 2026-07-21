@@ -96,7 +96,7 @@ push_borrowed_pool(lua_State *L, struct jnl_scratch_pool *pool, int parent_idx)
 	struct jnl_scratch_pool **pp = lua_newuserdata(L, sizeof(void *));
 	*pp = pool;
 	lua_pushvalue(L, parent_idx);
-	lua_setuservalue(L, -2);
+	lua_setfenv(L, -2);
 	luaL_setmetatable(L, POOL_MT);
 }
 
@@ -118,6 +118,59 @@ void jnl_lua_register_fvm_bc(lua_State *L);
 void jnl_lua_register_fvm_field(lua_State *L);
 void jnl_lua_register_fvm_solver(lua_State *L);
 
+/*
+ * LUA UTILS AND POLYFILLS
+ */
+
+// Lazy: registers opener in package.preload, called on first require()
+static inline void preload_module(lua_State *L, const char *name,
+                                  lua_CFunction f)
+{
+	lua_getglobal(L, "package");
+	lua_getfield(L, -1, "preload");
+	lua_pushcfunction(L, f);
+	lua_setfield(L, -2, name);
+	lua_pop(L, 2);
+}
+
+// Eager: calls opener immediately, result goes in package.loaded
+static inline void require_module(lua_State *L, const char *name,
+                                  lua_CFunction f)
+{
+	lua_getglobal(L, "package");
+	lua_getfield(L, -1, "loaded");
+	lua_pushcfunction(L, f);
+	lua_call(L, 0, 1);
+	lua_setfield(L, -2, name);
+	lua_pop(L, 2);
+}
+
+static inline int jnl_absindex(lua_State *L, int idx)
+{
+	return (idx > 0 || idx <= LUA_REGISTRYINDEX) ? idx
+	                                             : lua_gettop(L) + 1 + idx;
+}
+
+// lua_geti (5.3+)
+static inline void jnl_rawgeti(lua_State *L, int idx, lua_Integer i)
+{
+	idx = jnl_absindex(L, idx); // normalize before pushing
+	lua_pushinteger(L, i);
+	lua_rawget(L, idx);
+}
+
+// lua_seti (5.3+)
+static inline void jnl_rawseti(lua_State *L, int idx, lua_Integer i)
+{
+	idx = jnl_absindex(L, idx); // normalize before pushing
+	lua_pushinteger(L, i);
+	lua_insert(L, -2);
+	lua_rawset(L, idx);
+}
+
+// lua_rawlen (5.2+)
+#define jnl_rawlen(L, idx) ((size_t)lua_objlen(L, idx))
+
 //
 // Module openers
 //
@@ -138,49 +191,20 @@ int luaopen_trimesh2d_internal(lua_State *L);
 int luaopen_ui_internal(lua_State *L);
 int luaopen_fvm_internal(lua_State *L);
 
-// bit of a smell but small enough that it's fine
 static inline void register_preloaders(lua_State *L)
 {
-	lua_getglobal(L, "package");
-	lua_getfield(L, -1, "preload");
-
-	lua_pushcfunction(L, luaopen_vec_internal);
-	lua_setfield(L, -2, "jnl.vec_internal");
-
-	lua_pushcfunction(L, luaopen_scratch_internal);
-	lua_setfield(L, -2, "jnl.scratch_internal");
-
-	lua_pushcfunction(L, luaopen_expr_internal);
-	lua_setfield(L, -2, "jnl.expr_internal");
-
-	lua_pushcfunction(L, luaopen_vtk_internal);
-	lua_setfield(L, -2, "jnl.vtk_internal");
-
-	lua_pushcfunction(L, luaopen_domain2d_internal);
-	lua_setfield(L, -2, "jnl.domain2d_internal");
-
-	lua_pushcfunction(L, luaopen_pslg2d_internal);
-	lua_setfield(L, -2, "jnl.pslg2d_internal");
-
-	lua_pushcfunction(L, luaopen_curve2d_internal);
-	lua_setfield(L, -2, "jnl.curve2d_internal");
-
-	lua_pushcfunction(L, luaopen_ui_internal);
-	lua_setfield(L, -2, "jnl.ui_internal");
-
-	lua_pushcfunction(L, luaopen_mesh2d_internal);
-	lua_setfield(L, -2, "jnl.mesh2d_internal");
-
-	lua_pushcfunction(L, luaopen_strucmesh2d_internal);
-	lua_setfield(L, -2, "jnl.strucmesh2d_internal");
-
-	lua_pushcfunction(L, luaopen_trimesh2d_internal);
-	lua_setfield(L, -2, "jnl.trimesh2d_internal");
-
-	lua_pushcfunction(L, luaopen_fvm_internal);
-	lua_setfield(L, -2, "jnl.fvm_internal");
-
-	lua_pop(L, 2);
+	preload_module(L, "jnl.vec_internal", luaopen_vec_internal);
+	preload_module(L, "jnl.scratch_internal", luaopen_scratch_internal);
+	preload_module(L, "jnl.expr_internal", luaopen_expr_internal);
+	preload_module(L, "jnl.vtk_internal", luaopen_vtk_internal);
+	preload_module(L, "jnl.domain2d_internal", luaopen_domain2d_internal);
+	preload_module(L, "jnl.pslg2d_internal", luaopen_pslg2d_internal);
+	preload_module(L, "jnl.curve2d_internal", luaopen_curve2d_internal);
+	preload_module(L, "jnl.ui_internal", luaopen_ui_internal);
+	preload_module(L, "jnl.mesh2d_internal", luaopen_mesh2d_internal);
+	preload_module(L, "jnl.strucmesh2d_internal", luaopen_strucmesh2d_internal);
+	preload_module(L, "jnl.trimesh2d_internal", luaopen_trimesh2d_internal);
+	preload_module(L, "jnl.fvm_internal", luaopen_fvm_internal);
 }
 
 #endif // JNL_LUA_BINDINGS_H

@@ -33,13 +33,6 @@ else
 endif
 
 #
-# Vendor: Fennel
-#
-
-FENNEL_VENDOR_DIR := vendor/fennel
-FENNEL_DST        := $(LUADIR)/fennel.lua
-
-#
 # Vendor: luasocket
 #
 
@@ -79,9 +72,13 @@ LUASOCKET_LUA_DSTS := \
 
 CC = gcc
 
+LUA_PC  ?= luajit
+LUA_BIN ?= luajit
+
 CFLAGS_LUA := \
-	$(shell pkg-config --cflags lua5.5) \
+	$(shell pkg-config --cflags $(LUA_PC)) \
 	-DLUA_ASSET_PATH='"$(LUADIR)"'
+
 
 CFLAGS_COMMON := \
 	-Wall \
@@ -111,7 +108,7 @@ else
 	CFLAGS := $(CFLAGS_COMMON) $(CFLAGS_DEBUG)
 endif
 
-LDFLAGS_LUA  := $(shell pkg-config --libs lua5.5)
+LDFLAGS_LUA := $(shell pkg-config --libs $(LUA_PC))
 LDFLAGS_TEST := -lm
 LDFLAGS      := -lraylib $(LDFLAGS_LUA) -lm -lreadline
 
@@ -347,20 +344,6 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(TRIANGLE_LIBS)
 	$(LOG_CC)
 	$(Q)$(CC) $(CFLAGS) -c -o $@ $<
 
-#
-# Fennel
-#
-
-$(FENNEL_DST): $(wildcard $(FENNEL_VENDOR_DIR)/src/fennel/*.fnl) | $(LUADIR)
-	@printf "  FENNEL %s\n" $@
-	$(Q)$(MAKE) \
-		-C $(FENNEL_VENDOR_DIR) \
-		fennel.lua \
-		LUA=lua5.5
-	$(Q)cp $(FENNEL_VENDOR_DIR)/fennel.lua $@
-
-$(LUADIR):
-	mkdir -p $@
 
 #
 # Luasocket
@@ -379,6 +362,9 @@ $(OBJDIR)/vendor/luasocket.stamp: $(LUASOCKET_LUA_SRCS) | $(LUADIR)
 	$(Q)cp $(LUASOCKET_SRC_DIR)/socket.lua $(LUADIR)/socket.lua
 	$(Q)cp $(LUASOCKET_SRC_DIR)/ltn12.lua  $(LUADIR)/ltn12.lua
 	$(Q)touch $@
+
+$(LUADIR):
+	mkdir -p $@
 
 #
 # LLM context

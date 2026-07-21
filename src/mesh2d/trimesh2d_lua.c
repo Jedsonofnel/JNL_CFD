@@ -298,8 +298,7 @@ static void register_mt(lua_State *L, const char *name, const luaL_Reg *methods)
 int luaopen_trimesh2d_internal(lua_State *L)
 {
 	// Ensure MESH_MT is registered before triangulate can push meshes.
-	luaL_requiref(L, "jnl.mesh2d_internal", luaopen_mesh2d_internal, 0);
-	lua_pop(L, 1);
+	require_module(L, "jnl.mesh2d_internal", luaopen_mesh2d_internal);
 
 	register_mt(L, OPTS_MT, opts_methods);
 	register_mt(L, TAGS_MT, tags_methods);

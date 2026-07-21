@@ -55,14 +55,14 @@ static int curve_error(lua_State *L, const char *operation,
 
 static jnl_vec2d check_point(lua_State *L, int idx)
 {
-	idx = lua_absindex(L, idx);
+	idx = jnl_absindex(L, idx);
 	luaL_checktype(L, idx, LUA_TTABLE);
 
-	lua_geti(L, idx, 1);
+	jnl_rawgeti(L, idx, 1);
 	f64 x = luaL_checknumber(L, -1);
 	lua_pop(L, 1);
 
-	lua_geti(L, idx, 2);
+	jnl_rawgeti(L, idx, 2);
 	f64 y = luaL_checknumber(L, -1);
 	lua_pop(L, 1);
 
@@ -79,10 +79,10 @@ static void push_point(lua_State *L, jnl_vec2d p)
 	lua_createtable(L, 2, 0);
 
 	lua_pushnumber(L, p.x);
-	lua_seti(L, -2, 1);
+	jnl_rawseti(L, -2, 1);
 
 	lua_pushnumber(L, p.y);
-	lua_seti(L, -2, 2);
+	jnl_rawseti(L, -2, 2);
 }
 
 //
@@ -167,7 +167,7 @@ static int l_curve_polyline(lua_State *L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
 
-	size_t raw_n = lua_rawlen(L, 1);
+	size_t raw_n = jnl_rawlen(L, 1);
 	if (raw_n < 2 || raw_n > INT32_MAX)
 		return luaL_error(L, "polyline requires at least two points");
 
@@ -178,7 +178,7 @@ static int l_curve_polyline(lua_State *L)
 		return luaL_error(L, "polyline allocation failed");
 
 	for (i32 i = 0; i < n; ++i) {
-		lua_geti(L, 1, i + 1);
+		jnl_rawgeti(L, 1, i + 1);
 		points[i] = check_point(L, -1);
 		lua_pop(L, 1);
 	}
@@ -199,7 +199,7 @@ static int l_curve_chain(lua_State *L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
 
-	size_t raw_n = lua_rawlen(L, 1);
+	size_t raw_n = jnl_rawlen(L, 1);
 	if (raw_n < 1 || raw_n > INT32_MAX)
 		return luaL_error(L, "chain requires at least one curve");
 
@@ -215,7 +215,7 @@ static int l_curve_chain(lua_State *L)
 		return luaL_error(L, "chain allocation failed");
 
 	for (i32 i = 0; i < n; ++i) {
-		lua_geti(L, 1, i + 1);
+		jnl_rawgeti(L, 1, i + 1);
 		curves[i] = *check_curve2d(L, -1);
 		lua_pop(L, 1);
 	}
@@ -409,7 +409,7 @@ static int l_curve_sample(lua_State *L)
 
 	for (i32 i = 0; i < n; ++i) {
 		push_point(L, points[i]);
-		lua_seti(L, -2, i + 1);
+		jnl_rawseti(L, -2, i + 1);
 	}
 
 	free(points);

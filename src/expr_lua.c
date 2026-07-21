@@ -179,12 +179,10 @@ static void push_binop_fn(lua_State *L, jnl_expr_kind kind)
 int luaopen_expr_internal(lua_State *L)
 {
 	// Ensure VEC_MT is registered - idempotent
-	luaL_requiref(L, "jnl.vec_internal", luaopen_vec_internal, 0);
-	lua_pop(L, 1);
+	require_module(L, "jnl.vec_internal", luaopen_vec_internal);
 
 	// Ensure POOL_MT is registered - ditto
-	luaL_requiref(L, "jnl.scratch_internal", luaopen_scratch_internal, 0);
-	lua_pop(L, 1);
+	require_module(L, "jnl.scratch_internal", luaopen_scratch_internal);
 
 	// Register metatable
 	luaL_newmetatable(L, EXPR_MT);
