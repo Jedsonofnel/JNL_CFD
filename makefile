@@ -70,7 +70,7 @@ LUASOCKET_LUA_DSTS := \
 # Compiler
 #
 
-CC = gcc
+CC ?= gcc
 
 LUA_PC  ?= luajit
 LUA_BIN ?= luajit
