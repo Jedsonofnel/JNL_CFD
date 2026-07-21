@@ -233,8 +233,16 @@ local function fennel_prompt(_, state)
         return ".... "
     end
 
-    return "jnl> "
+    return ">> "
 end
+
+local CUSTOM_COMMANDS = {
+    usage = true,
+    quit = true,
+    help = true,
+    globals = true,
+    llm = true,
+}
 
 local function read_fennel_chunk(repl, state)
     enter_reading()
@@ -256,9 +264,17 @@ local function read_fennel_chunk(repl, state)
         line = trim(line)
 
         if line == "" then
-            -- Ignore blank or interrupted prompt lines.
+            -- ignore
         elseif starts_with(line, ",") then
-            handle_comma_line(repl, line, state)
+            local command = line:match("^,(%S+)")
+            if command and CUSTOM_COMMANDS[command] then
+                -- handle custom commands ourselves
+                handle_comma_line(repl, line, state)
+            else
+                -- pass through to Fennel's native REPL (,doc, ,reload, ,reset etc.)
+                enter_evaluating()
+                return line .. "\n"
+            end
         else
             enter_evaluating()
             return line .. "\n"
@@ -276,6 +292,8 @@ local function fennel_repl_options(repl)
     return {
         env = _G,
         compilerEnv = _G,
+
+        useMetadata = true,
 
         allowedGlobals = false,
         ["global-mangle"] = false,

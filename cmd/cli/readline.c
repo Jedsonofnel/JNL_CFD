@@ -39,6 +39,17 @@ static void clear_cancel_state(void)
 	force_cancel_requested = 0;
 }
 
+static int clear_screen(int count, int key)
+{
+	(void)count;
+	(void)key;
+
+	write(STDOUT_FILENO, "\033[H\033[2J", 7);
+	rl_forced_update_display();
+
+	return 0;
+}
+
 static void handle_sigint(int signo)
 {
 	(void)signo;
@@ -500,6 +511,9 @@ static int lua_readline(lua_State *L)
 {
 	const char *prompt = luaL_optstring(L, 1, "");
 
+	fflush(stdout);
+	rl_reset_screen_size();
+
 	clear_cancel_state();
 
 	in_readline = 1;
@@ -597,6 +611,9 @@ int jnl_cli_readline_init(lua_State *L)
 		errno = EINVAL;
 		return -1;
 	}
+
+	rl_initialize();
+	rl_bind_key('\014', clear_screen);
 
 	/*
 	 * The CLI owns SIGINT. Readline must not install or re-raise its own

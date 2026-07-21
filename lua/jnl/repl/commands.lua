@@ -11,11 +11,6 @@ local function trim(text)
     return (text or ""):match("^%s*(.-)%s*$")
 end
 
-local function print_error(err)
-    io.write(tostring(err))
-    io.write("\n")
-end
-
 local function install_values(repl)
     repl:register("pp", function(value, opts)
         return repl:pp(value, opts)
@@ -62,44 +57,6 @@ local function install_globals_command(repl)
     end, ",globals", "List user-defined globals and registered values")
 end
 
-local function install_doc_command(repl)
-    repl:command(
-        "doc",
-        function(active, argument)
-            argument = trim(argument)
-
-            if argument == "refresh" then
-                Help.index(active, true)
-                io.write("documentation index refreshed\n")
-                return
-            end
-
-            local docs = Help.index(active)
-            local opts = {
-                width = active.help_width,
-            }
-
-            if argument == "" then
-                io.write(docs:render_modules(opts))
-                return
-            end
-
-            if argument == "all" then
-                docs:dump_all(opts)
-                return
-            end
-
-            local ok, err = docs:dump_module(argument, opts)
-
-            if not ok then
-                print_error(err)
-            end
-        end,
-        ",doc [module|all|refresh]",
-        "List modules, show one module, print all docs, or rescan sources"
-    )
-end
-
 local function install_llm_command(repl)
     repl:command(
         "llm",
@@ -123,7 +80,6 @@ function M.install(repl)
     install_quit_command(repl)
     install_help_command(repl)
     install_globals_command(repl)
-    install_doc_command(repl)
     install_llm_command(repl)
 end
 
