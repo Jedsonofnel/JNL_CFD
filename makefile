@@ -67,6 +67,14 @@ LUASOCKET_LUA_DSTS := \
 	$(patsubst $(LUASOCKET_SRC_DIR)/%.lua,$(LUADIR)/%.lua,$(LUASOCKET_LUA_SRCS))
 
 #
+# Vendor: fennel
+#
+
+FENNEL_SRC := vendor/fennel-1.6.1/fennel.lua
+FENNEL_DST := $(LUADIR)/fennel.lua
+FENNEL_BIN := $(LUA_BIN) $(FENNEL_DST)
+
+#
 # Compiler
 #
 
@@ -344,6 +352,16 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(TRIANGLE_LIBS)
 	$(LOG_CC)
 	$(Q)$(CC) $(CFLAGS) -c -o $@ $<
 
+
+#
+# Fennel
+#
+
+$(FENNEL_DST): $(FENNEL_SRC) | $(LUADIR)
+	$(Q)cp $< $@
+
+$(LUADIR)/%.lua: $(LUADIR)/%.fnl | $(FENNEL_DST)
+	$(Q)$(FENNEL_BIN) --compile $< > $@
 
 #
 # Luasocket
