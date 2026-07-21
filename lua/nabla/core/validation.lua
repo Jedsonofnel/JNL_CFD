@@ -1,13 +1,13 @@
 -- [nfnl] lua/nabla/core/validation.fnl
-local function typeof(val, t, label)
+local function assert_typeof(val, t, label)
   if (type(val) ~= t) then
     return error(string.format("%s: expected %s, got %s", label, t, type(val)), 3)
   else
     return nil
   end
 end
-local function identifier(s, label)
-  typeof(s, "string", label)
+local function assert_identifier(s, label)
+  assert_typeof(s, "string", label)
   if s:match("^__") then
     error(string.format("%s: names starting with __ are reserved: %s", label, s), 3)
   else
@@ -18,7 +18,7 @@ local function identifier(s, label)
     return nil
   end
 end
-local function oneof(val, options, label)
+local function assert_oneof(val, options, label)
   local found
   do
     local found0 = false
@@ -34,4 +34,4 @@ local function oneof(val, options, label)
     return nil
   end
 end
-return {typeof = typeof, identifier = identifier, oneof = oneof}
+return {["assert-typeof"] = assert_typeof, ["assert-identifier"] = assert_identifier, ["assert-oneof"] = assert_oneof}

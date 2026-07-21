@@ -1,7 +1,11 @@
 ;; (nabla fvm chasm program)
 
+;; deps
 (local {: component} (require :nabla.core.mangle))
-(local {: identifier} (require :nabla.core.validation))
+(local {: assert-identifier} (require :nabla.core.validation))
+(local {:new new-vec} (require :nabla.core.vec))
+(local {:new new-pool} (require :nabla.core.pool))
+(local {: new-fvsys} (require :nabla.fvm.bindings))
 
 ;; Var object
 (local Var {})
@@ -80,7 +84,7 @@
 
 (fn Domain.scalar [self name init]
   "Create a new scalar in the domain with name and init"
-  (identifier name "CHASM scalar name")
+  (assert-identifier name "CHASM scalar name")
   (let [v (new-scalar-var self name init)]
     (if (. self.prog.vars name)
         (error (string.format "var '%s' already exists" name 2))
@@ -90,7 +94,7 @@
 
 (fn domain-add-vector! [domain vname vinit]
   "Add a new vector to domain with name and init"
-  (identifier vname "CHASM vector name")
+  (assert-identifier vname "CHASM vector name")
   (let [v (new-vector-var domain vname vinit)]
     (if (. domain.prog.vars vname)
         (error (string.format "var '%s' already exists" vname 3))
@@ -141,6 +145,55 @@
                  ; TODO implement ISA
                  } Program))
 
+(fn program-get-or-create-default! [{: domains &as prog}]
+  "Get or create the default domain from a program"
+  (or domains.default (let [d (new-domain prog :default)]
+                        (set domains.default d)
+                        d)))
+
+(fn exists-in-prog? [prog name]
+  (or (. prog.consts name) (. prog.vars name)))
+
+(fn assert-new-to-prog [prog name]
+  (when (exists-in-prog? prog name)
+    (error (string.format "name '%s' already exists in the program" name) 3)))
+
+(fn program-add-const! [prog name value]
+  "Add a named constant var to a program"
+  (assert-identifier name "program constant name")
+  (assert-new-to-prog prog name)
+  (let [constant (new-constant name value)]
+    (tset prog.consts name constant)
+    constant))
+
+(fn program-add-scalar! [prog name init]
+  "Add a scalar var to a program"
+  (assert-identifier name "program scalar name")
+  (assert-new-to-prog prog name)
+  (let [default (program-get-or-create-default! prog)
+        scalar (new-scalar-var default name init)]
+    (tset prog.vars name scalar)
+    scalar))
+
+(fn program-add-vector! [prog name init]
+  "Add a vector var to a program (and its scalar components)"
+  (assert-identifier name "program vector name")
+  (assert-new-to-prog prog name)
+  (let [default (program-get-or-create-default! prog)
+        vector (new-vector-var default name init)]
+    (tset prog.vars name vector)
+    (tset prog.vars vector.x.name vector.x)
+    (tset prog.vars vector.y.name vector.y)
+    vector))
+
+(fn program-get-var [{: vars : prog-name} v]
+  "Get a variable from a program by a variable object or string"
+  (case v
+    (where {: name} (and (= (type name) :string) (. vars name))) (. vars name)
+    (where name (and (= (type name) :string) (. vars name))) (. vars name)
+    _ (error (string.format "could not find var '%s' in program '%s'" v
+                            prog-name))))
+
 (fn program-bind! [program mesh bcs]
   "Bind mesh and bcs to default program domain"
   (let [default (or (. program.domains :default)
@@ -166,4 +219,28 @@
     (let [domain (. program.domains v.domain-name)]
       (allocate-var! v domain))))
 
-{:new new-chasm-program}
+;; Program methods
+
+(fn Program.const [self name value]
+  "Add a named constant to the program"
+  (program-add-const! self name value))
+
+(fn Program.scalar [self name init]
+  "Add a scalar register to the program"
+  (program-add-scalar! self name init))
+
+(fn Program.vector [self name init]
+  "Add a vector register to the program"
+  (program-add-vector! self name init))
+
+(fn Program.get_var [self v]
+  "Get a variable from program from a Var object or string"
+  (program-get-var self v))
+
+(fn Program.bind [self mesh bcs]
+  "Bind mesh and bcs to default program domain"
+  (program-bind! self mesh bcs))
+
+;; Exported public entrypoint
+
+{:new new-chasm-program :allocate! program-allocate!}
