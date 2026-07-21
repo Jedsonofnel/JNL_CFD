@@ -21,9 +21,8 @@ logs/
 devenv.local.nix
 devenv.local.yaml
 
-# direnv
+# direnv (.envrc is config so is checked in)
 .direnv
-.envrc
 .env
 
 # pre-commit
