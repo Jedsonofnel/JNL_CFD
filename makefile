@@ -33,40 +33,6 @@ else
 endif
 
 #
-# Vendor: luasocket
-#
-
-LUASOCKET_SRC_DIR := vendor/luasocket/src
-
-LUASOCKET_CORE_SRCS := \
-	$(LUASOCKET_SRC_DIR)/luasocket.c \
-	$(LUASOCKET_SRC_DIR)/timeout.c \
-	$(LUASOCKET_SRC_DIR)/buffer.c \
-	$(LUASOCKET_SRC_DIR)/io.c \
-	$(LUASOCKET_SRC_DIR)/auxiliar.c \
-	$(LUASOCKET_SRC_DIR)/options.c \
-	$(LUASOCKET_SRC_DIR)/inet.c \
-	$(LUASOCKET_SRC_DIR)/tcp.c \
-	$(LUASOCKET_SRC_DIR)/udp.c \
-	$(LUASOCKET_SRC_DIR)/select.c \
-	$(LUASOCKET_SRC_DIR)/except.c \
-	$(LUASOCKET_SRC_DIR)/compat.c \
-	$(LUASOCKET_SRC_DIR)/usocket.c
-
-LUASOCKET_CORE_OBJS := $(patsubst \
-	$(LUASOCKET_SRC_DIR)/%.c, \
-	$(OBJDIR)/vendor/luasocket/%.o, \
-	$(LUASOCKET_CORE_SRCS))
-
-# Lua files -- copied into lua/ so require "socket" resolves normally
-LUASOCKET_LUA_SRCS := \
-	$(LUASOCKET_SRC_DIR)/socket.lua \
-	$(LUASOCKET_SRC_DIR)/ltn12.lua
-
-LUASOCKET_LUA_DSTS := \
-	$(patsubst $(LUASOCKET_SRC_DIR)/%.lua,$(LUADIR)/%.lua,$(LUASOCKET_LUA_SRCS))
-
-#
 # Vendor: fennel
 #
 
@@ -243,7 +209,7 @@ FORMAT_LUA_SRCS := $(shell find $(LUADIR) -name '*.lua')
 	llm \
 	format
 
-all: $(FENNEL_DST) $(OBJDIR)/vendor/luasocket.stamp $(CMD_BINS)
+all: $(FENNEL_DST) $(CMD_BINS)
 
 debug:
 	$(MAKE) BUILD=debug all
@@ -323,14 +289,12 @@ define COMMAND_template
 $(BINDIR)/$(1): \
 	$(call cmd_objects,$(1)) \
 	$(OBJS) \
-	$(LUASOCKET_CORE_OBJS) \
 	$(TRIANGLE_LIBS) \
 	| $(BINDIR) $(OUTDIR)
 	$$(LOG_LD)
 	$$(Q)$$(CC) $$(CFLAGS) -o $$@ \
 		$(call cmd_objects,$(1)) \
 		$$(OBJS) \
-		$(LUASOCKET_CORE_OBJS) \
 		$$(TRIANGLE_LIBS) \
 		$$(LDFLAGS)
 
@@ -362,24 +326,6 @@ $(FENNEL_DST): $(FENNEL_SRC) | $(LUADIR)
 
 $(LUADIR)/%.lua: $(LUADIR)/%.fnl | $(FENNEL_DST)
 	$(Q)$(FENNEL_BIN) --compile $< > $@
-
-#
-# Luasocket
-#
-
-$(OBJDIR)/vendor/luasocket/%.o: $(LUASOCKET_SRC_DIR)/%.c
-	@mkdir -p $(dir $@)
-	$(LOG_CC)
-	$(Q)$(CC) $(filter-out -Wall -pedantic,$(CFLAGS)) \
-		-w \
-		-I$(LUASOCKET_SRC_DIR) \
-		-c -o $@ $<
-
-$(OBJDIR)/vendor/luasocket.stamp: $(LUASOCKET_LUA_SRCS) | $(LUADIR)
-	@mkdir -p $(dir $@)
-	$(Q)cp $(LUASOCKET_SRC_DIR)/socket.lua $(LUADIR)/socket.lua
-	$(Q)cp $(LUASOCKET_SRC_DIR)/ltn12.lua  $(LUADIR)/ltn12.lua
-	$(Q)touch $@
 
 $(LUADIR):
 	mkdir -p $@

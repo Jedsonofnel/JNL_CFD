@@ -10,9 +10,6 @@
 #define LUA_ASSET_PATH "../lua"
 #endif
 
-// forward declaration for luasocket
-int luaopen_socket_core(lua_State *L);
-
 //
 // Lua setup
 //
@@ -239,12 +236,6 @@ int main(int argc, char **argv)
 	luaL_openlibs(L);
 	set_lua_path(L);
 	register_preloaders(L);
-
-	lua_getglobal(L, "package");
-	lua_getfield(L, -1, "preload");
-	lua_pushcfunction(L, luaopen_socket_core);
-	lua_setfield(L, -2, "socket.core");
-	lua_pop(L, 2);
 
 	if (jnl_cli_readline_init(L) != 0) {
 		perror("failed to initialise terminal input");

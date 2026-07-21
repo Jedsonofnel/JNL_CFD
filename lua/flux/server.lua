@@ -1,8 +1,6 @@
 -- lua/flux/server.lua - HTTP server for the Flux web framework.
 -- <jed@nelson.ac> // 2026-06-13
 
-local socket = require("socket")
-
 --- Minimal synchronous HTTP/1.1 server backed by luasocket.
 ---
 --- Serves one request at a time. Suitable for local and single-user use
@@ -200,7 +198,11 @@ function M.serve(r, opts)
     local host = opts.host or "127.0.0.1"
     local port = opts.port or 8080
 
-    local srv = assert(socket.bind(host, port))
+    error(
+        "REMOVED LUASOCKET FOR INCOMPATIBILITY WITH LUAJIT: TODO BUILD A CUSTOM socket.bind(host, port) implementaiotn"
+    )
+    -- local srv = assert(socket.bind(host, port))
+
     srv:settimeout(0.2)
     local cancel_seen = __jnl_repl_cancel_seen
         or function()

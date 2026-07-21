@@ -1,6 +1,3 @@
 [submodule "vendor/Triangle"]
 	path = vendor/Triangle
 	url = https://github.com/wo80/Triangle.git
-[submodule "vendor/luasocket"]
-	path = vendor/luasocket
-	url = https://github.com/lunarmodules/luasocket
