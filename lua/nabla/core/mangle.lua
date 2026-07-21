@@ -15,4 +15,4 @@ local function component(field, i)
   oneof(i, {"x", "y"}, "component i")
   return (reserved(field) .. "_" .. i)
 end
-return component("U", "x")
+return {component = component}

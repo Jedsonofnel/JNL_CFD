@@ -14,8 +14,8 @@
       (.. "__" name)))
 
 (fn component [field i]
-  "Mangles name field to mean i'th component of field"
+  "Mangles name field to mean ith component of field"
   (oneof i [:x :y] "component i")
   (.. (reserved field) "_" i))
 
-(component :U :x)
+{: component}

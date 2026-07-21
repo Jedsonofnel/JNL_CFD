@@ -283,7 +283,13 @@ local function read_fennel_chunk(repl, state)
 end
 
 local function print_fennel_error(error_type, err)
-    io.write(string.format("error [%s]: %s\n", error_type, tostring(err)))
+    if error_type == "Runtime" then
+        local fennel = require("fennel")
+        io.write(fennel.traceback(tostring(err), 4))
+        io.write("\n")
+    else
+        io.write(string.format("error [%s]: %s\n", error_type, tostring(err)))
+    end
 
     enter_reading()
 end
