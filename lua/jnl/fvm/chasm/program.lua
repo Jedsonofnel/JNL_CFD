@@ -17,9 +17,12 @@ local VM = require("jnl.fvm.chasm.vm")
 ---@field rank integer
 ---@field has_sys boolean
 ---@field fvsys FvSys?
+---@field facewise boolean
 ---@field vec Vec?
 ---@field domain_name string
----@field init number?
+---@field init number?|table?
+---@field x? CHASMvar x component if root has rank > 0
+---@field y? CHASMvar y component if root has rank > 0
 local Var = {}
 Var.__index = Var
 
@@ -32,7 +35,6 @@ end
 ---@param init number?
 ---@return CHASMvar
 local function new_scalar(domain, name, init)
-    V.identifier(name, "CHASM:scalar(name)")
     init = init or 0.0
 
     ---@type CHASMvar
@@ -46,8 +48,48 @@ local function new_scalar(domain, name, init)
     return var
 end
 
+---@param domain CHASMdomain
+---@param name string
+---@param init number|number[]?
+---@return CHASMvar
+local function new_vector(domain, name, init)
+    init = init or { 0, 0 }
+
+    local init_tbl = { 0, 0 }
+    if type(init) == "number" then
+        init_tbl = { init, init }
+    elseif type(init) == "table" and #init == 2 then
+        init_tbl = { init[1], init[2] }
+    else
+        error("CHASM:vector init: expected number or table with format {x, y}")
+    end
+
+    -- TODO use official mangling channels
+    local x = new_scalar(domain, "(" .. name .. "_x)", init_tbl[1])
+    local y = new_scalar(domain, "(" .. name .. "_y)", init_tbl[2])
+
+    ---@type CHASMvar
+    local var = setmetatable({
+        domain_name = domain.name,
+        name = name,
+        rank = 1,
+        has_sys = false,
+        facewise = false,
+        init = init_tbl,
+        x = x,
+        y = y,
+    }, Var)
+
+    return var
+end
+
 function Var:sys()
     self.has_sys = true
+    return self
+end
+
+function Var:face()
+    self.facewise = true
     return self
 end
 
@@ -108,15 +150,30 @@ local function new_domain(program, name)
 end
 
 ---@param name string
----@param init number
+---@param init number?
 ---@return CHASMvar
 function Domain:scalar(name, init)
-    V.identifier(name, "CHASM scalar name")
+    V.identifier(name, "CHASM:scalar(name)")
     local var = new_scalar(self, name, init)
     if self.prog.vars[name] then
         error(string.format("var '%s' already exists", name), 2)
     end
     self.prog.vars[name] = var
+    return var
+end
+
+---@param name string
+---@param init number|number[]?
+---@return CHASMvar
+function Domain:vector(name, init)
+    V.identifier(name, "CHASM new_vector name")
+    local var = new_vector(self, name, init)
+    if self.prog.vars[name] then
+        error(string.format("var '%s' already exists", name), 2)
+    end
+    self.prog.vars[name] = var
+    self.prog.vars[var.x.name] = var.x
+    self.prog.vars[var.y.name] = var.y
     return var
 end
 
@@ -151,6 +208,9 @@ function Domain:bind(mesh, bcs)
 end
 
 function Domain:allocate_var(var)
+    if var.rank > 0 then
+        return -- only allocate scalars (scalars are the only real thing)
+    end
     var.vec = Vec.new(self.lengths.cell, var.init)
     if var.has_sys then
         var.fvsys = B.new_fvsys(self.mesh)
@@ -188,9 +248,22 @@ function Program:domain(name)
 end
 
 ---@param name string
+---@param value number
+---@return CHASMconst
+function Program:const(name, value)
+    V.identifier(name, "CHASM const name")
+    local k = new_constant(name, value)
+    if self.consts[k.name] then
+        error(string.format("const '%s' already exists", name), 2)
+    end
+    return k
+end
+
+---@param name string
 ---@param init number?
 ---@return CHASMvar
 function Program:scalar(name, init)
+    V.identifier(name, "CHASM:scalar(name)")
     local default = self.domains["default"]
     if not default then
         default = new_domain(self, "default")
@@ -205,15 +278,23 @@ function Program:scalar(name, init)
 end
 
 ---@param name string
----@param value number
----@return CHASMconst
-function Program:const(name, value)
-    V.identifier(name, "CHASM const name")
-    local k = new_constant(name, value)
-    if self.consts[k.name] then
-        error(string.format("const '%s' already exists", name), 2)
+---@param init number?|table?
+---@return CHASMvar
+function Program:vector(name, init)
+    V.identifier(name, "CHASM new_vector name")
+    local default = self.domains["default"]
+    if not default then
+        default = new_domain(self, "default")
+        self.domains["default"] = default
     end
-    return k
+    local var = new_vector(default, name, init)
+    if self.vars[var.name] then
+        error(string.format("var '%s' already exists", name), 2)
+    end
+    self.vars[var.name] = var
+    self.vars[var.x.name] = var.x
+    self.vars[var.y.name] = var.y
+    return var
 end
 
 ---@param v string|CHASMvar

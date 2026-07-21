@@ -5,9 +5,48 @@ local B = require("jnl.fvm.bindings")
 local VM = require("jnl.fvm.chasm.vm")
 
 --
+-- Field operators
+--
+
+-- face norm from cell centroids
+local face_norm_c = {}
+
+---@param block CHASMblock
+face_norm_c.build = function(block, w, xc, yc)
+    w = block:get_var(w)
+    xc = block:get_var(xc)
+    yc = block:get_var(yc)
+
+    if w.domain_name ~= xc.domain_name or xc.domain_name ~= yc.domain_name then
+        error("face_norm_c vars all need to belong to the same domain")
+    end
+
+    if w.rank ~= 0 or xc.rank ~= 0 or yc.rank ~= 0 then
+        error("face_norm_c vars all need to be rank 0 (scalar")
+    end
+
+    return { w = w, xc = xc, yc = yc }
+end
+
+face_norm_c.str = function(inst)
+    return string.format("face_norm_c(%s, %s, %s)", inst.w, inst.xc, inst.yc)
+end
+
+---@param prog CHASMprogram
+face_norm_c.dispatch = function(prog, _, inst)
+    local w = prog:get_var(inst.w)
+    local xc = prog:get_var(inst.xc)
+    local yc = prog:get_var(inst.yc)
+    local domain = prog.domains[inst.w.domain_name]
+    B.face_normal_c(domain.mesh, w.vec, xc.vec, yc.vec, domain.pools.face)
+end
+
+--
 -- FVM terms (system decorators)
 --
 
+-- TODO consider whether this specificty is good - could just have a
+-- single laplacian that dispatches based on gamma type?
 local laplacian_k = {}
 
 laplacian_k.build = function(block, field, gamma)
@@ -24,6 +63,40 @@ laplacian_k.dispatch = function(prog, _, inst)
     local field = prog:get_var(inst.field)
     local domain = prog.domains[field.domain_name]
     B.laplacian_k(field.fvsys, domain.mesh, inst.gamma)
+end
+
+local div_uds_k = {}
+
+---@param block CHASMblock
+div_uds_k.build = function(block, field, face_normal, coeff)
+    field = block:get_var(field)
+    face_normal = block:get_var(face_normal)
+    coeff = coeff or 1.0
+
+    assert(field.has_sys, "div_uds_k field must have an fvsystem")
+
+    if field.domain_name ~= face_normal.domain_name then
+        error("div_uds_k field and face_normal must belong to the same domain!")
+    end
+
+    return { field = field, face_normal = face_normal, coeff = coeff }
+end
+
+div_uds_k.str = function(inst)
+    return string.format(
+        "div_uds_k(%s, %s, %g)",
+        inst.field,
+        inst.face_normal,
+        inst.coeff
+    )
+end
+
+---@param prog CHASMprogram
+div_uds_k.dispatch = function(prog, _, inst)
+    local field = prog:get_var(inst.field)
+    local face_normal = prog:get_var(inst.face_normal)
+    local domain = prog.domains[field.domain_name]
+    B.div_uds_k(field.fvsys, domain.mesh, inst.coeff, face_normal.vec)
 end
 
 local su_k = {}
@@ -200,8 +273,11 @@ bc_close.dispatch = function(prog, exec, inst)
 end
 
 return {
+    -- field ops
+    face_norm_c = face_norm_c,
     -- system decorators
     laplacian_k = laplacian_k,
+    div_uds_k = div_uds_k,
     su_k = su_k,
     -- linear algebra
     sys_reset = sys_reset,

@@ -27,7 +27,7 @@ M.face_interp = I.face_interp
 ---@type fun(mesh: Mesh2D, ux: Vec, uy: Vec, un: Vec)
 M.face_normal = I.face_normal
 
----@type fun(mesh: Mesh2D, ux: Vec, uy: Vec, out: Vec, pool: Vec)
+---@type fun(mesh: Mesh2D, ux: Vec, uy: Vec, out: Vec, pool: ScratchPool)
 M.face_normal_c = I.face_normal_c
 
 ---@type fun(mesh: Mesh2D, Ux: Vec, Uy: Vec, p: Vec, gx: Vec, gy: Vec, ap_x: Vec, ap_y: Vec, out: Vec)
