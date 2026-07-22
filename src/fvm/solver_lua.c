@@ -81,7 +81,7 @@ static lua_cg_jac_solve *check_cg_jac_solve(lua_State *L, int idx)
 	return (lua_cg_jac_solve *)luaL_checkudata(L, idx, CG_JAC_SOLVE_MT);
 }
 
-static int l_fvsys_cg_jac(lua_State *L)
+static int l_new_cg_jac(lua_State *L)
 {
 	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
@@ -174,7 +174,7 @@ static lua_cg_dic_solve *check_cg_dic_solve(lua_State *L, int idx)
 	return (lua_cg_dic_solve *)luaL_checkudata(L, idx, CG_DIC_SOLVE_MT);
 }
 
-static int l_fvsys_cg_dic(lua_State *L)
+static int l_new_cg_dic(lua_State *L)
 {
 	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
@@ -269,7 +269,7 @@ static lua_bicgstab_jac_solve *check_bicgstab_jac_solve(lua_State *L, int idx)
 	                                                 BICGSTAB_JAC_SOLVE_MT);
 }
 
-static int l_fvsys_bicgstab_jac(lua_State *L)
+static int l_new_bicgstab_jac(lua_State *L)
 {
 	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
@@ -366,7 +366,7 @@ static lua_bicgstab_dilu_solve *check_bicgstab_dilu_solve(lua_State *L, int idx)
 	                                                  BICGSTAB_DILU_SOLVE_MT);
 }
 
-static int l_fvsys_bicgstab_dilu(lua_State *L)
+static int l_new_bicgstab_dilu(lua_State *L)
 {
 	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
@@ -462,7 +462,7 @@ static lua_gmres_dilu_solve *check_gmres_dilu_solve(lua_State *L, int idx)
 	return (lua_gmres_dilu_solve *)luaL_checkudata(L, idx, GMRES_DILU_SOLVE_MT);
 }
 
-static int l_fvsys_gmres_dilu(lua_State *L)
+static int l_new_gmres_dilu(lua_State *L)
 {
 	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
@@ -570,7 +570,7 @@ static lua_jacobi_smoother *check_jacobi_smoother(lua_State *L, int idx)
 	return (lua_jacobi_smoother *)luaL_checkudata(L, idx, JACOBI_SMOOTHER_MT);
 }
 
-static int l_fvsys_jacobi_smoother(lua_State *L)
+static int l_new_jacobi_smoother(lua_State *L)
 {
 	fvsys *s = check_fvsys(L, 1);
 	lua_vec *x = check_vec(L, 2);
@@ -650,9 +650,9 @@ static const luaL_Reg jacobi_smoother_mt[] = {
     {"__gc", l_jacobi_smoother_gc},
     {NULL, NULL}};
 
-//
-// Registration
-//
+/*
+ * Registration
+ */
 
 static void register_mt(lua_State *L, const char *name, const luaL_Reg *mt)
 {
@@ -663,38 +663,26 @@ static void register_mt(lua_State *L, const char *name, const luaL_Reg *mt)
 	lua_pop(L, 1);
 }
 
+static const luaL_Reg fvm_solver_funcs[] = {
+    {"new_solver_cg_jac", l_new_cg_jac},
+    {"new_solver_cg_dic", l_new_cg_dic},
+    {"new_solver_bicgstab_jac", l_new_bicgstab_jac},
+    {"new_solver_bicgstab_dilu", l_new_bicgstab_dilu},
+    {"new_solver_gmres_dilu", l_new_gmres_dilu},
+    {"new_smoother_jacobi", l_new_jacobi_smoother},
+    {NULL, NULL},
+};
+
 void jnl_lua_register_fvm_solver(lua_State *L)
 {
+	// Register metatables
 	register_mt(L, CG_JAC_SOLVE_MT, cg_jac_solve_mt);
 	register_mt(L, CG_DIC_SOLVE_MT, cg_dic_solve_mt);
-
 	register_mt(L, BICGSTAB_JAC_SOLVE_MT, bicgstab_jac_solve_mt);
 	register_mt(L, BICGSTAB_DILU_SOLVE_MT, bicgstab_dilu_solve_mt);
-
 	register_mt(L, GMRES_DILU_SOLVE_MT, gmres_dilu_solve_mt);
-
 	register_mt(L, JACOBI_SMOOTHER_MT, jacobi_smoother_mt);
 
-	// Attach solver constructors to fvsys metatable.
-	luaL_getmetatable(L, FVSYS_MT);
-
-	lua_pushcfunction(L, l_fvsys_cg_jac);
-	lua_setfield(L, -2, "cg_jac");
-
-	lua_pushcfunction(L, l_fvsys_cg_dic);
-	lua_setfield(L, -2, "cg_dic");
-
-	lua_pushcfunction(L, l_fvsys_bicgstab_jac);
-	lua_setfield(L, -2, "bicgstab_jac");
-
-	lua_pushcfunction(L, l_fvsys_bicgstab_dilu);
-	lua_setfield(L, -2, "bicgstab_dilu");
-
-	lua_pushcfunction(L, l_fvsys_gmres_dilu);
-	lua_setfield(L, -2, "gmres_dilu");
-
-	lua_pushcfunction(L, l_fvsys_jacobi_smoother);
-	lua_setfield(L, -2, "jacobi_smoother");
-
-	lua_pop(L, 1);
+	// module table left on top of the stack
+	luaL_setfuncs(L, fvm_solver_funcs, 0);
 }

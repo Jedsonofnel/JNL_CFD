@@ -88,26 +88,6 @@ function Block:block(name, max_n, cb)
 end
 
 --
--- Krylov iteration
---
-
-function Block:krylov(field, config)
-    field = self:get_var(field)
-    -- TODO config validation
-
-    self:block(
-        self.name .. ":krylov:" .. field.name,
-        config.max_iters,
-        function(b)
-            b:add_instr({ op = "krylov_iter", field = field })
-            b:until_all(field:residual_lt(config.tol))
-        end
-    )
-
-    return self
-end
-
---
 -- Pretty printing
 --
 
