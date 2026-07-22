@@ -55,7 +55,7 @@
 
 (fn face-norm-cw.build [block w xc yc]
   "Build cellwise face normal instruction"
-  (let [[w xc yc] (get-scalars block :face-norm-cw w xc yc)]
+  (let [[w xc yc] (get-scalars block.prog :face-norm-cw w xc yc)]
     (assert-same-domain :face-norm-cw w xc yc)
     {: w : xc : yc}))
 
@@ -77,7 +77,7 @@
 
 (fn laplacian-k.build [block phi gamma-k]
   "Apply laplacian to phi system with constant gamma"
-  (let [field (get-scalar block :laplacian-k phi)
+  (let [field (get-scalar block.prog :laplacian-k phi)
         gamma (get-const :laplacian-k gamma-k)]
     {: field : gamma}))
 
@@ -100,7 +100,7 @@
 
 (fn bc-close-s.build [block field]
   "Apply BCs for scalar field to system (ie close the system)"
-  (let [field (get-prog block :bc-close-s field)]
+  (let [field (get-prog block.prog :bc-close-s field)]
     {: field}))
 
 (fn bc-close-s.str [{: field}]
@@ -137,7 +137,7 @@
 
 (fn sys-reset-s.build [block field]
   "Reset linear algebra system for scalar field"
-  (let [field (get-prog block :sys-reset-s field)]
+  (let [field (get-prog block.prog :sys-reset-s field)]
     {: field}))
 
 (fn sys-reset-s.str [{: field}]
@@ -219,4 +219,4 @@
 
 ;;; Public exports
 
-{: face-norm-cw : laplacian-k : bc-close-s : sys-reset-s}
+{: face-norm-cw : laplacian-k : bc-close-s : sys-reset-s : krylov-s}

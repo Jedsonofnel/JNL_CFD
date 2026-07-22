@@ -80,7 +80,7 @@
 
 (fn Block.__tostring [{: name : instructions : depth}]
   "Pretty string for a block for display"
-  (string.format "<block:%s instrs:%d depth%s>" name (length instructions)
+  (string.format "#<block:%s instrs:%d depth:%s>" name (length instructions)
                  depth))
 
 {:new new-block : listing-str : get-var : add-inst!}

@@ -70,8 +70,7 @@
   (program.allocate! vm.prog)
   (set vm.co
        (coroutine.create (fn [] (run-outer-iter! vm.prog.main-block 1)
-                           (coroutine.yield {:status :done}))))
-  vm)
+                           (coroutine.yield {:status :done})))))
 
 (fn step! [vm]
   "Run a single VM step (instruction or part of instruction)"

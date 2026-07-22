@@ -195,7 +195,7 @@
   "Bind mesh and boundary conditions to the domain"
   (assert mesh "mesh required for binding")
   (assert bcs "bccs required for binding")
-  (let [[warnings errors] (bcs:validate mesh)]
+  (let [(warnings errors) (bcs:validate mesh)]
     (when (> (length warnings) 0)
       (error (string.format "BC errors: \n%s" (table.concat errors "\n  "))))
     (when (> (length errors) 0)
@@ -352,6 +352,12 @@
 (fn Program.bind [self mesh bcs]
   "Bind mesh and bcs to default program domain"
   (program-bind! self mesh bcs))
+
+(fn Program.start [self]
+  (let [vm-module (require :nabla.fvm.chasm.vm)
+        new-vm (vm-module.new self)]
+    (vm-module.start! new-vm)
+    new-vm))
 
 ;; Exported public entrypoint
 

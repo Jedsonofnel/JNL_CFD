@@ -77,7 +77,7 @@ local function get_prog(program, op_name, field)
 end
 local face_norm_cw = {}
 face_norm_cw.build = function(block, w, xc, yc)
-  local _let_9_ = get_scalars(block, "face-norm-cw", w, xc, yc)
+  local _let_9_ = get_scalars(block.prog, "face-norm-cw", w, xc, yc)
   local w0 = _let_9_[1]
   local xc0 = _let_9_[2]
   local yc0 = _let_9_[3]
@@ -105,7 +105,7 @@ face_norm_cw.dispatch = function(prog, _exec, _11_)
 end
 local laplacian_k = {}
 laplacian_k.build = function(block, phi, gamma_k)
-  local field = get_scalar(block, "laplacian-k", phi)
+  local field = get_scalar(block.prog, "laplacian-k", phi)
   local gamma = get_const("laplacian-k", gamma_k)
   return {field = field, gamma = gamma}
 end
@@ -125,7 +125,7 @@ laplacian_k.dispatch = function(prog, _exec, _15_)
 end
 local bc_close_s = {}
 bc_close_s.build = function(block, field)
-  local field0 = get_prog(block, "bc-close-s", field)
+  local field0 = get_prog(block.prog, "bc-close-s", field)
   return {field = field0}
 end
 bc_close_s.str = function(_17_)
@@ -164,7 +164,7 @@ bc_close_s.dispatch = function(prog, exec, _21_)
 end
 local sys_reset_s = {}
 sys_reset_s.build = function(block, field)
-  local field0 = get_prog(block, "sys-reset-s", field)
+  local field0 = get_prog(block.prog, "sys-reset-s", field)
   return {field = field0}
 end
 sys_reset_s.str = function(_23_)
@@ -247,4 +247,4 @@ krylov_s.dispatch = function(prog, exec, _30_)
   krylov_finish_21(solver, exec, field0, final_step)
   return coroutine.yield(exec)
 end
-return {["face-norm-cw"] = face_norm_cw, ["laplacian-k"] = laplacian_k, ["bc-close-s"] = bc_close_s, ["sys-reset-s"] = sys_reset_s}
+return {["face-norm-cw"] = face_norm_cw, ["laplacian-k"] = laplacian_k, ["bc-close-s"] = bc_close_s, ["sys-reset-s"] = sys_reset_s, ["krylov-s"] = krylov_s}

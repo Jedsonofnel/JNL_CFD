@@ -9,12 +9,12 @@
 
 (local asm (chasm.new :laplace))
 
-(let [phi (asm:scalar-prog :phi)]
+(let [phi (asm:scalar-prog! :phi)]
   (asm:main (fn [block]
-              (block:emit! :sys-reset phi)
+              (block:emit! :sys-reset-s phi)
               (block:emit! :laplacian-k phi)
-              (block:emit! :bc-close phi)
-              (block:emit! :krylov phi {:solver :bicgstab-dilu}))))
+              (block:emit! :bc-close-s phi)
+              (block:emit! :krylov-s phi {:solver :bicgstab-dilu}))))
 
 (local bcs {:phi {cart.EAST (bc.dirichlet-s 0)
                   cart.WEST (bc.dirichlet-s 1)

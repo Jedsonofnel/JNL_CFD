@@ -72,6 +72,6 @@ Block.__tostring = function(_8_)
   local name = _8_.name
   local instructions = _8_.instructions
   local depth = _8_.depth
-  return string.format("<block:%s instrs:%d depth%s>", name, #instructions, depth)
+  return string.format("#<block:%s instrs:%d depth:%s>", name, #instructions, depth)
 end
 return {new = new_block, ["listing-str"] = listing_str0, ["get-var"] = get_var, ["add-inst!"] = add_inst_21}

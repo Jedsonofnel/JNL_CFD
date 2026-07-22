@@ -173,9 +173,7 @@ local function domain_bind_21(domain, mesh, bcs)
   assert(mesh, "mesh required for binding")
   assert(bcs, "bccs required for binding")
   do
-    local _let_14_ = bcs:validate(mesh)
-    local warnings = _let_14_[1]
-    local errors = _let_14_[2]
+    local warnings, errors = bcs:validate(mesh)
     if (#warnings > 0) then
       error(string.format("BC errors: \n%s", table.concat(errors, "\n  ")))
     else
@@ -205,16 +203,16 @@ Program.__index = Program
 local function new_program(name)
   return setmetatable({name = name, domains = {}, vars = {}, consts = {}, ISA = require("nabla.fvm.chasm.isa")}, Program)
 end
-local function program_get_or_create_default_21(_17_)
-  local domains = _17_.domains
-  local prog = _17_
-  local or_18_ = domains.default
-  if not or_18_ then
+local function program_get_or_create_default_21(_16_)
+  local domains = _16_.domains
+  local prog = _16_
+  local or_17_ = domains.default
+  if not or_17_ then
     local d = new_domain(prog, "default")
     domains.default = d
-    or_18_ = d
+    or_17_ = d
   end
-  return or_18_
+  return or_17_
 end
 local function program_add_const_21(prog, name, value)
   assert_identifier(name, "program constant name")
@@ -241,24 +239,24 @@ end
 local function add_vector_prog_21(prog, name, init)
   return domain_add_vector_prog_21(program_get_or_create_default_21(prog), name, init)
 end
-local function program_get_var(_20_, v)
-  local vars = _20_.vars
-  local prog_name = _20_["prog-name"]
-  local and_21_ = ((_G.type(v) == "table") and (nil ~= v.name))
-  if and_21_ then
+local function program_get_var(_19_, v)
+  local vars = _19_.vars
+  local prog_name = _19_["prog-name"]
+  local and_20_ = ((_G.type(v) == "table") and (nil ~= v.name))
+  if and_20_ then
     local name = v.name
-    and_21_ = ((type(name) == "string") and vars[name])
+    and_20_ = ((type(name) == "string") and vars[name])
   end
-  if and_21_ then
+  if and_20_ then
     local name = v.name
     return vars[name]
   else
-    local and_23_ = (nil ~= v)
-    if and_23_ then
+    local and_22_ = (nil ~= v)
+    if and_22_ then
       local name = v
-      and_23_ = ((type(name) == "string") and vars[name])
+      and_22_ = ((type(name) == "string") and vars[name])
     end
-    if and_23_ then
+    if and_22_ then
       local name = v
       return vars[name]
     else
@@ -272,10 +270,10 @@ local function program_bind_21(program, mesh, bcs)
   domain_bind_21(default, mesh, bcs)
   return program
 end
-local function allocate_var_21(v, _26_)
-  local n_cells = _26_["n-cells"]
-  local n_faces = _26_["n-faces"]
-  local mesh = _26_.mesh
+local function allocate_var_21(v, _25_)
+  local n_cells = _25_["n-cells"]
+  local n_faces = _25_["n-faces"]
+  local mesh = _25_.mesh
   if (v.rank == 0) then
     if v["facewise?"] then
       v.array = array.new(n_faces, v.init)
@@ -300,8 +298,8 @@ local function program_allocate_21(program)
 end
 local function program_write_main_21(program, cb, _3fiters)
   local iters = (_3fiters or 1)
-  local _let_30_ = require("nabla.fvm.chasm.block")
-  local new_block = _let_30_.new
+  local _let_29_ = require("nabla.fvm.chasm.block")
+  local new_block = _let_29_.new
   local main = new_block(program, "main", iters)
   cb(main)
   program["main-block"] = main
@@ -339,5 +337,11 @@ Program.main = function(self, cb, _3fiters)
 end
 Program.bind = function(self, mesh, bcs)
   return program_bind_21(self, mesh, bcs)
+end
+Program.start = function(self)
+  local vm_module = require("nabla.fvm.chasm.vm")
+  local new_vm = vm_module.new(self)
+  vm_module["start!"](new_vm)
+  return new_vm
 end
 return {new = new_program, ["program-write-main!"] = program_write_main_21, ["allocate!"] = program_allocate_21, ["program-get-var"] = program_get_var, ["add-scalar-arr!"] = add_scalar_arr_21, ["add-scalar-arr-fw!"] = add_scalar_arr_fw_21, ["add-scalar-prog!"] = add_scalar_prog_21, ["add-vector-arr!"] = add_vector_arr_21, ["add-vector-arr-fw!"] = add_vector_arr_fw_21, ["add-vector-prog!"] = add_vector_prog_21}

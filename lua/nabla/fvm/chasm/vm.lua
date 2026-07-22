@@ -46,7 +46,7 @@ local function start_21(vm)
     return coroutine.yield({status = "done"})
   end
   vm.co = coroutine.create(_3_)
-  return vm
+  return nil
 end
 local function step_21(vm)
   if not vm.co then
