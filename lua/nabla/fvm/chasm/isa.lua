@@ -153,9 +153,9 @@ bc_close_s.dispatch = function(prog, exec, _21_)
   local _let_22_ = prog.domains[field0["domain-name"]]
   local mesh = _let_22_.mesh
   local bcs = _let_22_.bcs
-  local field_spec = bcs.fields[field0.name]
+  local field_spec = bcs[field0.name]
   for _, patch in ipairs(mesh:patches()) do
-    local spec = (field_spec.map[patch.name] or field_spec.default)
+    local spec = (field_spec[patch.name] or field_spec.__default)
     local close_fn = (bc_close_tbl[spec.kind] or error(("could not find bc close fn for kind: " .. spec.kind)))
     close_fn(field0.fvsys, mesh, patch.name, spec)
     coroutine.yield(exec)
@@ -191,18 +191,20 @@ end
 local function make_solver(solver_name, sys, field, pool_cw, opts)
   local tol = (opts or 1e-06)
   local restart = (opts.restart or 20)
-  if (solver_name == "cg-jac") then
+  local case_27_ = solver_name:lower()
+  if (case_27_ == "cg-jac") then
     return fvmb["new-solver-cg-jac"](sys, field, tol, pool_cw)
-  elseif (solver_name == "cg-dic") then
+  elseif (case_27_ == "cg-dic") then
     return fvmb["new-solver-cg-dic"](sys, field, tol, pool_cw)
-  elseif (solver_name == "bicgstab-jac") then
+  elseif (case_27_ == "bicgstab-jac") then
     return fvmb["new-solver-bicgstab-jac"](sys, field, tol, pool_cw)
-  elseif (solver_name == "bicgstab-dilu") then
+  elseif (case_27_ == "bicgstab-dilu") then
     return fvmb["new-solver-bicgstab-dilu"](sys, field, tol, pool_cw)
-  elseif (solver_name == "gmres-dilu") then
+  elseif (case_27_ == "gmres-dilu") then
     return fvmb["new-solver-gmres-dilu"](sys, field, tol, pool_cw, restart)
   else
-    return nil
+    local _ = case_27_
+    return error(string.format("Could not make solver '%s', not an available option", solver_name))
   end
 end
 local function krylov_iterate_21(solver, exec, field, max_iters)
@@ -232,9 +234,9 @@ local function krylov_finish_21(solver, exec, field, final_step)
     return nil
   end
 end
-krylov_s.dispatch = function(prog, exec, _29_)
-  local field = _29_.field
-  local opts = _29_.opts
+krylov_s.dispatch = function(prog, exec, _30_)
+  local field = _30_.field
+  local opts = _30_.opts
   local field0 = get_prog(prog, "krylov-s", field)
   local domain = prog.domains[field0["domain-name"]]
   local max_iters = (opts["max-iters"] or 1000)

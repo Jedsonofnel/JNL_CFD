@@ -60,11 +60,11 @@
 
 ;; explict var variant constructors
 
-(fn new-scalar-reg [domain name init]
-  "Creates a new cellwise scalar register"
+(fn new-scalar-arr [domain name init]
+  "Creates a new cellwise scalar array"
   (new-scalar-var domain name init {:has-sys? false :facewise? false}))
 
-(fn new-scalar-reg-fw [domain name init]
+(fn new-scalar-arr-fw [domain name init]
   "Creates a new facewise scalar reg"
   (new-scalar-var domain name init {:has-sys? false :facewise? true}))
 
@@ -72,12 +72,12 @@
   "Creates a new scalar prognostic field (has system)"
   (new-scalar-var domain name init {:has-sys? true :facewise? false}))
 
-(fn new-vector-reg [domain name init]
-  "Creates a new cellwise vector register"
+(fn new-vector-arr [domain name init]
+  "Creates a new cellwise vector array"
   (new-vector-var domain name init {:has-sys? false :facewise? false}))
 
-(fn new-vector-reg-fw [domain name init]
-  "Creates a new facewise vector register"
+(fn new-vector-arr-fw [domain name init]
+  "Creates a new facewise vector array"
   (new-vector-var domain name init {:has-sys? false :facewise? true}))
 
 (fn new-vector-prog [domain name init]
@@ -86,11 +86,11 @@
 
 ;; Predicates from vars
 
-(fn Var.residual_lt [self val]
+(fn Var.residual-lt [self val]
   "Create predicate for residual < v"
   {:kind :lt :src :residual :key self.name : val})
 
-(fn Var.residual_gt [self val]
+(fn Var.residual-gt [self val]
   "Create predicate for residual > v"
   {:kind :lg :src :residual :key self.name : val})
 
@@ -113,19 +113,19 @@
   (when (exists-in-prog? prog name)
     (error (string.format "name '%s' already exists in the program" name) 3)))
 
-(fn domain-add-scalar-reg! [domain name init]
-  "Add a cellwise scalar register to domain"
+(fn domain-add-scalar-arr! [domain name init]
+  "Add a cellwise scalar array to domain"
   (assert-identifier name "CHASM scalar name")
   (assert-new-to-prog domain.prog name)
-  (let [reg (new-scalar-reg domain name init)]
+  (let [reg (new-scalar-arr domain name init)]
     (tset domain.prog.vars name reg)
     reg))
 
-(fn domain-add-scalar-reg-fw! [domain name init]
-  "Add a facewise scalar register to domain"
+(fn domain-add-scalar-arr-fw! [domain name init]
+  "Add a facewise scalar array to domain"
   (assert-identifier name "CHASM scalar name")
   (assert-new-to-prog domain.prog name)
-  (let [reg (new-scalar-reg-fw domain name init)]
+  (let [reg (new-scalar-arr-fw domain name init)]
     (tset domain.prog.vars name reg)
     reg))
 
@@ -137,21 +137,21 @@
     (tset domain.prog.vars name field)
     field))
 
-(fn domain-add-vector-reg! [domain name init]
-  "Add a cellwise vector register to domain"
+(fn domain-add-vector-arr! [domain name init]
+  "Add a cellwise vector array to domain"
   (assert-identifier name "CHASM vector name")
   (assert-new-to-prog domain.prog name)
-  (let [reg (new-vector-reg domain name init)]
+  (let [reg (new-vector-arr domain name init)]
     (tset domain.prog.vars name reg)
     (tset domain.prog.vars reg.x.name reg.x)
     (tset domain.prog.vars reg.y.name reg.y)
     reg))
 
-(fn domain-add-vector-reg-fw! [domain name init]
-  "Add a facewise vector register to domain"
+(fn domain-add-vector-arr-fw! [domain name init]
+  "Add a facewise vector array to domain"
   (assert-identifier name "CHASM vector name")
   (assert-new-to-prog domain.prog name)
-  (let [reg (new-vector-reg-fw domain name init)]
+  (let [reg (new-vector-arr-fw domain name init)]
     (tset domain.prog.vars name reg)
     (tset domain.prog.vars reg.x.name reg.x)
     (tset domain.prog.vars reg.y.name reg.y)
@@ -167,27 +167,27 @@
     (tset domain.prog.vars field.y.name field.y)
     field))
 
-(fn Domain.scalar_reg [self name init]
-  "Add a new scalar registry to domain"
-  (domain-add-scalar-reg! self name init))
+(fn Domain.scalar-arr [self name init]
+  "Add a new scalar array to domain"
+  (domain-add-scalar-arr! self name init))
 
-(fn Domain.scalar_reg_fw [self name init]
-  "Add a new facewise scalar registry to domain"
-  (domain-add-scalar-reg-fw! self name init))
+(fn Domain.scalar-arr-fw [self name init]
+  "Add a new facewise scalar array to domain"
+  (domain-add-scalar-arr-fw! self name init))
 
-(fn Domain.scalar_prog [self name init]
+(fn Domain.scalar-prog [self name init]
   "Add a new scalar prognostic field to domain"
   (domain-add-scalar-prog! self name init))
 
-(fn Domain.vector_reg [self name init]
-  "Add a new vector registry to domain"
-  (domain-add-vector-reg! self name init))
+(fn Domain.vector-reg [self name init]
+  "Add a new vector array to domain"
+  (domain-add-vector-arr! self name init))
 
-(fn Domain.vector_reg_fw [self name init]
-  "Add a new facewise vector registry to domain"
-  (domain-add-vector-reg-fw! self name init))
+(fn Domain.vector-reg-fw [self name init]
+  "Add a new facewise vector array to domain"
+  (domain-add-vector-arr-fw! self name init))
 
-(fn Domain.vector_prog [self name init]
+(fn Domain.vector-prog [self name init]
   "Add a new vector prognostic field to domain"
   (domain-add-vector-prog! self name init))
 
@@ -241,25 +241,25 @@
     constant))
 
 ;; TODO make this dispatch against whether .prog exists to accept domain OR prog
-(fn add-scalar-reg! [prog name init]
-  "Add a cellwise scalar registry to program default domain"
-  (domain-add-scalar-reg! (program-get-or-create-default! prog) name init))
+(fn add-scalar-arr! [prog name init]
+  "Add a cellwise scalar array to program default domain"
+  (domain-add-scalar-arr! (program-get-or-create-default! prog) name init))
 
-(fn add-scalar-reg-fw! [prog name init]
-  "Add a facewise scalar registry to program default domain"
-  (domain-add-scalar-reg-fw! (program-get-or-create-default! prog) name init))
+(fn add-scalar-arr-fw! [prog name init]
+  "Add a facewise scalar array to program default domain"
+  (domain-add-scalar-arr-fw! (program-get-or-create-default! prog) name init))
 
 (fn add-scalar-prog! [prog name init]
   "Add a prognostic scalar field to program default domain"
   (domain-add-scalar-prog! (program-get-or-create-default! prog) name init))
 
-(fn add-vector-reg! [prog name init]
-  "Add a cellwise vector registry to program default domain"
-  (domain-add-vector-reg! (program-get-or-create-default! prog) name init))
+(fn add-vector-arr! [prog name init]
+  "Add a cellwise vector array to program default domain"
+  (domain-add-vector-arr! (program-get-or-create-default! prog) name init))
 
-(fn add-vector-reg-fw! [prog name init]
-  "Add a facewise vector registry to program default domain"
-  (domain-add-vector-reg-fw! (program-get-or-create-default! prog) name init))
+(fn add-vector-arr-fw! [prog name init]
+  "Add a facewise vector array to program default domain"
+  (domain-add-vector-arr-fw! (program-get-or-create-default! prog) name init))
 
 (fn add-vector-prog! [prog name init]
   "Add a prognostic vector field to program default domain"
@@ -298,9 +298,9 @@
     (let [domain (. program.domains v.domain-name)]
       (allocate-var! v domain))))
 
-(fn program-write-main! [program cb iters]
+(fn program-write-main! [program cb ?iters]
   "Creates a new main block and passes to cb function for construction"
-  (let [iters (or iters 1)
+  (let [iters (or ?iters 1)
         {:new new-block} (require :nabla.fvm.chasm.block)
         main (new-block program :main iters)]
     (cb main)
@@ -309,25 +309,25 @@
 
 ;; Program methods
 
-(fn Program.scalar_reg [self name init]
-  "Add a cellwise scalar registry to the program's default domain"
-  (domain-add-scalar-reg! (program-get-or-create-default! self) name init))
+(fn Program.scalar-arr [self name init]
+  "Add a cellwise scalar array to the program's default domain"
+  (domain-add-scalar-arr! (program-get-or-create-default! self) name init))
 
-(fn Program.scalar-reg-fw! [self name init]
-  "Add a facewise scalar registry to the program's default domain"
-  (domain-add-scalar-reg-fw! (program-get-or-create-default! self) name init))
+(fn Program.scalar-arr-fw! [self name init]
+  "Add a facewise scalar array to the program's default domain"
+  (domain-add-scalar-arr-fw! (program-get-or-create-default! self) name init))
 
 (fn Program.scalar-prog! [self name init]
   "Add a prognostic scalar field to the program's default domain"
   (domain-add-scalar-prog! (program-get-or-create-default! self) name init))
 
-(fn Program.vector_reg [self name init]
-  "Add a cellwise vector registry to the program's default domain"
-  (domain-add-vector-reg! (program-get-or-create-default! self) name init))
+(fn Program.vector-arr [self name init]
+  "Add a cellwise vector array to the program's default domain"
+  (domain-add-vector-arr! (program-get-or-create-default! self) name init))
 
-(fn Program.vector-reg-fw! [self name init]
-  "Add a facewise vector registry to the program's default domain"
-  (domain-add-vector-reg-fw! (program-get-or-create-default! self) name init))
+(fn Program.vector-arr-fw! [self name init]
+  "Add a facewise vector array to the program's default domain"
+  (domain-add-vector-arr-fw! (program-get-or-create-default! self) name init))
 
 (fn Program.vector-prog! [self name init]
   "Add a prognostic vector field to the program's default domain"
@@ -337,9 +337,17 @@
   "Add a named constant to the program"
   (program-add-const! self name value))
 
-(fn Program.get_var [self v]
+(fn Program.get-var [self v]
   "Get a variable from program from a Var object or string"
   (program-get-var self v))
+
+(fn Program.get-array [self v]
+  "Get the array of a variable from the program"
+  (. (program-get-var self v) array))
+
+(fn Program.main [self cb ?iters]
+  "Write the main block to program"
+  (program-write-main! self cb ?iters))
 
 (fn Program.bind [self mesh bcs]
   "Bind mesh and bcs to default program domain"
@@ -351,9 +359,9 @@
  : program-write-main!
  :allocate! program-allocate!
  : program-get-var
- : add-scalar-reg!
- : add-scalar-reg-fw!
+ : add-scalar-arr!
+ : add-scalar-arr-fw!
  : add-scalar-prog!
- : add-vector-reg!
- : add-vector-reg-fw!
+ : add-vector-arr!
+ : add-vector-arr-fw!
  : add-vector-prog!}

@@ -5,6 +5,12 @@
   (when (not= (type val) t)
     (error (string.format "%s: expected %s, got %s" label t (type val)) 3)))
 
+(fn assert-number [val ?label]
+  "Assert val has typeof number, errors with optional label if not"
+  (when (not= (type val) :number)
+    (error (string.format "%s: expected number, got %s" (or ?label :error)
+                          (type val)))))
+
 (fn assert-identifier [s label]
   "Asserts val is a valid nabla identifier, errors with label if not"
   (assert-typeof s :string label)
@@ -22,4 +28,4 @@
       (error (string.format "%s: expected one of [%s], got '%s'" label
                             (table.concat options "|") val) 3))))
 
-{: assert-typeof : assert-identifier : assert-oneof}
+{: assert-typeof : assert-number : assert-identifier : assert-oneof}

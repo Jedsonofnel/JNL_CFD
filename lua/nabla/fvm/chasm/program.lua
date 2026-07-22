@@ -64,28 +64,28 @@ local function new_vector_var(_7_, name, init, opts)
   local facewise_3f = (opts0["facewise?"] or false)
   return setmetatable({["domain-name"] = domain_name, name = name, rank = 1, kind = "vector", ["has-sys?"] = has_sys_3f, ["facewise?"] = facewise_3f, init = init0, x = x, y = y}, Var)
 end
-local function new_scalar_reg(domain, name, init)
+local function new_scalar_arr(domain, name, init)
   return new_scalar_var(domain, name, init, {["facewise?"] = false, ["has-sys?"] = false})
 end
-local function new_scalar_reg_fw(domain, name, init)
+local function new_scalar_arr_fw(domain, name, init)
   return new_scalar_var(domain, name, init, {["facewise?"] = true, ["has-sys?"] = false})
 end
 local function new_scalar_prog(domain, name, init)
   return new_scalar_var(domain, name, init, {["has-sys?"] = true, ["facewise?"] = false})
 end
-local function new_vector_reg(domain, name, init)
+local function new_vector_arr(domain, name, init)
   return new_vector_var(domain, name, init, {["facewise?"] = false, ["has-sys?"] = false})
 end
-local function new_vector_reg_fw(domain, name, init)
+local function new_vector_arr_fw(domain, name, init)
   return new_vector_var(domain, name, init, {["facewise?"] = true, ["has-sys?"] = false})
 end
 local function new_vector_prog(domain, name, init)
   return new_vector_var(domain, name, init, {["has-sys?"] = true, ["facewise?"] = false})
 end
-Var.residual_lt = function(self, val)
+Var["residual-lt"] = function(self, val)
   return {kind = "lt", src = "residual", key = self.name, val = val}
 end
-Var.residual_gt = function(self, val)
+Var["residual-gt"] = function(self, val)
   return {kind = "lg", src = "residual", key = self.name, val = val}
 end
 local Domain = {}
@@ -103,17 +103,17 @@ local function assert_new_to_prog(prog, name)
     return nil
   end
 end
-local function domain_add_scalar_reg_21(domain, name, init)
+local function domain_add_scalar_arr_21(domain, name, init)
   assert_identifier(name, "CHASM scalar name")
   assert_new_to_prog(domain.prog, name)
-  local reg = new_scalar_reg(domain, name, init)
+  local reg = new_scalar_arr(domain, name, init)
   domain.prog.vars[name] = reg
   return reg
 end
-local function domain_add_scalar_reg_fw_21(domain, name, init)
+local function domain_add_scalar_arr_fw_21(domain, name, init)
   assert_identifier(name, "CHASM scalar name")
   assert_new_to_prog(domain.prog, name)
-  local reg = new_scalar_reg_fw(domain, name, init)
+  local reg = new_scalar_arr_fw(domain, name, init)
   domain.prog.vars[name] = reg
   return reg
 end
@@ -124,19 +124,19 @@ local function domain_add_scalar_prog_21(domain, name, init)
   domain.prog.vars[name] = field
   return field
 end
-local function domain_add_vector_reg_21(domain, name, init)
+local function domain_add_vector_arr_21(domain, name, init)
   assert_identifier(name, "CHASM vector name")
   assert_new_to_prog(domain.prog, name)
-  local reg = new_vector_reg(domain, name, init)
+  local reg = new_vector_arr(domain, name, init)
   domain.prog.vars[name] = reg
   domain.prog.vars[reg.x.name] = reg.x
   domain.prog.vars[reg.y.name] = reg.y
   return reg
 end
-local function domain_add_vector_reg_fw_21(domain, name, init)
+local function domain_add_vector_arr_fw_21(domain, name, init)
   assert_identifier(name, "CHASM vector name")
   assert_new_to_prog(domain.prog, name)
-  local reg = new_vector_reg_fw(domain, name, init)
+  local reg = new_vector_arr_fw(domain, name, init)
   domain.prog.vars[name] = reg
   domain.prog.vars[reg.x.name] = reg.x
   domain.prog.vars[reg.y.name] = reg.y
@@ -151,22 +151,22 @@ local function domain_add_vector_prog_21(domain, name, init)
   domain.prog.vars[field.y.name] = field.y
   return field
 end
-Domain.scalar_reg = function(self, name, init)
-  return domain_add_scalar_reg_21(self, name, init)
+Domain["scalar-arr"] = function(self, name, init)
+  return domain_add_scalar_arr_21(self, name, init)
 end
-Domain.scalar_reg_fw = function(self, name, init)
-  return domain_add_scalar_reg_fw_21(self, name, init)
+Domain["scalar-arr-fw"] = function(self, name, init)
+  return domain_add_scalar_arr_fw_21(self, name, init)
 end
-Domain.scalar_prog = function(self, name, init)
+Domain["scalar-prog"] = function(self, name, init)
   return domain_add_scalar_prog_21(self, name, init)
 end
-Domain.vector_reg = function(self, name, init)
-  return domain_add_vector_reg_21(self, name, init)
+Domain["vector-reg"] = function(self, name, init)
+  return domain_add_vector_arr_21(self, name, init)
 end
-Domain.vector_reg_fw = function(self, name, init)
-  return domain_add_vector_reg_fw_21(self, name, init)
+Domain["vector-reg-fw"] = function(self, name, init)
+  return domain_add_vector_arr_fw_21(self, name, init)
 end
-Domain.vector_prog = function(self, name, init)
+Domain["vector-prog"] = function(self, name, init)
   return domain_add_vector_prog_21(self, name, init)
 end
 local function domain_bind_21(domain, mesh, bcs)
@@ -223,20 +223,20 @@ local function program_add_const_21(prog, name, value)
   prog.consts[name] = constant
   return constant
 end
-local function add_scalar_reg_21(prog, name, init)
-  return domain_add_scalar_reg_21(program_get_or_create_default_21(prog), name, init)
+local function add_scalar_arr_21(prog, name, init)
+  return domain_add_scalar_arr_21(program_get_or_create_default_21(prog), name, init)
 end
-local function add_scalar_reg_fw_21(prog, name, init)
-  return domain_add_scalar_reg_fw_21(program_get_or_create_default_21(prog), name, init)
+local function add_scalar_arr_fw_21(prog, name, init)
+  return domain_add_scalar_arr_fw_21(program_get_or_create_default_21(prog), name, init)
 end
 local function add_scalar_prog_21(prog, name, init)
   return domain_add_scalar_prog_21(program_get_or_create_default_21(prog), name, init)
 end
-local function add_vector_reg_21(prog, name, init)
-  return domain_add_vector_reg_21(program_get_or_create_default_21(prog), name, init)
+local function add_vector_arr_21(prog, name, init)
+  return domain_add_vector_arr_21(program_get_or_create_default_21(prog), name, init)
 end
-local function add_vector_reg_fw_21(prog, name, init)
-  return domain_add_vector_reg_fw_21(program_get_or_create_default_21(prog), name, init)
+local function add_vector_arr_fw_21(prog, name, init)
+  return domain_add_vector_arr_fw_21(program_get_or_create_default_21(prog), name, init)
 end
 local function add_vector_prog_21(prog, name, init)
   return domain_add_vector_prog_21(program_get_or_create_default_21(prog), name, init)
@@ -298,29 +298,29 @@ local function program_allocate_21(program)
   end
   return nil
 end
-local function program_write_main_21(program, cb, iters)
-  local iters0 = (iters or 1)
+local function program_write_main_21(program, cb, _3fiters)
+  local iters = (_3fiters or 1)
   local _let_30_ = require("nabla.fvm.chasm.block")
   local new_block = _let_30_.new
-  local main = new_block(program, "main", iters0)
+  local main = new_block(program, "main", iters)
   cb(main)
   program["main-block"] = main
   return main
 end
-Program.scalar_reg = function(self, name, init)
-  return domain_add_scalar_reg_21(program_get_or_create_default_21(self), name, init)
+Program["scalar-arr"] = function(self, name, init)
+  return domain_add_scalar_arr_21(program_get_or_create_default_21(self), name, init)
 end
-Program["scalar-reg-fw!"] = function(self, name, init)
-  return domain_add_scalar_reg_fw_21(program_get_or_create_default_21(self), name, init)
+Program["scalar-arr-fw!"] = function(self, name, init)
+  return domain_add_scalar_arr_fw_21(program_get_or_create_default_21(self), name, init)
 end
 Program["scalar-prog!"] = function(self, name, init)
   return domain_add_scalar_prog_21(program_get_or_create_default_21(self), name, init)
 end
-Program.vector_reg = function(self, name, init)
-  return domain_add_vector_reg_21(program_get_or_create_default_21(self), name, init)
+Program["vector-arr"] = function(self, name, init)
+  return domain_add_vector_arr_21(program_get_or_create_default_21(self), name, init)
 end
-Program["vector-reg-fw!"] = function(self, name, init)
-  return domain_add_vector_reg_fw_21(program_get_or_create_default_21(self), name, init)
+Program["vector-arr-fw!"] = function(self, name, init)
+  return domain_add_vector_arr_fw_21(program_get_or_create_default_21(self), name, init)
 end
 Program["vector-prog!"] = function(self, name, init)
   return domain_add_vector_prog_21(program_get_or_create_default_21(self), name, init)
@@ -328,10 +328,16 @@ end
 Program.const = function(self, name, value)
   return program_add_const_21(self, name, value)
 end
-Program.get_var = function(self, v)
+Program["get-var"] = function(self, v)
   return program_get_var(self, v)
+end
+Program["get-array"] = function(self, v)
+  return program_get_var(self, v)[array]
+end
+Program.main = function(self, cb, _3fiters)
+  return program_write_main_21(self, cb, _3fiters)
 end
 Program.bind = function(self, mesh, bcs)
   return program_bind_21(self, mesh, bcs)
 end
-return {new = new_program, ["program-write-main!"] = program_write_main_21, ["allocate!"] = program_allocate_21, ["program-get-var"] = program_get_var, ["add-scalar-reg!"] = add_scalar_reg_21, ["add-scalar-reg-fw!"] = add_scalar_reg_fw_21, ["add-scalar-prog!"] = add_scalar_prog_21, ["add-vector-reg!"] = add_vector_reg_21, ["add-vector-reg-fw!"] = add_vector_reg_fw_21, ["add-vector-prog!"] = add_vector_prog_21}
+return {new = new_program, ["program-write-main!"] = program_write_main_21, ["allocate!"] = program_allocate_21, ["program-get-var"] = program_get_var, ["add-scalar-arr!"] = add_scalar_arr_21, ["add-scalar-arr-fw!"] = add_scalar_arr_fw_21, ["add-scalar-prog!"] = add_scalar_prog_21, ["add-vector-arr!"] = add_vector_arr_21, ["add-vector-arr-fw!"] = add_vector_arr_fw_21, ["add-vector-prog!"] = add_vector_prog_21}

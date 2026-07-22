@@ -122,9 +122,9 @@
   "Execute bc-close-s instruction"
   (let [field (get-prog prog :bc-close-s field)
         {: mesh : bcs} (. prog.domains field.domain-name)
-        field-spec (. bcs.fields field.name)]
+        field-spec (. bcs field.name)]
     (each [_ patch (ipairs (mesh:patches))]
-      (let [spec (or (. field-spec.map patch.name) field-spec.default)
+      (let [spec (or (. field-spec patch.name) field-spec.__default)
             close-fn (or (. bc-close-tbl spec.kind)
                          (error (.. "could not find bc close fn for kind: "
                                     spec.kind)))]
@@ -165,12 +165,20 @@
   "Make a solver for the given solver name"
   (let [tol (or opts 1e-06)
         restart (or opts.restart 20)]
-    (case solver-name
-      :cg-jac (fvmb.new-solver-cg-jac sys field tol pool-cw)
-      :cg-dic (fvmb.new-solver-cg-dic sys field tol pool-cw)
-      :bicgstab-jac (fvmb.new-solver-bicgstab-jac sys field tol pool-cw)
-      :bicgstab-dilu (fvmb.new-solver-bicgstab-dilu sys field tol pool-cw)
-      :gmres-dilu (fvmb.new-solver-gmres-dilu sys field tol pool-cw restart))))
+    (case (solver-name:lower)
+      :cg-jac
+      (fvmb.new-solver-cg-jac sys field tol pool-cw)
+      :cg-dic
+      (fvmb.new-solver-cg-dic sys field tol pool-cw)
+      :bicgstab-jac
+      (fvmb.new-solver-bicgstab-jac sys field tol pool-cw)
+      :bicgstab-dilu
+      (fvmb.new-solver-bicgstab-dilu sys field tol pool-cw)
+      :gmres-dilu
+      (fvmb.new-solver-gmres-dilu sys field tol pool-cw restart)
+      _ ; TODO the error could print the available options perhaps
+      (error (string.format "Could not make solver '%s', not an available option"
+                            solver-name)))))
 
 (fn krylov-iterate! [solver exec field max-iters]
   "Run krylov iterations, yielding progress each step, returning final step"

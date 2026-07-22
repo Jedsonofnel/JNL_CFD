@@ -6,6 +6,13 @@ local function assert_typeof(val, t, label)
     return nil
   end
 end
+local function assert_number(val, _3flabel)
+  if (type(val) ~= "number") then
+    return error(string.format("%s: expected number, got %s", (_3flabel or "error"), type(val)))
+  else
+    return nil
+  end
+end
 local function assert_identifier(s, label)
   assert_typeof(s, "string", label)
   if s:match("^__") then
@@ -34,4 +41,4 @@ local function assert_oneof(val, options, label)
     return nil
   end
 end
-return {["assert-typeof"] = assert_typeof, ["assert-identifier"] = assert_identifier, ["assert-oneof"] = assert_oneof}
+return {["assert-typeof"] = assert_typeof, ["assert-number"] = assert_number, ["assert-identifier"] = assert_identifier, ["assert-oneof"] = assert_oneof}

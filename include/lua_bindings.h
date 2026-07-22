@@ -193,18 +193,19 @@ int luaopen_fvm_internal(lua_State *L);
 
 static inline void register_preloaders(lua_State *L)
 {
-	preload_module(L, "jnl.vec_internal", luaopen_vec_internal);
-	preload_module(L, "jnl.scratch_internal", luaopen_scratch_internal);
-	preload_module(L, "jnl.expr_internal", luaopen_expr_internal);
-	preload_module(L, "jnl.vtk_internal", luaopen_vtk_internal);
-	preload_module(L, "jnl.domain2d_internal", luaopen_domain2d_internal);
-	preload_module(L, "jnl.pslg2d_internal", luaopen_pslg2d_internal);
-	preload_module(L, "jnl.curve2d_internal", luaopen_curve2d_internal);
-	preload_module(L, "jnl.ui_internal", luaopen_ui_internal);
-	preload_module(L, "jnl.mesh2d_internal", luaopen_mesh2d_internal);
-	preload_module(L, "jnl.strucmesh2d_internal", luaopen_strucmesh2d_internal);
-	preload_module(L, "jnl.trimesh2d_internal", luaopen_trimesh2d_internal);
-	preload_module(L, "jnl.fvm_internal", luaopen_fvm_internal);
+	preload_module(L, "nabla.array_internal", luaopen_vec_internal);
+	preload_module(L, "nabla.scratch_internal", luaopen_scratch_internal);
+	preload_module(L, "nabla.expr_internal", luaopen_expr_internal);
+	preload_module(L, "nabla.vtk_internal", luaopen_vtk_internal);
+	preload_module(L, "nabla.domain2d_internal", luaopen_domain2d_internal);
+	preload_module(L, "nabla.pslg2d_internal", luaopen_pslg2d_internal);
+	preload_module(L, "nabla.curve2d_internal", luaopen_curve2d_internal);
+	preload_module(L, "nabla.ui_internal", luaopen_ui_internal);
+	preload_module(L, "nabla.mesh2d_internal", luaopen_mesh2d_internal);
+	preload_module(L, "nabla.strucmesh2d_internal",
+	               luaopen_strucmesh2d_internal);
+	preload_module(L, "nabla.trimesh2d_internal", luaopen_trimesh2d_internal);
+	preload_module(L, "nabla.fvm_internal", luaopen_fvm_internal);
 }
 
 #endif // JNL_LUA_BINDINGS_H
