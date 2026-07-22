@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/core/array.fnl
+-- [nfnl] fnl/nabla/core/array.fnl
 local opt = require("nabla.core.optional")
 local internal = opt.require("nabla.array_internal")
 local function new(len, init)

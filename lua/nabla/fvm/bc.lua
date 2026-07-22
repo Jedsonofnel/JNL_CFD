@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/fvm/bc.fnl
+-- [nfnl] fnl/nabla/fvm/bc.fnl
 local _local_1_ = require("nabla.core.validation")
 local assert_number = _local_1_["assert-number"]
 local assert_oneof = _local_1_["assert-oneof"]

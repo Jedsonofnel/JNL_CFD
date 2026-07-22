@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/core/mangle.fnl
+-- [nfnl] fnl/nabla/core/mangle.fnl
 local valid = require("nabla.core.validation")
 local oneof = valid.oneof
 local function reserved_3f(name)

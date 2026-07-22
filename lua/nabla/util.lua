@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/util.fnl
+-- [nfnl] fnl/nabla/util.fnl
 local function number_3f(val)
   return (type(val) == "number")
 end

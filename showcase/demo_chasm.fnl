@@ -9,6 +9,8 @@
 
 (local asm (chasm.new :laplace))
 
+(asm:flarp)
+
 (let [phi (asm:scalar-prog! :phi)]
   (asm:main (fn [block]
               (block:emit! :sys-reset-s phi)

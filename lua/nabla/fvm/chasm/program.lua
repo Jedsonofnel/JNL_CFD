@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/fvm/chasm/program.fnl
+-- [nfnl] fnl/nabla/fvm/chasm/program.fnl
 local _local_1_ = require("nabla.core.mangle")
 local component = _local_1_.component
 local _local_2_ = require("nabla.core.validation")

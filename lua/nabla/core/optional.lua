@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/core/optional.fnl
+-- [nfnl] fnl/nabla/core/optional.fnl
 local function optional_require(modname)
   local ok,mod = pcall(require, modname)
   if ok then

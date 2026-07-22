@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/core/pool.fnl
+-- [nfnl] fnl/nabla/core/pool.fnl
 local opt = require("nabla.core.optional")
 local internal = opt.require("nabla.scratch_internal")
 local _local_1_ = require("nabla.util")

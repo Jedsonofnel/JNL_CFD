@@ -282,13 +282,68 @@ local function read_fennel_chunk(repl, state)
     end
 end
 
+--
+-- Error filtering stuff
+--
+
+local HIDDEN_FRAME_PATTERNS = {
+    "lua/fennel%.lua:%d+",
+    "jnl/repl/core%.lua:%d+",
+    "%[C%]: in function '_%d+_'", -- LuaJIT's tail-call misattribution of Fennel's gensyms
+    "%[C%]: in function 'pcall'",
+    "in main chunk$",
+}
+
+local function is_internal_frame(line)
+    for _, pattern in ipairs(HIDDEN_FRAME_PATTERNS) do
+        if line:match(pattern) then
+            return true
+        end
+    end
+    return false
+end
+
+local function clean_traceback(text)
+    local out, frame_count = {}, 0
+
+    for line in text:gmatch("[^\n]+") do
+        local is_frame = line:match("^\t") ~= nil
+
+        if not (is_frame and is_internal_frame(line)) then
+            table.insert(out, line)
+            if is_frame then
+                frame_count = frame_count + 1
+            end
+        end
+    end
+
+    if frame_count == 0 then
+        table.insert(out, "\t(raised directly from the REPL form)")
+    end
+
+    return table.concat(out, "\n")
+end
+
+--- Replace `[string "..."]:N:` chunkname prefixes with something readable.
+local function friendly_chunkname(text)
+    return (text:gsub('%[string "[^\n]-"%]:', "REPL:"))
+end
+
 local function print_fennel_error(error_type, err)
     if error_type == "Runtime" then
         local fennel = require("fennel")
-        io.write(fennel.traceback(tostring(err), 4))
+        local trace = fennel.traceback(tostring(err), 4)
+
+        io.write(friendly_chunkname(clean_traceback(trace)))
         io.write("\n")
     else
-        io.write(string.format("error [%s]: %s\n", error_type, tostring(err)))
+        io.write(
+            string.format(
+                "error [%s]: %s\n",
+                error_type,
+                friendly_chunkname(tostring(err))
+            )
+        )
     end
 
     enter_reading()

@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/mesh/cartmesh2d.fnl
+-- [nfnl] fnl/nabla/mesh/cartmesh2d.fnl
 local opt = require("nabla.core.optional")
 local internal = opt.require("nabla.strucmesh2d_internal")
 local _local_1_ = require("nabla.core.validation")

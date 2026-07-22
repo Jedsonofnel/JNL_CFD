@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/fvm/chasm/block.fnl
+-- [nfnl] fnl/nabla/fvm/chasm/block.fnl
 local _local_1_ = require("nabla.fvm.chasm.program")
 local program_get_var = _local_1_["program-get-var"]
 local Block = {}

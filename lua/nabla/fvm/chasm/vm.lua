@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/fvm/chasm/vm.fnl
+-- [nfnl] fnl/nabla/fvm/chasm/vm.fnl
 local program = require("nabla.fvm.chasm.program")
 local VM = {}
 VM.__index = VM

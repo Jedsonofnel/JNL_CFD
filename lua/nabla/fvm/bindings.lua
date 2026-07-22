@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/fvm/bindings.fnl
+-- [nfnl] fnl/nabla/fvm/bindings.fnl
 local opt = require("nabla.core.optional")
 local internal = opt.require("nabla.fvm_internal")
 local function new_fvsys(mesh)

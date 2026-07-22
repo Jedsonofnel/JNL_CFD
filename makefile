@@ -4,6 +4,7 @@ SRCDIR  = src
 HDIR    = include
 TESTDIR = test
 LUADIR  = lua
+FNLDIR  = fnl
 OUTDIR  = out
 
 BUILD ?= debug
@@ -38,7 +39,6 @@ endif
 
 FENNEL_SRC := vendor/fennel-1.6.1/fennel.lua
 FENNEL_DST := $(LUADIR)/fennel.lua
-FENNEL_BIN := $(LUA_BIN) $(FENNEL_DST)
 
 #
 # Compiler
@@ -191,7 +191,6 @@ endif
 
 # Formatting
 FORMAT_C_SRCS   := $(shell find $(SRCDIR) $(HDIR) $(CMDDIR) $(TESTDIR) -name '*.[ch]')
-FORMAT_LUA_SRCS := $(shell find $(LUADIR) -name '*.lua')
 
 #
 # Top-level targets
@@ -207,9 +206,10 @@ FORMAT_LUA_SRCS := $(shell find $(LUADIR) -name '*.lua')
 	debug \
 	triangle \
 	llm \
+	fnl-lua \
 	format
 
-all: $(FENNEL_DST) $(CMD_BINS)
+all: $(FENNEL_DST) fnl-lua $(CMD_BINS)
 
 debug:
 	$(MAKE) BUILD=debug all
@@ -324,8 +324,12 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(TRIANGLE_LIBS)
 $(FENNEL_DST): $(FENNEL_SRC) | $(LUADIR)
 	$(Q)cp $< $@
 
-$(LUADIR)/%.lua: $(LUADIR)/%.fnl | $(FENNEL_DST)
-	$(Q)$(FENNEL_BIN) --compile $< > $@
+$(LUADIR)/%.lua: $(FNLDIR)/%.fnl scripts/fnl_compile.sh | $(FENNEL_DST)
+	@mkdir -p $(dir $@)
+	$(LOG_FNL)
+	$(Q)scripts/fnl_compile.sh "$(LUA_BIN)" "$(FENNEL_DST)" $< $@
+
+fnl-lua: $(patsubst $(FNLDIR)/%.fnl,$(LUADIR)/%.lua,$(sort $(shell find $(FNLDIR) -name '*.fnl')))
 
 $(LUADIR):
 	mkdir -p $@
@@ -366,7 +370,8 @@ format:
 	@printf "  FMT   (C/H)\n"
 	$(Q)clang-format -i $(FORMAT_C_SRCS)
 	@printf "  FMT   (Lua)\n"
-	$(Q)stylua $(FORMAT_LUA_SRCS)
+	# $(Q)stylua $(FORMAT_LUA_SRCS)
+	# commented out because lua srcs is currently compiled fennel
 
 #
 # Cleanup

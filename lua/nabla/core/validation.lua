@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/core/validation.fnl
+-- [nfnl] fnl/nabla/core/validation.fnl
 local function assert_typeof(val, t, label)
   if (type(val) ~= t) then
     return error(string.format("%s: expected %s, got %s", label, t, type(val)), 3)

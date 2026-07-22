@@ -1,4 +1,4 @@
--- [nfnl] lua/nabla/ui.fnl
+-- [nfnl] fnl/nabla/ui.fnl
 local opt = require("nabla.core.optional")
 local internal = opt.require("nabla.strucmesh2d_internal")
 local default_ui = nil
