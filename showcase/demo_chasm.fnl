@@ -1,34 +1,40 @@
 ;; (demo_chasm) ; simple demo of CHASM for FVM
 
 (local fvm (require :nabla.fvm))
-(local {: bc : chasm} fvm)
+(local {: bc : chasm :instructions i} fvm)
 (local cart (require :nabla.mesh.cartmesh2d))
+(local meshlib (require :nabla.mesh))
 (local ui (require :nabla.ui))
 
-(local mesh (cart.build 1 1 20 20))
+;; Mesh
+(local mesh-spec (cart.build 1 1 20 20))
 
-(local asm (chasm.new :laplace))
+;; Variables
+(local phi (chasm.scalar :phi))
 
-(asm:flarp)
+;; Program blocks
+(local main-block (chasm.block :main
+                               [(i.sys-reset-s phi)
+                                (i.laplacian-k phi)
+                                (i.bc-close-s phi)
+                                (i.krylov-s phi {:solver :bicgstab-dilu})]
+                               {:max-iters 1}))
 
-(let [phi (asm:scalar-prog! :phi)]
-  (asm:main (fn [block]
-              (block:emit! :sys-reset-s phi)
-              (block:emit! :laplacian-k phi)
-              (block:emit! :bc-close-s phi)
-              (block:emit! :krylov-s phi {:solver :bicgstab-dilu}))))
+;; Create the assembly program (name, vars, main block)
+(local asm (chasm.program :laplace [phi] main-block))
 
-(local bcs {:phi {cart.EAST (bc.dirichlet-s 0)
-                  cart.WEST (bc.dirichlet-s 1)
-                  :__default (bc.neumann-s 0)}})
+;; BC spec
+(local bcs {:phi {cart.EAST (bc.dirichlet 0)
+                  cart.WEST (bc.dirichlet 1)
+                  bc.DEFAULT (bc.neumann 0)}})
 
-(asm:bind mesh bcs)
+(meshlib.resolve mesh-spec)
 
 (fn run []
-  (let [vm (asm:start)]
-    (vm:run-all)
-    (ui.display-mesh mesh)
-    (ui.set-field! :phi (asm:get-array :phi))
+  (let [rt (chasm.compile asm mesh-spec bcs)] ; compile to vm which allocates/resolves
+    (chasm.run-all! rt)
+    (ui.display-mesh rt.domains.__default.mesh)
+    (ui.set-field! :phi (chasm.get-array :phi))
     (ui.view-field :phi)))
 
 (run)

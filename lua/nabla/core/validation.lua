@@ -13,6 +13,13 @@ local function assert_number(val, _3flabel)
     return nil
   end
 end
+local function assert_positive_integer(val, _3flabel)
+  if ((type(val) ~= "number") or (val < 0) or (math.floor(val) ~= val)) then
+    return error(string.format("%s: expected positive integer, got %s (%s)", (_3flabel or "error"), val, type(val)))
+  else
+    return nil
+  end
+end
 local function assert_identifier(s, label)
   assert_typeof(s, "string", label)
   if s:match("^__") then
@@ -41,4 +48,4 @@ local function assert_oneof(val, options, label)
     return nil
   end
 end
-return {["assert-typeof"] = assert_typeof, ["assert-number"] = assert_number, ["assert-identifier"] = assert_identifier, ["assert-oneof"] = assert_oneof}
+return {["assert-typeof"] = assert_typeof, ["assert-number"] = assert_number, ["assert-positive-integer"] = assert_positive_integer, ["assert-identifier"] = assert_identifier, ["assert-oneof"] = assert_oneof}

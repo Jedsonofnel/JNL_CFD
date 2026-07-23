@@ -8,11 +8,15 @@
   "Build a cartesion mesh with nx * ny cells over a width * height rectangular domain"
   (assert-number width "cartmesh2d build width")
   (assert-number height "cartmesh2d build height")
-  (assert-number ny "cartmesh2d build nx") ; TODO check positive integer
+  (assert-number nx "cartmesh2d build nx") ; TODO check positive integer
   (assert-number ny "cartmesh2d build ny") ; TODO check positive integer
+  {:meshkind :cartmesh2d :spec {: width : height : nx : ny}})
+
+(fn resolve [{: width : height : nx : ny}]
   (internal.cartmesh width height nx ny))
 
 {: build
+ : resolve
  ;; enum strings
  :NORTH :north
  :TOP :north

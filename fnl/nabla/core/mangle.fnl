@@ -1,7 +1,6 @@
 ;; (nabla core mangle) ; name mangling source of truth
 
 (local valid (require :nabla.core.validation))
-(local {: oneof} valid)
 
 (fn reserved? [name]
   "Returns name if reserved"
@@ -15,7 +14,7 @@
 
 (fn component [field i]
   "Mangles name field to mean ith component of field"
-  (oneof i [:x :y] "component i")
+  (valid.assert-oneof i [:x :y] "component i")
   (.. (reserved field) "_" i))
 
 {: component}

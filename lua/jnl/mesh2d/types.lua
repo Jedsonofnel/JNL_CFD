@@ -51,12 +51,8 @@ function Mesh2D:n_baffle_faces() end
 ---@return integer
 function Mesh2D:n_patches() end
 
----@return MeshPatch[]
+---@return table<string, MeshPatch>
 function Mesh2D:patches() end
-
----@param name string
----@return MeshPatch?
-function Mesh2D:patch_by_name(name) end
 
 --- Cell centre coordinates, 1-based.
 ---@param i integer

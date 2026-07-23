@@ -81,7 +81,7 @@ static int l_mesh_n_patches(lua_State *L)
 }
 
 //
-// Patches
+// Patches table
 //
 
 static void push_patch_table(lua_State *L, const struct jnl_pmsh2d_patch *p)
@@ -100,25 +100,11 @@ static void push_patch_table(lua_State *L, const struct jnl_pmsh2d_patch *p)
 static int l_mesh_patches(lua_State *L)
 {
 	pmsh2d *m = check_pmsh2d(L, 1);
-	lua_createtable(L, m->patches.n_patches, 0);
+	lua_createtable(L, 0, m->patches.n_patches);
 	for (int i = 0; i < m->patches.n_patches; i++) {
 		push_patch_table(L, &m->patches.data[i]);
-		lua_rawseti(L, -2, i + 1);
+		lua_setfield(L, -2, m->patches.data[i].name);
 	}
-	return 1;
-}
-
-static int l_mesh_patch_by_name(lua_State *L)
-{
-	pmsh2d *m = check_pmsh2d(L, 1);
-	const char *name = luaL_checkstring(L, 2);
-	for (int i = 0; i < m->patches.n_patches; i++) {
-		if (strcmp(m->patches.data[i].name, name) == 0) {
-			push_patch_table(L, &m->patches.data[i]);
-			return 1;
-		}
-	}
-	lua_pushnil(L);
 	return 1;
 }
 
@@ -291,7 +277,6 @@ static const luaL_Reg mesh2d_methods[] = {
     /* patches */
     {"patches", l_mesh_patches},
     {"n_patches", l_mesh_n_patches},
-    {"patch_by_name", l_mesh_patch_by_name},
     /* 1-indexed cell */
     {"cell_centre", l_mesh_cell_centre},
     {"cell_vol", l_mesh_cell_vol},

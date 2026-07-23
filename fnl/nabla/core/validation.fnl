@@ -11,6 +11,12 @@
     (error (string.format "%s: expected number, got %s" (or ?label :error)
                           (type val)))))
 
+(fn assert-positive-integer [val ?label]
+  "Assert val is a positive integer, errors with optinal label if not"
+  (when (or (not= (type val) :number) (< val 0) (not= (math.floor val) val))
+    (error (string.format "%s: expected positive integer, got %s (%s)"
+                          (or ?label :error) val (type val)))))
+
 (fn assert-identifier [s label]
   "Asserts val is a valid nabla identifier, errors with label if not"
   (assert-typeof s :string label)
@@ -28,4 +34,8 @@
       (error (string.format "%s: expected one of [%s], got '%s'" label
                             (table.concat options "|") val) 3))))
 
-{: assert-typeof : assert-number : assert-identifier : assert-oneof}
+{: assert-typeof
+ : assert-number
+ : assert-positive-integer
+ : assert-identifier
+ : assert-oneof}
