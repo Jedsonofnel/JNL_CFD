@@ -164,22 +164,30 @@ local function resolve_poly(rank, bc_desc)
     return nil
   end
 end
-local function resolve_bc_field(field, bc_map, patches)
-  local default = bc_map.__default
+--[[ (resolve-poly 0 (neumann 0)) ]]
+local function resolve_bc_field(_18_, bc_map, patches)
+  local rank = _18_.rank
+  local default_raw = bc_map.__default
+  local default
+  if default_raw["poly?"] then
+    default = resolve_poly(rank, default_raw)
+  else
+    default = default_raw
+  end
   local tbl_21_ = {}
   for patch_name, _ in pairs(patches) do
     local k_22_, v_23_
-    local function _18_()
+    local function _20_()
       local bc_desc = bc_map[patch_name]
       if not bc_desc then
         return default
       elseif bc_desc["poly?"] then
-        return resolve_poly(field.rank, bc_desc)
+        return resolve_poly(rank, bc_desc)
       else
         return bc_desc
       end
     end
-    k_22_, v_23_ = patch_name, _18_()
+    k_22_, v_23_ = patch_name, _20_()
     if ((k_22_ ~= nil) and (v_23_ ~= nil)) then
       tbl_21_[k_22_] = v_23_
     else
@@ -188,10 +196,10 @@ local function resolve_bc_field(field, bc_map, patches)
   return tbl_21_
 end
 local function resolve(bcs, fields, patches)
-  local _let_21_ = validate(bcs, fields, patches)
-  local errors = _let_21_.errors
-  local warnings = _let_21_.warnings
-  local validation_results = _let_21_
+  local _let_23_ = validate(bcs, fields, patches)
+  local errors = _let_23_.errors
+  local warnings = _let_23_.warnings
+  local validation_results = _let_23_
   if (#errors ~= 0) then
     return validation_results
   else

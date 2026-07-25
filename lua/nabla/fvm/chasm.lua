@@ -207,9 +207,9 @@ local function get_domain_vars(vars, domain_name)
   for vn, v in pairs(vars) do
     local k_22_, v_23_
     if (v.domain == domain_name) then
-      k_22_, v_23_ = vn
+      k_22_, v_23_ = vn, v
     else
-      k_22_, v_23_ = v
+      k_22_, v_23_ = nil
     end
     if ((k_22_ ~= nil) and (v_23_ ~= nil)) then
       tbl_21_[k_22_] = v_23_

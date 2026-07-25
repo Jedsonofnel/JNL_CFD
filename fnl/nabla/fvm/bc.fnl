@@ -148,14 +148,19 @@
                                        (neumann-v grad-n grad-n)
                                        (error "resolve-poly: unsupported rank"))))
 
-(fn resolve-bc-field [field bc-map patches]
+(comment (resolve-poly 0 (neumann 0)))
+
+(fn resolve-bc-field [{: rank} bc-map patches]
   "Create a new bc-map with every patch accounted for, no polymorphism and no default"
-  (let [default (. bc-map :__default)]
+  (let [default-raw (. bc-map :__default)
+        default (if default-raw.poly?
+                    (resolve-poly rank default-raw)
+                    default-raw)]
     (collect [patch-name _ (pairs patches)]
       patch-name
       (let [bc-desc (. bc-map patch-name)]
         (if (not bc-desc) default ; default if doesn't exist
-            bc-desc.poly? (resolve-poly field.rank bc-desc)
+            bc-desc.poly? (resolve-poly rank bc-desc)
             bc-desc ; as-is if neither
             )))))
 

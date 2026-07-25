@@ -1,6 +1,6 @@
 -- [nfnl] fnl/nabla/ui.fnl
 local opt = require("nabla.core.optional")
-local internal = opt.require("nabla.strucmesh2d_internal")
+local internal = opt.require("nabla.ui_internal")
 local default_ui = nil
 local function handle_closed_3f(handle)
   if not handle then
@@ -56,7 +56,7 @@ local function spawn_21()
 end
 local function display_mesh(mesh, _3fhandle)
   local function _7_(_241)
-    return _241["send-mesh"](_241, mesh)
+    return _241:send_mesh(mesh)
   end
   return display_with_recovery_21(_3fhandle, _7_)
 end

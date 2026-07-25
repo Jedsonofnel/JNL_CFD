@@ -28,13 +28,19 @@
                   cart.WEST (bc.dirichlet 1)
                   bc.DEFAULT (bc.neumann 0)}})
 
-(meshlib.resolve mesh-spec)
+(comment (let [mesh (meshlib.resolve mesh-spec)
+               {: warnings : bcs} (bc.resolve bcs asm.vars (mesh:patches))]
+           (ui.display-mesh mesh)))
 
 (fn run []
   (let [rt (chasm.compile asm mesh-spec bcs)] ; compile to vm which allocates/resolves
     (chasm.run-all! rt)
     (ui.display-mesh rt.domains.__default.mesh)
-    (ui.set-field! :phi (chasm.get-array :phi))
+    (ui.set-field! :phi (chasm.get-array rt :phi))
     (ui.view-field :phi)))
+
+(comment (let [rt (chasm.compile asm mesh-spec bcs)]
+           (chasm.get-sys+mesh+bcs rt :phi)
+           (chasm.get-sys+mesh rt :phi)))
 
 (run)

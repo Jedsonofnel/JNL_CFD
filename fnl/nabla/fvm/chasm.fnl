@@ -157,8 +157,7 @@
   "Get subset of vars map pertaining to the domain"
   (collect [vn v (pairs vars)]
     (if (= v.domain domain-name)
-        vn
-        v)))
+        (values vn v))))
 
 (fn allocate-domain [domain-name mesh-spec bc-spec fields]
   "Allocate a domain: mesh, bcs, scratch pools and length diagonstics"

@@ -190,18 +190,18 @@ local function kryl_str(_31_)
   local opts = _31_.opts
   return simple_instr_str("krylov-s", field, (opts.solver or "bicgstab-dilu"))
 end
-local function make_solver(solver_name, sys, mesh, pool_cells, tol, restart)
+local function make_solver(solver_name, sys, phi, pool_cells, tol, restart)
   local case_32_ = solver_name:lower()
   if (case_32_ == "cg-jac") then
-    return fvmb["new-solver-cg-jac"](sys, mesh, tol, pool_cells)
+    return fvmb["new-solver-cg-jac"](sys, phi, tol, pool_cells)
   elseif (case_32_ == "cg-dic") then
-    return fvmb["new-solver-cg-dic"](sys, mesh, tol, pool_cells)
+    return fvmb["new-solver-cg-dic"](sys, phi, tol, pool_cells)
   elseif (case_32_ == "bicgstab-jac") then
-    return fvmb["new-solver-bicgstab-jac"](sys, mesh, tol, pool_cells)
+    return fvmb["new-solver-bicgstab-jac"](sys, phi, tol, pool_cells)
   elseif (case_32_ == "bicgstab-dilu") then
-    return fvmb["new-solver-bicgstab-dilu"](sys, mesh, tol, pool_cells)
+    return fvmb["new-solver-bicgstab-dilu"](sys, phi, tol, pool_cells)
   elseif (case_32_ == "gmres-dilu") then
-    return fvmb["new-solver-gmres-dilu"](sys, mesh, tol, pool_cells, restart)
+    return fvmb["new-solver-gmres-dilu"](sys, phi, tol, pool_cells, restart)
   else
     local _ = case_32_
     return error(string.format("no solver '%s'", solver_name))
@@ -225,15 +225,13 @@ end
 local function kryl_exec(rt, ctx, _34_)
   local field = _34_.field
   local opts = _34_.opts
-  local _let_35_ = chasm["get-sys+mesh"](rt, field)
-  local sys = _let_35_.sys
-  local mesh = _let_35_.mesh
+  local sys = chasm["get-sys"](rt, field)
   local array = chasm["get-array"](rt, field)
   local pool_cells = chasm["get-pool-cells"](rt, field)
   local max_iters = (opts["max-iters"] or 1000)
   local tol = (opts.tol or 1e-06)
   local solver_name = (opts.solver or "bicgstab-dilu")
-  local solver = make_solver(solver_name, sys, mesh, pool_cells, tol, (opts.restart or 20))
+  local solver = make_solver(solver_name, sys, array, pool_cells, tol, (opts.restart or 20))
   coroutine.yield(ctx)
   local final_step = krylov_iterate_21(solver, ctx, field, max_iters)
   local change = solver:finish_change_into(array)

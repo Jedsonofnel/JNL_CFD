@@ -129,13 +129,13 @@
 (fn kryl-str [{: field : opts}]
   (simple-instr-str :krylov-s field (or opts.solver :bicgstab-dilu)))
 
-(fn make-solver [solver-name sys mesh pool-cells tol restart]
+(fn make-solver [solver-name sys phi pool-cells tol restart]
   (case (solver-name:lower)
-    :cg-jac (fvmb.new-solver-cg-jac sys mesh tol pool-cells)
-    :cg-dic (fvmb.new-solver-cg-dic sys mesh tol pool-cells)
-    :bicgstab-jac (fvmb.new-solver-bicgstab-jac sys mesh tol pool-cells)
-    :bicgstab-dilu (fvmb.new-solver-bicgstab-dilu sys mesh tol pool-cells)
-    :gmres-dilu (fvmb.new-solver-gmres-dilu sys mesh tol pool-cells restart)
+    :cg-jac (fvmb.new-solver-cg-jac sys phi tol pool-cells)
+    :cg-dic (fvmb.new-solver-cg-dic sys phi tol pool-cells)
+    :bicgstab-jac (fvmb.new-solver-bicgstab-jac sys phi tol pool-cells)
+    :bicgstab-dilu (fvmb.new-solver-bicgstab-dilu sys phi tol pool-cells)
+    :gmres-dilu (fvmb.new-solver-gmres-dilu sys phi tol pool-cells restart)
     _ (error (string.format "no solver '%s'" solver-name))))
 
 (fn krylov-iterate! [solver ctx field max-iters]
@@ -151,13 +151,13 @@
       step)))
 
 (fn kryl-exec [rt ctx {: field : opts}]
-  (let [{: sys : mesh} (chasm.get-sys+mesh rt field)
+  (let [sys (chasm.get-sys rt field)
         array (chasm.get-array rt field)
         pool-cells (chasm.get-pool-cells rt field)
         max-iters (or opts.max-iters 1000)
         tol (or opts.tol 1e-06)
         solver-name (or opts.solver :bicgstab-dilu)
-        solver (make-solver solver-name sys mesh pool-cells tol
+        solver (make-solver solver-name sys array pool-cells tol
                             (or opts.restart 20))]
     (coroutine.yield ctx)
     (let [final-step (krylov-iterate! solver ctx field max-iters)

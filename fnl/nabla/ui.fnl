@@ -1,7 +1,7 @@
 ;;; (nabla ui) ; ui shim (will be removed come web paradigm)
 
 (local opt (require :nabla.core.optional))
-(local internal (opt.require :nabla.strucmesh2d_internal))
+(local internal (opt.require :nabla.ui_internal))
 
 ;; Some internal state (AHHH)
 (var default-ui nil)
@@ -43,7 +43,7 @@
     h))
 
 (fn display-mesh [mesh ?handle]
-  (display-with-recovery! ?handle #($1:send-mesh mesh)))
+  (display-with-recovery! ?handle #($1:send_mesh mesh)))
 
 (fn set-field! [name data ?handle]
   (let [h (or ?handle default-ui)]
