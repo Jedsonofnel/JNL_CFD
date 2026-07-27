@@ -260,30 +260,6 @@
 
 ;; Virtual machine execution
 
-(fn make-exec-ctx [block-name depth iter]
-  {: block-name
-   : depth
-   : iter
-   :status :running
-   :block-end false
-   :residuals {}
-   :rel-residuals {}
-   :iter-counts {}
-   :changes {}
-   :norms {}
-   :breakdowns {}})
-
-(fn make-inner-exec-ctx [parent-ctx block-name]
-  {: block-name
-   :depth (+ parent-ctx.depth 1)
-   :iter 0
-   :residuals parent-ctx.residuals
-   :rel-residuals parent-ctx.rel-residuals
-   :iter-counts parent-ctx.iter-counts
-   :changes parent-ctx.changes
-   :norms parent-ctx.norms
-   :breakdowns parent-ctx.breakdowns})
-
 (fn check-convergence [_pred _ctx]
   "Checks predicate tree against exec ctx and returns true/false"
   ;; TODO implement this
@@ -298,32 +274,43 @@
   (each [_ inst (ipairs block.instructions)]
     (if inst.instructions
         (run-outer-iter! rt inst (+ 1 depth))
-        (let [isa (require :nabla.fvm.instructions)]
-          ((. isa inst.op :exec) rt ctx inst)))
-    (coroutine.yield ctx)))
+        (let [isa (require :nabla.fvm.instructions)
+              instr-exec-fn (. isa inst.op :exec)
+              record (instr-exec-fn rt ctx inst)]
+          (when record (coroutine.yield record))))))
 
 (fn run-outer-iter! [rt block ?depth ?iter]
   (let [iter (or ?iter 1)
         depth (or ?depth 1)
-        ctx (make-exec-ctx block.name depth iter)]
+        ctx {:block-name block.name :depth (or ?depth 1) :iter (or ?iter 1)}]
     (run-block! rt block ctx depth)
-    (if (or (check-convergence block.convergence ctx) (<= block.iters iter))
+    (if (or (check-convergence block.convergence ctx) (<= block.max-iters iter))
         ctx
         (run-outer-iter! rt block depth (+ 1 iter)))))
+
+(fn add-defaults-to-result! [result]
+  "Add default values to certain keys to result, like status"
+  (when (not result.status)
+    (set result.status :running)))
 
 (fn step! [rt]
   "Run a single VM step (instruction or part of an instruction)"
   (when (not rt.co) ; build the coroutine idempotently
-    (set rt.co
-         (coroutine.create (fn [] (run-outer-iter! rt rt.main-block 1)
-                             (coroutine.yield {:status :done})))))
-  (let [(ok ctx) (coroutine.resume rt.co)]
+    (set rt.co (coroutine.create (fn []
+                                   (let [final (run-outer-iter! rt
+                                                                rt.main-block 1)]
+                                     (set final.status :done)
+                                     (coroutine.yield final))))))
+  (let [(ok result) (coroutine.resume rt.co)]
     (if (not ok)
-        {:status :error :error ctx}
-        ctx)))
+        {:status :error :error result}
+        (do
+          (add-defaults-to-result! result)
+          result))))
 
-(fn run-all! [rt]
+(fn run-all! [rt] ; FOUND THE BUG - status is NOT included
   "Run all instructions until finished or error"
+
   (fn loop [result]
     (if (= result.status :running)
         (loop (step! rt))
@@ -342,7 +329,6 @@
  : block
  : program
  : compile
- : make-inner-exec-ctx
  : step!
  : run-all!
  ;; Acessors

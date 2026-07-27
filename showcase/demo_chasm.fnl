@@ -3,7 +3,6 @@
 (local fvm (require :nabla.fvm))
 (local {: bc : chasm :instructions i} fvm)
 (local cart (require :nabla.mesh.cartmesh2d))
-(local meshlib (require :nabla.mesh))
 (local ui (require :nabla.ui))
 
 ;; Mesh
@@ -28,19 +27,25 @@
                   cart.WEST (bc.dirichlet 1)
                   bc.DEFAULT (bc.neumann 0)}})
 
-(comment (let [mesh (meshlib.resolve mesh-spec)
-               {: warnings : bcs} (bc.resolve bcs asm.vars (mesh:patches))]
-           (ui.display-mesh mesh)))
+(comment (let [meshlib (requier :nabla.mesh)
+               mesh (meshlib.resolve mesh-spec)
+               {: errors : warnings : bcs} (bc.resolve bcs asm.vars
+                                                       (mesh:patches))]
+           errors))
 
 (fn run []
   (let [rt (chasm.compile asm mesh-spec bcs)] ; compile to vm which allocates/resolves
     (chasm.run-all! rt)
     (ui.display-mesh rt.domains.__default.mesh)
+    (let [phi-array (chasm.get-array rt :phi)]
+      (print (phi-array:max)))
     (ui.set-field! :phi (chasm.get-array rt :phi))
     (ui.view-field :phi)))
 
-(comment (let [rt (chasm.compile asm mesh-spec bcs)]
+(comment (let [rt (chasm.compile asm mesh-spec bcs)
+               phi-array (chasm.get-array rt :phi)]
            (chasm.get-sys+mesh+bcs rt :phi)
-           (chasm.get-sys+mesh rt :phi)))
+           (chasm.get-sys+mesh rt :phi)
+           (length phi-array)))
 
 (run)

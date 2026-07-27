@@ -3,47 +3,47 @@ local _local_1_ = require("nabla.core.validation")
 local assert_number = _local_1_["assert-number"]
 local assert_oneof = _local_1_["assert-oneof"]
 local util = require("nabla.core.util")
---[[ {:U {:__default {:kind "neumann-v" :ux-gn 4 :uy-gn 5} :north {:kind "dirichlet-v" :ux 5 :uy 4} :south {:kind "neumann-v" :ux-gn 4 :uy-gn 0} :west {:kind "nt-v" :n-kind "neumann" :n-val 1 :t-kind "neumann" :t-val 1}} :phi {:__default {:grad-n 0 :kind "neumann-s"} :east {:grad-n 9 :kind "neumann-s"} :north {:kind "dirichlet-s" :value 5} :south {:a 3 :b 2 :c 1 :kind "robin"}}} ]]
+--[[ {:U {:__default {:bckind "neumann-v" :ux-gn 4 :uy-gn 5} :north {:bckind "dirichlet-v" :ux 5 :uy 4} :south {:bckind "neumann-v" :ux-gn 4 :uy-gn 0} :west {:bckind "nt-v" :n-kind "neumann" :n-val 1 :t-kind "neumann" :t-val 1}} :phi {:__default {:bckind "neumann-s" :grad-n 0} :east {:bckind "neumann-s" :grad-n 9} :north {:bckind "dirichlet-s" :value 5} :south {:a 3 :b 2 :bckind "robin" :c 1}}} ]]
 --[[ {:U {:__default (bc.neumann-v 0) :north (bc.dirichlet-v 5 4) :south (bc.neumann-v 4 0) :west (bc.nt-v "dirichlet" 0 "neumann" 1)} :phi {:__default (bc.neumann-s 0) :east (bc.neumann-s 9) :north (bc.dirichlet-s 5) :south (bc.robin 1 2 3)}} ]]
 local function dirichlet_s(value)
   assert_number(value, "dirichlet-s value")
-  return {kind = "dirichlet-s", rank = 0, value = value}
+  return {bckind = "dirichlet-s", rank = 0, value = value}
 end
 local function neumann_s(grad_n)
   assert_number(grad_n, "neumann-s grad-n")
-  return {kind = "neumann-s", rank = 0, ["grad-n"] = grad_n}
+  return {bckind = "neumann-s", rank = 0, ["grad-n"] = grad_n}
 end
 local function robin(a, b, c)
   assert_number(a, "robin a")
   assert_number(b, "robin b")
   assert_number(c, "robin c")
-  return {kind = "robin", rank = 0, a = a, b = b, c = c}
+  return {bckind = "robin", rank = 0, a = a, b = b, c = c}
 end
 local function dirichlet_v(ux, _3fuy)
   local uy = (_3fuy or ux)
   assert_number(ux, "dirichlet-v ux")
   assert_number(uy, "dirichlet-v uy")
-  return {kind = "dirichlet-v", rank = 1, ux = ux, uy = uy}
+  return {bckind = "dirichlet-v", rank = 1, ux = ux, uy = uy}
 end
 local function neumann_v(ux_gn, _3fuy_gn)
   local uy_gn = (_3fuy_gn or ux_gn)
   assert_number(ux_gn, "neumann-v ux-gn")
   assert_number(uy_gn, "neumann-v uy-gn")
-  return {kind = "neumann-v", rank = 1, ["ux-gn"] = ux_gn, ["uy-gn"] = uy_gn}
+  return {bckind = "neumann-v", rank = 1, ["ux-gn"] = ux_gn, ["uy-gn"] = uy_gn}
 end
 local function nt_v(n_kind, n_val, t_kind, t_val)
   assert_oneof(n_kind, {"dirichlet", "neumann"}, "nt-v n-kind")
   assert_number(n_val, "nt-v n-val")
   assert_oneof(t_kind, {"dirichlet", "neumann"}, "nt-v t-kind")
   assert_number(t_val, "nt-v t-val")
-  return {kind = "nt-v", rank = 1, ["n-kind"] = n_kind, ["n-val"] = n_val, ["t-kind"] = t_kind, ["t-val"] = t_val}
+  return {bckind = "nt-v", rank = 1, ["n-kind"] = n_kind, ["n-val"] = n_val, ["t-kind"] = t_kind, ["t-val"] = t_val}
 end
 local function dirichlet(ux, _3fuy)
   if _3fuy then
     return dirichlet_v(ux, _3fuy)
   else
     assert_number(ux, "dirichlet ux")
-    return {kind = "dirichlet-poly", ["poly?"] = true, value = ux}
+    return {bckind = "dirichlet-poly", ["poly?"] = true, value = ux}
   end
 end
 local function neumann(ux_gn, _3fuy_gn)
@@ -51,7 +51,7 @@ local function neumann(ux_gn, _3fuy_gn)
     return neumann_v(ux_gn, _3fuy_gn)
   else
     assert_number(ux_gn, "neumann ux-gn")
-    return {kind = "neumann-poly", ["poly?"] = true, ["grad-n"] = ux_gn}
+    return {bckind = "neumann-poly", ["poly?"] = true, ["grad-n"] = ux_gn}
   end
 end
 local function nograd()
@@ -59,7 +59,7 @@ local function nograd()
 end
 local function validate_bc_rank(field, patch_name, bc)
   if (not bc["poly?"] and (field.rank ~= bc.rank)) then
-    return string.format("field '%s' (rank %d): BC '%s' on patch '%s' is rank %d", field.name, field.rank, bc.kind, patch_name, bc.rank)
+    return string.format("field '%s' (rank %d): BC '%s' on patch '%s' is rank %d", field.name, field.rank, bc.bckind, patch_name, bc.rank)
   else
     return nil
   end
@@ -142,7 +142,7 @@ local function validate(bcs, fields, patches)
   return {errors = util["concat-all"]("errors", per_field), warnings = util["concat-all"]("warnings", per_field)}
 end
 local function resolve_poly(rank, bc_desc)
-  if ((_G.type(bc_desc) == "table") and (bc_desc.kind == "dirichlet-poly") and (nil ~= bc_desc.value)) then
+  if ((_G.type(bc_desc) == "table") and (bc_desc.bckind == "dirichlet-poly") and (nil ~= bc_desc.value)) then
     local value = bc_desc.value
     if (rank == 0) then
       return dirichlet_s(value)
@@ -151,7 +151,7 @@ local function resolve_poly(rank, bc_desc)
     else
       return error("resolve-poly: unsupported rank")
     end
-  elseif ((_G.type(bc_desc) == "table") and (bc_desc.kind == "neumann-poly") and (nil ~= bc_desc["grad-n"])) then
+  elseif ((_G.type(bc_desc) == "table") and (bc_desc.bckind == "neumann-poly") and (nil ~= bc_desc["grad-n"])) then
     local grad_n = bc_desc["grad-n"]
     if (rank == 0) then
       return neumann_s(grad_n)

@@ -352,12 +352,6 @@ local function get_pool_cells(rt, name)
   local v = get_var(rt, name)
   return rt.domains[v.domain]["pool-cells"]
 end
-local function make_exec_ctx(block_name, depth, iter)
-  return {["block-name"] = block_name, depth = depth, iter = iter, status = "running", residuals = {}, ["rel-residuals"] = {}, ["iter-counts"] = {}, changes = {}, norms = {}, breakdowns = {}, ["block-end"] = false}
-end
-local function make_inner_exec_ctx(parent_ctx, block_name)
-  return {["block-name"] = block_name, depth = (parent_ctx.depth + 1), iter = 0, residuals = parent_ctx.residuals, ["rel-residuals"] = parent_ctx["rel-residuals"], ["iter-counts"] = parent_ctx["iter-counts"], changes = parent_ctx.changes, norms = parent_ctx.norms, breakdowns = parent_ctx.breakdowns}
-end
 local function check_convergence(_pred, _ctx)
   return false
 end
@@ -370,37 +364,51 @@ local function run_block_21(rt, block0, ctx, depth)
       run_outer_iter_21(rt, inst, (1 + depth))
     else
       local isa = require("nabla.fvm.instructions")
-      isa[inst.op].exec(rt, ctx, inst)
+      local instr_exec_fn = isa[inst.op].exec
+      local record = instr_exec_fn(rt, ctx, inst)
+      if record then
+        coroutine.yield(record)
+      else
+      end
     end
-    coroutine.yield(ctx)
   end
   return nil
 end
 local function run_outer_iter_210(rt, block0, _3fdepth, _3fiter)
   local iter = (_3fiter or 1)
   local depth = (_3fdepth or 1)
-  local ctx = make_exec_ctx(block0.name, depth, iter)
+  local ctx = {["block-name"] = block0.name, depth = (_3fdepth or 1), iter = (_3fiter or 1)}
   run_block_21(rt, block0, ctx, depth)
-  if (check_convergence(block0.convergence, ctx) or (block0.iters <= iter)) then
+  if (check_convergence(block0.convergence, ctx) or (block0["max-iters"] <= iter)) then
     return ctx
   else
     return run_outer_iter_210(rt, block0, depth, (1 + iter))
   end
 end
+local function add_defaults_to_result_21(result)
+  if not result.status then
+    result.status = "running"
+    return nil
+  else
+    return nil
+  end
+end
 local function step_21(rt)
   if not rt.co then
-    local function _52_()
-      run_outer_iter_210(rt, rt["main-block"], 1)
-      return coroutine.yield({status = "done"})
+    local function _54_()
+      local final = run_outer_iter_210(rt, rt["main-block"], 1)
+      final.status = "done"
+      return coroutine.yield(final)
     end
-    rt.co = coroutine.create(_52_)
+    rt.co = coroutine.create(_54_)
   else
   end
-  local ok, ctx = coroutine.resume(rt.co)
+  local ok, result = coroutine.resume(rt.co)
   if not ok then
-    return {status = "error", error = ctx}
+    return {status = "error", error = result}
   else
-    return ctx
+    add_defaults_to_result_21(result)
+    return result
   end
 end
 local function run_all_21(rt)
@@ -417,4 +425,4 @@ local function run_all_21(rt)
   end
   return loop(step_21(rt))
 end
-return {scalar = scalar, ["scalar-arr"] = scalar_arr, vector = vector, ["vector-arr"] = vector_arr, block = block, program = program, compile = compile, ["make-inner-exec-ctx"] = make_inner_exec_ctx, ["step!"] = step_21, ["run-all!"] = run_all_21, ["get-var"] = get_var, ["get-sys"] = get_sys, ["get-array"] = get_array, ["get-const"] = get_const, ["get-sys+mesh"] = get_sys_2bmesh, ["get-sys+mesh+bcs"] = get_sys_2bmesh_2bbcs, ["get-pool-cells"] = get_pool_cells}
+return {scalar = scalar, ["scalar-arr"] = scalar_arr, vector = vector, ["vector-arr"] = vector_arr, block = block, program = program, compile = compile, ["step!"] = step_21, ["run-all!"] = run_all_21, ["get-var"] = get_var, ["get-sys"] = get_sys, ["get-array"] = get_array, ["get-const"] = get_const, ["get-sys+mesh"] = get_sys_2bmesh, ["get-sys+mesh+bcs"] = get_sys_2bmesh_2bbcs, ["get-pool-cells"] = get_pool_cells}

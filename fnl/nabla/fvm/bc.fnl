@@ -7,18 +7,18 @@
 ;;; Examples
 
 ;; BC set looks like
-(comment {:phi {:north {:kind :dirichlet-s :value 5}
-                :south {:kind :robin :a 3 :b 2 :c 1}
-                :east {:kind :neumann-s :grad-n 9}
-                :__default {:kind :neumann-s :grad-n 0}}
-          :U {:north {:kind :dirichlet-v :ux 5 :uy 4}
-              :south {:kind :neumann-v :ux-gn 4 :uy-gn 0}
-              :west {:kind :nt-v
+(comment {:phi {:north {:bckind :dirichlet-s :value 5}
+                :south {:bckind :robin :a 3 :b 2 :c 1}
+                :east {:bckind :neumann-s :grad-n 9}
+                :__default {:bckind :neumann-s :grad-n 0}}
+          :U {:north {:bckind :dirichlet-v :ux 5 :uy 4}
+              :south {:bckind :neumann-v :ux-gn 4 :uy-gn 0}
+              :west {:bckind :nt-v
                      :n-kind :neumann
                      :n-val 1
                      :t-kind :neumann
                      :t-val 1}
-              :__default {:kind :neumann-v :ux-gn 4 :uy-gn 5}}})
+              :__default {:bckind :neumann-v :ux-gn 4 :uy-gn 5}}})
 
 ;; Or with constructors (different values to above)
 (comment {:phi {:north (bc.dirichlet-s 5)
@@ -37,12 +37,12 @@
 (fn dirichlet-s [value]
   "Create a scalar dirichlet boundary condition descriptor"
   (assert-number value "dirichlet-s value")
-  {:kind :dirichlet-s :rank 0 : value})
+  {:bckind :dirichlet-s :rank 0 : value})
 
 (fn neumann-s [grad-n]
   "Create a scalar neumann boundary condition descriptor"
   (assert-number grad-n "neumann-s grad-n")
-  {:kind :neumann-s :rank 0 : grad-n})
+  {:bckind :neumann-s :rank 0 : grad-n})
 
 ;; Robin is always scalar - no '-s' discrimination needed
 (fn robin [a b c]
@@ -50,7 +50,7 @@
   (assert-number a "robin a")
   (assert-number b "robin b")
   (assert-number c "robin c")
-  {:kind :robin :rank 0 : a : b : c})
+  {:bckind :robin :rank 0 : a : b : c})
 
 ;; Vectors
 
@@ -59,14 +59,14 @@
   (let [uy (or ?uy ux)]
     (assert-number ux "dirichlet-v ux")
     (assert-number uy "dirichlet-v uy")
-    {:kind :dirichlet-v :rank 1 : ux : uy}))
+    {:bckind :dirichlet-v :rank 1 : ux : uy}))
 
 (fn neumann-v [ux-gn ?uy-gn]
   "Create a vector neumann boundary condition descriptor"
   (let [uy-gn (or ?uy-gn ux-gn)]
     (assert-number ux-gn "neumann-v ux-gn")
     (assert-number uy-gn "neumann-v uy-gn")
-    {:kind :neumann-v :rank 1 : ux-gn : uy-gn}))
+    {:bckind :neumann-v :rank 1 : ux-gn : uy-gn}))
 
 (fn nt-v [n-kind n-val t-kind t-val]
   (assert-oneof n-kind [:dirichlet :neumann] "nt-v n-kind")
@@ -74,7 +74,7 @@
   (assert-oneof t-kind [:dirichlet :neumann] "nt-v t-kind")
   (assert-number t-val "nt-v t-val")
   "Create a normal-tangent boundary condition descriptor"
-  {:kind :nt-v :rank 1 : n-kind : n-val : t-kind : t-val})
+  {:bckind :nt-v :rank 1 : n-kind : n-val : t-kind : t-val})
 
 ;; Polymorphic (by rank)
 
@@ -84,7 +84,7 @@
       (dirichlet-v ux ?uy)
       (do
         (assert-number ux "dirichlet ux")
-        {:kind :dirichlet-poly :poly? true :value ux})))
+        {:bckind :dirichlet-poly :poly? true :value ux})))
 
 (fn neumann [ux-gn ?uy-gn]
   "Create a rank-polymorphic neumann boundary condition descriptor"
@@ -92,7 +92,7 @@
       (neumann-v ux-gn ?uy-gn)
       (do
         (assert-number ux-gn "neumann ux-gn")
-        {:kind :neumann-poly :poly? true :grad-n ux-gn})))
+        {:bckind :neumann-poly :poly? true :grad-n ux-gn})))
 
 (fn nograd []
   "Create a zero-gradient boundary condition descriptor"
@@ -104,7 +104,7 @@
   "Validate BC against field rank, nil if OK, error string if not"
   (when (and (not bc.poly?) (not= field.rank bc.rank))
     (string.format "field '%s' (rank %d): BC '%s' on patch '%s' is rank %d"
-                   field.name field.rank bc.kind patch-name bc.rank)))
+                   field.name field.rank bc.bckind patch-name bc.rank)))
 
 (fn validate-bc-patch-exists [field patch-name patches]
   "Validate the bc patch name is a valid  patch, nil if OK, error string if not"
@@ -141,10 +141,10 @@
 (fn resolve-poly [rank bc-desc]
   "Resolve a polymorphic bc-desc"
   (case bc-desc
-    {:kind :dirichlet-poly : value} (if (= rank 0) (dirichlet-s value)
+    {:bckind :dirichlet-poly : value} (if (= rank 0) (dirichlet-s value)
                                         (= rank 1) (dirichlet-v value value)
                                         (error "resolve-poly: unsupported rank"))
-    {:kind :neumann-poly : grad-n} (if (= rank 0) (neumann-s grad-n) (= rank 1)
+    {:bckind :neumann-poly : grad-n} (if (= rank 0) (neumann-s grad-n) (= rank 1)
                                        (neumann-v grad-n grad-n)
                                        (error "resolve-poly: unsupported rank"))))
 

@@ -1,8 +1,0 @@
-# devenv.yaml
-inputs:
-  nixpkgs:
-    url: github:NixOS/nixpkgs/nixpkgs-unstable
-  nixgl:
-    url: github:nix-community/nixGL
-
-allow_unfree: true

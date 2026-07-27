@@ -69,7 +69,8 @@
   "Execute laplacian-k instruction"
   (let [gamma (resolve-rt-const rt gamma)
         {: sys : mesh} (chasm.get-sys+mesh rt field)]
-    (fvmb.laplacian-k! sys mesh gamma)))
+    (fvmb.laplacian-k! sys mesh gamma)
+    {:instr-name :laplacian-k : field : gamma}))
 
 (local laplacian-k (make-instr :laplacian-k lapk-build lapk-str lapk-exec))
 
@@ -82,24 +83,32 @@
 (fn bccs-str [{: field}]
   (simple-instr-str :bc-close-s field))
 
-(local bc-close-tbl
-       {:dirichlet-s (fn [sys mesh patch-name {: value}]
-                       (fvmb.patch-s-close-d! sys mesh patch-name value))
-        :neumann-s (fn [sys mesh patch-name {: grad-n}]
-                     (fvmb.patch-s-close-n! sys mesh patch-name grad-n))
-        :robin (fn [sys mesh patch-name {: a : b : c}]
-                 (fvmb.patch-s-close-r! sys mesh patch-name a b c))})
+(fn close-dirichlet-s! [sys mesh patch-name {: name} {: value}]
+  (fvmb.patch-s-close-d! sys mesh patch-name value)
+  {:instr-name :close-dirichlet-s :field name : value : patch-name})
 
-(fn bccs-exec [rt ctx {: field}]
+(fn close-neumann-s! [sys mesh patch-name {: name} {: grad-n}]
+  (fvmb.patch-s-close-n! sys mesh patch-name grad-n)
+  {:instr-name :close-neumann-s :field name : grad-n : patch-name})
+
+(fn close-robin! [sys mesh patch-name {: name} {: a : b : c}]
+  (fvmb.patch-s-close-r! sys mesh patch-name a b c)
+  {:instr-name :close-robin :field name : a : b : c : patch-name})
+
+(local bc-close-table {:dirichlet-s close-dirichlet-s!
+                       :neumann-s close-neumann-s!
+                       :robin close-robin!})
+
+(fn bccs-exec [rt _ctx {: field}]
   "Close BCs for every patch on field's mesh, yielding once per patch"
   (let [{: sys : mesh : bcs} (chasm.get-sys+mesh+bcs rt field)
         field-spec (. bcs field)]
     (each [patch-name _ (pairs (mesh:patches))]
       (let [spec (or (. field-spec patch-name) (. field-spec :__default))
-            close-fn (or (. bc-close-tbl spec.kind)
-                         (error (.. "no bc close fn for kind: " spec.kind)))]
-        (close-fn sys mesh patch-name spec)
-        (coroutine.yield ctx)))))
+            close-fn (. bc-close-table spec.bckind)
+            result (close-fn sys mesh patch-name field spec)]
+        (coroutine.yield result)
+        nil))))
 
 (local bc-close-s (make-instr :bc-close-s bccs-build bccs-str bccs-exec))
 
@@ -116,7 +125,8 @@
 
 (fn sysr-exec [rt _ctx {: field}]
   (let [sys (chasm.get-sys rt field)]
-    (sys:reset)))
+    (sys:reset)
+    {:instr-name :sys-reset-s : field}))
 
 (local sys-reset-s (make-instr :sys-reset-s sysr-build sysr-str sysr-exec))
 
@@ -138,17 +148,19 @@
     :gmres-dilu (fvmb.new-solver-gmres-dilu sys phi tol pool-cells restart)
     _ (error (string.format "no solver '%s'" solver-name))))
 
-(fn krylov-iterate! [solver ctx field max-iters]
+(fn krylov-iterate! [solver ctx field max-iters ?iter]
   "Run krylov iterations, yielding an inner ctx per step, returning the final step"
-  (faccumulate [step {} i 1 max-iters &until (or step.done step.breakdown)]
-    (let [step (solver:iter)
-          kctx (chasm.make-inner-exec-ctx ctx (.. "krylov:" field))]
-      (set kctx.iter i)
-      (tset kctx.residuals field step.residual)
-      (tset kctx.rel-residuals field step.residual)
-      (tset kctx.iter-counts field i)
-      (coroutine.yield kctx)
-      step)))
+  (let [step (solver:iter)
+        iter (or ?iter 1)
+        record {:instr-name :krylov-iter
+                :depth (+ 1 ctx.depth)
+                : iter
+                : field
+                :residual step.residual}]
+    (coroutine.yield record)
+    (if (or step.done step.breakdown (<= max-iters iter))
+        step
+        (krylov-iterate! solver ctx field max-iters (+ 1 iter)))))
 
 (fn kryl-exec [rt ctx {: field : opts}]
   (let [sys (chasm.get-sys rt field)
@@ -160,13 +172,14 @@
         solver (make-solver solver-name sys array pool-cells tol
                             (or opts.restart 20))]
     (coroutine.yield ctx)
-    (let [final-step (krylov-iterate! solver ctx field max-iters)
-          change (solver:finish_change_into array)]
-      (tset ctx.changes field change)
-      (tset ctx.norms field (array:norm_l2))
-      (tset ctx.residuals field (and final-step final-step.residual))
-      (when final-step.breakdown (tset ctx.breakdowns field true))
-      (coroutine.yield ctx))))
+    (let [final-step (krylov-iterate! solver ctx field max-iters)]
+      {:instr-name :krylov-solve
+       :depth ctx.depth
+       : field
+       :residual final-step.residual
+       :norm (array:norm_l2)
+       :change (solver:finish_change_into array)
+       :breakdown? final-step.breakdown})))
 
 (local krylov-s (make-instr :krylov-s kryl-build kryl-str kryl-exec))
 

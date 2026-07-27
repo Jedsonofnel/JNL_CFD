@@ -123,7 +123,8 @@ local function lapk_exec(rt, _ctx, _18_)
   local _let_19_ = chasm["get-sys+mesh"](rt, field)
   local sys = _let_19_.sys
   local mesh = _let_19_.mesh
-  return fvmb["laplacian-k!"](sys, mesh, gamma0)
+  fvmb["laplacian-k!"](sys, mesh, gamma0)
+  return {["instr-name"] = "laplacian-k", field = field, gamma = gamma0}
 end
 local laplacian_k = make_instr("laplacian-k", lapk_build, lapk_str, lapk_exec)
 local function bccs_build(field)
@@ -134,23 +135,28 @@ local function bccs_str(_20_)
   local field = _20_.field
   return simple_instr_str("bc-close-s", field)
 end
-local bc_close_tbl
-local function _22_(sys, mesh, patch_name, _21_)
-  local value = _21_.value
-  return fvmb["patch-s-close-d!"](sys, mesh, patch_name, value)
+local function close_dirichlet_s_21(sys, mesh, patch_name, _21_, _22_)
+  local name = _21_.name
+  local value = _22_.value
+  fvmb["patch-s-close-d!"](sys, mesh, patch_name, value)
+  return {["instr-name"] = "close-dirichlet-s", field = name, value = value, ["patch-name"] = patch_name}
 end
-local function _24_(sys, mesh, patch_name, _23_)
-  local grad_n = _23_["grad-n"]
-  return fvmb["patch-s-close-n!"](sys, mesh, patch_name, grad_n)
+local function close_neumann_s_21(sys, mesh, patch_name, _23_, _24_)
+  local name = _23_.name
+  local grad_n = _24_["grad-n"]
+  fvmb["patch-s-close-n!"](sys, mesh, patch_name, grad_n)
+  return {["instr-name"] = "close-neumann-s", field = name, ["grad-n"] = grad_n, ["patch-name"] = patch_name}
 end
-local function _26_(sys, mesh, patch_name, _25_)
-  local a = _25_.a
-  local b = _25_.b
-  local c = _25_.c
-  return fvmb["patch-s-close-r!"](sys, mesh, patch_name, a, b, c)
+local function close_robin_21(sys, mesh, patch_name, _25_, _26_)
+  local name = _25_.name
+  local a = _26_.a
+  local b = _26_.b
+  local c = _26_.c
+  fvmb["patch-s-close-r!"](sys, mesh, patch_name, a, b, c)
+  return {["instr-name"] = "close-robin", field = name, a = a, b = b, c = c, ["patch-name"] = patch_name}
 end
-bc_close_tbl = {["dirichlet-s"] = _22_, ["neumann-s"] = _24_, robin = _26_}
-local function bccs_exec(rt, ctx, _27_)
+local bc_close_table = {["dirichlet-s"] = close_dirichlet_s_21, ["neumann-s"] = close_neumann_s_21, robin = close_robin_21}
+local function bccs_exec(rt, _ctx, _27_)
   local field = _27_.field
   local _let_28_ = chasm["get-sys+mesh+bcs"](rt, field)
   local sys = _let_28_.sys
@@ -159,9 +165,9 @@ local function bccs_exec(rt, ctx, _27_)
   local field_spec = bcs[field]
   for patch_name, _ in pairs(mesh:patches()) do
     local spec = (field_spec[patch_name] or field_spec.__default)
-    local close_fn = (bc_close_tbl[spec.kind] or error(("no bc close fn for kind: " .. spec.kind)))
-    close_fn(sys, mesh, patch_name, spec)
-    coroutine.yield(ctx)
+    local close_fn = bc_close_table[spec.bckind]
+    local result = close_fn(sys, mesh, patch_name, field, spec)
+    coroutine.yield(result)
   end
   return nil
 end
@@ -177,7 +183,8 @@ end
 local function sysr_exec(rt, _ctx, _30_)
   local field = _30_.field
   local sys = chasm["get-sys"](rt, field)
-  return sys:reset()
+  sys:reset()
+  return {["instr-name"] = "sys-reset-s", field = field}
 end
 local sys_reset_s = make_instr("sys-reset-s", sysr_build, sysr_str, sysr_exec)
 local function kryl_build(field, _3fopts)
@@ -207,24 +214,20 @@ local function make_solver(solver_name, sys, phi, pool_cells, tol, restart)
     return error(string.format("no solver '%s'", solver_name))
   end
 end
-local function krylov_iterate_21(solver, ctx, field, max_iters)
-  local step = {}
-  for i = 1, max_iters do
-    if (step.done or step.breakdown) then break end
-    local step0 = solver:iter()
-    local kctx = chasm["make-inner-exec-ctx"](ctx, ("krylov:" .. field))
-    kctx.iter = i
-    kctx.residuals[field] = step0.residual
-    kctx["rel-residuals"][field] = step0.residual
-    kctx["iter-counts"][field] = i
-    coroutine.yield(kctx)
-    step = step0
+local function krylov_iterate_21(solver, ctx, field, max_iters, _3fiter)
+  local step = solver:iter()
+  local iter = (_3fiter or 1)
+  local record = {["instr-name"] = "krylov-iter", depth = (1 + ctx.depth), iter = iter, field = field, residual = step.residual}
+  coroutine.yield(record)
+  if (step.done or step.breakdown or (max_iters <= iter)) then
+    return step
+  else
+    return krylov_iterate_21(solver, ctx, field, max_iters, (1 + iter))
   end
-  return step
 end
-local function kryl_exec(rt, ctx, _34_)
-  local field = _34_.field
-  local opts = _34_.opts
+local function kryl_exec(rt, ctx, _35_)
+  local field = _35_.field
+  local opts = _35_.opts
   local sys = chasm["get-sys"](rt, field)
   local array = chasm["get-array"](rt, field)
   local pool_cells = chasm["get-pool-cells"](rt, field)
@@ -234,15 +237,7 @@ local function kryl_exec(rt, ctx, _34_)
   local solver = make_solver(solver_name, sys, array, pool_cells, tol, (opts.restart or 20))
   coroutine.yield(ctx)
   local final_step = krylov_iterate_21(solver, ctx, field, max_iters)
-  local change = solver:finish_change_into(array)
-  ctx.changes[field] = change
-  ctx.norms[field] = array:norm_l2()
-  ctx.residuals[field] = (final_step and final_step.residual)
-  if final_step.breakdown then
-    ctx.breakdowns[field] = true
-  else
-  end
-  return coroutine.yield(ctx)
+  return {["instr-name"] = "krylov-solve", depth = ctx.depth, field = field, residual = final_step.residual, norm = array:norm_l2(), change = solver:finish_change_into(array), ["breakdown?"] = final_step.breakdown}
 end
 local krylov_s = make_instr("krylov-s", kryl_build, kryl_str, kryl_exec)
 return {["laplacian-k"] = laplacian_k, ["bc-close-s"] = bc_close_s, ["sys-reset-s"] = sys_reset_s, ["krylov-s"] = krylov_s}
